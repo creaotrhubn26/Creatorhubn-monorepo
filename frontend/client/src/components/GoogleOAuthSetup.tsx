@@ -4,9 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../utils/theming-helper';
-import { 
-  Dialog, 
-  DialogContent, 
+import {
+  Dialog,
+  DialogContent,
   DialogTitle,
   DialogContentText,
   Button,
@@ -16,9 +16,14 @@ import {
   CardHeader,
   Typography,
   Box,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
-import { CheckCircle, Cancel, Settings, Warning } from '@mui/icons-material';
+import {
+  CheckCircle,
+  Cancel,
+  Settings,
+  Warning,
+} from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 
 interface GoogleOAuthSetupProps {

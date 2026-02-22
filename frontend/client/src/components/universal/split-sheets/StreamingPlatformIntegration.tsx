@@ -26,7 +26,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,7 +36,7 @@ import {
   MusicNote as SpotifyIcon,
   Apple as AppleIcon,
   YouTube as YouTubeIcon,
-  MusicNote
+  MusicNote,
 } from '@mui/icons-material';
 
 interface StreamingConnection {

@@ -12,13 +12,13 @@ import {
   Avatar,
   Chip,
   Alert,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   CameraAlt,
   CheckCircle,
   Upload,
-  Build
+  Build,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
 

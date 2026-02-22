@@ -12,13 +12,13 @@ import {
   TableHead,
   TableRow,
   Chip,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   TrendingUp as TrendingIcon,
   Speed as SpeedIcon,
   Error as ErrorIcon,
-  CheckCircle as SuccessIcon
+  CheckCircle as SuccessIcon,
 } from '@mui/icons-material';
 import { harRecorder } from '../../utils/harRecorder';
 import { useWireMockTestHistory } from '../../hooks/useWireMockTestHistory';

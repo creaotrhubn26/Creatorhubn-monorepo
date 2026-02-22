@@ -39,8 +39,6 @@ import {
   Switch,
   FormControlLabel,
   Slider,
-  ColorPicker,
-  Palette,
 } from '@mui/material';
 import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
 

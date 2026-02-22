@@ -36,7 +36,7 @@ import {
   DialogActions,
   Tab,
   Tabs,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -64,7 +64,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
-  Inventory as InventoryIcon
+  Inventory as InventoryIcon,
 } from '@mui/icons-material';
 
 interface GearItem {

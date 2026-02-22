@@ -30,7 +30,7 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -44,7 +44,7 @@ import {
   GetApp,
   Clear,
   Schedule,
-  Assignment
+  Assignment,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import 'quill/dist/quill.snow.css';
@@ -553,7 +553,7 @@ export default function PrototypeTesterApplicationPanel() {
                   <React.Fragment key={application.id}>
                     <ListItem
                       sx={{
-                        bgcolor: application.status === 'pending' ? 'rgba(2, 5, 5, 152, 0, 0.05)' : 'transparent',
+                        bgcolor: application.status === 'pending' ? 'rgba(255, 152, 0, 0.05)' : 'transparent',
                         borderRadius: 1,
                         mb: 1,
                         borderLeft: `4px solid ${config.color}`

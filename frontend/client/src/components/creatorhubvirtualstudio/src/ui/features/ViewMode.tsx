@@ -1,5 +1,10 @@
 import * as React from 'react';
-import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import {
+  Box,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
 
 export default function ViewMode() {
   const [mode, setMode] = React.useState<'setup' | 'view' | 'export' | 'community'>('setup');

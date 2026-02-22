@@ -21,7 +21,7 @@ import {
   Divider,
   Card,
   CardContent,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   PhotoLibrary,
@@ -29,7 +29,7 @@ import {
   LocalOffer,
   TrendingUp,
   CheckCircle,
-  Description
+  Description,
 } from '@mui/icons-material';
 
 interface ImageSelectionWarningProps {

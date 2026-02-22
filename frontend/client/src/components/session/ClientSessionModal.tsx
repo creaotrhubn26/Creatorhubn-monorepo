@@ -11,7 +11,7 @@ import {
   LinearProgress,
   Alert,
   Chip,
-  Paper
+  Paper,
 } from '@mui/material';
 import {
   Security as SecurityIcon,
@@ -22,7 +22,7 @@ import {
   Videocam as VideoIcon,
   MusicNote as MusicIcon,
   Timeline as TimelineIcon,
-  PhotoLibrary as GalleryIcon
+  PhotoLibrary as GalleryIcon,
 } from '@mui/icons-material';
 import { useClientSession } from '../../contexts/ClientSessionContext';
 

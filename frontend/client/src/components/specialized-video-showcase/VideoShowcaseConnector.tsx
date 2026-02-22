@@ -15,7 +15,14 @@ import {
   Avatar,
   IconButton,
 } from '@mui/material';
-import { VideocamLibrary, PlayArrowArrow, Favorite, Share, Edit, YouTube } from '@mui/icons-material';
+import {
+  VideoLibrary as VideocamLibrary,
+  PlayArrow as PlayArrowArrow,
+  Favorite,
+  Share,
+  Edit,
+  YouTube,
+} from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import WeddingVideoShowcase from './WeddingVideoShowcase';

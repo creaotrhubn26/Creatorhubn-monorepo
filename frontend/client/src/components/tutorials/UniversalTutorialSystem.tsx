@@ -21,7 +21,6 @@ import {
   IconButton,
   Avatar,
   Chip,
-  // Alert removed - Zero Toast Compliance
   List,
   ListItem,
   ListItemIcon,
@@ -32,7 +31,7 @@ import {
   Tab,
   Tabs,
   LinearProgress,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   School,
@@ -69,7 +68,7 @@ import {
   Analytics,
   Notifications,
   Build,
-  Help
+  Help,
 } from '@mui/icons-material';
 import { ALL_PLATFORM_TUTORIALS, type TutorialDefinition, TUTORIAL_CATEGORIES } from './TutorialConstants';
 
@@ -125,7 +124,7 @@ const UniversalTutorialSystem: React.FC<UniversalTutorialSystemProps> = ({
 
   // Use all 762 components from TutorialConstants
   const getAllTutorialsByCategory = () => {
-    const categorizedTutorials: { [key: string]: TutorialDefinition[, ],} = {};
+    const categorizedTutorials: { [key: string]: TutorialDefinition[] } = {};
     
     ALL_PLATFORM_TUTORIALS.forEach(tutorial => {
       if (!categorizedTutorials[tutorial.category]) {
@@ -166,7 +165,16 @@ const UniversalTutorialSystem: React.FC<UniversalTutorialSystemProps> = ({
 
   function getIconForCategory(categoryId: string): React.ReactNode {
     const iconMap = {
-      'core': theming.getThemedIcon(',')'profession-photography': theming.getThemedIcon('photoCamera,')'profession-videography': theming.getThemedIcon('videocam')'profession-music': theming.getThemedIcon('libraryMusic')'profession-vendor': theming.getThemedIcon('business')'google-integration': <DriveFileMove />'ai-tools': theming.getThemedIcon('smartToy')'technical': <Engineering />'mobile': <PhoneAndroid />'business': theming.getThemedIcon('assignment')
+      'core': theming.getThemedIcon(','),
+      'profession-photography': theming.getThemedIcon('photoCamera,'),
+      'profession-videography': theming.getThemedIcon('videocam'),
+      'profession-music': theming.getThemedIcon('libraryMusic'),
+      'profession-vendor': theming.getThemedIcon('business'),
+      'google-integration': <DriveFileMove />,
+      'ai-tools': theming.getThemedIcon('smartToy'),
+      'technical': <Engineering />,
+      'mobile': <PhoneAndroid />,
+      'business': theming.getThemedIcon('assignment')
   };
     return iconMap[categoryId] || theming.getThemedIcon('school');
 }
@@ -315,7 +323,7 @@ const UniversalTutorialSystem: React.FC<UniversalTutorialSystemProps> = ({
                       </Typography>
                       
                       <Accordion>
-                        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                           <Typography variant="subtitle2">🎯 Scenario</Typography>
                         </AccordionSummary>
                         <AccordionDetails>

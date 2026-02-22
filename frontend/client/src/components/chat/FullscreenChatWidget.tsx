@@ -33,7 +33,7 @@ import {
   FormControlLabel,
   Portal,
   Popover,
-  ListItemIcon
+  ListItemIcon,
 } from '@mui/material';
 import {
   Close,
@@ -63,7 +63,7 @@ import {
   CheckCircle,
   Warning,
   Campaign,
-  Speed,
+  Speed as Speed,
   Announcement,
   AutoAwesome,
   Psychology,
@@ -87,11 +87,9 @@ import {
   Backup,
   Download,
   Translate,
-  History
+  History,
 } from '@mui/icons-material';
-import {
-  LinearProgress
-} from '@mui/material';
+import { LinearProgress } from '@mui/material';
 	// Import dynamic profession system
 	import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 	import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
@@ -512,10 +510,11 @@ export default function FullscreenChatWidget({
 };
 
   // Fetch conversations - only real data from database
+  const effectiveEmail = userEmail || user?.email || 'admin@local.dev';
   const { data: conversationsResponse } = useQuery({
-    queryKey: ['/api/communication/conversations', userEmail],
-    queryFn: () => apiRequest(`/api/communication/conversations?userEmail=${userEmail}`),
-    enabled: open && !!userEmail,
+    queryKey: ['/api/communication/conversations', effectiveEmail],
+    queryFn: () => apiRequest(`/api/communication/conversations?userEmail=${effectiveEmail}`),
+    enabled: open,
     refetchInterval: 30000 });
 
   const contacts: ChatContact[] = (conversationsResponse?.conversations || []).map((conv: any) => ({
@@ -706,14 +705,18 @@ export default function FullscreenChatWidget({
 );
 
   const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString('no-N', { hour: '2-digit', minute: '2-digit',});
-}
-    return date.toLocaleDateString('no-NO', { day: '2-digit', month: '2-digit',});
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+      
+      if (diffInHours < 24) {
+        return date.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit',});
+      }
+      return date.toLocaleDateString('no-NO', { day: '2-digit', month: '2-digit',});
+    } catch {
+      return '';
+    }
 };
 
   return (
@@ -945,9 +948,9 @@ export default function FullscreenChatWidget({
 
           {/* Google Chat Spaces and Contacts List */}
           <List sx={{ flex: 1, overflow: 'auto', p: 0}}>
-            {isConnectedToGoogle ? (
-              // Show Google Chat spaces when connected
-              [...(salesMode ? salesLeads || [] : []), ...filteredContacts, ...googleChatSpaces]
+            {(filteredContacts.length > 0 || isConnectedToGoogle) ? (
+              // Show backend conversations + Google Chat spaces when connected
+              [...(salesMode ? salesLeads || [] : []), ...filteredContacts, ...(isConnectedToGoogle ? googleChatSpaces : [])]
                 .filter(item =>
                   item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   item.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1008,7 +1011,7 @@ export default function FullscreenChatWidget({
                       <Typography 
                         variant="subtitle2" 
                         sx={{ 
-                          fontWeight: ontact.unreadCount > 0 ? 700 : 500,
+                          fontWeight: contact.unreadCount > 0 ? 700 : 500,
                           color: selectedContact?.id === contact.id ? getProfessionColor() : 'inherit'
                   }}
                       >
@@ -1047,7 +1050,7 @@ export default function FullscreenChatWidget({
                         noWrap
                         sx={{ 
                           fontSize: '0.85rem',
-                          fontWeight: ontact.unreadCount > 0 ? 500 : 400,
+                          fontWeight: contact.unreadCount > 0 ? 500 : 400,
                           opacity: contact.unreadCount > 0 ? 1 : 0.8 }}
                       >
                         {contact.lastMessage || 'Ingen meldinger ennå'}
@@ -1070,7 +1073,7 @@ export default function FullscreenChatWidget({
                           sx={{
                             fontSize: '0.65rem',
                             color: contact.status === 'online' ? '#4CAF50' : 'text.secondary',
-                            fontWeight: ontact.status === 'online' ? 600 : 400}}
+                            fontWeight: contact.status === 'online' ? 600 : 400}}
                         >
                           {contact.status === 'online' ? '● Aktiv' : 
                            contact.status === 'away' ? '● Borte' : '○ Offline'}
@@ -1082,16 +1085,16 @@ export default function FullscreenChatWidget({
                   </ListItem>
                 ))
             ) : (
-              // Show connection prompt when not connected
+              // Show connection prompt when no conversations loaded
               <Box sx={{ p:  3, textAlign: 'center', opacity: 0.6}}>
                 <Typography variant="body2" color="text.secondary">
-                  Koble til Google Chat for å se spaces
+                  Laster samtaler...
                 </Typography>
               </Box>
             )}
             
             {/* Empty state when connected but no results */}
-            {isConnectedToGoogle && [...filteredContacts, ...googleChatSpaces].length === 0 && (
+            {(filteredContacts.length > 0 || isConnectedToGoogle) && [...filteredContacts, ...(isConnectedToGoogle ? googleChatSpaces : [])].length === 0 && (
               <Box sx={{
                 p:  3,
                 textAlign: 'center',
@@ -1196,7 +1199,7 @@ export default function FullscreenChatWidget({
                 p: 1.5,
                 borderBottom: 1,
                 borderColor: 'divider',
-                background: 'linear-gradient(135deg, rgba(2, 5, 5, 255, 255, 0.9), rgba(2, 4, 8, 250, 252, 0.8))',
+                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(2, 4, 8, 250, 252, 0.8))',
                 backdropFilter: 'blur(10px)'
         }}>
                 <Box sx={{ 
@@ -1237,7 +1240,7 @@ export default function FullscreenChatWidget({
                       borderRadius: '12px',
                       transition: 'all 0.2s ease',
                       color: activeTab === 0 ? getProfessionColor() : 'text.secondary',
-	                      fontWeight: ctiveTab === 0 ? 600 : 400, '&:hover': {
+	                      fontWeight: activeTab === 0 ? 600 : 400, '&:hover': {
 	                        color: getProfessionColor(),
 	                        transform: activeTab !== 0 ? 'scale(1.02)' : 'none',
 	                      }}}
@@ -1289,7 +1292,7 @@ export default function FullscreenChatWidget({
                       borderRadius: '12px',
                       transition: 'all 0.2s ease',
                       color: activeTab === 1 ? getProfessionColor() : 'text.secondary',
-	                      fontWeight: ctiveTab === 1 ? 600 : 400, '&:hover': {
+	                      fontWeight: activeTab === 1 ? 600 : 400, '&:hover': {
 	                        color: getProfessionColor(),
 	                        transform: activeTab !== 1 ? 'scale(1.02)' : 'none',
 	                      }}}
@@ -1375,8 +1378,8 @@ export default function FullscreenChatWidget({
                 p:  2,
                 background: 'linear-gradient(135deg, rgba(2, 4, 8, 250, 252, 0.8), rgba(2, 4, 1, 245, 249, 0.6))',
                 backgroundImage: `
-                  radial-gradient(circle at 25% 2%, rgba(2, 5, 5, 1400.1) 0%, transparent 50%),
-                  radial-gradient(circle at 75% 75%, rgba(2, 5, 5, 1400.05) 0%, transparent 50%)
+                  radial-gradient(circle at 25% 2%, rgba(255, 1400.1) 0%, transparent 50%),
+                  radial-gradient(circle at 75% 75%, rgba(255, 1400.05) 0%, transparent 50%)
                 `
           }}>
                 {messages.length === 0 ? (
@@ -1704,7 +1707,7 @@ export default function FullscreenChatWidget({
                   p: 2,
                   borderTop: 1,
                   borderColor: 'divider',
-                  background: 'linear-gradient(135deg, rgba(2, 5, 5, 255, 255, 0.9), rgba(2, 4, 8, 250, 252, 0.8))',
+                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(2, 4, 8, 250, 252, 0.8))',
                   backdropFilter: 'blur(10px)'
           }}>
                   {/* Admin Quick Actions - Only visible for admin */}

@@ -1,6 +1,14 @@
 import { useTheming } from '../utils/theming-helper';
 import React from 'react';
-import { Box, Container, Typography, Grid, Card, CardContent, IconButton } from '@mui/material';
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  IconButton,
+} from '@mui/material';
 import { PhotographyIconAlt } from '../components/shared/CreatorHubIcons';
 import {
   VideoCall as VideocamCall,

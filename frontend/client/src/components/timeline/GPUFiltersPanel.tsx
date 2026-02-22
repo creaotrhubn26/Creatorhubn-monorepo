@@ -18,7 +18,7 @@ import {
   Chip,
   IconButton,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import { pixiFilterEngine } from '../../services/pixi-filter-engine';

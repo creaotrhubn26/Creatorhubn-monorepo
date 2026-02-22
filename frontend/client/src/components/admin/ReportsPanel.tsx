@@ -30,7 +30,7 @@ import {
   Menu,
   MenuList,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   Assessment,
@@ -50,7 +50,7 @@ import {
   Store,
   FileDownload,
   PictureAsPdf,
-  TableChart
+  TableChart,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

@@ -44,7 +44,7 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -80,7 +80,7 @@ import {
   Brush as BrushIcon,
   MusicNote as MusicNoteIcon,
   Web as WebIcon,
-  Lightbulb as LightbulbIcon
+  Lightbulb as LightbulbIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

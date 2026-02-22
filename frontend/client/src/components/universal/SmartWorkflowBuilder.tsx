@@ -29,7 +29,7 @@ import {
   Tab,
   TextField,
   alpha,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -53,9 +53,9 @@ import {
   DeleteForever,
   Archive,
   History,
-  Speed,
+  Speed as Speed,
   TrendingUp,
-  CheckCircle
+  CheckCircle,
 } from '@mui/icons-material';
 
 interface WorkflowAction {

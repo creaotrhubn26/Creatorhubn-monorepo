@@ -12,10 +12,7 @@ import {
   Checkbox,
   FormControlLabel,
 } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import { CheckCircle as CheckCircleIcon, Close as CloseIcon } from '@mui/icons-material';
 import type { Consent, ConsentSignatureData, ConsentType } from '../../models/casting';
 
 interface ConsentSignatureDialogProps {

@@ -7,11 +7,32 @@ import { useQuery } from '@tanstack/react-query';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { Box, Typography, Card as MuiCard, CardContent as MuiCardContent, Grid, Avatar, List, ListItem, ListItemAvatar, ListItemText, Button, Chip } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent as MuiCardContent,
+  Grid,
+  Avatar,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Button,
+  Chip,
+} from '@mui/material';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { Person, Email, Phone, PhotoCamera, Videocam, LibraryMusic, Store } from '@mui/icons-material';
+import {
+  Person,
+  Email,
+  Phone,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Store,
+} from '@mui/icons-material';
 import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface AdvancedClientManagementProps {

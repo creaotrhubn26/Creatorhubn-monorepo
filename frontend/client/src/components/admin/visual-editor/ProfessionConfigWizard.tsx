@@ -49,7 +49,7 @@ import {
   Radio,
   Badge,
   LinearProgress,
-  Skeleton
+  Skeleton,
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { useAutoSave } from '@/hooks/useAutoSave';
@@ -103,7 +103,7 @@ import {
   Upload,
   Download,
   CloudDownload,
-  CloudUpload
+  CloudUpload,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { LIBRARY_MAPPINGS, getLibrariesForFeature, calculateBundleSize } from '@shared/library-feature-mapping';

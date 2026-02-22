@@ -44,7 +44,7 @@ import {
   Grid,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   CloudDone,
@@ -74,7 +74,7 @@ import {
   ContentCopy,
   ExpandMore,
   LockOpen,
-  Upgrade
+  Upgrade,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

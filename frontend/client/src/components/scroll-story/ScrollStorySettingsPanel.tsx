@@ -42,7 +42,7 @@ import {
   Comment,
   Visibility,
   Lock,
-  Speed,
+  Speed as Speed,
   Person,
   Timeline,
   TrendingUp,

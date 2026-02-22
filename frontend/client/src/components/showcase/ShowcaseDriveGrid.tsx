@@ -22,7 +22,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import {
-  PlayArrowArrow as PlayIcon,
+  PlayArrow as PlayIcon,
   Fullscreen as FullscreenIcon,
   Download as DownloadIcon,
   Info as InfoIcon,

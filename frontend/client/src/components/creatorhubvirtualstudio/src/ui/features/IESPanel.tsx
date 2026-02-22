@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { Box, Button, Grid, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Grid,
+  Stack,
+  Typography,
+} from '@mui/material';
 import { useScene, useActions } from '@/state/selectors';
 import { parseIES, renderIESToCanvas } from '@/core/services/ies';
 

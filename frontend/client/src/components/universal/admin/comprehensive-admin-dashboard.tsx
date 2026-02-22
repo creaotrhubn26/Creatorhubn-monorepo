@@ -36,13 +36,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Dashboard,
   People,
   Settings,
-  BoxChart,
+  BarChart as BoxChart,
   Security,
   Edit,
   Visibility,
@@ -52,9 +52,9 @@ import {
   CloudDone,
   Notifications,
   TrendingUp,
-  PhotoCameraAlt,
-  Videocamcam,
-  LibraryMusicNote,
+  PhotoCamera as PhotoCameraAlt,
+  Videocam as Videocamcam,
+  LibraryMusic as LibraryMusicNote,
   Store,
   Warning,
   CheckCircle,
@@ -62,12 +62,12 @@ import {
   Code,
   Palette,
   Language,
-  Speed,
+  Speed as Speed,
   Storage,
   NetworkCheck,
   Email,
   Payment,
-  Analytics
+  Analytics,
 } from '@mui/icons-material';
 
 // Import the advanced CMS interface and analytics dashboard

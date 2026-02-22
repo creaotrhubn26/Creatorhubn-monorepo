@@ -32,7 +32,7 @@ import {
   LinearProgress,
   Divider,
   alpha,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Search,
@@ -54,7 +54,7 @@ import {
   ShoppingCart,
   AccessTime,
   Error as ErrorIcon,
-  TrendingUp
+  TrendingUp,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

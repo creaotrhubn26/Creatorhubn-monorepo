@@ -19,11 +19,7 @@ import {
   Alert,
   Link,
 } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  NewReleases as NewReleasesIcon,
-} from '@mui/icons-material';
+import { CheckCircle as CheckCircleIcon, Warning as WarningIcon, NewReleases as NewReleasesIcon } from '@mui/icons-material';
 
 export interface APIVersionInfo {
   service: string;

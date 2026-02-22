@@ -37,7 +37,7 @@ import {
   Tooltip,
   InputAdornment,
   Checkbox,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -77,7 +77,7 @@ import {
   CloudUpload,
   Lock,
   Badge,
-  NotificationImportant
+  NotificationImportant,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';

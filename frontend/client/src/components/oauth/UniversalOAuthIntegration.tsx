@@ -27,7 +27,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -38,7 +38,7 @@ import {
   Error as ErrorIcon,
   Settings as SettingsIcon,
   Link as LinkIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -275,7 +275,7 @@ export default function UniversalOAuthIntegration({
   if (!inviteStatus?.hasValidInvite) {
     return (
       <Card sx={{ 
-        background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.1) 0%, rgba(2, 5, 5,152,0,0.1) 100%)',
+        background: 'linear-gradient(135deg, rgba(255,193,7,0.1) 0%, rgba(255,152,0,0.1) 100%)',
         border: '1px solid rgba(25,193,7,0.2)'
     ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
@@ -334,7 +334,7 @@ export default function UniversalOAuthIntegration({
   if (compact) {
     return (
       <Card sx={{ 
-        background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.1) 0%, rgba(2, 5, 5,152,0,0.1) 100%)',
+        background: 'linear-gradient(135deg, rgba(255,193,7,0.1) 0%, rgba(255,152,0,0.1) 100%)',
         border: '1px solid rgba(25,193,7,0.2)'
     ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
@@ -406,7 +406,7 @@ export default function UniversalOAuthIntegration({
 
   return (
     <Card sx={{ 
-      background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.1) 0%, rgba(2, 5, 5,152,0,0.1) 100%)',
+      background: 'linear-gradient(135deg, rgba(255,193,7,0.1) 0%, rgba(255,152,0,0.1) 100%)',
       border: '1px solid rgba(25,193,7,0.2)'
   ,  ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
@@ -485,7 +485,7 @@ export default function UniversalOAuthIntegration({
                       borderRadius:  1,
                       backgroundColor: status.status === 'connected' 
                         ? 'rgba(6, 175, 80, 0.05)' 
-                        : 'rgba(2, 5, 5, 1520.05)'
+                        : 'rgba(255, 1520.05)'
                   }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Typography variant="body2" fontWeight={600}>

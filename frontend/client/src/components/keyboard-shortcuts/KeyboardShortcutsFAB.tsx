@@ -4,17 +4,13 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState } from 'react';
-import {
-  Fab,
-  Tooltip,
-  Box
-} from '@mui/material';
+import { Fab, Tooltip, Box } from '@mui/material';
 import {
   Keyboard,
   PhotoCamera,
   Videocam,
   LibraryMusic,
-  Business
+  Business,
 } from '@mui/icons-material';
 import KeyboardShortcutsModal from './KeyboardShortcutsModal';
 

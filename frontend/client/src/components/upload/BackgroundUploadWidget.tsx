@@ -20,7 +20,7 @@ import {
   Chip,
   Button,
   Tooltip,
-  Fab
+  Fab,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -33,7 +33,7 @@ import {
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
   CloudQueue as QueuedIcon,
-  CloudSync as SyncIcon
+  CloudSync as SyncIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import backgroundUploadService, { UploadTask, UploadStats } from '../../services/BackgroundUploadService';
@@ -259,7 +259,7 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
             sx={{
               borderRadius:  3,
               overflow: 'hidden',
-              background: 'linear-gradient(135deg, rgba(2, 5, 5, 255, 255, 0.95) 0%, rgba(2, 5, 5, 255, 255, 0.85) 100%)',
+              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
               backdropFilter: 'blur(10px)',
               border: '1px solid rgba(25, 255, 255, 0.3)',
               boxShadow: '0 8px 32px rgba(0,0,0,0.12)'

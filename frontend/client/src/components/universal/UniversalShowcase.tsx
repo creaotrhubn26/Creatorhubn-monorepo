@@ -114,7 +114,7 @@ import {
   Zoom,
   Card,
   Snackbar,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -173,7 +173,7 @@ import {
   ContentCopy,
   FindInPage,
   Fingerprint,
-  Speed,
+  Speed as Speed,
   Cached,
   CalendarMonth,
   Camera,
@@ -202,7 +202,7 @@ import {
   Contrast,
   BlurOn,
   Copyright,
-    WaterDrop,
+  WaterDrop,
   DriveFileMove,
   Warning,
   Image,
@@ -214,7 +214,6 @@ import {
   Transform,
   Straighten,
   Notifications,
-  // Video-specific icons
   Movie,
   Videocam,
   MovieCreation,
@@ -246,12 +245,12 @@ import {
   ExitToApp,
   NoteAdd,
   AutoAwesome,
-  PlaylistAdd
+  PlaylistAdd,
 } from '@mui/icons-material';
 import { ProjectSelectorModal } from '../shared/ProjectSelectorModal';
 import ProjectTimeline from '../project/ProjectTimeline';
 import { ProjectProvider } from '@/contexts/ProjectContext';
-import ElegantVideoPlayer from '../ElegantVideoPlayer';
+import _ElegantVideoPlayer from '../ElegantVideoPlayer';
 import CommandPalette from './CommandPalette';
 import KeyboardShortcutsGuide from './showcase/KeyboardShortcutsGuide';
 import WorkflowExecutor from './showcase/WorkflowExecutor';
@@ -427,7 +426,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     
     // Visual Layout
     cardSize: 'medium' as const,
-    gridColumns: 3 as const,
+    gridColumns: 4 as const,
     cardSpacing: 'normal' as const,
     imageAspectRatio: '16:9' as const,
     cardBorderRadius: 'medium' as const,
@@ -668,6 +667,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [filter, setFilter] = useState<string>('all');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showAdminTools, setShowAdminTools] = useState(false);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<{ id: number; title: string; description?: string; category: string; profession: string; status: string; driveUrl?: string; driveFolderId?: string } | null>(null);
   const [showUploadComponent, setShowUploadComponent] = useState(false);
@@ -814,7 +814,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     mergeWithDefaults
 } = useSettings();
   const publishingSettings = userSettings.publishing || { enableWebsitePublish: false, websiteTargets: [] };
-  const canPublishToWebsite = publishingSettings.enableWebsitePublish && publishingSettings.websiteTargets.length > 0;
+  const _canPublishToWebsite = publishingSettings.enableWebsitePublish && publishingSettings.websiteTargets.length > 0;
   
   const { 
     theme: customTheme, 
@@ -847,6 +847,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       setShowcaseSettings(prev => ({ ...prev, ...(userSettings.showcase as any) }));
     }
   }, [currentProject, userSettings]);
+
+  // Publish to Evendi Dialog States
+  const [showPublishToEvendiDialog, setShowPublishToEvendiDialog] = useState(false);
+  const [selectedItemForEvendi, setSelectedItemForEvendi] = useState<ShowcaseItem | null>(null);
+  const [evendiDeliveryForm, setEvendiDeliveryForm] = useState({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+  const [evendiProjectId, setEvendiProjectId] = useState<string>('');
+  const [evendiEventType, setEvendiEventType] = useState<string>('');
+  const [evendiPublishing, setEvendiPublishing] = useState(false);
+  const [evendiResult, setEvendiResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
 
   useEffect(() => {
     if (!projects.length) {
@@ -1015,21 +1024,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Share to Community Dialog States
   const [showShareToCommunityDialog, setShowShareToCommunityDialog] = useState(false);
 
-  // Publish to Evendi Dialog States
-  const [showPublishToEvendiDialog, setShowPublishToEvendiDialog] = useState(false);
-  const [selectedItemForEvendi, setSelectedItemForEvendi] = useState<ShowcaseItem | null>(null);
-  const [evendiDeliveryForm, setEvendiDeliveryForm] = useState({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
-  const [evendiProjectId, setEvendiProjectId] = useState<string>('');
-  const [evendiEventType, setEvendiEventType] = useState<string>('');
-  const [evendiPublishing, setEvendiPublishing] = useState(false);
-  const [evendiResult, setEvendiResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
-  const [showPublishToWebsiteDialog, setShowPublishToWebsiteDialog] = useState(false);
-  const [selectedItemForWebsitePublish, setSelectedItemForWebsitePublish] = useState<ShowcaseItem | null>(null);
-  const [websitePublishTargetId, setWebsitePublishTargetId] = useState<string>('');
-  const [websitePublishStorage, setWebsitePublishStorage] = useState<'google_drive' | 'youtube' | 'custom'>('google_drive');
-  const [websitePublishCategory, setWebsitePublishCategory] = useState<string>('wedding-photo');
-  const [websitePublishing, setWebsitePublishing] = useState(false);
-  const [websitePublishResult, setWebsitePublishResult] = useState<{ projectId: string; projectSlug: string; url: string } | null>(null);
+  const [_showPublishToWebsiteDialog, _setShowPublishToWebsiteDialog] = useState(false);
+  const [_selectedItemForWebsitePublish, _setSelectedItemForWebsitePublish] = useState<ShowcaseItem | null>(null);
+  const [_websitePublishTargetId, _setWebsitePublishTargetId] = useState<string>('');
+  const [_websitePublishStorage, _setWebsitePublishStorage] = useState<'google_drive' | 'youtube' | 'custom'>('google_drive');
+  const [_websitePublishCategory, _setWebsitePublishCategory] = useState<string>('wedding-photo');
+  const [_websitePublishing, _setWebsitePublishing] = useState(false);
+  const [_websitePublishResult, _setWebsitePublishResult] = useState<{ projectId: string; projectSlug: string; url: string } | null>(null);
   const [showProToolsDialog, setShowProToolsDialog] = useState(false);
   const [proToolsSessionId, setProToolsSessionId] = useState<string | undefined>();
   const [selectedItemForCommunityShare, setSelectedItemForCommunityShare] = useState<ShowcaseItem | null>(null);
@@ -1288,7 +1289,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Theme settings for elegant dark design
   const isDark = true; // Always use dark theme for professional look
-  const bgColor = '#1a1a1a';
+  const _bgColor = '#1a1a1a';
   const cardBg = '#2a2a2a';
   const textPrimary = '#ffffff';
   const textSecondary = '#b0b0b0';
@@ -4303,26 +4304,25 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     }
   };
 
-  if (isFetchingData) {
-    return (
-      <MuiCard sx={{ 
-        background: config.gradientColor,
-        color: '#fff',
-        borderRadius: 3,
-        minHeight: compact ? 200 : 400,
-        display: 'flex',
-          alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <Typography variant="h6">
-          {clientMode 
-            ? 'Laster ditt bildegalleri...' 
-            : `Laster ${config.title.toLowerCase()}...`
-          }
-        </Typography>
-      </MuiCard>
-  );
-}
+  // Loading fallback — NOT an early return (hooks must always be called)
+  const _loadingFallback = isFetchingData ? (
+    <MuiCard sx={{ 
+      background: config.gradientColor,
+      color: '#fff',
+      borderRadius: 3,
+      minHeight: compact ? 200 : 400,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <Typography variant="h6">
+        {clientMode 
+          ? 'Laster ditt bildegalleri...' 
+          : `Laster ${config.title.toLowerCase()}...`
+        }
+      </Typography>
+    </MuiCard>
+  ) : null;
 
   // Client Mode Status Bar
   const renderClientStatusBar = () => {
@@ -4340,7 +4340,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           borderRadius: 2,
           p: 3,
           mb: 3,
-          border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+          border: '1px solid rgba(255, 107, 53, 0.2)',
           color: '#fff'}}
       >
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
@@ -5120,7 +5120,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             )}
 
             {/* Benefits Section */}
-            <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', borderRadius: 2 }}>
+            <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', borderRadius: 2 }}>
               <Typography variant="h6" gutterBottom>
                 🚀 Fordeler med CreatorHub Norge Plugin
               </Typography>
@@ -5321,7 +5321,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </Grid>
 
           {/* Preview */}
-          <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', borderRadius: 2 }}>
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(255, 140, 0, 0.05)', borderRadius: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               Forhåndsvisning
             </Typography>
@@ -5616,13 +5616,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#ff8c00', color: 'white' }}>
           <School />
           Publiser til Academy
-          <Chip label="PRO" size="small" sx={{ ml: 'auto', bgcolor: 'rgba(2, 5, 5,255,255,0.3)', color: 'white' }} />
+          <Chip label="PRO" size="small" sx={{ ml: 'auto', bgcolor: 'rgba(255,255,255,0.3)', color: 'white' }} />
         </DialogTitle>
         <DialogContent sx={{ p: 3 }}>
           <Box sx={{ mt: 2 }}>
             {/* Selected Item Preview */}
             {item && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', border: '1px solid rgba(2, 5, 5, 140, 0, 0.2)' }}>
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
                 <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00', fontWeight: 600}}>
                   📄 Valgt innhold
                 </Typography>
@@ -5770,7 +5770,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Grid>
 
                 {/* Preview */}
-                <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', border: '1px solid rgba(2, 5, 5, 140, 0, 0.2)' }}>
+                <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
                     📚 Kursforhåndsvisning
                   </Typography>
@@ -6044,6 +6044,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     [quickActions]
   );
 
+  if (_loadingFallback) return _loadingFallback;
+
   return (
     <Box 
       ref={scrollContainerRef}
@@ -6083,7 +6085,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           right: 0,
           zIndex: 110,
           p: 2,
-          bgcolor: proofingSession ? 'rgba(2, 5, 5, 107, 53, 0.1)' : 'rgba(15, 20, 25, 0.95)',
+          bgcolor: proofingSession ? 'rgba(255, 107, 53, 0.1)' : 'rgba(15, 20, 25, 0.95)',
           borderBottom: proofingSession ? '2px solid #ff6b35' : 'none',
           backdropFilter: 'blur(20px)'
         }}>
@@ -6140,177 +6142,186 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'radial-gradient(circle at 20% 8%, rgba(2, 5, 5, 107, 53, 0.1) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(2, 4, 7, 147, 30, 0.08) 0%, transparent 50%)',
+        background: 'radial-gradient(circle at 20% 8%, rgba(255, 107, 53, 0.1) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(247, 147, 30, 0.08) 0%, transparent 50%)',
         pointerEvents: 'none'
       }} />
 
-      {/* Advanced Professional Sidebar */}
+      {/* Advanced Professional Sidebar — reference-matched */}
       <Box sx={{ 
-        width: sidebarOpen ? 320 : 80,
-        bgcolor: 'rgba(0, 15, 26, 0.95)',
-        backdropFilter: 'blur(20px)',
-        borderRight: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        width: sidebarOpen ? 200 : 72,
+        bgcolor: 'rgba(15, 20, 25, 0.98)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+        transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         display: 'flex',
         flexDirection: 'column',
         position: 'fixed',
         height: '100vh',
         zIndex: 12,
-        boxShadow: sidebarOpen ? '8px 0 32px rgba(0,0,0,0.3)' : '4px 0 16px rgba(0,0,0,0.2)'
+        overflow: 'hidden',
       }}>
-        {/* Premium Sidebar Header */}
+        {/* Sidebar Header — brand dots + collapse */}
         <Box sx={{ 
-          p: sidebarOpen ? 3 : 2,
-          borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)',
+          px: sidebarOpen ? 2.5 : 1.5,
+          py: 2,
           display: 'flex',
           alignItems: 'center',
           justifyContent: sidebarOpen ? 'space-between' : 'center',
-          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.1) 0%, rgba(2, 4, 7, 147, 30, 0.05) 100%)'
+          minHeight: 64,
         }}>
           {sidebarOpen && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '12px',
-                background: `linear-gradient(45deg, ${accentColor}, #f7931e)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 16px rgba(2, 5, 5, 107, 53, 0.3)'
-              }}>
-                {                 profession === 'photographer' ? <CameraAlt sx={{ color: '#fff', fontSize: 20 }} /> :
-                 profession === 'videographer' ? <VideoLibrary sx={{ color: '#fff', fontSize: 20 }} /> :
-                 <LibraryMusic sx={{ color: '#fff', fontSize: 20 }} />}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: accentColor }} />
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: accentColor, opacity: 0.35 }} />
               </Box>
-              <Typography variant="h6" sx={{ 
-                fontWeight: 700, 
-                fontSize: '1.1rem',
-                color: textPrimary,
-                textShadow: '0 2px 4px rgba(0,0,0,0.3)'
-              }}>
-                Showcase Pro
-              </Typography>
             </Box>
           )}
           <IconButton 
             onClick={() => setSidebarOpen(!sidebarOpen)}
+            size="small"
             sx={{ 
-              color: textSecondary,
-              bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)',
-              border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)','&:hover': { 
-                color: accentColor,
-                bgcolor: 'rgba(2, 5, 5, 107, 53, 0.2)',
-                borderColor: accentColor
-              }
+              color: 'rgba(255,255,255,0.5)',
+              '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.06)' },
             }}
           >
-            {sidebarOpen ? <ChevronLeft /> : <MenuIcon />}
+            {sidebarOpen ? <ChevronLeft sx={{ fontSize: 20 }} /> : <MenuIcon sx={{ fontSize: 20 }} />}
           </IconButton>
         </Box>
 
-        {/* Professional Navigation Categories */}
-        <Box sx={{ flex: 1, p: sidebarOpen ? 2.5 : 1, pt: 3 }}>
-          {sidebarOpen && (
-            <Typography variant="overline" sx={{ 
-              color: 'rgba(2, 5, 5, 107, 53, 0.8)', 
-              fontSize: '0.7rem', 
-              fontWeight: 700,
-              letterSpacing: '0.15em',
-              mb: 3,
-              display: 'block',
-              textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-            }}>
-              PORTFOLIO KATEGORIER
-            </Typography>
-          )}
-          
-          {getProfessionCategories().map((category, index) => (
-            <Tooltip 
-              key={category}
-              title={!sidebarOpen ? category : ''}
-              placement="right"
-            >
-              <Box 
-                onClick={() => setFilter(index === 0 ? 'all' : category.toLowerCase())}
-                sx={{ 
-                  p: sidebarOpen ? 2 : 1.5,
-                  mb: 1,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  bgcolor: (filter === 'all' && index === 0) || filter === category.toLowerCase() 
-                    ? 'rgba(2, 5, 5, 107, 53, 0.2)' 
-                    : 'rgba(2, 5, 5,255,255,0.02)',
-                  border: (filter === 'all' && index === 0) || filter === category.toLowerCase()
-                    ? `2px solid ${accentColor}`
-                    : '2px solid transparent','&:hover': { 
-                    bgcolor: 'rgba(2, 5, 5, 107, 53, 0.15)',
-                    border: `2px solid ${accentColor}`,
-                    transform: 'translateX(4px)'
-                  },
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                  gap: sidebarOpen ? 2 : 0,
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              >
-                {/* Professional Category Icons */}
-                <Box sx={{ 
-                  minWidth: sidebarOpen ? 20 : 24, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  {index === 0 ? (
-                    <Home sx={{ fontSize: sidebarOpen ? 16 : 20, color: accentColor }} />
-                  ) : index === 1 ? (
-                    <Star sx={{ fontSize: sidebarOpen ? 16 : 20, color: textSecondary }} />
-                  ) : (
-                    <Collections sx={{ fontSize: sidebarOpen ? 16 : 20, color: textSecondary }} />
+        {/* Main Navigation */}
+        <Box sx={{ px: sidebarOpen ? 1.5 : 0.75, pt: 0.5, flex: 1, overflowY: 'auto' }}>
+          {[
+            { icon: <Home sx={{ fontSize: 20 }} />, label: 'Home', filterVal: 'all' },
+            { icon: <Star sx={{ fontSize: 20 }} />, label: 'Popular', filterVal: 'fremhevet' },
+            { icon: <Collections sx={{ fontSize: 20 }} />, label: 'Categories', filterVal: null },
+            { icon: <FavoriteBorder sx={{ fontSize: 20 }} />, label: 'Favorites', filterVal: 'favorites' },
+            { icon: <PhotoLibrary sx={{ fontSize: 20 }} />, label: profession === 'photographer' ? 'Your photos' : profession === 'videographer' ? 'Your videos' : 'Your tracks', filterVal: 'mine' },
+          ].map((navItem) => {
+            const isActive = filter === navItem.filterVal || (filter === 'all' && navItem.filterVal === 'all');
+            return (
+              <Tooltip key={navItem.label} title={!sidebarOpen ? navItem.label : ''} placement="right" arrow>
+                <Box 
+                  onClick={() => navItem.filterVal !== null && setFilter(navItem.filterVal)}
+                  sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    px: sidebarOpen ? 1.5 : 0,
+                    py: 1,
+                    mb: 0.25,
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                    bgcolor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    color: isActive ? accentColor : 'rgba(255,255,255,0.6)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fff' },
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {navItem.icon}
+                  {sidebarOpen && (
+                    <Typography variant="body2" sx={{ 
+                      fontSize: '0.85rem', 
+                      fontWeight: isActive ? 600 : 400,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {navItem.label}
+                    </Typography>
                   )}
                 </Box>
-                
-                {sidebarOpen && (
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      color: (filter === 'all' && index === 0) || filter === category.toLowerCase() 
-                        ? textPrimary 
-                        : textSecondary,
-                        fontWeight: ((filter === 'all' && index === 0) || filter === category.toLowerCase()) ? 600 : 400,
-                      fontSize: '0.875rem'
-                    }}
-                  >
+              </Tooltip>
+            );
+          })}
+
+          {/* Subscriptions / Projects Section */}
+          {sidebarOpen && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="overline" sx={{ 
+                color: 'rgba(255,255,255,0.35)', 
+                fontSize: '0.6rem', 
+                fontWeight: 700,
+                letterSpacing: '0.12em',
+                px: 1.5,
+                display: 'block',
+                mb: 1.5,
+              }}>
+                SUBSCRIPTIONS
+              </Typography>
+              {/* Show profession-specific categories as subscription items */}
+              {getProfessionCategories().slice(2).map((category) => (
+                <Box 
+                  key={category}
+                  onClick={() => setFilter(category.toLowerCase())}
+                  sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    px: 1.5,
+                    py: 0.75,
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    color: filter === category.toLowerCase() ? '#fff' : 'rgba(255,255,255,0.6)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: '#fff' },
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Avatar sx={{ 
+                    width: 24, height: 24, 
+                    bgcolor: `${accentColor}30`, 
+                    color: accentColor,
+                    fontSize: '0.6rem', 
+                    fontWeight: 700,
+                  }}>
+                    {category.charAt(0)}
+                  </Avatar>
+                  <Typography variant="body2" sx={{ fontSize: '0.82rem', fontWeight: 400 }}>
                     {category}
                   </Typography>
-                )}
-              </Box>
-            </Tooltip>
-          ))}
+                </Box>
+              ))}
+            </Box>
+          )}
         </Box>
 
-        {/* User Profile */}
-        <Box sx={{ 
-          p: 2,
-          bgcolor: 'rgba(2, 5, 5,255,255,0.05)',
-          borderRadius: 2,
-          border: '1px solid rgba(2, 5, 5,255,255,0.1)'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ width: 32, height: 32, bgcolor: config.primaryColor }}>
-              D
-            </Avatar>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600, color: '#fff'}}>
-                Daniel CreatorHub
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
-                {getProfessionDisplayName(profession)}
-              </Typography>
-            </Box>
+        {/* Premium Promo Box */}
+        {sidebarOpen && (
+          <Box sx={{
+            mx: 1.5,
+            mb: 2,
+            p: 2,
+            borderRadius: '12px',
+            bgcolor: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem', mb: 0.5 }}>
+              Get 3 months of
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.82rem', mb: 0.5 }}>
+              Premium for free
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', display: 'block', mb: 1.5, lineHeight: 1.4 }}>
+              Enjoy ad-free content, offline watching, and more
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setShowAcademy(true)}
+              sx={{
+                borderColor: accentColor,
+                color: accentColor,
+                borderRadius: '20px',
+                textTransform: 'uppercase',
+                fontWeight: 700,
+                fontSize: '0.7rem',
+                px: 2,
+                letterSpacing: '0.04em',
+                '&:hover': { borderColor: accentColor, bgcolor: `${accentColor}12` },
+              }}
+            >
+              Get Premium
+            </Button>
           </Box>
-        </Box>
+        )}
       </Box>
 
       {/* Contextual Action Bar - Appears when items selected */}
@@ -6357,23 +6368,152 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         flex: 1,
         display: 'flex', 
         flexDirection: 'column',
-        marginLeft: sidebarOpen ? '320px' : '80px',
+        marginLeft: sidebarOpen ? '200px' : '72px',
         marginTop: clientMode ? '200px' : (selectedImages.size > 0 ? '70px' : '0'),
         transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         position: 'relative',
         zIndex: 1}}>
-        {/* Navigation Buttons */}
+        {/* ===== Browse Header Bar (pixel-perfect, reference-matched) ===== */}
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 3,
+          py: 1.5,
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+          bgcolor: 'rgba(15, 20, 25, 0.98)',
+          backdropFilter: 'blur(20px)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          minHeight: 64,
+        }}>
+          {/* Left: Brand */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 160 }}>
+            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: accentColor }} />
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: accentColor, opacity: 0.4 }} />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>
+              Browse
+            </Typography>
+          </Box>
+
+          {/* Center: Search */}
+          <Box sx={{ flex: 1, maxWidth: 480, mx: 4 }}>
+            <Autocomplete
+              freeSolo
+              options={items.map(item => item.title || '')}
+              value={searchAutocompleteValue}
+              onChange={(_, newValue) => {
+                setSearchAutocompleteValue(newValue);
+                setSearchQuery(newValue ? { text: newValue } : {});
+              }}
+              sx={{ width: '100%' }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="Search"
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: '#fff',
+                      bgcolor: 'rgba(255, 255, 255, 0.06)',
+                      borderRadius: '24px',
+                      fontSize: '0.9rem',
+                      height: 40,
+                      '& fieldset': { borderColor: 'transparent' },
+                      '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.12)' },
+                      '&.Mui-focused fieldset': { borderColor: `${accentColor}60` },
+                    }
+                  }}
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: <Search sx={{ color: 'rgba(255,255,255,0.35)', mr: 1, fontSize: 20 }} />
+                  }}
+                />
+              )}
+            />
+          </Box>
+
+          {/* Right: Add Photo + Admin Tools Toggle + Avatar */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 280, justifyContent: 'flex-end' }}>
+            {(isOwner || adminMode) && (
+              <Tooltip title={showAdminTools ? 'Hide tools' : 'Show admin tools'}>
+                <IconButton
+                  size="small"
+                  onClick={() => setShowAdminTools(!showAdminTools)}
+                  sx={{
+                    color: showAdminTools ? accentColor : 'rgba(255,255,255,0.4)',
+                    '&:hover': { color: accentColor, bgcolor: `${accentColor}15` },
+                  }}
+                >
+                  <Settings sx={{ fontSize: 20 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {(isOwner || adminMode) && showcaseCreationAccess?.hasAccess && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Add sx={{ fontSize: 18 }} />}
+                onClick={() => setProjectSelectorOpen(true)}
+                sx={{
+                  borderColor: accentColor,
+                  color: accentColor,
+                  borderRadius: '20px',
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  px: 2.5,
+                  py: 0.75,
+                  letterSpacing: '0.06em',
+                  whiteSpace: 'nowrap',
+                  '&:hover': {
+                    borderColor: accentColor,
+                    bgcolor: `${accentColor}12`,
+                  },
+                }}
+              >
+                Add Photo
+              </Button>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 1 }}>
+              <Avatar sx={{
+                width: 36,
+                height: 36,
+                bgcolor: config.primaryColor,
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                border: '2px solid rgba(255,255,255,0.12)',
+              }}>
+                D
+              </Avatar>
+              <Typography variant="body2" sx={{
+                color: '#fff',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                display: { xs: 'none', md: 'block' },
+              }}>
+                {user?.name || 'Daniel CreatorHub'}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* ===== Collapsible Admin Toolbar ===== */}
+        {showAdminTools && (<>
         <Box sx={{ 
           textAlign: 'center', 
           p: 2, 
-          borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)', 
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)', 
           display: 'flex', 
           gap: 2, 
+          flexWrap: 'wrap',
           justifyContent: 'center',
-          bgcolor: isDark ? bgColor : '#ffffff',
-          transition: 'background-color 0.3s ease'
+          bgcolor: 'rgba(15, 20, 25, 0.95)',
         }}>
-          
           {/* Synced Project/Client Indicator */}
           {(syncedProject || syncedClient) && (
             <Box sx={{ 
@@ -6481,10 +6621,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               fontSize: '1.1rem',
               fontWeight: 600,
               borderRadius: 3,
-              boxShadow: '0 4px 15px rgba(2, 5, 5, 152, 0, 0.3)','&:hover': { 
+              boxShadow: '0 4px 15px rgba(255, 152, 0, 0.3)','&:hover': { 
                 bgcolor: '#f57c00',
                 transform: 'translateY(-2px)',
-                boxShadow: '0 6px 20px rgba(2, 5, 5, 152, 0, 0.4)'
+                boxShadow: '0 6px 20px rgba(255, 152, 0, 0.4)'
               }
             }}
           >
@@ -6516,11 +6656,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         {/* Professional Header Bar */}
         <Box sx={{ 
           p: 3,
-          borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)',
+          borderBottom: '1px solid rgba(255, 107, 53, 0.15)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.05) 0%, rgba(2, 4, 7, 147, 30, 0.02) 100%)',
+          background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.05) 0%, rgba(247, 147, 30, 0.02) 100%)',
           backdropFilter: 'blur(10px)'
         }}>
           <Box>
@@ -6637,7 +6777,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   fontSize: '10px', 
                   height: 18,
                   color: textSecondary,
-                  borderColor: 'rgba(2, 5, 5,255,255,0.3)'
+                  borderColor: 'rgba(255,255,255,0.3)'
                 }}
               />
             </Box>
@@ -6658,7 +6798,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 {/* Real-time Collaboration Indicator */}
                 {enableRealTimeSync && collaborationSessionId && (
                   <>
-                    <Box sx={{ mx: 1, color: 'rgba(2, 5, 5, 255, 255, 0.3)' }}>•</Box>
+                    <Box sx={{ mx: 1, color: 'rgba(255, 255, 255, 0.3)' }}>•</Box>
                     <Box sx={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -6695,16 +6835,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 
                 {selectedProject && (
                   <>
-                    <Box sx={{ mx: 1, color: 'rgba(2, 5, 5, 255, 255, 0.3)' }}>•</Box>
+                    <Box sx={{ mx: 1, color: 'rgba(255, 255, 255, 0.3)' }}>•</Box>
                     <Box sx={{ 
                       display: 'flex', 
                       alignItems: 'center', 
                       gap: 0.5,
-                      bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)',
+                      bgcolor: 'rgba(255, 107, 53, 0.1)',
                       px: 1,
                       py: 0.5,
                       borderRadius: 1,
-                      border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)'
+                      border: '1px solid rgba(255, 107, 53, 0.3)'
                 }}>
                       <FolderOpen sx={{ fontSize: 14, color: accentColor }} />
                       <Typography variant="caption" sx={{ color: accentColor }}>
@@ -6750,7 +6890,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       color: textPrimary,
-                      borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)',
+                      borderColor: 'rgba(255, 107, 53, 0.3)',
                       '&:hover': {
                         borderColor: accentColor
                       }
@@ -6769,11 +6909,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               onClick={(e) => setSortMenuAnchorEl(e.currentTarget)}
               sx={{
                 color: textSecondary,
-                borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)',
+                borderColor: 'rgba(255, 107, 53, 0.3)',
                 border: '1px solid',
                 '&:hover': {
                   borderColor: accentColor,
-                  bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+                  bgcolor: 'rgba(255, 107, 53, 0.1)'
                 }
               }}
             >
@@ -6811,7 +6951,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     size="small"
                     onDelete={() => setFilterChips(prev => prev.filter(c => c.id !== chip.id))}
                     sx={{
-                      bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)',
+                      bgcolor: 'rgba(255, 107, 53, 0.1)',
                       color: textPrimary,
                       borderColor: accentColor
                     }}
@@ -6828,7 +6968,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   sx={{
                     color: showAnnotations ? accentColor : textSecondary,
                     border: '1px solid',
-                    borderColor: showAnnotations ? accentColor : 'rgba(2, 5, 5, 107, 53, 0.3)',
+                    borderColor: showAnnotations ? accentColor : 'rgba(255, 107, 53, 0.3)',
                     '&:hover': { bgcolor: 'rgba(255, 107, 53, 0.1)' }
                   }}
                 >
@@ -6856,7 +6996,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   }}
                   sx={{
                     color: textSecondary,
-                    border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                    border: '1px solid rgba(255, 107, 53, 0.3)',
                     '&:hover': { borderColor: accentColor, color: accentColor }
                   }}
                 >
@@ -6872,7 +7012,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   onClick={(e) => setPopperAnchorEl(e.currentTarget)}
                   sx={{
                     color: textSecondary,
-                    border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                    border: '1px solid rgba(255, 107, 53, 0.3)',
                     '&:hover': { borderColor: '#2196f3', color: '#2196f3' }
                   }}
                 >
@@ -6890,7 +7030,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     sx={{
                       color: googlePhotosConnected ? '#4285f4' : textSecondary,
                       border: '1px solid',
-                      borderColor: googlePhotosConnected ? '#4285f4' : 'rgba(2, 5, 5, 107, 53, 0.3)',
+                      borderColor: googlePhotosConnected ? '#4285f4' : 'rgba(255, 107, 53, 0.3)',
                       '&:hover': { borderColor: '#4285f4', color: '#4285f4' }
                     }}
                   >
@@ -6969,7 +7109,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     }}
                     sx={{
                       color: textSecondary,
-                      border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                      border: '1px solid rgba(255, 107, 53, 0.3)',
                       '&:hover': { borderColor: accentColor, color: accentColor }
                     }}
                   >
@@ -6987,7 +7127,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         onClick={() => setShowVideoWatermarkDialog(true)}
                         sx={{
                           color: textSecondary,
-                          border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                          border: '1px solid rgba(255, 107, 53, 0.3)',
                           '&:hover': { borderColor: '#2196f3', color: '#2196f3' }
                         }}
                       >
@@ -7168,7 +7308,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   variant="outlined"
                   sx={{ 
                     color: googlePhotosConnected ? theme.palette.primary.main : textSecondary,
-                    borderColor: googlePhotosConnected ? theme.palette.primary.main : 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                    borderColor: googlePhotosConnected ? theme.palette.primary.main : 'rgba(255, 107, 53, 0.3)','&:hover': {
                       borderColor: theme.palette.primary.main,
                       bgcolor: 'rgba(6, 133, 244, 0.1)'
                 }
@@ -7187,7 +7327,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     px: 2,
                     py: 1,
                     borderRadius: '8px',
-                    border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)'
+                    border: '1px solid rgba(255, 107, 53, 0.3)'
                   }}>
                     <People sx={{ color: textSecondary, fontSize: 20 }} />
                     <Typography variant="caption" sx={{ color: textSecondary }}>
@@ -7356,9 +7496,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     variant="outlined"
                     sx={{ 
                       color: textSecondary,
-                      borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                      borderColor: 'rgba(255, 107, 53, 0.3)','&:hover': {
                         borderColor: accentColor,
-                        bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+                        bgcolor: 'rgba(255, 107, 53, 0.1)'
                   }
                 }}
                   >
@@ -7369,7 +7509,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             )}
             <IconButton 
               onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-              sx={{ color: 'rgba(2, 5, 5,255,255,0.7)' }}
+              sx={{ color: 'rgba(255,255,255,0.7)' }}
             >
               {viewMode === 'grid' ? <ViewList /> : <GridView />}
             </IconButton>
@@ -7400,7 +7540,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 onClick={() => setActivityFeedOpen(true)}
                 sx={{
-                  color: 'rgba(2, 5, 5,255,255,0.7)','&:hover': {
+                  color: 'rgba(255,255,255,0.7)','&:hover': {
                     color: accentColor,
                     bgcolor: `${accentColor}20`
                   }
@@ -7417,7 +7557,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 onClick={() => setComparisonViewOpen(true)}
                 disabled={selectedImages.size < 2}
                 sx={{
-                  color: selectedImages.size >= 2 ? 'rgba(2, 5, 5,255,255,0.7)' : 'rgba(2, 5, 5,255,255,0.3)','&:hover': {
+                  color: selectedImages.size >= 2 ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)','&:hover': {
                     color: accentColor,
                     bgcolor: `${accentColor}20`
                   }
@@ -7448,6 +7588,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Tooltip>
           </Stack>
         </Box>
+        </>)}
 
         {/* Client Activity Section */}
         {showClientActivity && (
@@ -7489,79 +7630,113 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           />
         )}
         
-        {/* Featured Media Display */}
+        {/* ===== Hero Featured Section (reference-matched: large + side) ===== */}
         {currentFeaturedItem && !showSmartCollections && !showClientActivity && (
-          <Box sx={{ p: 3, borderBottom: '1px solid rgba(2, 5, 5,255,255,0.1)' }}>
+          <Box sx={{ px: 3, pt: 3, pb: 1 }}>
             <Box sx={{ 
-              position: 'relative',
-              borderRadius: 2,
-              overflow: 'hidden',
-              bgcolor: '#00',
-              height: 400 }}>
-              {profession === 'photographer' ? (
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
+              gap: 2,
+              height: { xs: 'auto', md: 420 },
+            }}>
+              {/* Large Featured Photo */}
+              <Box sx={{ 
+                position: 'relative',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                bgcolor: '#1a1f2e',
+                '&:hover .hero-overlay-actions': { opacity: 1 },
+              }}
+                onClick={() => handleItemSelectWithBroadcast(currentFeaturedItem as any)}
+              >
                 <img
-                  src={currentFeaturedItem.fileUrl || currentFeaturedItem.thumbnailUrl || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&h=300&fit=crop'}
+                  src={currentFeaturedItem.fileUrl || currentFeaturedItem.thumbnailUrl || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&h=500&fit=crop'}
                   alt={currentFeaturedItem.title}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover'
-                  }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
-              ) : profession === 'videographer' ? (
-                <ElegantVideoPlayer
-                  videoUrl={currentFeaturedItem.fileUrl || 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp'}
-                  title={currentFeaturedItem.title}
-                  description={currentFeaturedItem.description}
-                  thumbnailUrl={currentFeaturedItem.thumbnailUrl}
-                  autoPlay={false}
-                />
-              ) : (
-                <Box sx={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: '#1a1f2e'
+                {/* Hover action icons (heart + share) */}
+                <Box className="hero-overlay-actions" sx={{
+                  position: 'absolute', top: 16, right: 16,
+                  display: 'flex', gap: 1, opacity: 0, transition: 'opacity 0.2s',
                 }}>
-                  {config.icon}
-                  <Typography variant="h6" sx={{ ml: 2, color: '#fff'}}>
+                  <IconButton size="small" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+                    <FavoriteBorder sx={{ fontSize: 20 }} />
+                  </IconButton>
+                  <IconButton size="small" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+                    <Share sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </Box>
+                {/* Tags + info overlay */}
+                <Box sx={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
+                  p: 2.5, pt: 6,
+                }}>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                    {currentFeaturedItem.tags?.slice(0, 2).map(tag => (
+                      <Chip key={tag} label={tag.toUpperCase()} size="small" sx={{
+                        bgcolor: accentColor, color: '#fff', fontWeight: 700,
+                        fontSize: '0.65rem', height: 22, letterSpacing: '0.03em',
+                      }} />
+                    ))}
+                    {currentFeaturedItem.metadata?.dimensions && (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', alignSelf: 'center', ml: 'auto !important' }}>
+                        {currentFeaturedItem.metadata.dimensions}
+                      </Typography>
+                    )}
+                  </Stack>
+                  <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: '1.1rem', mb: 0.5 }}>
                     {currentFeaturedItem.title}
                   </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Avatar sx={{ width: 28, height: 28, bgcolor: config.primaryColor, fontSize: '0.7rem' }}>D</Avatar>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.04em' }}>
+                      {user?.name || 'DANIEL CREATORHUB'}
+                    </Typography>
+                  </Box>
                 </Box>
-              )}
-              
-              {/* Video Info Overlay */}
-              <Box sx={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-                p: 3,
-                color: '#fff'}}>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                  {currentFeaturedItem.title}
-                </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.7, mb: 2 }}>
-                  {currentFeaturedItem.description}
-                </Typography>
-                
-                <Stack direction="row" spacing={1}>
-                  {currentFeaturedItem.tags?.slice(0, 3).map(tag => (
-                    <Chip 
-                      key={tag}
-                      label={tag}
-                      size="small"
-                      sx={{ 
-                        bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
-                        color: '#fff',
-                        fontSize: '0.7rem'
-                      }}
-                    />
-                  ))}
-                </Stack>
+              </Box>
+
+              {/* Side Featured Photo (second item or fallback) */}
+              <Box sx={{ 
+                position: 'relative',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                bgcolor: '#1a1f2e',
+                display: { xs: 'none', md: 'block' },
+              }}
+                onClick={() => {
+                  const secondItem = filteredItems[1] || currentFeaturedItem;
+                  handleItemSelectWithBroadcast(secondItem as any);
+                }}
+              >
+                <img
+                  src={(filteredItems[1]?.fileUrl || filteredItems[1]?.thumbnailUrl) || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=500&fit=crop'}
+                  alt={filteredItems[1]?.title || 'Featured'}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+                <Box sx={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
+                  p: 2, pt: 5,
+                }}>
+                  {filteredItems[1]?.metadata?.dimensions && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', position: 'absolute', top: 12, right: 12 }}>
+                      {filteredItems[1]?.metadata?.dimensions}
+                    </Typography>
+                  )}
+                  <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.95rem', mb: 0.5 }}>
+                    {filteredItems[1]?.title || 'Explore more'}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Avatar sx={{ width: 24, height: 24, bgcolor: config.primaryColor, fontSize: '0.65rem' }}>D</Avatar>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.04em' }}>
+                      {user?.name || 'DANIEL CREATORHUB'}
+                    </Typography>
+                  </Box>
+                </Box>
               </Box>
             </Box>
           </Box>
@@ -7571,8 +7746,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         {showMultiDayView && dayCategories.length > 0 && (
           <Box sx={{ 
             p: 3, 
-            borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)',
-            background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.03) 0%, rgba(2, 4, 7, 147, 30, 0.01) 100%)'
+            borderBottom: '1px solid rgba(255, 107, 53, 0.15)',
+            background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.03) 0%, rgba(247, 147, 30, 0.01) 100%)'
       }}>
             <Typography variant="h6" sx={{ 
               fontWeight: 600, 
@@ -7588,10 +7763,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Stack spacing={2}>
               {dayCategories.map((categoryGroup, index) => (
                 <Box key={index} sx={{ 
-                  bgcolor: 'rgba(25, 255, 255, 0.03)',
+                  bgcolor: 'rgba(255, 255, 255, 0.03)',
                   borderRadius: 2,
                   p: 2,
-                  border: '1px solid rgba(2, 5, 5, 107, 53, 0.1)'
+                  border: '1px solid rgba(255, 107, 53, 0.1)'
             }}>
                   <Typography variant="subtitle1" sx={{ 
                     fontWeight: 600, 
@@ -7627,6 +7802,52 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </Box>
         )}
 
+        {/* ===== Explore by Categories (reference-matched horizontal chips) ===== */}
+        <Box sx={{ px: 3, pt: 3, pb: 1 }}>
+          <Typography variant="h6" sx={{ 
+            fontWeight: 600, 
+            color: textPrimary, 
+            fontSize: '1.15rem',
+            mb: 2,
+          }}>
+            Explore by categories
+          </Typography>
+          <Stack direction="row" spacing={1.5} sx={{ 
+            overflowX: 'auto', 
+            pb: 1,
+            '&::-webkit-scrollbar': { height: 0 },
+          }}>
+            {getProfessionCategories().map((category, index) => (
+              <Chip
+                key={category}
+                label={category.toUpperCase()}
+                variant={((filter === 'all' && index === 0) || filter === category.toLowerCase()) ? 'filled' : 'outlined'}
+                onClick={() => setFilter(index === 0 ? 'all' : category.toLowerCase())}
+                sx={{
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.05em',
+                  px: 1.5,
+                  height: 36,
+                  whiteSpace: 'nowrap',
+                  bgcolor: ((filter === 'all' && index === 0) || filter === category.toLowerCase())
+                    ? 'rgba(255, 255, 255, 0.12)'
+                    : 'transparent',
+                  color: ((filter === 'all' && index === 0) || filter === category.toLowerCase())
+                    ? '#fff'
+                    : 'rgba(255,255,255,0.6)',
+                  borderColor: 'rgba(255,255,255,0.15)',
+                  '&:hover': {
+                    bgcolor: 'rgba(255, 255, 255, 0.08)',
+                    borderColor: 'rgba(255,255,255,0.25)',
+                  },
+                }}
+              />
+            ))}
+          </Stack>
+        </Box>
+
         {/* Professional Content Grid */}
         <Box sx={{ p: 3, flex: 1 }}>
           
@@ -7645,21 +7866,14 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           )}
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h5" sx={{ 
-              fontWeight: 700, 
+            <Typography variant="h6" sx={{ 
+              fontWeight: 600, 
               color: textPrimary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2 }}>
-              <Box sx={{
-                width:  3,
-                height:  24,
-                bgcolor: accentColor,
-                borderRadius: '2px'
-        }} />
-              {profession === 'photographer' ? 'Portefølje Galeri' : 
-               profession === 'videographer' ? 'Video Produksjoner' : 
-               profession === 'music_producer' ? 'Musikk Katalog' : 'Kreative Arbeider'}
+              fontSize: '1.15rem',
+            }}>
+              {profession === 'photographer' ? 'Photos to explore' : 
+               profession === 'videographer' ? 'Videos to explore' : 
+               profession === 'music_producer' ? 'Tracks to explore' : 'Content to explore'}
             </Typography>
             
             <Stack direction="row" spacing={1}>
@@ -7681,9 +7895,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 variant="outlined"
                 sx={{ 
                   color: textSecondary,
-                  borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                  borderColor: 'rgba(255, 107, 53, 0.3)','&:hover': {
                     borderColor: accentColor,
-                    bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+                    bgcolor: 'rgba(255, 107, 53, 0.1)'
               }
             }}
               >
@@ -7697,9 +7911,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Box sx={{ 
               p: 3, 
               mb: 3, 
-              bgcolor: 'rgba(2, 5, 5, 107, 53, 0.05)', 
+              bgcolor: 'rgba(255, 107, 53, 0.05)', 
               borderRadius: 2,
-              border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+              border: '1px solid rgba(255, 107, 53, 0.2)',
               mx: 2 }}>
               <Typography variant="h6" sx={{ mb: 2, color: accentColor, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CloudUpload />
@@ -7736,66 +7950,97 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           {items.length === 0 ? (
             <Box sx={{ 
               textAlign: 'center', 
-              py: 12,
+              py: { xs: 6, sm: 8, md: 10 },
+              px: { xs: 2, sm: 4, md: 6 },
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 4,
-              background: 'radial-gradient(ellipse at center, rgba(2, 5, 5, 107, 53, 0.05) 0%, transparent 70%)',
-              borderRadius: 3,
-              mx: 2 }}>
-              {/* Elegant profession icon with floating animation */}
+              gap: 3,
+              background: 'radial-gradient(ellipse at 50% 30%, rgba(255, 107, 53, 0.06) 0%, transparent 60%)',
+              borderRadius: 4,
+              mx: 'auto',
+              maxWidth: 800,
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+              {/* Subtle animated background rings */}
               <Box sx={{
-                width: 10,
-                height: 10,
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 400,
+                height: 400,
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.15), rgba(2, 5, 5, 140, 0, 0.1))',
-                border: '3px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                border: '1px solid rgba(255, 107, 53, 0.06)',
+                pointerEvents: 'none',
+              }} />
+              <Box sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 600,
+                height: 600,
+                borderRadius: '50%',
+                border: '1px solid rgba(255, 107, 53, 0.03)',
+                pointerEvents: 'none',
+              }} />
+
+              {/* Profession icon with glow */}
+              <Box sx={{
+                width: { xs: 80, sm: 100, md: 120 },
+                height: { xs: 80, sm: 100, md: 120 },
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.15), rgba(255, 140, 0, 0.08))',
+                border: '2px solid rgba(255, 107, 53, 0.25)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ff6b35',
-                fontSize: '3rem',
-                boxShadow: '0 8px 32px rgba(2, 5, 5, 107, 53, 0.2), inset 0 1px 0 rgba(2, 5, 5, 255, 255, 0.1)',
-                position: 'relative','&::before': {
-                  content: ', ""',
-                  position: 'absolute',
-                  inset: -2,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(45deg, rgba(255, 107, 53, 0.4), transparent, rgba(255, 140, 0, 0.4))',
-                    zIndex: -1,
-                  animation: 'rotate 3s linear infinite'
-                }, '@keyframes rotate': {
-                  '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' }
-                }
+                fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
+                boxShadow: '0 8px 40px rgba(255, 107, 53, 0.15)',
+                position: 'relative',
+                zIndex: 1,
+                mb: 1,
               }}>
                 {config.icon}
               </Box>
 
-              {/* Elegant empty state messages with glassmorphism */}
+              {/* Main content card */}
               <Paper elevation={0} sx={{ 
                 textAlign: 'center', 
-                maxWidth: 50,
-                background: 'rgba(25, 255, 255, 0.05)',
+                maxWidth: 560,
+                width: '100%',
+                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%)',
                 backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(25, 255, 255, 0.1)',
-                borderRadius: 3,
-                p: 4 }}>
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: 4,
+                p: { xs: 3, sm: 4, md: 5 },
+                position: 'relative',
+                zIndex: 1,
+              }}>
                 <Typography variant="h4" sx={{ 
-                  fontWeight: 700, 
+                  fontWeight: 800, 
                   color: '#fff', 
-                  mb: 2,
-                  background: 'linear-gradient(135deg, #ff6b35, #ff8c00)',
+                  mb: 1.5,
+                  fontSize: { xs: '1.5rem', sm: '1.75rem', md: '2rem' },
+                  background: 'linear-gradient(135deg, #ff6b35, #ff8c00, #ffa500)',
                   WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-          }}>
+                  WebkitTextFillColor: 'transparent',
+                  letterSpacing: '-0.02em',
+                }}>
                   Bygg din profesjonelle portefølje
                 </Typography>
-                <Typography variant="h6" sx={{ 
-                  color: 'rgba(2, 5, 5,255,255,0.8)',
+                <Typography variant="body1" sx={{ 
+                  color: 'rgba(255,255,255,0.7)',
                   mb: 4,
-                  lineHeight: 1.7,
-                  fontWeight: 300}}>
+                  lineHeight: 1.8,
+                  fontWeight: 400,
+                  fontSize: { xs: '0.9rem', sm: '1rem', md: '1.05rem' },
+                  maxWidth: 440,
+                  mx: 'auto',
+                }}>
                   {profession === 'photographer' ? 
                     'Vis dine beste fotografier til kunder med vårt avanserte galleri-system. Automatisk prissetting og kundevalg inkludert.' : 
                    profession === 'videographer' ? 
@@ -7805,73 +8050,84 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     'Bygg en imponerende digital portefølje som viser ditt profesjonelle arbeid.'}
                 </Typography>
 
-                {/* Enhanced CTA Button */}
+                {/* CTA Button */}
                 <Button variant="contained"
                   size="large"
                   startIcon={<Add />}
                   sx={{
-                    background: 'linear-gradient(135deg, #ff6b35, #ff8c00, #ffa500)',
+                    background: 'linear-gradient(135deg, #ff6b35, #ff8c00)',
                     color: 'white',
-                    py: 2,
-                    px: 6,
-                    borderRadius: 3,
+                    py: 1.75,
+                    px: 5,
+                    borderRadius: '14px',
                     fontWeight: 700,
-                    fontSize: '1.2rem',
+                    fontSize: { xs: '0.95rem', sm: '1.05rem', md: '1.1rem' },
                     textTransform: 'none',
-                    boxShadow: '0 8px 32px rgba(255, 107, 53, 0.4), 0 4px 16px rgba(255, 140, 0, 0.3)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    position: 'relative',
-                    overflow: 'hidden','&:hover': {
-                      background: 'linear-gradient(135deg, #ff8c00, #ffa500, #ff6b35)',
-                      transform: 'translateY(-3px) scale(1.02)',
-                      boxShadow: '0 12px 40px rgba(255, 107, 53, 0.5), 0 6px 20px rgba(255, 140, 0, 0.4)'
-                    }, '&:active': {
-                      transform: 'translateY(-1px) scale(1.01)'
-                    }, '&::before': {
-                      content: '""',
-                      position: 'absolute',
-                      top: 0,
-                      left: '-100%',
-                      width: '100%',
-                      height: '100%',
-                      background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
-                      transition: 'left 0.5s'
-                    }, '&:hover::before': {
-                      left: '100%'
+                    boxShadow: '0 6px 24px rgba(255, 107, 53, 0.35)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #ff8c00, #ffa500)',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 10px 36px rgba(255, 107, 53, 0.45)',
                     },
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                    '&:active': {
+                      transform: 'translateY(0)',
+                    },
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    mb: 4,
                   }}
                   onClick={() => setProjectSelectorOpen(true)}
                 >
                   Kom i gang med showcase
                 </Button>
 
-                {/* Feature highlights */}
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mt: 4 }}>
-                  <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <AttachMoney sx={{ fontSize: 32, color: '#ff6b35', mb: 1 }} />
-                      <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
-                        Automatisk prissetting
+                {/* Feature highlights — horizontal cards */}
+                <Box sx={{ 
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+                  gap: 2,
+                  pt: 3,
+                  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                }}>
+                  {[
+                    { icon: <AttachMoney sx={{ fontSize: 28, color: '#ff6b35' }} />, label: 'Automatisk prissetting', desc: 'Smart pris-forslag' },
+                    { icon: <Visibility sx={{ fontSize: 28, color: '#ff8c00' }} />, label: 'Profesjonell visning', desc: 'Galleri med zoom' },
+                    { icon: <ShoppingCart sx={{ fontSize: 28, color: '#4caf50' }} />, label: 'Kunde-selvtjeneste', desc: 'Direkte bestilling' },
+                  ].map((feat, i) => (
+                    <Box key={i} sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 1,
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        bgcolor: 'rgba(255, 107, 53, 0.06)',
+                        borderColor: 'rgba(255, 107, 53, 0.15)',
+                      },
+                    }}>
+                      <Box sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: '12px',
+                        bgcolor: 'rgba(255, 107, 53, 0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        {feat.icon}
+                      </Box>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', fontWeight: 600, fontSize: '0.8rem' }}>
+                        {feat.label}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>
+                        {feat.desc}
                       </Typography>
                     </Box>
-                  </Box>
-                  <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Visibility sx={{ fontSize: 32, color: '#ff8c00', mb: 1 }} />
-                      <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
-                        Profesjonell visning
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <ShoppingCart sx={{ fontSize: 32, color: '#4caf50', mb: 1 }} />
-                      <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
-                        Kunde-selv-tjeneste
-                      </Typography>
-                    </Box>
-                  </Box>
+                  ))}
                 </Box>
               </Paper>
             </Box>
@@ -7879,7 +8135,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Box sx={{ 
               textAlign: 'center', 
               py: 8,
-              color: 'rgba(2, 5, 5,255,255,0.7)'
+              color: 'rgba(255,255,255,0.7)'
         }}>
               <Typography variant="h6" sx={{ mb: 2 }}>
                 Kunne ikke laste prosjekter. Prøv igjen senere.
@@ -7956,13 +8212,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           ) : (
             <Box sx={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${showcaseSettings.gridColumns}, 1fr)`,
-              gap: (showcaseSettings.cardSpacing as string) === 'tight' ? 1 :
-                     (showcaseSettings.cardSpacing as string) === 'normal' ? 2 : 3, '@media (max-width: 768px)': {
-                gridTemplateColumns: `repeat(${showcaseSettings.mobileColumns}, 1fr)`,
-                gap: (showcaseSettings.cardSpacing as string) === 'tight' ? 0.5 :
-                     (showcaseSettings.cardSpacing as string) === 'normal' ? 1 : 2
-              }
+              gridTemplateColumns: { xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)', md: `repeat(${showcaseSettings.gridColumns}, 1fr)` },
+              gap: 2,
             }}>
               {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
                 <ShowcaseCard
@@ -8016,7 +8267,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           backdropFilter: 'blur(20px)',
                 borderRadius: 3,
           p: 2,
-          border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+          border: '1px solid rgba(255, 107, 53, 0.3)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
         }}>
           <Typography variant="body1" sx={{ 
@@ -8754,12 +9005,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             display: 'flex',
             flexDirection: 'column',
             gap: 1.5,
-            background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
             backdropFilter: 'blur(20px)',
                 borderRadius: 3,
             padding:  3,
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), 0 2px 12px rgba(0, 0, 0, 0.12)',
-            border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.2)',
             minWidth: 30,
             maxWidth: 30,
             maxHeight: '80vh',
@@ -8790,10 +9041,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               color: 'white',
               fontWeight: 600,
               textTransform: 'none',
-              boxShadow: '0 4px 20px rgba(2, 5, 5, 112, 67, 0.3)','&:hover': {
+              boxShadow: '0 4px 20px rgba(255, 112, 67, 0.3)','&:hover': {
                 background: 'linear-gradient(45deg, #F4511E, #FF8F00)',
                 transform: 'translateY(-2px)',
-                boxShadow: '0 6px 25px rgba(2, 5, 5, 112, 67, 0.4)'
+                boxShadow: '0 6px 25px rgba(255, 112, 67, 0.4)'
               },
               transition: 'all 0.3s ease',
               mb: 1 }}
@@ -9128,7 +9379,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             backdropFilter: 'blur(10px)',
                   borderRadius: 2,
             boxShadow: '0 4px 20px rgba(21,76,60,0.3)',
-            border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.2)',
             minWidth: 250 }}
         >
           <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600, mb: 1 }}>
@@ -9141,7 +9392,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             onClick={() => setShowAutoTagDialog(true)}
             sx={{
               color: 'white',
-              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
         }}
           >
             Auto-tag videoer
@@ -9154,7 +9405,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             disabled={!selectedItem || selectedItem.fileType !== 'video'}
             sx={{
               color: 'white',
-              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
         }}
           >
             Generer thumbnails
@@ -9166,15 +9417,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             onClick={() => setShowSubtitleDialog(true)}
             sx={{
               color: 'white',
-              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
         }}
           >
             Auto-undertekster
           </Button>
           
-          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+          <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
           
-          <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.8)', mb: 0.5 }}>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', mb: 0.5 }}>
             Social Media Export
           </Typography>
           
@@ -9184,7 +9435,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             sx={{
               color: 'white',
               fontSize: '0.75rem',
-              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
         }}
           >
             Instagram (4: 5)
@@ -9196,7 +9447,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             sx={{
               color: 'white',
               fontSize: '0.75rem',
-              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
         }}
           >
             TikTok (9: 16)
@@ -9208,7 +9459,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             sx={{
               color: 'white',
               fontSize: '0.75rem',
-              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
         }}
           >
             YouTube (16: 9)
@@ -9232,7 +9483,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 borderRadius: 3,
             padding:  3,
             boxShadow: '0 8px 32px rgba(21,76,60,0.3)',
-            border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.2)',
             minWidth: 30,
             maxWidth: 30,
             maxHeight: '80vh',
@@ -9274,11 +9525,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             startIcon={<MovieCreation />}
             onClick={() => setShowVideoEditor(true)}
             sx={{
-              bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
+              bgcolor: 'rgba(255,255,255,0.2)',
               color: 'white',
               fontWeight: 600,
               textTransform: 'none',
-              border: '1px solid rgba(2, 5, 5,255,255,0.3)','&:hover': {
+              border: '1px solid rgba(255,255,255,0.3)','&:hover': {
                 bgcolor: 'rgba(25,255,255,0.3)',
                 transform: 'translateY(-2px)',
           },
@@ -9293,19 +9544,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             startIcon={<TimelineIcon />}
             onClick={() => setShowSequenceManager(true)}
             sx={{
-              bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
+              bgcolor: 'rgba(255,255,255,0.2)',
               color: 'white',
               fontWeight: 600,
               textTransform: 'none',
-              border: '1px solid rgba(2, 5, 5,255,255,0.3)','&:hover': {
-                bgcolor: 'rgba(2, 5, 5,255,255,0.3)'
+              border: '1px solid rgba(255,255,255,0.3)','&:hover': {
+                bgcolor: 'rgba(255,255,255,0.3)'
               },
               mb: 1 }}
           >
             Sekvens & Kapittel Manager
           </Button>
 
-          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+          <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
 
           {/* Video Management Operations */}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -9413,7 +9664,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Box>
           </Box>
 
-          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+          <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
 
           {/* Bryllup & Streaming Operations */}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -9470,7 +9721,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Box>
           </Box>
 
-          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+          <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
 
           {/* LUT and Audio Controls */}
           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'white', mb: 1 }}>
@@ -11342,7 +11593,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             fullWidth
             PaperProps={{
               sx: {
-                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,255,255,0.98) 100%)',
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.98) 100%)',
                 backdropFilter: 'blur(10px)',
               }
             }}
@@ -11496,7 +11747,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             fullWidth
             PaperProps={{
               sx: {
-                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,255,255,0.98) 100%)',
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.98) 100%)',
                 backdropFilter: 'blur(10px)',
               }
             }}
@@ -11780,7 +12031,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             width: 320,
             bgcolor: 'rgba(0, 15, 26, 0.95)',
             backdropFilter: 'blur(20px)',
-            borderLeft: '1px solid rgba(2, 5, 5, 107, 53, 0.2)'
+            borderLeft: '1px solid rgba(255, 107, 53, 0.2)'
           }
         }}
       >
@@ -11791,7 +12042,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               <Close />
             </IconButton>
           </Box>
-          <Divider sx={{ mb: 3, borderColor: 'rgba(2, 5, 5, 107, 53, 0.2)' }} />
+          <Divider sx={{ mb: 3, borderColor: 'rgba(255, 107, 53, 0.2)' }} />
           
           <List>
             <ListItem>
@@ -11814,7 +12065,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </ListItem>
           </List>
 
-          <Divider sx={{ my: 2, borderColor: 'rgba(2, 5, 5, 107, 53, 0.2)' }} />
+          <Divider sx={{ my: 2, borderColor: 'rgba(255, 107, 53, 0.2)' }} />
           
           <FormGroup>
             <FormControlLabel
@@ -11851,7 +12102,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           sx: {
             bgcolor: 'rgba(0, 15, 26, 0.95)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)'
+            border: '1px solid rgba(255, 107, 53, 0.2)'
           }
         }}
       >
@@ -11900,7 +12151,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               sx={{
                 bgcolor: 'rgba(0, 15, 26, 0.95)',
                 backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+                border: '1px solid rgba(255, 107, 53, 0.2)',
                 mt: 1
               }}
             >
@@ -11954,7 +12205,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           sx: {
             bgcolor: 'rgba(0, 15, 26, 0.95)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)'
+            border: '1px solid rgba(255, 107, 53, 0.2)'
           }
         }}
       >

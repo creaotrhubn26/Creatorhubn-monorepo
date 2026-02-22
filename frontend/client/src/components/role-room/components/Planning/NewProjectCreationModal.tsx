@@ -1,6 +1,6 @@
 /**
  * New Project Creation Modal
- * Clean, simplified project creation with Casting Planner and Split Sheet integration
+ * Clean, simplified project creation with The Role Room and Split Sheet integration
  */
 
 import React, { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
@@ -94,13 +94,13 @@ const TROLL_AREA_CONFIG: Record<string, { Icon: any; color: string; label: strin
   candidates: { Icon: RecentActorsIcon, color: '#10b981', label: 'Kandidater' },
   crew: { Icon: GroupsIcon, color: '#00d4ff', label: 'Team' },
   locations: { Icon: LocationIcon, color: '#4caf50', label: 'Steder' },
-  equipment: { Icon: PropIcon, color: '#ff9800', label: 'Utstyr' },
+  equipment: { Icon: PropIcon, color: '#9333ea', label: 'Utstyr' },
   production_days: { Icon: CalendarIcon, color: '#9c27b0', label: 'Prod.dager' },
   scenes: { Icon: ShotListIcon, color: '#e91e63', label: 'Scener' },
   shot_lists: { Icon: ShotListIcon, color: '#e91e63', label: 'Shot Lists' },
   split_sheets: { Icon: ShareIcon, color: '#06b6d4', label: 'Deling' },
   offers: { Icon: HandshakeIcon, color: '#ffb800', label: 'Tilbud' },
-  contracts: { Icon: ContractsIcon, color: '#ff5722', label: 'Kontrakter' },
+  contracts: { Icon: ContractsIcon, color: '#7c3aed', label: 'Kontrakter' },
   consents: { Icon: ConsentIcon, color: '#00bcd4', label: 'Samtykker' },
 };
 
@@ -1005,7 +1005,7 @@ export default function NewProjectCreationModal({
         return;
       }
       
-      // Validate prosjektansvarlig fields for Casting Planner
+      // Validate prosjektansvarlig fields for The Role Room
       if (isCastingPlanner) {
         let hasErrors = false;
         
@@ -1045,7 +1045,7 @@ export default function NewProjectCreationModal({
     console.log('[saveProjectToDatabase] CALLED! isCastingPlanner:', isCastingPlanner);
     
     if (!isCastingPlanner) {
-      console.log('[saveProjectToDatabase] Not a casting planner, skipping');
+      console.log('[saveProjectToDatabase] Not a The Role Room, skipping');
       return true;
     }
     
@@ -1128,7 +1128,7 @@ export default function NewProjectCreationModal({
         return;
       }
 
-      // Validate prosjektansvarlig fields for Casting Planner
+      // Validate prosjektansvarlig fields for The Role Room
       if (isCastingPlanner) {
         let hasErrors = false;
         
@@ -1208,7 +1208,7 @@ export default function NewProjectCreationModal({
       console.log('[NewProjectCreationModal] Save response:', JSON.stringify(response, null, 2));
 
       // Get project ID from response or use the one we generated
-      // For Casting Planner, always use the ID we sent (projectId) to ensure consistency
+      // For The Role Room, always use the ID we sent (projectId) to ensure consistency
       const typedResponse = response as { data?: { id?: string }; id?: string };
       const finalProjectId = isCastingPlanner 
         ? (typedResponse?.data?.id || typedResponse?.id || projectId)
@@ -1310,10 +1310,10 @@ export default function NewProjectCreationModal({
       // Clear draft after successful save
       clearDraft();
 
-      // Ensure the response includes the project ID for Casting Planner
+      // Ensure the response includes the project ID for The Role Room
       if (onProjectCreated) {
         const projectResponse = (typedResponse?.data || response) as Record<string, unknown>;
-        // For Casting Planner, ensure ID is always set (use the one we sent if backend didn't return it)
+        // For The Role Room, ensure ID is always set (use the one we sent if backend didn't return it)
         if (isCastingPlanner && finalProjectId) {
           onProjectCreated({
             ...projectResponse,
@@ -1988,7 +1988,7 @@ export default function NewProjectCreationModal({
   return (
     <>
       <Box sx={{ width: '100%', maxWidth: { xs: '100%', sm: 800, md: 900, lg: 1000, xl: 1200 }, mx: 'auto', p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
-        {/* Title - only shown when not in casting planner (parent dialog has its own title) */}
+        {/* Title - only shown when not in The Role Room (parent dialog has its own title) */}
         {!isCastingPlanner && (
           <Box sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2164,7 +2164,7 @@ export default function NewProjectCreationModal({
                 </Select>
               </FormControl>
 
-              {/* Project Selector (only for Casting Planner) */}
+              {/* Project Selector (only for The Role Room) */}
               {isCastingPlanner && (
                 <FormControl fullWidth sx={{ flex: 1 }}>
                   <InputLabel

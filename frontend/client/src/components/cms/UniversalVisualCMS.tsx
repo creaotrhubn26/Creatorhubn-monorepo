@@ -45,7 +45,7 @@ import {
   Badge,
   Stack,
   Avatar,
-  Menu
+  Menu,
 } from '@mui/material';
 import {
   Edit,
@@ -92,7 +92,7 @@ import {
   ZoomIn,
   ZoomOut,
   Fullscreen,
-  FullscreenExit
+  FullscreenExit,
 } from '@mui/icons-material';
 
 // Visual Editing Libraries

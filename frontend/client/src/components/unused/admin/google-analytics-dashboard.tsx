@@ -25,7 +25,7 @@ import {
   Chip,
   LinearProgress,
   Alert,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Analytics,
@@ -39,7 +39,7 @@ import {
   Download,
   Refresh,
   CheckCircle,
-  Error
+  Error,
 } from '@mui/icons-material';
 import {
   LineChart,

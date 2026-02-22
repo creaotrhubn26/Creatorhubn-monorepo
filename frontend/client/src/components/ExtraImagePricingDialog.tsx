@@ -28,7 +28,7 @@ import {
   Alert,
   Chip,
   Divider,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 import TermsAcceptanceDialog from './TermsAcceptanceDialog';

@@ -135,7 +135,7 @@ export const ContinuityLogger: FC<ContinuityLoggerProps> = ({
     costume: { icon: <CostumeIcon />, label: 'Kostyme', color: '#e91e63' },
     hair: { icon: <FaceIcon />, label: 'Hår', color: '#9c27b0' },
     makeup: { icon: <MakeupIcon />, label: 'Sminke', color: '#ec407a' },
-    props: { icon: <PropsIcon />, label: 'Rekvisitter', color: '#ff9800' },
+    props: { icon: <PropsIcon />, label: 'Rekvisitter', color: '#9333ea' },
     set: { icon: <LocationIcon />, label: 'Set/Lokasjon', color: '#4caf50' },
     lighting: { icon: <ImageIcon />, label: 'Lys', color: '#ffeb3b' },
     position: { icon: <LocationIcon />, label: 'Posisjon', color: '#2196f3' },

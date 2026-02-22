@@ -30,7 +30,7 @@ import {
   Stepper,
   Step,
   StepLabel,
-  StepIcon
+  StepIcon,
 } from '@mui/material';
 import {
   Verified as VerifiedIcon,
@@ -45,7 +45,7 @@ import {
   Security as QualityIcon,
   Psychology as ExpertIcon,
   Close as CloseIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 interface BadgeLevel {
@@ -294,7 +294,7 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
 
         <DialogContent>
           {/* Progress Overview */}
-          <Card sx={{ mb:  3, background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.1), rgba(2, 5, 5,152,0,0.1))' ,  ...theming.getThemedCardSx() }}>
+          <Card sx={{ mb:  3, background: 'linear-gradient(135deg, rgba(255,193,7,0.1), rgba(255,152,0,0.1))' ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🎯 Progress til {nextLevel ? nextLevel.name : 'Max Level Reached!'}

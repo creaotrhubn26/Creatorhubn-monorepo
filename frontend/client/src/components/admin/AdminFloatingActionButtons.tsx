@@ -4,9 +4,9 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
 
-import { 
-  Fab, 
-  Box, 
+import {
+  Fab,
+  Box,
   Tooltip,
   Button,
   Typography,
@@ -18,7 +18,7 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 
 import {

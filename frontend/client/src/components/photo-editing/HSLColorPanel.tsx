@@ -18,11 +18,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import {
-  ExpandMore,
-  Refresh,
-  Palette,
-} from '@mui/icons-material';
+import { ExpandMore, Refresh, Palette } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 
 export interface HSLAdjustments {

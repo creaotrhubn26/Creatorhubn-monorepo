@@ -503,11 +503,11 @@ export default function WhatsNewModal({
                     mb: 3,
                     background: 'linear-gradient(135deg, #fff5e6 0%, #ffe4cc 100%)',
                     border: '2px solid #ff8c00',
-                    boxShadow: '0 4px 12px rgba(2, 5, 5, 140, 0, 0.15)',
+                    boxShadow: '0 4px 12px rgba(255, 140, 0, 0.15)',
                     transition: 'transform 0.2s, box-shadow 0.2s',
                     '&:hover': {
                       transform: 'translateY(-2px)',
-                      boxShadow: '0 6px 20px rgba(2, 5, 5, 140, 0, 0.25)',
+                      boxShadow: '0 6px 20px rgba(255, 140, 0, 0.25)',
                     },
                   }}
                 >

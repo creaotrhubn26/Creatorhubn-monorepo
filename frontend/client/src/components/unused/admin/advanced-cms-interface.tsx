@@ -47,7 +47,7 @@ import {
   Alert,
   Divider,
   Avatar,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   AddCircle as Add,
@@ -68,14 +68,14 @@ import {
   Security,
   CloudUpload,
   DataUsage,
-  Speed,
+  Speed as Speed,
   Analytics,
   Notifications,
   Group,
   Store,
   PhotoCamera,
   Videocam,
-  LibraryMusic
+  LibraryMusic,
 } from '@mui/icons-material';
 
 interface CMSComponent {

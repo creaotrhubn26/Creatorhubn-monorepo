@@ -24,15 +24,15 @@ import {
   Button,
 } from '@mui/material';
 import { PhotographyIconAlt } from '../shared/CreatorHubIcons';
-import { 
-  LocalShipping as LocalDirectionsBoatping, 
-  Calculate, 
-  Search, 
+import {
+  LocalShipping as LocalDirectionsBoatping,
+  Calculate,
+  Search,
   LocationOn,
   CheckCircle,
   Info,
   PhotoLibrary,
-  Send 
+  Send,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

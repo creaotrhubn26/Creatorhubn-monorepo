@@ -57,7 +57,6 @@ import {
   StraightenSharp,
   GridView,
   Rule,
-  Spiral,
   Balance,
   CameraAlt,
   Movie,

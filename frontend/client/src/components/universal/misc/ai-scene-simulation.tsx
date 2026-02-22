@@ -2,36 +2,36 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  Grid, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
   CircularProgress,
   Chip,
   Paper,
   Stack,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  PlayArrow, 
-  Stop, 
-  Refresh, 
-  Visibility, 
+import {
+  PlayArrow,
+  Stop,
+  Refresh,
+  Visibility,
   Close,
   SmartToy,
   Movie,
   CameraAlt,
-  Lightbulb
+  Lightbulb,
 } from '@mui/icons-material';
 
 interface SceneSimulation {

@@ -32,7 +32,7 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
 } from '@mui/material';
 import {
   Settings,
@@ -47,9 +47,9 @@ import {
   Insights,
   Timeline,
   AutoAwesome,
-  Speed,
+  Speed as Speed,
   Security,
-  Analytics
+  Analytics,
 } from '@mui/icons-material';
 
 interface AutomationStatus {

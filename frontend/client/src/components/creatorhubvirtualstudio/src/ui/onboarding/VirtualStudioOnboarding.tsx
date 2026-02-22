@@ -44,7 +44,7 @@ import {
   Settings,
   PlayArrow,
   TrendingUp,
-  Speed,
+  Speed as Speed,
   AttachMoney,
   Face,
   School,

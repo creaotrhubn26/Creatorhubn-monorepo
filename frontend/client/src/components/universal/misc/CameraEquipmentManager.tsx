@@ -25,7 +25,8 @@ import {
   CircularProgress,
   TextField,
   InputAdornment,
-  IconButton
+  IconButton,
+  LinearProgress,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -36,14 +37,14 @@ import {
   Clear,
   FilterList,
   Update,
-  Check
+  Check,
 } from '@mui/icons-material';
 // Note: These components are now implemented and ready for use
-import MemoryCardSelector from '../memory-card/MemoryCardSelector';
-import FirmwareInfoDialog from '../firmware/FirmwareInfoDialog';
+import MemoryCardSelector from '../../memory-card/MemoryCardSelector';
+import FirmwareInfoDialog from '../../firmware/FirmwareInfoDialog';
 
 import { 
-  WORLD_CAMERA_DATABAE, 
+  WORLD_CAMERA_DATABASE, 
   getPopularCameras, 
   getCanonCameras,
   getSonyCameras,
@@ -76,6 +77,15 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
   // Theming system
   const theming = useTheming('photographer');
   
+  // Authenticated equipment data fetching
+  const { user } = useAuth();
+  const { data: savedEquipment } = useQuery({
+    queryKey: ['/api/user/equipment', user?.id],
+    queryFn: () => apiRequest('/api/user/equipment'),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Google Drive Storage Integration State
   const [googleDriveSyncStatus, setGoogleDriveSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [googleSheetsSyncStatus, setGoogleSheetsSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
@@ -230,19 +240,20 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 }
 }, [profession, integration, communication]);
   const [selectedCamera, setSelectedCamera] = useState('Canon EOS R5');
-  const [selectedCards, setSelectedCards] = useState([]);
+  const [selectedCards, setSelectedCards] = useState<Array<{ capacity: string; count: number; estimatedPhotos: { raw: number; craw?: number } }>>([]);
   const [selectedBrand, setSelectedBrand] = useState('Canon');
-  const [newCameraDetection, setNewCameraDetection] = useState(null);
+  const [newCameraDetection, setNewCameraDetection] = useState<{ found: boolean; newModels: CameraSpec[]; totalModels: number; lastUpdated: string } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [recentlyChosen, setRecentlyChosen] = useState([]);
+  const [recentlyChosen, setRecentlyChosen] = useState<Array<{ name: string; timestamp: string; brand: string }>>([]);
   const [showAllCameras, setShowAllCameras] = useState(false);
   const [sortByYear, setSortByYear] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [firmwareStatuses, setFirmwareStatuses] = useState(new Map());
+  const [firmwareStatuses, setFirmwareStatuses] = useState<Map<string, any>>(new Map());
   const [firmwareDialogOpen, setFirmwareDialogOpen] = useState(false);
-  const [selectedFirmwareCamera, setSelectedFirmwareCamera] = useState(null);
+  const [selectedFirmwareCamera, setSelectedFirmwareCamera] = useState<CameraSpec | null>(null);
   const [equipmentType, setEquipmentType] = useState('cameras'); // cameras, video_lights, photo_flash
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Load recently chosen cameras (server first, fallback local)
   useEffect(() => {
@@ -255,17 +266,36 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         } else {
           const saved = localStorage.getItem('creatorhub-recent-cameras');
           if (saved) {
-            try { setRecentlyChosen(JSON.parse(saved)); } catch {}
+            try { setRecentlyChosen(JSON.parse(saved)); } catch (e) { console.warn('Failed to parse recent cameras:', e); }
           }
         }
       })
       .catch(() => {
         const saved = localStorage.getItem('creatorhub-recent-cameras');
         if (saved) {
-          try { setRecentlyChosen(JSON.parse(saved)); } catch {}
+          try { setRecentlyChosen(JSON.parse(saved)); } catch (e) { console.warn('Failed to parse recent cameras from localStorage:', e); }
         }
       });
   }, []);
+
+  // Merge server-saved equipment with recently chosen list
+  useEffect(() => {
+    if (savedEquipment) {
+      const serverEquipment = savedEquipment as { data?: { recent_cameras?: Array<{ name: string; timestamp: string; brand: string }> } };
+      const recentCams = serverEquipment?.data?.recent_cameras;
+      if (recentCams && Array.isArray(recentCams)) {
+        setRecentlyChosen(prev => {
+          const merged = [...prev];
+          recentCams.forEach((cam) => {
+            if (!merged.some(existing => existing.name === cam.name)) {
+              merged.push(cam);
+            }
+          });
+          return merged.slice(0, 8);
+        });
+      }
+    }
+  }, [savedEquipment]);
 
   // Search functionality (moved before usage)
   const searchCameras = (query: string) => {
@@ -289,9 +319,16 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 };
 
   // Get organized equipment based on type and brand
-  const getOrganizedEquipment = () => {
+  const getOrganizedEquipment = (): (CameraSpec | VideoLightSpec | PhotoFlashSpec)[] => {
     if (equipmentType === 'cameras') {
       let cameras = getCamerasByBrand(selectedBrand);
+      
+      // Apply category filter if selected
+      if (selectedCategory !== 'all') {
+        const categoryCameras = getCamerasByCategory(selectedCategory as 'dslr' | 'mirrorless' | 'cinema' | 'medium_format');
+        const categoryModelSet = new Set(categoryCameras.map(c => `${c.brand}-${c.model}`));
+        cameras = cameras.filter(c => categoryModelSet.has(`${c.brand}-${c.model}`));
+      }
       
       if (sortByYear) {
         cameras = cameras.sort((a, b) => b.year - a.year);
@@ -326,6 +363,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                               equipmentType === 'video_lights' ? searchResults.videoLights :
                               searchResults.photoFlash;
   const organizedEquipment = showSearchResults ? currentSearchResults : getOrganizedEquipment();
+  const totalDatabaseCount = WORLD_CAMERA_DATABASE?.length || 0;
   
   // Calculate missing variables for UI display
   const totalCamerasForBrand = equipmentType === 'cameras' ? getCamerasByBrand(selectedBrand).length : 0;
@@ -340,13 +378,13 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 }, [organizedEquipment.length, selectedBrand, showSearchResults, equipmentType]);
 
   // Helper function to get firmware status for a camera
-  const getFirmwareStatus = (camera) => {
+  const getFirmwareStatus = (camera: CameraSpec | VideoLightSpec | PhotoFlashSpec) => {
     const key = `${camera.brand}-${camera.model}`;
     return firmwareStatuses.get(key);
 };
 
   // Handle firmware indicator click
-  const handleFirmwareClick = (camera) => {
+  const handleFirmwareClick = (camera: CameraSpec | VideoLightSpec | PhotoFlashSpec) => {
     setSelectedFirmwareCamera(camera);
     setFirmwareDialogOpen(true);
 };
@@ -359,13 +397,30 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 }
 };
 
+  // Brand-specific camera getters for optimized access
+  const getBrandCameras = (brand: string): CameraSpec[] => {
+    switch (brand) {
+      case 'Canon': return getCanonCameras();
+      case 'Sony': return getSonyCameras();
+      case 'Nikon': return getNikonCameras();
+      case 'Fujifilm': return getFujifilmCameras();
+      case 'Panasonic': return getPanasonicCameras();
+      default: return getCamerasByBrand(brand);
+    }
+  };
+
   const handleDetectNewCameras = async () => {
     setIsDetecting(true);
     
     // Simulate API call delay
     setTimeout(() => {
       const detection = detectNewCameraModels();
-      setNewCameraDetection(detection);
+      setNewCameraDetection({
+        found: detection.length > 0,
+        newModels: detection,
+        totalModels: WORLD_CAMERA_DATABASE.length,
+        lastUpdated: new Date().toISOString(),
+      });
       setIsDetecting(false);
 }, 2000);
 };
@@ -396,48 +451,47 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    setShowSearchResults(query.trim().length > 0);
+    if (equipmentType === 'cameras') {
+      const cameraResults = searchCameras(query);
+      setShowSearchResults(query.trim().length > 0 && cameraResults.length > 0);
+    } else {
+      setShowSearchResults(query.trim().length > 0);
+    }
 };
 
   const clearSearch = () => {
-    setSearchQuery(', ');
+    setSearchQuery('');
     setShowSearchResults(false);
 };
 
   // Check firmware status for visible cameras
-  const checkFirmwareStatus = async (cameras) => {
+  const checkFirmwareStatus = async (cameras: (CameraSpec | VideoLightSpec | PhotoFlashSpec)[]) => {
     try {
- fetch('/api/camera-firmware/firmware-status/batch', {
-   headers: {
-          "Content-Type" : "application/json"
-  },
+      const response = await fetch('/api/camera-firmware/firmware-status/batch', {
+        method: 'POST',
         headers: {
-  },
-        
-        method: 'POS',
-        headers: {
-          'Content-Type' : 'application/json',
-    },
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          cameras: cameras.map(camera => ({
+          cameras: cameras.map((camera: CameraSpec | VideoLightSpec | PhotoFlashSpec) => ({
             brand: camera.brand,
             model: camera.model
-    }))
-    })
-  });
+          }))
+        })
+      });
 
       if (response.ok) {
         const data = await response.json();
-        const statusMap = new Map();
+        const statusMap = new Map<string, any>();
         
-        data.statuses.forEach(status => {
+        data.statuses.forEach((status: any) => {
           const key = `${status.brand}-${status.model}`;
           statusMap.set(key, status);
-    });
+        });
         
         setFirmwareStatuses(statusMap);
-  }
-} catch (error) {
+      }
+    } catch (error) {
       console.error('Error checking firmware status:', error);
 }
 };
@@ -511,14 +565,20 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
           </Button>
 
           {(googleDriveSyncStatus === 'syncing' || googleSheetsSyncStatus === 'syncing') && (
-            <LinearProgress 
-              sx={{ 
-                flexGrow: 1
-                maxWidth: 20, '& .MuiLinearProgress-bar': {
-                  backgroundColor: '#ff6b35'
-          }
-          }} 
-            />
+            <Box sx={{ flexGrow: 1, maxWidth: 200 }}>
+              <LinearProgress 
+                variant="determinate"
+                value={syncProgress}
+                sx={{ 
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: '#ff6b35'
+                  }
+                }} 
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                {syncProgress}% synkronisert
+              </Typography>
+            </Box>
           )}
         </Box>
 
@@ -557,7 +617,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         {/* Test Firmware Checking Button */}
         <Button 
           variant="outlined" 
-          onClick={() => window.open('/api/camera-firmware/firmware-status/Canon/EOS R5', ','_blank')}
+          onClick={() => window.open('/api/camera-firmware/firmware-status/Canon/EOS R5', '_blank')}
           sx={{ mt:  2 }}
         >
           🔧 Test firmware-sjekking (Canon EOS R5)
@@ -566,7 +626,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 
       <Grid container spacing={3}>
         {/* Camera Selection - Redesigned with Integrated Recently Chosen */}
-        <Grid size={{ xs: 12 }} lg={8}>
+        <Grid xs={12} lg={8}>
           <MuiCard sx={{ borderRadius: 2, boxShadow:  2 }}>
             <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  3 }}>
@@ -580,9 +640,9 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                     {equipmentType === 'photo_flash' && 'Foto Flash Database'}
                   </Typography>
                 </Box>
-                <Alert severity="info" sx={{ py: 0, .px: 1.5}}>
+                <Alert severity="info" sx={{ py: 0, px: 1.5 }}>
                   <Typography variant="caption">
-                    {equipmentType === 'cameras' && `${WORLD_CAMERA_DATABASE.length} modeller fra ${SUPPORTED_BRANDS.length} produsenter`}
+                    {equipmentType === 'cameras' && `${WORLD_CAMERA_DATABASE.length} modeller fra ${SUPPORTED_BRANDS.length} produsenter (totalt ${totalDatabaseCount} i database)`}
                     {equipmentType === 'video_lights' && `${VIDEO_LIGHTS_DATABASE.length} video lys modeller`}
                     {equipmentType === 'photo_flash' && `${PHOTO_FLASH_DATABASE.length} foto flash modeller`}
                   </Typography>
@@ -610,7 +670,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                     endAdornment: searchQuery && (
                       <InputAdornment position="end">
                         <IconButton size="small" onClick={clearSearch}>
-                          {theming.getThemedIcon('clear')}
+                          <Clear />
                         </IconButton>
                       </InputAdornment>
                     )}}
@@ -625,8 +685,8 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                 {showSearchResults && (
                   <Alert severity="info" sx={{ mt: 1.5}}>
                     <Typography variant="body2">
-                      Søkeresultater: {searchResults.length} kameraer funnet
-                      {searchResults.length > 0 && (
+                      Søkeresultater: {currentSearchResults.length} kameraer funnet
+                      {currentSearchResults.length > 0 && (
                         <Button 
                           size="small" 
                           onClick={clearSearch}
@@ -681,23 +741,23 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                             py: 0.5,
                             borderRadius:  2,
                             textTransform: 'none',
-                            fontWeight: sSelected ? 600 : 50,
+                            fontWeight: isSelected ? 600 : 50,
                             bgcolor: isSelected ? 'primary.main' : 'transparent',
                             borderColor: isSelected ? 'primary.main' : 'divider',
                             position: 'relative','&:hover': {
                               bgcolor: isSelected ? 'primary.dark' : 'action.hover',
                               transform: 'translateY(-1px)',
                               boxShadow: 2 }, '&::after': index === 0 ? {
-                              content: ', "NY"',
+                              content: '"NY"',
                               position: 'absolute',
-                              top:  , -, 8,
-                              right:  , -, 8,
+                              top: -8,
+                              right: -8,
                               fontSize: '0.6rem',
                               bgcolor: 'secondary.main',
                               color: 'white',
-                              borderRadius: '50, %',
-                              width:  16,
-                              height:  16,
+                              borderRadius: '50%',
+                              width: 16,
+                              height: 16,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -705,7 +765,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                       } : {}
                       }}
                         >
-                          {camera.name.replace(camera.brand + ', ', ', ')}
+                          {camera.name.replace(camera.brand + ' ', '')}
                         </Button>
                     );
                 })}
@@ -713,15 +773,37 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                 </Box>
               )}
               
+              {/* Quick Access Cameras */}
+              {equipmentType === 'cameras' && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    <FilterList sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'text-bottom' }} />
+                    Hurtigvalg
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {getPopularCameras().slice(0, 3).map((cam: CameraSpec) => (
+                      <Button key={`popular-${cam.brand}-${cam.model}`} size="small" variant="outlined" onClick={() => handleCameraSelection(`${cam.brand} ${cam.model}`)}>
+                        {cam.brand} {cam.model}
+                      </Button>
+                    ))}
+                    {getLatestCameras(3).map((cam: CameraSpec) => (
+                      <Button key={`latest-${cam.brand}-${cam.model}`} size="small" variant="outlined" color="secondary" onClick={() => handleCameraSelection(`${cam.brand} ${cam.model}`)}>
+                        {cam.brand} {cam.model} (NY)
+                      </Button>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
               {/* Brand Selection - Improved Design */}
               <Box sx={{ mb:  3 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, .fontWeight: 600, color: 'text.primary'}}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: 'text.primary'}}>
                   Velg merke
                 </Typography>
                 
                 <Grid container spacing={1.5}>
                   {SUPPORTED_BRANDS.map((brand) => (
-                    <Grid size={{ xs:  6 }} sm={4} md={3} key={brand}>
+                    <Grid xs={6} sm={4} md={3} key={brand}>
                       <Paper 
                         elevation={selectedBrand === brand ? 3 : 1}
                         sx={{ 
@@ -739,7 +821,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                     }}
                         onClick={() => setSelectedBrand(brand)}
                       >
-                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.2, 5}}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5}}>
                           {brand}
                         </Typography>
                         <Typography variant="caption" sx={{ 
@@ -766,6 +848,9 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                   
                   {!showSearchResults && (
                     <Box sx={{ display: 'flex', gap:  1 }}>
+                      <IconButton size="small" title="Filter utstyr" onClick={() => setSelectedCategory(selectedCategory === 'all' ? 'mirrorless' : 'all')}>
+                        <FilterList />
+                      </IconButton>
                       <Button
                         size="small"
                         variant={sortByYear ? "contained" : "outlined"}
@@ -795,7 +880,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                     const isRecent = camera.year >= 2020;
                     
                     return (
-                      <Grid size={{ xs: 12 }} sm={6} md={4} key={`${camera.brand}-${camera.model}`}>
+                      <Grid xs={12} sm={6} md={4} key={`${camera.brand}-${camera.model}`}>
                         <Paper 
                           elevation={isSelected ? 4 : 1}
                           sx={{ 
@@ -906,7 +991,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                           
                           <Typography variant="subtitle2" sx={{ 
                             fontWeight: 600,
-                            mb: 0, .
+                            mb: 0.5,
                             pr: (isRecent && !showSearchResults) ? 3 : 0,
                             pl: showSearchResults ? 3 : 0 }}>
                             {showSearchResults ? `${camera.brand} ${camera.model}` : camera.model}
@@ -914,17 +999,17 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                           
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5}}>
                             <Typography variant="body2" color="text.secondary">
-                              {camera.megapixels}MP
+                              {'megapixels' in camera && `${(camera as CameraSpec).megapixels}MP`}
                             </Typography>
                             <Typography variant="body2" sx={{ 
                               color: camera.year >= 2020 ? 'success.main' : 'text.secondary',
-                              fontWeight: amera.year >= 2020 ? 600 : 400 }}>
+                              fontWeight: (camera as CameraSpec).year >= 2020 ? 600 : 400 }}>
                               {camera.year}
                             </Typography>
                           </Box>
                           
                           <Box sx={{ display: 'flex', gap: 0,flexWrap: 'wrap'}}>
-                            {camera.cardTypes.map((cardType, index) => (
+                            {'cardTypes' in camera && (camera as CameraSpec).cardTypes.map((cardType: string, index: number) => (
                               <Typography key={index} variant="caption" sx={{ 
                                 bgcolor: 'action.selected', 
                                 px: 1, py: 0.5, 
@@ -948,6 +1033,12 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                       Viser kameraer fra 2018 og nyere. Klikk "Vis {hiddenCamerasCount} eldre" for å se alle {selectedBrand} modeller.
                     </Typography>
                   </Alert>
+                )}
+
+                {hiddenItemsCount > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    {hiddenItemsCount} elementer skjult av nåværende filter
+                  </Typography>
                 )}
                 
                 {/* No search results */}
@@ -973,7 +1064,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         </Grid>
 
         {/* Current Selection Summary */}
-        <Grid size={{ xs: 12 }} md={6}>
+        <Grid xs={12} md={6}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -1006,27 +1097,23 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         </Grid>
 
         {/* Dynamic Memory Card Selector */}
-        <Grid size={{ xs: 12 }}>
+        <Grid xs={12}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" sx={{  mb:  2  }}>
                 🎯 Minnekort Optimalisert for {selectedCamera}
               </Typography>
               
-              <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius:  1 }}>
-                <Typography variant="body2" color="text.secondary">
-                  📁 Minnekort optimalisering for {selectedCamera}
-                </Typography>
-                <Alert severity="info" sx={{ mt:  1 }}>
-                  Avansert minnekort selector kommer i neste oppdatering med intelligent størrelse-forslag
-                </Alert>
-              </Box>
+              <MemoryCardSelector
+                selectedCamera={selectedCamera}
+                onCardsSelected={(cards) => setSelectedCards(cards)}
+              />
             </CardContent>
           </MuiCard>
         </Grid>
 
         {/* Brand Statistics Overview */}
-        <Grid size={{ xs: 12 }}>
+        <Grid xs={12}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" sx={{  mb:  2  }}>
@@ -1035,19 +1122,19 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
               
               <Grid container spacing={2}>
                 {SUPPORTED_BRANDS.map((brand) => {
-                  const brandCameras = getCamerasByBrand(brand);
+                  const brandCameras = getBrandCameras(brand);
                   const newestYear = Math.max(...brandCameras.map(c => c.year));
                   const oldestYear = Math.min(...brandCameras.map(c => c.year));
                   
                   return (
-                    <Grid size={{ xs: 12 }} sm={6} md={4} key={brand}>
+                    <Grid xs={12} sm={6} md={4} key={brand}>
                       <Paper 
                         sx={{ 
                           p: 2, bgcolor: selectedBrand === brand ? 'primary.50' : 'background.paper',
                           border: selectedBrand === brand ? 2 : 1,
-                          borderColor: selectedBrand === brand ? 'primary.main' : 'divider'
-                  }}
-                       sx={theming.getThemedCardSx()}>
+                          borderColor: selectedBrand === brand ? 'primary.main' : 'divider',
+                          ...theming.getThemedCardSx()
+                  }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 600, mb:  1 }}>
                           {brand}
                         </Typography>
@@ -1078,7 +1165,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         </Grid>
 
         {/* Memory Card Selector - Improved , *, /}
-        <Grid size={{ xs: 12 }} lg={4}>
+        <Grid xs={12} lg={4}>
           <Box sx={{ position: 'sticky', top: 20}}>
             <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius:  1 }}>
               <Typography variant="body2" color="text.secondary">
@@ -1092,7 +1179,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         </Grid>
 
         {/* New Camera Detection Test - Redesigned */}
-        <Grid size={{ xs: 12 }}>
+        <Grid xs={12}>
           <MuiCard sx={{ borderRadius: 2, boxShadow:  2 }}>
             <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  3 }}>
@@ -1105,7 +1192,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                 <Button variant="contained" 
                   onClick={handleDetectNewCameras}
                   disabled={isDetecting}
-                  startIcon={isDetecting ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('search')}
+                  startIcon={isDetecting ? <CircularProgress size={20} sx={theming.getThemedButtonSx()} /> : theming.getThemedIcon('search')}
                   sx={{ borderRadius:  2 }}
                 >
                   {isDetecting ? 'Søker...' : 'Søk etter nye kameraer'}
@@ -1135,13 +1222,13 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
 
               {newCameraDetection?.found && (
                 <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600}>
+                  <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
                     Nye modeller funnet
                   </Typography>
                   
                   <Grid container spacing={2}>
                     {newCameraDetection.newModels.map((camera, index) => (
-                      <Grid size={{ xs: 12 }} sm={6} md={3} key={index}>
+                      <Grid xs={12} sm={6} md={3} key={index}>
                         <Paper 
                           elevation={2}
                           sx={{ 
@@ -1151,9 +1238,9 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
                             borderRadius:  2,
                             transition: 'transform 0.2s ease-in-out', '&:hover': {
                               transform: 'translateY(-2px)'
-                      }
-                      }}
-                         sx={theming.getThemedCardSx()}>
+                      },
+                      ...theming.getThemedCardSx()
+                      }}>
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5}}>
                             {camera.brand} {camera.model}
                           </Typography>
@@ -1185,7 +1272,13 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
         </Grid>
       </Grid>
 
-      {/* Note: Firmware Dialog will be implemented separately , *, /}
+      {/* Firmware Information Dialog */}
+      <FirmwareInfoDialog
+        open={firmwareDialogOpen}
+        onClose={() => setFirmwareDialogOpen(false)}
+        camera={selectedFirmwareCamera}
+        onFirmwareUpdated={handleFirmwareUpdated}
+      />
     </Box>
 );
 }

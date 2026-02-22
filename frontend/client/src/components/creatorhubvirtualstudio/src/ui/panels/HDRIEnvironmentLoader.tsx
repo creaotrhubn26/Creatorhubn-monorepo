@@ -42,7 +42,7 @@ import {
   Pause,
   PlayArrow,
   Stop,
-  Speed,
+  Speed as Speed,
   Star,
   StarBorder,
   StarHalf,

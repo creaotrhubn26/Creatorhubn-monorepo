@@ -35,7 +35,7 @@ import {
   Tooltip,
   Snackbar,
   Checkbox,
-  FormGroup
+  FormGroup,
 } from '@mui/material';
 import {
   Instagram as InstagramIcon,
@@ -59,7 +59,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Create as CreateIcon,
-  Image as ImageIcon
+  Image as ImageIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';

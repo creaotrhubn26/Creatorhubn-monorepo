@@ -11,14 +11,14 @@ import {
   Card as MuiCard,
   CardContent,
   Chip,
-  LinearProgress /* Alert removed - Zero Toast Compliance */,
+  LinearProgress,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
-  PhotoCameraAlt,
-  Videocamcam,
-  LibraryMusicNote,
+  PhotoCamera as PhotoCameraAlt,
+  Videocam as Videocamcam,
+  LibraryMusic as LibraryMusicNote,
   Store,
   CheckCircle,
   Warning,

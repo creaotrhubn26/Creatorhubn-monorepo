@@ -42,7 +42,7 @@ import {
   Email,
   Phone,
   Web,
-  DirectionsBusiness,
+  Business as DirectionsBusiness,
   TrendingUp,
   TrendingDown,
   Remove,

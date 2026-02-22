@@ -30,7 +30,13 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { Settings, ExpandMore, OpenInNew, Security, Info } from '@mui/icons-material';
+import {
+  Settings,
+  ExpandMore,
+  OpenInNew,
+  Security,
+  Info,
+} from '@mui/icons-material';
 import { AICompletionConfig } from './AICodeCompletionSystem';
 
 interface AISettingsDialogProps {
@@ -46,7 +52,7 @@ const AI_PROVIDERS = [
     id: 'anthropic',
     name: 'Anthropic',
     recommended: true,
-    models: ['claude-4.5-sonnet','claude-3-opus''claude-3-sonnet','claude-3-haiku'],
+    models: ['claude-4.5-sonnet','claude-3-opus','claude-3-sonnet','claude-3-haiku'],
     signupUrl: 'https://console.anthropic.com/',
     apiKeyUrl: 'https://console.anthropic.com/settings/keys',
     pricing: '$3/million input tokens',
@@ -56,7 +62,7 @@ const AI_PROVIDERS = [
     id: 'openai',
     name: 'OpenAI',
     recommended: false,
-    models: ['gpt-5-nano','gpt-4o''gpt-4-turbo','gpt-4''gpt-3.5-turbo'],
+    models: ['gpt-5-nano','gpt-4o','gpt-4-turbo','gpt-4','gpt-3.5-turbo'],
     signupUrl: 'https://platform.openai.com/signup',
     apiKeyUrl: 'https://platform.openai.com/api-keys',
     pricing: '$2.50/million input tokens',
@@ -149,7 +155,7 @@ export default function AISettingsDialog({
             <FormControl fullWidth>
               <Select
                 value={localConfig.model}
-                onChange={(e) => setLocalConfig({ ...localConfig, model: e.target.value })}}
+                onChange={(e) => setLocalConfig({ ...localConfig, model: e.target.value })}
               >
                 {selectedProvider.models.map((model) => (
                   <MenuItem key={model} value={model}>
@@ -179,7 +185,7 @@ export default function AISettingsDialog({
                   {!isConfigured && 'Your API key is stored securely in browser storage'}
                   {isConfigured && 'Leave empty to keep existing key'}
                 </Box>
-              }}
+              }
               InputProps={{
                 endAdornment: (
                   <Button size="small" onClick={() => setShowApiKey(!showApiKey)}>
@@ -264,7 +270,7 @@ export default function AISettingsDialog({
                     value={localConfig.temperature}
                     onChange={(_, value) =>
                       setLocalConfig({ ...localConfig, temperature: value as number })
-                    }}
+                    }
                     min={0}
                     max={1}
                     step={0.1}
@@ -285,7 +291,7 @@ export default function AISettingsDialog({
                     value={localConfig.maxTokens}
                     onChange={(_, value) =>
                       setLocalConfig({ ...localConfig, maxTokens: value as number })
-                    }}
+                    }
                     min={100}
                     max={4000}
                     step={100}
@@ -309,7 +315,7 @@ export default function AISettingsDialog({
                       checked={localConfig.autoSuggest}
                       onChange={(e) =>
                         setLocalConfig({ ...localConfig, autoSuggest: e.target.checked })
-                      }}
+                      }
                     />
                   }
                   label="Auto-suggest while typing"
@@ -324,7 +330,7 @@ export default function AISettingsDialog({
                     value={localConfig.debounceMs}
                     onChange={(_, value) =>
                       setLocalConfig({ ...localConfig, debounceMs: value as number })
-                    }}
+                    }
                     min={200}
                     max={3000}
                     step={100}

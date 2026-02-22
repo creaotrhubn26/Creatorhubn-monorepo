@@ -25,7 +25,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider
+  Divider,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -39,7 +39,7 @@ import {
   Business as BusinessIcon,
   Event as EventIcon,
   Campaign as CampaignIcon,
-  Add as AddIcon
+  Add as AddIcon,
 } from '@mui/icons-material';
 
 interface CreateCategoryModalProps {

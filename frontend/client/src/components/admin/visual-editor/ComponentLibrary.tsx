@@ -94,17 +94,17 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
 
   useEffect(() => {
     // Load components from localStorage
-    const stored = localStorage.getItem('visual-editor-components,');
+    const stored = localStorage.getItem('visual-editor-components');
     if (stored) {
-      setComponents(JSON.parse(stored);
+      setComponents(JSON.parse(stored));
     } else {
       // Initialize with default components
-      setComponents(getDefaultComponents();
+      setComponents(getDefaultComponents());
     }
   }, []);
 
   const saveComponents = (comps: Component[]) => {
-    localStorage.setItem('visual-editor-components, ', JSON.stringify(comps);
+    localStorage.setItem('visual-editor-components', JSON.stringify(comps));
     setComponents(comps);
   };
 
@@ -168,9 +168,9 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
 
   const filteredComponents = components.filter((comp) => {
     const matchesSearch =
-      comp.name.toLowerCase().includes(searchQuery.toLowerCase() ||
-      comp.description.toLowerCase().includes(searchQuery.toLowerCase() ||
-      comp.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase();
+      comp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      comp.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      comp.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesCategory = selectedCategory === 'All' || comp.category === selectedCategory;
 
@@ -340,7 +340,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                               onClick={() => handleToggleFavorite(component.id)}
                             >
                               {component.favorite ? (
-                                <Star sx={{ color: '#ffa726' } fontSize="small" />
+                                <Star sx={{ color: '#ffa726' }} fontSize="small" />
                               ) : (
                                 <StarBorder fontSize="small" />
                               )}
@@ -349,14 +349,14 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                               size="small"
                               onClick={(e) =>
                                 setAnchorEl({ element: e.currentTarget, componentId: component.id })
-                              }}
+                              }
                             >
                               <MoreVert fontSize="small" />
                             </IconButton>
                           </Box>
                         </Box>
 
-                        <Box sx={{ display: 'flex', gap: 0.5 flexWrap: 'wrap', mb: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
                           <Chip
                             label={component.category}
                             size="small"
@@ -453,7 +453,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
             label="Component Name"
             fullWidth
             value={newComponent.name}
-            onChange={(e) => setNewComponent({ ...newComponent, name: e.target.value })}}
+            onChange={(e) => setNewComponent({ ...newComponent, name: e.target.value })}
           />
           <TextField
             margin="dense"
@@ -462,7 +462,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
             multiline
             rows={2}
             value={newComponent.description}
-            onChange={(e) => setNewComponent({ ...newComponent, description: e.target.value })}}
+            onChange={(e) => setNewComponent({ ...newComponent, description: e.target.value })}
           />
           <TextField
             margin="dense"
@@ -492,7 +492,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
                   .map((t) => t.trim())
                   .filter(Boolean),
               })
-            }}
+            }
           />
         </DialogContent>
         <DialogActions>

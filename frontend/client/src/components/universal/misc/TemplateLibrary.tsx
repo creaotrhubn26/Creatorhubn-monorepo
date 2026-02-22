@@ -1,35 +1,35 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  TextField, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  Chip, 
-  Button, 
-  Stack, 
+import {
+  Box,
+  Typography,
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Button,
+  Stack,
   Alert,
   CircularProgress,
   Pagination,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  Search, 
-  FilterList, 
-  ViewModule, 
-  ViewList, 
+import {
+  Search,
+  FilterList,
+  ViewModule,
+  ViewList,
   Sort,
   Star,
   Download,
-  Favorite
+  Favorite,
 } from '@mui/icons-material';
 import TemplatePreviewCard from './TemplatePreviewCard';
 

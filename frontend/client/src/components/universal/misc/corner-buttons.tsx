@@ -12,7 +12,7 @@ import {
   SpeedDialAction,
   useTheme,
   useMediaQuery,
-  Zoom
+  Zoom,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -21,7 +21,7 @@ import {
   AddCircle as AddIcon,
   Notes as NotesIcon,
   Notifications as NotificationsIcon,
-  Chat as ChatIcon
+  Chat as ChatIcon,
 } from '@mui/icons-material';
 import NotificationCenter from '../../notifications/NotificationCenter';
 import DemoModeToggle from '@/components/DemoModeToggle';

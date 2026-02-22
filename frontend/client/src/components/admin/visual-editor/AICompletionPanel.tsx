@@ -91,7 +91,7 @@ export default function AICompletionPanel({
   }, [context, onGetCompletions]);
 
   const handleGenerateComponent = useCallback(async () => {
-    if (!componentDescription.trim() return;
+    if (!componentDescription.trim()) return;
 
     const result = await onGenerateComponent(componentDescription, context);
     if (result) {
@@ -156,14 +156,14 @@ export default function AICompletionPanel({
             AI Assistant
           </Typography>
         </Box>
-        <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+        <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
           <Close />
         </IconButton>
       </Box>
 
       {/* Error Alert */}
       {error && (
-        <Alert severity="error" sx={{ m: 2, mb: 0 } icon={<ErrorOutline />}>
+        <Alert severity="error" sx={{ m: 2, mb: 0 }} icon={<ErrorOutline />}>
           {error}
         </Alert>
       )}
@@ -331,7 +331,7 @@ export default function AICompletionPanel({
                   sx={{
                     bgcolor: '#1E1E1E',
                     color: '#D4D4D4',
-                    p: 1.5
+                    p: 1.5,
                     borderRadius: 1,
                     overflow: 'auto',
                     fontSize: '12px',

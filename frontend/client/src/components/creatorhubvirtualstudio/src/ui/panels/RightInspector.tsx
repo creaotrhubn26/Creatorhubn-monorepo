@@ -1,5 +1,19 @@
 import * as React from 'react';
-import { Box, Divider, Grid, Slider, Stack, TextField, Typography, Button, Tooltip, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import {
+  Box,
+  Divider,
+  Grid,
+  Slider,
+  Stack,
+  TextField,
+  Typography,
+  Button,
+  Tooltip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+} from '@mui/material';
 import { useActions, useScene } from '@/state/selectors';
 import { colors, spacing, shadows } from '@/styles/designTokens';
 import { NumberInput } from '@/ui/components/NumberInput';

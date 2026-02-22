@@ -23,7 +23,7 @@ import {
   TextField,
   Rating,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -39,7 +39,7 @@ import {
   HealthAndSafety,
   Send,
   ThumbUp,
-  ThumbDown
+  ThumbDown,
 } from '@mui/icons-material';
 
 interface DemoStep {

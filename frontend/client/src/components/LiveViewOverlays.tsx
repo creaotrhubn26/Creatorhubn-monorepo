@@ -410,7 +410,7 @@ export const ShotMetadataOverlay: React.FC<ShotMetadataOverlayProps> = ({
       borderRadius: '6px',
       backdropFilter: 'blur(4px)',
       zIndex: 2,
-      border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+      border: '1px solid rgba(255,255,255,0.2)',
     };
 
     switch (position) {
@@ -439,7 +439,7 @@ export const ShotMetadataOverlay: React.FC<ShotMetadataOverlayProps> = ({
         <div
           style={{
             marginBottom: '8px',
-            borderBottom: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            borderBottom: '1px solid rgba(255,255,255,0.2)',
             paddingBottom: '6px'}}>
           {metadata.projectName && (
             <div style={{ fontWeight: 'bold', fontSize: '14px' }}>🎬 {metadata.projectName}</div>

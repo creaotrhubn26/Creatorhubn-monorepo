@@ -14,7 +14,13 @@ import {
   Chip,
   Divider,
 } from '@mui/material';
-import { ViewInAr, Portrait, Inventory2, Checkroom, FavoriteBorder } from '@mui/icons-material';
+import {
+  ViewInAr,
+  Portrait,
+  Inventory2,
+  Checkroom,
+  FavoriteBorder,
+} from '@mui/icons-material';
 
 interface SceneTemplate {
   id: string;

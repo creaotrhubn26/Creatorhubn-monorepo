@@ -1,11 +1,12 @@
 import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { Box, Chip, Tooltip, Typography } from '@mui/material';
 import {
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon
-} from '@mui/icons-material';
+  Box,
+  Chip,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import { CheckCircle as CheckCircleIcon, Warning as WarningIcon, Error as ErrorIcon } from '@mui/icons-material';
 import { useSessionTimeRemaining } from '../../hooks/useUniversalSession';
 
 interface SessionStatusIndicatorProps {

@@ -33,7 +33,7 @@ import {
   Tooltip,
   Paper,
   Divider,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Backup as BackupIcon,
@@ -49,7 +49,7 @@ import {
   Refresh as RefreshIcon,
   Archive as ArchiveIcon,
   Computer as ComputerIcon,
-  CloudUpload as CloudUploadIcon
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { formatBytes, formatDate } from '@/lib/utils';
 

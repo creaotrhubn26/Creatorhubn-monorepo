@@ -30,17 +30,17 @@ import {
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import {
-  PlayArrowArrow as TestIcon,
+  PlayArrow as TestIcon,
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
   Google as GoogleIcon,
-  Integration as IntegrationIcon,
+  IntegrationInstructions as IntegrationIcon,
   Dashboard as DashboardIcon,
   TrendingUp as TimelineIcon,
   Assignment as ProjectIcon,
-  VideocamCall as MeetIcon,
+  VideoCall as MeetIcon,
   ExpandMore as ExpandIcon,
   Assessment as ReportIcon,
 } from '@mui/icons-material';

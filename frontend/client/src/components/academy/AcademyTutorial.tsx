@@ -42,7 +42,7 @@ import {
   TableCell,
   TableRow,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Close,
@@ -64,7 +64,7 @@ import {
   Videocam,
   MusicNote,
   Store,
-  Person
+  Person,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';

@@ -17,14 +17,14 @@ import {
   Chip,
   ToggleButtonGroup,
   ToggleButton,
-  Slider
+  Slider,
 } from '@mui/material';
 import {
   CompareArrows,
   PlayArrow,
   Pause,
   SkipPrevious,
-  SkipNext
+  SkipNext,
 } from '@mui/icons-material';
 
 interface ABComparisonPanelProps {

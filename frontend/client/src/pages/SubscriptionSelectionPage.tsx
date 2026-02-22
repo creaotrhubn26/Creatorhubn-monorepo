@@ -6,7 +6,15 @@
 import { useTheming } from '../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { Box, Container, Typography, Paper, Stack, Button, Alert } from '@mui/material';
+import {
+  Box,
+  Container,
+  Typography,
+  Paper,
+  Stack,
+  Button,
+  Alert,
+} from '@mui/material';
 import { ArrowBack as ArrowBackIcon, Home as HomeIcon } from '@mui/icons-material';
 import SubscriptionSelectionFlow from '../components/subscription/SubscriptionSelectionFlow';
 import PaymentStatusVerification from '../components/subscription/PaymentStatusVerification';

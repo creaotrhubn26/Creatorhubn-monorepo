@@ -32,7 +32,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
 } from '@mui/material';
 import {
   AutoAwesome,
@@ -51,7 +51,7 @@ import {
   Refresh,
   Timeline,
   SmartToy,
-  Webhook
+  Webhook,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

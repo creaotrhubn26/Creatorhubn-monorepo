@@ -27,7 +27,7 @@ import {
   Alert,
   CircularProgress,
   Tooltip,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Work as WorkIcon,
@@ -41,7 +41,7 @@ import {
   AccessTime as TimeIcon,
   ContentCopy as CopyIcon,
   Lightbulb as LightbulbIcon,
-  CameraAlt as CameraAltIcon
+  CameraAlt as CameraAltIcon,
 } from '@mui/icons-material';
 
 interface WorklogSuggestion {

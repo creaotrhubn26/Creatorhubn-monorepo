@@ -1,11 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { FC, ReactNode } from 'react';
-import {
-  Alert,
-  AlertColor,
-  IconButton,
-  Box,
-} from '@mui/material';
+import { Alert, IconButton, Box } from '@mui/material';
+import type { AlertColor } from '@mui/material/Alert';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 

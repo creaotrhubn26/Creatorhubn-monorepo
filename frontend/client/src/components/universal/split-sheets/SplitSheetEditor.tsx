@@ -26,7 +26,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -38,7 +38,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Phone,
   Business,
-  Badge
+  Badge,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import getProfessionIcon from '@/utils/profession-icons';

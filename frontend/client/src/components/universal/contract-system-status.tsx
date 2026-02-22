@@ -17,7 +17,7 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -25,7 +25,7 @@ import {
   Description as DescriptionIcon,
   CloudUpload as CloudUploadIcon,
   Gavel as GavelIcon,
-  Assignment as AssignmentIcon
+  Assignment as AssignmentIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

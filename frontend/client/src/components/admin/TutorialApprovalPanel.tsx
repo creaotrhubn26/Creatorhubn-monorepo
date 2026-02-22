@@ -48,7 +48,7 @@ import {
   ThumbUp as LikeIcon,
   ThumbDown as DislikeIcon,
   Quiz as FAQIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
 } from '@mui/icons-material';
 
 interface TutorialSubmission {

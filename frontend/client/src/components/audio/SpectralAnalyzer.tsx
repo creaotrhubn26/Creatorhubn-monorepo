@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Typography, Paper, ToggleButtonGroup, ToggleButton, Slider } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Paper,
+  ToggleButtonGroup,
+  ToggleButton,
+  Slider,
+} from '@mui/material';
 import { GraphicEq } from '@mui/icons-material';
 
 interface SpectralAnalyzerProps {

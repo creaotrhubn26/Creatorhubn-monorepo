@@ -106,14 +106,14 @@ export function ProductionDashboard({
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography color="text.secondary">
-          Ingen prosjekter funnet. Opprett et nytt prosjekt i Casting Planner.
+          Ingen prosjekter funnet. Opprett et nytt prosjekt i The Role Room.
         </Typography>
         <Button
           variant="contained"
           onClick={onOpenCasting}
           sx={{ mt: 2, bgcolor: '#10b981' }}
         >
-          Åpne Casting Planner
+          Åpne The Role Room
         </Button>
       </Box>
     );

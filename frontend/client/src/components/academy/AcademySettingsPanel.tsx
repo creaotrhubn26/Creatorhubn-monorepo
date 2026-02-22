@@ -47,7 +47,7 @@ import {
   PhoneAndroid,
   Computer,
   Tablet,
-  Speed,
+  Speed as Speed,
   Palette,
   TouchApp,
   DataUsage,

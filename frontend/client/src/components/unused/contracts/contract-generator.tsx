@@ -34,7 +34,7 @@ import {
   Stepper,
   Step,
   StepLabel,
-  StepContent
+  StepContent,
 } from '@mui/material';
 import {
   Description as DescriptionIcon,
@@ -49,7 +49,7 @@ import {
   Assignment as AssignmentIcon,
   BusinessCenter as BusinessCenterIcon,
   Draw as SignatureIcon,
-  CloudUpload as CloudUploadIcon
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';

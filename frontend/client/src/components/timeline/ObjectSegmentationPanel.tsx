@@ -28,7 +28,12 @@ import {
   Card,
   CardContent,
 } from '@mui/material';
-import { Close, AutoAwesome, PlayArrow, Image as ImageIcon } from '@mui/icons-material';
+import {
+  Close,
+  AutoAwesome,
+  PlayArrow,
+  Image as ImageIcon,
+} from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 

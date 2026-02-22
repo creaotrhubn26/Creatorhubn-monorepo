@@ -15,7 +15,7 @@ import {
   LinearProgress,
   Divider,
   alpha,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Lightbulb,
@@ -29,7 +29,7 @@ import {
   Star,
   ArrowForward,
   CheckCircle,
-  Error as ErrorIcon
+  Error as ErrorIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

@@ -1,9 +1,25 @@
 import { useTheming } from '../utils/theming-helper';
 import React from 'react';
-import { Card as ViewModule, CardContent, CardHeader, Typography } from '@mui/material';
+import {
+  Card as ViewModule,
+  CardContent,
+  CardHeader,
+  Typography,
+} from '@mui/material';
 import { Badge } from "@/components/material-ui"
 import { Button } from "@/components/material-ui"
-import { AutoAwesome as AutoAwesome, Message, Description, PhotoCamera, Videocam, LibraryMusic, Group, SettingsOutlined, Language, FlashOn } from '@mui/icons-material';
+import {
+  AutoAwesome as AutoAwesome,
+  Message,
+  Description,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Group,
+  SettingsOutlined,
+  Language,
+  FlashOn,
+} from '@mui/icons-material';
 import { Box } from '@mui/material';
 import { useLanguage } from '@/hooks/use-language';
 

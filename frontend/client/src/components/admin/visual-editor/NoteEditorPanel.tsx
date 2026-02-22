@@ -13,7 +13,7 @@ import {
   Paper,
   Card,
   CardContent,
-  Button
+  Button,
 } from '@mui/material';
 import NoteEditor from '../../notes/NoteEditor';
 

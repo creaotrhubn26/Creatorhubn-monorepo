@@ -30,7 +30,7 @@ import {
   Stack,
   RadioGroup,
   Radio,
-  FormLabel
+  FormLabel,
 } from '@mui/material';
 import {
   Settings,
@@ -51,14 +51,14 @@ import {
   PhoneAndroid,
   Computer,
   Tablet,
-  Speed,
+  Speed as Speed,
   Palette,
   TouchApp,
   DataUsage,
   Security,
   Notifications,
   Tune,
-  Edit
+  Edit,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag';

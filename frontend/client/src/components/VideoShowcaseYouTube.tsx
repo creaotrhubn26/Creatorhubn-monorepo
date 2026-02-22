@@ -16,7 +16,7 @@ import {
   alpha,
 } from '@mui/material';
 import {
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Pause,
   Favorite,
   FavoriteBorder,
@@ -27,7 +27,7 @@ import {
   Home,
   Whatshot,
   Subscriptions,
-  VideocamLibrary,
+  VideoLibrary as VideocamLibrary,
   History,
   WatchLater,
   ThumbUp,

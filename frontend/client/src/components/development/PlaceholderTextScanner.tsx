@@ -26,7 +26,7 @@ import {
   Collapse,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   Warning,
@@ -46,7 +46,7 @@ import {
   Schedule,
   Report,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
 } from '@mui/icons-material';
 
 interface PlaceholderMatch {

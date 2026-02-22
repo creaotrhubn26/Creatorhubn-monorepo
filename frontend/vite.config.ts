@@ -122,6 +122,10 @@ export default defineConfig({
     minify: 'esbuild',
     sourcemap: false,
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'client/index.html'),
+        casting: path.resolve(__dirname, 'client/casting.html'),
+      },
       external: (id) => {
         // Exclude unused directory from build
         if (id.includes('/unused/')) return true;
@@ -228,6 +232,11 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
+      },
+      '/ws': {
+        target: 'http://localhost:3001',
+        ws: true,
+        changeOrigin: true,
       },
       '/auth': { target: 'http://localhost:3001', changeOrigin: true },
       '/socket': {

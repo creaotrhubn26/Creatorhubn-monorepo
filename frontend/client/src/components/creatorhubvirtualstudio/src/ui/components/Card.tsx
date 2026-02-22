@@ -5,7 +5,8 @@
  */
 
 import React from 'react';
-import { Box, BoxProps } from '@mui/material';
+import { Box } from '@mui/material';
+import type { BoxProps } from '@mui/material/Box';
 import { colors, borderRadius, shadows, transitions, spacing } from '../../styles/designTokens';
 import { interactiveStyles } from '../../styles/interactiveStates';
 

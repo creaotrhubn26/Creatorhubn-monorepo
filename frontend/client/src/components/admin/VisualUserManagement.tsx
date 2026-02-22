@@ -50,10 +50,10 @@ import {
   Edit,
   Security,
   Star,
-  PhotoCameraAltFront,
-  Videocamcam,
-  MusicNoteNote,
-  DirectionsBusiness,
+  PhotoCamera as PhotoCameraAltFront,
+  Videocam as Videocamcam,
+  MusicNote as MusicNoteNote,
+  Business as DirectionsBusiness,
   Storage,
   CloudSync,
   Assessment,
@@ -63,7 +63,7 @@ import {
   Refresh,
   Add,
   Search,
-  FilterListList,
+  FilterList as FilterListList,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 

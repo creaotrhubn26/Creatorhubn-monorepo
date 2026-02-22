@@ -7,9 +7,9 @@ import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
+import {
+  Box,
+  Typography,
   Card,
   CardContent,
   Grid,
@@ -18,9 +18,9 @@ import {
   Tab,
   Avatar,
   Chip,
-  IconButton
+  IconButton,
 } from '@mui/material';
-import { 
+import {
   PhotoCamera,
   VideoLibrary,
   LibraryMusic,
@@ -29,7 +29,7 @@ import {
   Star,
   PlayArrow,
   Download,
-  Share
+  Share,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { UniversalFileUpload } from '../universal/UniversalFileUpload';

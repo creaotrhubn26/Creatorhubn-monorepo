@@ -21,7 +21,7 @@ import {
   TextField,
   InputAdornment,
   Stack,
-  Badge
+  Badge,
 } from '@mui/material';
 import { Close, Search, Palette } from '@mui/icons-material';
 import { LUTEngine } from '../../services/lut-engine';

@@ -55,13 +55,6 @@ import {
   StepContent,
   Breadcrumbs,
   Link,
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent,
 } from '@mui/material';
 import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
 

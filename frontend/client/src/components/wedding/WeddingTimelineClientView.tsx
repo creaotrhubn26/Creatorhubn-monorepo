@@ -59,17 +59,8 @@ import {
   Stepper,
   Step,
   StepLabel,
-  StepContent
+  StepContent,
 } from '@mui/material';
-import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent,
-} from '@mui/lab';
 import {
   Event,
   Add,
@@ -125,7 +116,7 @@ import {
   Pause,
   Stop,
   VolumeUp,
-  DirectionsCar
+  DirectionsCar,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';

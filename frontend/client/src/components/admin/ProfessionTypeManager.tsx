@@ -41,7 +41,7 @@ import {
   AccordionDetails,
   Switch,
   FormControlLabel,
-  Autocomplete
+  Autocomplete,
 } from '@mui/material';
 import {
   Add,
@@ -61,7 +61,7 @@ import {
   Business,
   People,
   AttachMoney,
-  Event
+  Event,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

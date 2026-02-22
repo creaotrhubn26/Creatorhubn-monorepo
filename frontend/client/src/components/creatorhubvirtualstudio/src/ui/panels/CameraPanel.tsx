@@ -9,7 +9,12 @@ import React, { useEffect, useState } from 'react';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('CameraPanel');
-import { Box, Stack, Tabs, Tab } from '@mui/material';
+import {
+  Box,
+  Stack,
+  Tabs,
+  Tab,
+} from '@mui/material';
 import { CameraControls, CameraSettings } from '../controls/CameraControls';
 import { LensSelector, LensSettings } from '../controls/LensSelector';
 import { useAppStore } from '@/state/store';

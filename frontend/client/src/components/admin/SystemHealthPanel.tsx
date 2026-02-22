@@ -22,12 +22,12 @@ import {
   TableRow,
   Button,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Computer,
   Storage,
-  Speed,
+  Speed as Speed,
   Security,
   CloudQueue,
   Error,
@@ -39,7 +39,7 @@ import {
   Monitor,
   Memory,
   NetworkCheck,
-  Backup
+  Backup,
 } from '@mui/icons-material';
 import SystemBackupDashboard from './SystemBackupDashboard';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';

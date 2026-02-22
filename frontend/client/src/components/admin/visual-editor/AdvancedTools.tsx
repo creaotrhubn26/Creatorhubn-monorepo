@@ -37,22 +37,22 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
 } from '@mui/material';
 import {
   Science,
   Psychology,
   FlashOn,
   Security,
-  Speed,
+  Speed as Speed,
   BugReport,
-  Integration,
+  IntegrationInstructions as Integration,
   ColorLens,
   Refresh,
   PlayArrow,
   Stop,
   Preview,
-  ExpandMore
+  ExpandMore,
 } from '@mui/icons-material';
 
 interface AdvancedToolsProps {

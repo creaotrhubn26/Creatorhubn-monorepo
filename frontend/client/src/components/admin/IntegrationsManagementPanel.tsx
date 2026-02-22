@@ -59,7 +59,7 @@ import {
   Divider,
   CircularProgress,
   Stack,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -101,7 +101,7 @@ import {
   Email as _EmailIcon,
   VerifiedUser as VerifiedIcon,
   Link as LinkIcon,
-  Rocket as RocketIcon,
+  RocketLaunch as RocketIcon,
   BarChart as BarChartIcon,
   AccountBalance as AccountBalanceIcon,
   PhoneAndroid as PhoneAndroidIcon,
@@ -122,7 +122,6 @@ import {
   VideoLibrary as _VideoLibraryIcon,
   Storage as _StorageIcon,
   Settings as SettingsIcon,
-  // ⚠️ AVANSERTE PROTOKOLL IKONER
   Speed as ProtocolIcon,
   GraphicEq as MediaProtocolIcon,
   SmartToy as _AiProtocolIcon,
@@ -152,7 +151,7 @@ import {
   Timeline as TimelineIcon,
   Extension as ExtensionIcon,
   PlayArrow as TestIcon,
-  Publish as PublishIcon
+  Publish as PublishIcon,
 } from '@mui/icons-material';
 import { useToast } from '../../hooks/use-toast';
 import { WireMockController } from '../wiremock/WireMockController';
@@ -1933,7 +1932,7 @@ export default function IntegrationsManagementPanel({
 	            sx={{
 	              mb: 3,
 	              background:
-	                'linear-gradient(135deg, rgba(2, 5, 5, 0.1) 0%, rgba(33,150,243,0.1) 100%)'}}
+	                'linear-gradient(135deg, rgba(255, 0.1) 0%, rgba(33,150,243,0.1) 100%)'}}
 	          >
 	            <CardContent>
 	              <Typography
@@ -2835,7 +2834,7 @@ export default function IntegrationsManagementPanel({
           </Card>
 
           {/* Phase 13: Advanced Integration & API Management , *, /}
-          <Cardsx={{mb: 3, background: 'linear-gradient(45deg, rgba(2, 5, 5,140,0,0.1) 0%, rgba(2, 5, 5,193,7,0.1) 100%)' }}>
+          <Cardsx={{mb: 3, background: 'linear-gradient(45deg, rgba(255,140,0,0.1) 0%, rgba(255,193,7,0.1) 100%)' }}>
             <CardContent >
               <Typography variant="h6"sx={{mb: 2, color: '#ff8c00, 0'fontWeight: 600}sx={{color: theming.colors.primary }}>
                 <Boxsx={{display: 'flex'alignItems:'cente-r'gap: 1}}>

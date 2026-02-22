@@ -30,7 +30,14 @@ import {
   Autocomplete,
   Snackbar,
 } from '@mui/material';
-import { PlayArrow, Stop, Add, Delete, CloudUpload, Assessment } from '@mui/icons-material';
+import {
+  PlayArrow,
+  Stop,
+  Add,
+  Delete,
+  CloudUpload,
+  Assessment,
+} from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 
 // ============================================================================

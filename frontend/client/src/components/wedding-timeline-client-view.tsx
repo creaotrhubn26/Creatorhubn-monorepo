@@ -3,16 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { useWeddingTimelineWebSocket } from '@/hooks/useWeddingTimelineWebSocket';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  List, 
-  ListItem, 
-  ListItemText, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
   ListItemIcon,
-  Chip, 
+  Chip,
   Alert,
   Avatar,
   Divider,
@@ -23,10 +23,10 @@ import {
   Skeleton,
   Switch,
   FormControlLabel,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
-import { 
-  Schedule, 
+import {
+  Schedule,
   LocationOn,
   Warning,
   Phone,
@@ -37,7 +37,7 @@ import {
   GetApp,
   CloudSync,
   CloudDone,
-  NotificationsActive
+  NotificationsActive,
 } from '@mui/icons-material';
 
 // Secure client-facing interfaces

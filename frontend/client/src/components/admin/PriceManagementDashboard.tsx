@@ -51,7 +51,7 @@ import {
   Analytics as AnalyticsIcon,
   AttachMoney as MoneyIcon,
   Business as EnterpriseIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import { usePlatformPricing } from '../../services/PlatformPricingService';
 import { platformPricingService } from '../../services/PlatformPricingService';

@@ -29,7 +29,7 @@ import {
   ListItemIcon,
   FormControlLabel,
   Checkbox,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Route as RouteIcon,
@@ -39,7 +39,7 @@ import {
   Speed as SpeedIcon,
   DirectionsCar as CarIcon,
   ElectricCar as ElectricCarIcon,
-  Navigation as NavigationIcon
+  Navigation as NavigationIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

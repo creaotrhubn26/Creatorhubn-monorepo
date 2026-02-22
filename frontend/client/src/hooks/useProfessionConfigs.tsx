@@ -45,7 +45,7 @@ import {
   MusicNote,
   Business,
   Tab,
-  BarChart
+  BarChart,
 } from '@mui/icons-material';
 
 // Icon name to component mapping

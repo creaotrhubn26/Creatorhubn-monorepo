@@ -17,14 +17,14 @@ import {
   Alert,
   LinearProgress,
   Chip,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   ContactPage,
   Security,
   CheckCircle,
   Warning,
-  Launch
+  Launch,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';

@@ -5,7 +5,14 @@
  */
 
 import React, { memo } from 'react';
-import { Box, Typography, Button, Step, StepLabel, StepContent } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Button,
+  Step,
+  StepLabel,
+  StepContent,
+} from '@mui/material';
 import { CheckCircle, ArrowForward } from '@mui/icons-material';
 import { VideoEmbed } from './VideoEmbed';
 import { ImageContent } from './ImageContent';

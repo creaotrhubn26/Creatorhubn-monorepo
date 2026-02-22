@@ -112,8 +112,26 @@ import {
   ConsentsIcon,
 } from './icons/CastingIcons';
 
+// PNG-based tab icons from /icons/Keep/
+import {
+  DashboardTabIcon,
+  RolesTabIcon,
+  CandidatesTabIcon,
+  AuditionsTabIcon,
+  TeamTabIcon,
+  LocationsTabIcon,
+  EquipmentTabIcon,
+  CalendarTabIcon,
+  ShotListTabIcon,
+  StoryArcTabIcon,
+  SharingTabIcon,
+  LiveSetTabIcon,
+} from './icons';
+
 import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
+import type { StoryLogicState } from '../services/storyLogicService';
+import { storyLogicService } from '../services/storyLogicService';
 
 // Custom icon: Person holding camera with list/clipboard
 import { castingService } from '../services/castingService';
@@ -137,6 +155,7 @@ const CandidateManagementPanel = lazy(() => import('./CandidateManagementPanel')
 const DashboardPanel = lazy(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
 const AuditionSchedulePanel = lazy(() => import('./AuditionSchedulePanel').then(m => ({ default: m.AuditionSchedulePanel })));
 const SharingPanel = lazy(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
+const LiveSetMode = lazy(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -267,6 +286,7 @@ const TAB_IDS = [
   'tabpanel-shot-lists',
   'tabpanel-story-arc-studio',
   'tabpanel-deling',
+  'tabpanel-live-set',
 ];
 
 const TabPanel = memo(function TabPanel({ children, value, index }: TabPanelProps) {
@@ -464,6 +484,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
   
   const [activeTab, setActiveTab] = useState(0);
   const [storyArcView, setStoryArcView] = useState<'main' | 'story-logic' | 'story-writer'>('main');
+  const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
   const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew'>('production');
   const [projects, setProjects] = useState<CastingProject[]>([]);
   const [currentProject, setCurrentProject] = useState<CastingProject | null>(null);
@@ -568,6 +589,20 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       if (updated) setCurrentProject(updated);
     }
   }, [currentProject?.id]);
+
+  // Story Logic → Manuscript sync: capture story logic data when saved
+  const handleStoryLogicSave = useCallback((data: StoryLogicState) => {
+    setStoryLogicData(data);
+  }, []);
+
+  // Load story logic data when project changes
+  useEffect(() => {
+    if (currentProject?.id) {
+      storyLogicService.getStoryLogic(currentProject.id).then(data => {
+        if (data) setStoryLogicData(data);
+      }).catch(err => console.warn('Failed to load story logic:', err));
+    }
+  }, [currentProject?.id]);
   
   // Sort projects by updatedAt (most recent first) and limit to 4 for header
   const recentProjects = useMemo(() => {
@@ -617,17 +652,18 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
   // Tab colors and icons matching quick navigation design (will be adapted based on profession)
   const professionConfig = getProfessionConfig();
   const tabConfig = useMemo(() => [
-    { color: professionConfig?.color || '#8b5cf6', icon: DashboardIcon },
-    { color: '#f48fb1', icon: TheaterComedyIcon },
-    { color: professionConfig?.color || '#10b981', icon: RecentActorsIcon },
-    { color: '#ffb800', icon: InterpreterModeIcon },
-    { color: '#00d4ff', icon: GroupsIcon },
-    { color: '#4caf50', icon: LocationIcon },
-    { color: '#ff9800', icon: PropIcon },
-    { color: '#9c27b0', icon: CalendarIcon },
-    { color: professionConfig?.color || '#e91e63', icon: ShotListIcon },
-    { color: '#ec4899', icon: StoryArcIcon },
-    { color: '#06b6d4', icon: ShareIcon },
+    { color: professionConfig?.color || '#8b5cf6', icon: DashboardTabIcon },
+    { color: '#f48fb1', icon: RolesTabIcon },
+    { color: professionConfig?.color || '#10b981', icon: CandidatesTabIcon },
+    { color: '#ffb800', icon: AuditionsTabIcon },
+    { color: '#00d4ff', icon: TeamTabIcon },
+    { color: '#4caf50', icon: LocationsTabIcon },
+    { color: '#9333ea', icon: EquipmentTabIcon },
+    { color: '#9c27b0', icon: CalendarTabIcon },
+    { color: professionConfig?.color || '#e91e63', icon: ShotListTabIcon },
+    { color: '#ec4899', icon: StoryArcTabIcon },
+    { color: '#06b6d4', icon: SharingTabIcon },
+    { color: '#ef4444', icon: LiveSetTabIcon },
   ], [professionConfig?.color]);
 
   // Quick navigation links for SpeedDial - matching tabConfig icons and colors
@@ -662,7 +698,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     { 
       title: branding.tokens.labels.equipment, 
       description: branding.tokens.labels.equipmentDescription, 
-      color: tabConfig[6].color, // #ff9800
+      color: tabConfig[6].color, // #9333ea
       icon: tabConfig[6].icon, // PropIcon
       tabIndex: 6,
       badge: currentProject?.props?.length || 0,
@@ -1766,8 +1802,8 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     aria-label={branding.tokens.labels.resetDemoDataLabel}
                     title={branding.tokens.labels.resetDemoDataLabel}
                     sx={{
-                      color: '#ff9800',
-                      '&:hover': { bgcolor: 'rgba(255,152,0,0.1)' },
+                      color: '#9333ea',
+                      '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
                     }}
                   >
                     <RefreshIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
@@ -1965,6 +2001,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               profession ? getTerm('shotList') : branding.tokens.labels.shotList,
               branding.tokens.labels.storyArcStudio,
               branding.tokens.labels.sharing,
+              'Live Set',
             ];
             const tabIds = [
               'tab-oversikt',
@@ -1978,6 +2015,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               'tab-shot-lists',
               'tab-story-arc-studio',
               'tab-deling',
+              'tab-live-set',
             ];
             const tabPanelIds = [
               'tabpanel-oversikt',
@@ -1991,6 +2029,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               'tabpanel-shot-lists',
               'tabpanel-story-arc-studio',
               'tabpanel-deling',
+              'tabpanel-live-set',
             ];
             
             return (
@@ -2238,7 +2277,18 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             {currentProject && (
               <>
                 <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-                <OffersContractsPanel projectId={currentProject.id} />
+                <OffersContractsPanel
+                  projectId={currentProject.id}
+                  candidates={currentProject.candidates}
+                  roles={currentProject.roles}
+                  onCandidateStatusChange={async (candidateId, status) => {
+                    const candidate = currentProject.candidates.find(c => c.id === candidateId);
+                    if (candidate) {
+                      await castingService.saveCandidate(currentProject.id, { ...candidate, status: status as Candidate['status'] });
+                      await loadProjects();
+                    }
+                  }}
+                />
               </>
             )}
           </Box>
@@ -2403,7 +2453,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <InventoryIcon sx={{ color: '#ff9800', fontSize: 22 }} />
+                  <InventoryIcon sx={{ color: '#9333ea', fontSize: 22 }} />
                   <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                     {branding.tokens.labels.propsHeaderLabel}
                   </Typography>
@@ -2717,7 +2767,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     <CircularProgress size={32} sx={{ color: '#8b5cf6' }} />
                   </Box>
                 }>
-                  <StoryLogicPanel projectId={currentProject?.id} />
+                  <StoryLogicPanel projectId={currentProject?.id} onSave={handleStoryLogicSave} />
                 </Suspense>
               </Box>
             </Box>
@@ -2756,6 +2806,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     <ManuscriptPanel
                       projectId={currentProject?.id}
                       onManuscriptChange={handleManuscriptChange}
+                      storyLogicData={storyLogicData}
                     />
                   </Suspense>
                 </ErrorBoundary>
@@ -2777,6 +2828,15 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               onOpenSharingDialog={() => setSharingDialogOpen(true)}
             />
           )}
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={11}>
+          <LiveSetMode
+            projectId={currentProject?.id ?? ''}
+            projectName={currentProject?.title ?? undefined}
+            shootingDay={new Date().toLocaleDateString('no-NO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            onExit={() => setActiveTab(0)}
+          />
         </TabPanel>
         </Suspense>
         </ErrorBoundary>
@@ -4530,14 +4590,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               width: 48,
               height: 48,
               borderRadius: '50%',
-              bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? 'rgba(255, 152, 0, 0.15)' : 'rgba(255, 68, 68, 0.15)',
+              bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? 'rgba(147, 51, 234, 0.15)' : 'rgba(255, 68, 68, 0.15)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
             {confirmDeleteContext?.id === '__reset_demo__' ? (
-              <RefreshIcon sx={{ fontSize: 28, color: '#ff9800' }} />
+              <RefreshIcon sx={{ fontSize: 28, color: '#9333ea' }} />
             ) : (
               <DeleteIcon sx={{ fontSize: 28, color: '#ff4444' }} />
             )}
@@ -4609,14 +4669,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             variant="contained"
             startIcon={confirmDeleteContext?.id === '__reset_demo__' ? <RefreshIcon /> : <DeleteIcon />}
             sx={{
-              bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? '#ff9800' : '#ff4444',
+              bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? '#9333ea' : '#ff4444',
               color: '#fff',
               textTransform: 'none',
               px: 3,
               py: 1,
               fontWeight: 600,
               '&:hover': {
-                bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? '#f57c00' : '#ff3333',
+                bgcolor: confirmDeleteContext?.id === '__reset_demo__' ? '#6d28d9' : '#ff3333',
               },
             }}
           >

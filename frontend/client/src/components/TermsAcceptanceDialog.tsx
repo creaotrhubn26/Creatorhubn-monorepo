@@ -24,13 +24,13 @@ import {
   Checkbox,
   FormControlLabel,
   Fade,
-  Backdrop
+  Backdrop,
 } from '@mui/material';
 import {
   Gavel,
   Close,
   CheckCircle,
-  Warning
+  Warning,
 } from '@mui/icons-material';
 
 interface TermsAcceptanceDialogProps {

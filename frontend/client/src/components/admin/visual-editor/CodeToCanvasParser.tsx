@@ -184,7 +184,7 @@ export class CodeToCanvasParser {
     const tagName = element.tagName.toLowerCase();
 
     // Skip script, style, and meta tags
-    if (['script','style','meta','link','head'].includes(tagName) {
+    if (['script','style','meta','link','head'].includes(tagName)) {
       return;
     }
 
@@ -230,10 +230,10 @@ export class CodeToCanvasParser {
   private getJSXElementName(
     name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName,
   ): string | null {
-    if (t.isJSXIdentifier(name) {
+    if (t.isJSXIdentifier(name)) {
       return name.name;
     }
-    if (t.isJSXMemberExpression(name) {
+    if (t.isJSXMemberExpression(name)) {
       // Handle cases like <Box.Item>
       return this.getJSXElementName(name.property);
     }
@@ -248,8 +248,8 @@ export class CodeToCanvasParser {
     const styles: Record<string, unknown> = {};
 
     attributes.forEach((attr) => {
-      if (!t.isJSXAttribute(attr) return;
-      if (!t.isJSXIdentifier(attr.name) return;
+      if (!t.isJSXAttribute(attr)) return;
+      if (!t.isJSXIdentifier(attr.name)) return;
 
       const name = attr.name.name;
       const value = this.extractJSXAttributeValue(attr.value);
@@ -272,31 +272,31 @@ export class CodeToCanvasParser {
   private extractJSXAttributeValue(value: t.JSXAttribute['value']): string | number | boolean | Record<string, unknown> | null {
     if (!value) return true;
 
-    if (t.isStringLiteral(value) {
+    if (t.isStringLiteral(value)) {
       return value.value;
     }
 
-    if (t.isJSXExpressionContainer(value) {
+    if (t.isJSXExpressionContainer(value)) {
       const expr = value.expression;
 
-      if (t.isStringLiteral(expr) {
+      if (t.isStringLiteral(expr)) {
         return expr.value;
       }
-      if (t.isNumericLiteral(expr) {
+      if (t.isNumericLiteral(expr)) {
         return expr.value;
       }
-      if (t.isBooleanLiteral(expr) {
+      if (t.isBooleanLiteral(expr)) {
         return expr.value;
       }
-      if (t.isObjectExpression(expr) {
+      if (t.isObjectExpression(expr)) {
         // Parse style objects
         const obj: Record<string, unknown> = {};
         expr.properties.forEach((prop) => {
-          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key) {
+          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
             const key = prop.key.name;
-            if (t.isStringLiteral(prop.value) {
+            if (t.isStringLiteral(prop.value)) {
               obj[key] = prop.value.value;
-            } else if (t.isNumericLiteral(prop.value) {
+            } else if (t.isNumericLiteral(prop.value)) {
               obj[key] = prop.value.value;
             }
           }
@@ -319,10 +319,10 @@ export class CodeToCanvasParser {
     let text = '';
 
     children.forEach((child) => {
-      if (t.isJSXText(child) {
+      if (t.isJSXText(child)) {
         text += child.value.trim();
-      } else if (t.isJSXExpressionContainer(child) {
-        if (t.isStringLiteral(child.expression) {
+      } else if (t.isJSXExpressionContainer(child)) {
+        if (t.isStringLiteral(child.expression)) {
           text += child.expression.value;
         }
       }
@@ -385,12 +385,12 @@ export class CodeToCanvasParser {
     const tagLower = tag.toLowerCase();
 
     if (tagLower === 'button') return 'button';
-    if (['p','span','h1','h2','h3','h4','h5', 'h6','label'].includes(tagLower)
+    if (['p','span','h1','h2','h3','h4','h5', 'h6','label'].includes(tagLower))
       return 'text';
     if (tagLower === 'img') return 'image';
-    if (['section', 'article', 'aside', 'nav', 'main', 'header','footer'].includes(tagLower)
+    if (['section', 'article', 'aside', 'nav', 'main', 'header','footer'].includes(tagLower))
       return 'container';
-    if (['ul', 'ol', 'dl'].includes(tagLower) return 'container';
+    if (['ul', 'ol', 'dl'].includes(tagLower)) return 'container';
     if (tagLower === 'audio') return 'audio';
     if (tagLower === 'video') return 'video';
     if (tagLower === 'div') return 'card';
@@ -403,7 +403,7 @@ export class CodeToCanvasParser {
    * Convert CSS property to camelCase
    */
   private cssPropToCamelCase(prop: string): string {
-    return prop.replace(/-([a-z])/g, (g) => g[1].toUpperCase();
+    return prop.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
   }
 
   /**

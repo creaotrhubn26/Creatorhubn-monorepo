@@ -30,7 +30,7 @@ import {
   BugReport,
   NewReleases,
   Compare,
-  PlayArrowlistAddCheck,
+  PlaylistAddCheck as PlayArrowlistAddCheck,
 } from '@mui/icons-material';
 
 interface FirmwareInfo {
@@ -437,7 +437,7 @@ export default function FirmwareInfoDialog({
           <Button onClick={handleMarkAsUpdated}
             variant="contained"
             disabled={isMarking}
-            startIcon={isMarking ? <CircularProgress size={16} sx={theming.getThemedButtonSx()}> : <Check />}
+            startIcon={isMarking ? <CircularProgress size={16} sx={theming.getThemedButtonSx()} /> : <Check />}
             sx={{ ml:  1 }}
           >
             {isMarking ? 'Markerer...' : 'Marker som oppdatert'}

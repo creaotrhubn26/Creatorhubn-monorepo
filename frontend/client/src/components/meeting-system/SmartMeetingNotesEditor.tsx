@@ -4,7 +4,6 @@ import {
   Card as MuiCard,
   CardContent,
   CardHeader,
-  CardTitle,
   Button,
   TextField,
   Typography,
@@ -40,12 +39,12 @@ import {
   Assignment,
   ExpandMore,
   SmartToy,
-  GoogleIcon,
-  Drive,
+  Google as GoogleIcon,
+  CloudQueue as Drive,
   Event,
   Notes,
   TrendingUp as TimelineIcon,
-  Wedding,
+  Favorite as Wedding,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

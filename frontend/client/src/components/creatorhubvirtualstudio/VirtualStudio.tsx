@@ -99,7 +99,15 @@ import { AreaLightPanel } from './src/components/panels/AreaLightPanel';
 import { RenderingSettingsPanel } from './src/components/panels/RenderingSettingsPanel';
 import { useAnimationStore } from './src/state/animationStore';
 import { integrationService } from './src/services/integrations';
-import { Alert, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import {
+  Alert,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+} from '@mui/material';
 import {
   useVirtualStudioIntegration,
   exposeMasterIntegration,

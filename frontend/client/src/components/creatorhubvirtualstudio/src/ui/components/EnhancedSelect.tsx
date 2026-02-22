@@ -5,7 +5,13 @@
  */
 
 import React from 'react';
-import { Select, SelectProps, MenuItem, FormControl, InputLabel } from '@mui/material';
+import {
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+} from '@mui/material';
+import type { SelectProps } from '@mui/material/Select';
 import { colors, borderRadius, transitions } from '../../styles/designTokens';
 
 export interface EnhancedSelectProps extends SelectProps {

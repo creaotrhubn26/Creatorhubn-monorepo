@@ -27,7 +27,7 @@ import {
   Badge,
   Alert,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Mic,
@@ -40,7 +40,7 @@ import {
   Group,
   HeadsetMic,
   Psychology,
-  ExpandMore
+  ExpandMore,
 } from '@mui/icons-material';
 
 interface CollaborationToolsProps {

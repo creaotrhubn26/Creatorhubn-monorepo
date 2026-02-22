@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Box, Button, Typography } from'@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 
 export default function ImageResultExporter() {
   const exportImg = () => alert('Export rendered image not yet implemented.');

@@ -35,7 +35,7 @@ import {
   Tooltip,
   Fab,
   Stack,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -55,7 +55,7 @@ import {
   Settings as SettingsIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 

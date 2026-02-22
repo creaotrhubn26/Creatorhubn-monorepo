@@ -5,7 +5,18 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Chip, Paper, Tooltip, IconButton, Collapse, Button, CircularProgress, Alert } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Chip,
+  Paper,
+  Tooltip,
+  IconButton,
+  Collapse,
+  Button,
+  CircularProgress,
+  Alert,
+} from '@mui/material';
 import {
   Lightbulb as LightIcon,
   TipsAndUpdates as TipIcon,

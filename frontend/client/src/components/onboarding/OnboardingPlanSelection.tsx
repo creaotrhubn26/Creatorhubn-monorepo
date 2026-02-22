@@ -27,7 +27,7 @@ import {
   Star,
   TrendingUp,
   Security,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import { usePlatformPricing } from '../../services/PlatformPricingService';
 import type { PlatformSubscriptionPlan } from '../../services/PlatformPricingService';

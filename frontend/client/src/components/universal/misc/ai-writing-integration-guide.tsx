@@ -1,9 +1,25 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
-import { Card as MuiCard, CardContent, CardHeader, Typography } from '@mui/material';
+import {
+  Card as MuiCard,
+  CardContent,
+  CardHeader,
+  Typography,
+} from '@mui/material';
 import { Badge } from "@/components/material-ui"
 import { Button } from "@/components/material-ui"
-import { AutoAwesome as AutoAwesome, Message, Description, PhotoCamera, Videocam, LibraryMusic, Group, SettingsOutlined, Language, FlashOn } from '@mui/icons-material';
+import {
+  AutoAwesome as AutoAwesome,
+  Message,
+  Description,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Group,
+  SettingsOutlined,
+  Language,
+  FlashOn,
+} from '@mui/icons-material';
 import { useLanguage } from '@/hooks/use-language';
 interface IntegrationAreaProps { icon: React.ComponentType<{className?: string }>;
   description: string;
@@ -13,7 +29,7 @@ interface IntegrationAreaProps { icon: React.ComponentType<{className?: string }
 function IntegrationArea({ icon: Icon, title, description, features, status }: IntegrationAreaProps) {
   return (
     <MuiCard sx={{ 
-      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 1,191,36,0.2) 50%, rgba(2, 5, 5,255,255,0.95) 100%)',
+      background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(2, 5, 1,191,36,0.2) 50%, rgba(255,255,255,0.95) 100%)',
       backdropFilter: 'blur(16px)',
       border: '1px solid rgba(21,191,36,0.5)',
       borderRadius: 2 }}>

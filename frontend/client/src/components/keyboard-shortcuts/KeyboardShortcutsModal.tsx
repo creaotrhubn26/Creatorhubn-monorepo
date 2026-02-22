@@ -14,7 +14,7 @@ import {
   Box,
   Typography,
   Fade,
-  Backdrop
+  Backdrop,
 } from '@mui/material';
 import {
   Close,
@@ -22,7 +22,7 @@ import {
   PhotoCamera,
   Videocam,
   LibraryMusic,
-  Business
+  Business,
 } from '@mui/icons-material';
 import UniversalKeyboardShortcuts from './UniversalKeyboardShortcuts';
 
@@ -81,7 +81,7 @@ const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       PaperProps={{
         sx: {
           borderRadius: 3,
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,255,255,0.9) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(25,255,255,0.2)',
           boxShadow: '0 20px 40px rgba(0,0,0,0.15)',

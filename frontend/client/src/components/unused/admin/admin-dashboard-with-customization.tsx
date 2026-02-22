@@ -2,25 +2,25 @@
 // This file is in the unused directory and may have outdated imports
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Card as MuiCard, 
-  CardContent, 
-  Typography, 
+import {
+  Box,
+  Card as MuiCard,
+  CardContent,
+  Typography,
   Button,
   Alert,
   CircularProgress,
-  Grid
+  Grid,
 } from '@mui/material';
-import { 
-  SettingsOutlined, 
-  Security, 
-  Group, 
-  Store, 
-  BarChart, 
+import {
+  SettingsOutlined,
+  Security,
+  Group,
+  Store,
+  BarChart,
   Warning,
-  TrendingUp as TimelineIcon 
-} from "@mui/icons-material";
+  TrendingUp as TimelineIcon,
+} from '@mui/icons-material';
 import { useQuery } from "@tanstack/react-query";
 
 export default function AdminDashboardWithCustomization() {

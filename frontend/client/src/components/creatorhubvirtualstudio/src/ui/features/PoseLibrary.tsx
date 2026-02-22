@@ -1,26 +1,26 @@
 import * as React from 'react';
-import { 
-  Box, 
-  Button, 
-  Grid, 
-  Typography, 
-  Tabs, 
-  Tab, 
+import {
+  Box,
+  Button,
+  Grid,
+  Typography,
+  Tabs,
+  Tab,
   Card,
   CardActionArea,
   CardContent,
   Chip,
   Stack,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
-import { 
-  Person, 
-  Accessibility, 
-  Chair, 
+import {
+  Person,
+  Accessibility,
+  Chair,
   DirectionsRun,
   Face,
   Business,
-  Mood
+  Mood,
 } from '@mui/icons-material';
 import { POSE_PRESETS, PosePreset } from '../../core/animations/ActorAnimations';
 

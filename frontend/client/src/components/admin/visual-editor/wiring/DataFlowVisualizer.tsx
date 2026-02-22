@@ -31,7 +31,7 @@ import {
   SkipNext,
   Refresh,
   Timeline,
-  Speed,
+  Speed as Speed,
   BugReport,
   Visibility,
   VisibilityOff,

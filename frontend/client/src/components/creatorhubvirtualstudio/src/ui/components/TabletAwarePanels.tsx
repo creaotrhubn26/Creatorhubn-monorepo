@@ -12,9 +12,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Slider,
-  SliderProps,
   IconButton,
-  IconButtonProps,
   Typography,
   Paper,
   Tooltip,
@@ -23,6 +21,8 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
+import type { SliderProps } from '@mui/material/Slider';
+import type { IconButtonProps } from '@mui/material/IconButton';
 import { useTabletSupport } from '../../providers/TabletSupportProvider';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 

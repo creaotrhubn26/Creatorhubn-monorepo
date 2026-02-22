@@ -5,7 +5,16 @@
  */
 
 import React from 'react';
-import { Box, Card, CardContent, Typography, Grid, Stack, Divider, Paper } from '@mui/material';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Stack,
+  Divider,
+  Paper,
+} from '@mui/material';
 import {
   EmojiEvents,
   Star,

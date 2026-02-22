@@ -67,7 +67,7 @@ import {
   Instagram,
   YouTube,
   AspectRatio,
-  Speed,
+  Speed as Speed,
   Timer,
   Storage,
   CloudUpload,

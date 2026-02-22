@@ -9,7 +9,16 @@
  */
 
 import React, { useRef, useEffect, useState } from 'react';
-import { Box, ButtonGroup, Button, Tooltip, Paper, Typography, Stack, Chip } from '@mui/material';
+import {
+  Box,
+  ButtonGroup,
+  Button,
+  Tooltip,
+  Paper,
+  Typography,
+  Stack,
+  Chip,
+} from '@mui/material';
 import {
   BarChart as HistogramIcon,
   Straighten as ZebraIcon,
@@ -117,7 +126,7 @@ function HistogramDisplay({ canvas }: { canvas: HTMLCanvasElement | null }) {
         const y = height - (histogram.luma[i] / maxVal) * height;
         histCtx.lineTo(x, y);
       }
-      histCtx.strokeStyle = 'rgba(2, 5, 5, 255, 255, 0.8)';
+      histCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
       histCtx.lineWidth = 1.5;
       histCtx.stroke();
 

@@ -1,33 +1,33 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  Grid, 
-  Chip, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Chip,
+  Alert,
   CircularProgress,
   Stack,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  SmartToy, 
-  CameraAlt, 
-  VideoLibrary, 
-  AutoFixHigh, 
-  ColorLens, 
-  Speed, 
-  PlayArrow, 
+import {
+  SmartToy,
+  CameraAlt,
+  VideoLibrary,
+  AutoFixHigh,
+  ColorLens,
+  Speed as Speed,
+  PlayArrow,
   Stop,
   Download,
-  Refresh
+  Refresh,
 } from '@mui/icons-material';
 
 interface AiTool {

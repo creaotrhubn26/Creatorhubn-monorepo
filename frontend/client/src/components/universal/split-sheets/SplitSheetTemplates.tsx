@@ -26,14 +26,14 @@ import {
   IconButton,
   Alert,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Star as StarIcon,
   Public as PublicIcon,
-  Person as PersonIcon
+  Person as PersonIcon,
 } from '@mui/icons-material';
 
 import type { SplitSheetContributor, ContributorRole } from './types';

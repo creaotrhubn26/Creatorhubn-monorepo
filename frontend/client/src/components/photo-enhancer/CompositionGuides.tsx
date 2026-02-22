@@ -19,7 +19,7 @@ import {
   Divider,
   Paper,
   Button,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   GridOn,
@@ -36,7 +36,7 @@ import {
   Redo,
   Save,
   PhotoLibrary,
-  AutoFixHigh
+  AutoFixHigh,
 } from '@mui/icons-material';
 import { mat4, vec2 } from 'gl-matrix';
 import { create } from 'zustand';
@@ -304,8 +304,8 @@ class GuidePathGenerator {
         type: 'rect',
         x: safeMargin,
         y: safeMargin,
-        width: width - safeMargin *, 2,
-        height: height - safeMargin *, 2,
+        width: width - safeMargin * 2,
+        height: height - safeMargin * 2,
         stroke: true
   }
     ];

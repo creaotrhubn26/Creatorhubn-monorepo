@@ -107,7 +107,11 @@ export interface AIContext {
   frameworkVersion?: string;
   // 📸 Vision context (AI Vision integration)
   visualContext?: {
-    imageAnalysis?: Record<string, unknown>; // PhotoAnalysis from ai-vision-service
+    imageAnalysis?: {
+      scene?: { type?: string; lighting?: string };
+      objects?: Array<{ label: string }>;
+      composition?: { ruleOfThirds?: boolean };
+    };
     detectedComponents?: string[];
     layoutType?: 'grid' | 'flex' | 'absolute' | 'stack';
     colorScheme?: 'light' | 'dark' | 'vibrant';
@@ -127,6 +131,13 @@ const DEFAULT_CONFIG: AICompletionConfig = {
   maxContextFiles: 10,
   useTeamKey: false,
 };
+
+interface AICallResponse {
+  code?: string;
+  explanation?: string;
+  confidence?: number;
+  suggestions?: Array<{ title?: string; code?: string; description?: string; confidence?: number }>;
+}
 
 const AI_MODELS = {
   openai: ['gpt-5-nano','gpt-4o','gpt-4-turbo','gpt-4','gpt-3.5-turbo'],
@@ -210,7 +221,9 @@ export class AICodeCompletionEngine {
           try {
             const parsed = typeof v === 'string' ? JSON.parse(v) : v;
             if (parsed && parsed[teamId]) this.apiKey = parsed[teamId];
-          } catch {}
+          } catch (parseErr) {
+            console.warn('Failed to parse team API keys:', parseErr);
+          }
         }
       })
       .catch((err: unknown) => console.error('Request failed:', err));
@@ -241,7 +254,7 @@ export class AICodeCompletionEngine {
       teamKeys[teamId] = key;
       // Mirror to server KV
       fetch('/api/user/kv', {
-        method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: 'ai_team_keys', value: teamKeys })
       }).catch((err: unknown) => console.error('Request failed:', err));
       localStorage.setItem('ai_team_keys', JSON.stringify(teamKeys));
@@ -250,7 +263,7 @@ export class AICodeCompletionEngine {
       const permissions = JSON.parse(localStorage.getItem('ai_team_permissions') || '{},');
       permissions[teamId] = { role, canEdit: role === 'admin' };
       fetch('/api/user/kv', {
-        method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: 'ai_team_permissions', value: permissions })
       }).catch((err: unknown) => console.error('Request failed:', err));
       localStorage.setItem('ai_team_permissions', JSON.stringify(permissions));
@@ -266,7 +279,7 @@ export class AICodeCompletionEngine {
     this.apiKey = key;
     // Mirror to server KV
     fetch('/api/user/kv', {
-      method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'ai_api_key', value: key })
     }).catch((err: unknown) => console.error('Request failed:', err));
     localStorage.setItem('ai_api_key', key);
@@ -364,7 +377,7 @@ export class AICodeCompletionEngine {
       suggestion: 'Component generated',
       code: response.code || '',
       description: description,
-      confidence: response.confidence || 0.9
+      confidence: response.confidence || 0.9,
       timestamp: Date.now(),
       metadata: {
         language: context.language,
@@ -382,7 +395,7 @@ export class AICodeCompletionEngine {
    * Get refactoring suggestions
    */
   async suggestRefactoring(context: AIContext): Promise<AICompletion[]> {
-    if (!this.isReady() {
+    if (!this.isReady()) {
       throw new Error('AI not configured. Please set API key.');
     }
 
@@ -390,13 +403,13 @@ export class AICodeCompletionEngine {
     const response = await this.callAI(prompt);
 
     const suggestions: AICompletion[] = (response.suggestions || []).map(
-      (sugg: Record<string, unknown>, idx: number) => ({
+      (sugg, idx: number) => ({
         id: `refactor-${Date.now()}-${idx}`,
-        type: 'refactor',
+        type: 'refactor' as const,
         suggestion: sugg.title || 'Refactoring suggestion',
         code: sugg.code || '',
         description: sugg.description || '',
-        confidence: sugg.confidence || 0.7
+        confidence: sugg.confidence || 0.7,
         timestamp: Date.now(),
         metadata: {
           language: context.language,
@@ -404,7 +417,7 @@ export class AICodeCompletionEngine {
       }),
     );
 
-    suggestions.forEach((s) => this.completionHistory.unshift(s);
+    suggestions.forEach((s) => this.completionHistory.unshift(s));
     this.notifyListeners();
 
     return suggestions;
@@ -414,7 +427,7 @@ export class AICodeCompletionEngine {
    * Explain code
    */
   async explainCode(context: AIContext): Promise<AICompletion> {
-    if (!this.isReady() {
+    if (!this.isReady()) {
       throw new Error('AI not configured. Please set API key.');
     }
 
@@ -427,7 +440,7 @@ export class AICodeCompletionEngine {
       suggestion: 'Code explanation',
       code: context.selectedText || context.currentCode,
       description: response.explanation || '',
-      confidence: 1.0
+      confidence: 1.0,
       timestamp: Date.now(),
     };
 
@@ -445,33 +458,33 @@ export class AICodeCompletionEngine {
     relatedFiles?: Array<{ path: string; content: string }>,
   ): string {
     // Check for React
-    if (code.includes('import React') || code.includes('useState') || code.includes('useEffect') {
+    if (code.includes('import React') || code.includes('useState') || code.includes('useEffect')) {
       return 'react';
     }
 
     // Check for Vue
-    if (code.includes('<template>') || code.includes('defineComponent') || code.includes('ref(') {
+    if (code.includes('<template>') || code.includes('defineComponent') || code.includes('ref(')) {
       return 'vue';
     }
 
     // Check for Angular
-    if (code.includes('@Component') || code.includes('@Injectable') || code.includes('NgModule') {
+    if (code.includes('@Component') || code.includes('@Injectable') || code.includes('NgModule')) {
       return 'angular';
     }
 
     // Check for Svelte
-    if (code.includes('<script context="module">') || code.includes('$:') {
+    if (code.includes('<script context="module">') || code.includes('$:')) {
       return 'svelte';
     }
 
     // Check related files for package.json
     if (relatedFiles) {
       for (const file of relatedFiles) {
-        if (file.path.includes('package.json') {
-          if (file.content.includes(', "react"') return 'react';
-          if (file.content.includes(', "vue"') return 'vue';
-          if (file.content.includes(', "@angular') return 'angular';
-          if (file.content.includes(', "svelte"') return 'svelte';
+        if (file.path.includes('package.json')) {
+          if (file.content.includes('"react"')) return 'react';
+          if (file.content.includes('"vue"')) return 'vue';
+          if (file.content.includes('"@angular')) return 'angular';
+          if (file.content.includes('"svelte"')) return 'svelte';
         }
       }
     }
@@ -506,7 +519,7 @@ export class AICodeCompletionEngine {
       visualContext = `\n\n### Visual Analysis Context (from uploaded design):\n`;
       visualContext += `- Scene: ${va.scene?.type || 'unknown'} with ${va.scene?.lighting || 'natural'} lighting\n`;
       visualContext += `- Layout: ${context.visualContext.layoutType || 'auto-detect'}\n`;
-      visualContext += `- Detected UI elements: ${va.objects?.map((o: unknown) => o.label).join(', ') || 'none'}\n`;
+      visualContext += `- Detected UI elements: ${va.objects?.map((o) => o.label).join(', ') || 'none'}\n`;
       visualContext += `- Composition: ${va.composition?.ruleOfThirds ? 'Balanced (rule of thirds)' : 'Centered'}\n`;
       visualContext += `- Color scheme: ${context.visualContext.colorScheme || 'inferred from design'}\n`;
       visualContext += `\nGenerate code that matches this visual design.\n`;
@@ -590,7 +603,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call AI API
    */
-  private async callAI(prompt: string, signal?: AbortSignal): Promise<unknown> {
+  private async callAI(prompt: string, signal?: AbortSignal): Promise<AICallResponse> {
     // Determine provider
     let provider = this.config.provider;
 
@@ -616,7 +629,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call local AI model (Ollama, LM Studio, etc.)
    */
-  private async callLocalModel(prompt: string, signal?: AbortSignal): Promise<unknown> {
+  private async callLocalModel(prompt: string, signal?: AbortSignal): Promise<AICallResponse> {
     // Get local model config (server-first)
     let localConfig: Record<string, unknown> = {};
     try {
@@ -639,7 +652,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
     if (localConfig.provider === 'ollama') {
       const response = await fetch(`${endpoint}/api/generate`, {
         method: 'POST',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model,
           prompt,
@@ -667,7 +680,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
     if (localConfig.provider === 'lmstudio') {
       const response = await fetch(`${endpoint}/v1/completions`, {
         method: 'POST',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model,
           prompt,
@@ -694,11 +707,11 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call OpenAI API
    */
-  private async callOpenAI(prompt: string, signal?: AbortSignal): Promise<unknown> {
+  private async callOpenAI(prompt: string, signal?: AbortSignal): Promise<AICallResponse> {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        , 'Content-Type': 'application/json',
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
@@ -737,11 +750,13 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call Anthropic API
    */
-  private async callAnthropic(prompt: string, signal?: AbortSignal): Promise<unknown> {
+  private async callAnthropic(prompt: string, signal?: AbortSignal): Promise<AICallResponse> {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        , 'Content-Type': 'application/json', 'x-api-key': this.apiKey as string'anthropic-version' : '2023-06-01',
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey as string,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: this.config.model,
@@ -819,11 +834,11 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
  * React Hook for AI Code Completion
  */
 export function useAICodeCompletion(config: Partial<AICompletionConfig> = {}) {
-  const engineRef = useRef(new AICodeCompletionEngine(config);
+  const engineRef = useRef(new AICodeCompletionEngine(config));
   const [completions, setCompletions] = useState<AICompletion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isConfigured, setIsConfigured] = useState(engineRef.current.isReady();
+  const [isConfigured, setIsConfigured] = useState(engineRef.current.isReady());
 
   useEffect(() => {
     const unsubscribe = engineRef.current.subscribe(setCompletions);
@@ -892,7 +907,7 @@ export function useAICodeCompletion(config: Partial<AICompletionConfig> = {}) {
 
   const setApiKey = useCallback((key: string) => {
     engineRef.current.setApiKey(key);
-    setIsConfigured(engineRef.current.isReady();
+    setIsConfigured(engineRef.current.isReady());
   }, []);
 
   const updateConfig = useCallback((newConfig: Partial<AICompletionConfig>) => {
@@ -927,3 +942,257 @@ export function useAICodeCompletion(config: Partial<AICompletionConfig> = {}) {
  * Singleton instance
  */
 export const aiCodeCompletionEngine = new AICodeCompletionEngine();
+
+/**
+ * AI Code Completion Panel - Visual UI for AI code completions
+ */
+interface AICodeCompletionPanelProps {
+  context?: AIContext;
+  onInsertCode?: (code: string) => void;
+}
+
+export const AICodeCompletionPanel: React.FC<AICodeCompletionPanelProps> = ({
+  context,
+  onInsertCode,
+}) => {
+  const {
+    completions,
+    isLoading,
+    error,
+    isConfigured,
+    getCompletions,
+    generateComponent,
+    suggestRefactoring,
+    explainCode,
+    setApiKey,
+    updateConfig,
+    clearHistory,
+    clearCache,
+  } = useAICodeCompletion();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState<string>('anthropic');
+  const [selectedModel, setSelectedModel] = useState<string>('claude-4.5-sonnet');
+  const [componentDescription, setComponentDescription] = useState('');
+  const [selectedCompletion, setSelectedCompletion] = useState<AICompletion | null>(null);
+
+  const handleGetCompletions = useCallback(async () => {
+    if (!context) return;
+    await getCompletions(context);
+  }, [context, getCompletions]);
+
+  const handleGenerateComponent = useCallback(async () => {
+    if (!context || !componentDescription.trim()) return;
+    await generateComponent(componentDescription, context);
+  }, [context, componentDescription, generateComponent]);
+
+  const handleRefactor = useCallback(async () => {
+    if (!context) return;
+    await suggestRefactoring(context);
+  }, [context, suggestRefactoring]);
+
+  const handleExplain = useCallback(async () => {
+    if (!context) return;
+    await explainCode(context);
+  }, [context, explainCode]);
+
+  const handleSaveSettings = useCallback(() => {
+    if (apiKeyInput.trim()) {
+      setApiKey(apiKeyInput.trim());
+    }
+    updateConfig({ provider: selectedProvider as AICompletionConfig['provider'], model: selectedModel });
+    setSettingsOpen(false);
+  }, [apiKeyInput, selectedProvider, selectedModel, setApiKey, updateConfig]);
+
+  const providerModels = AI_MODELS[selectedProvider as keyof typeof AI_MODELS] || [];
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 1 }}>
+      {/* Header */}
+      <Paper sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Psychology color="primary" />
+          <Typography variant="subtitle1" fontWeight={600}>AI Code Assistant</Typography>
+          <Chip
+            icon={isConfigured ? <CheckCircle /> : <Cancel />}
+            label={isConfigured ? 'Ready' : 'Not Configured'}
+            color={isConfigured ? 'success' : 'error'}
+            size="small"
+          />
+        </Box>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Tooltip title="Refresh completions">
+            <IconButton size="small" onClick={handleGetCompletions} disabled={isLoading}>
+              <Refresh />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Settings">
+            <IconButton size="small" onClick={() => setSettingsOpen(true)}>
+              <Settings />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Paper>
+
+      {/* Error / Loading */}
+      {error && <Alert severity="error" onClose={() => {}}>{error}</Alert>}
+      {isLoading && (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2, gap: 1 }}>
+          <CircularProgress size={20} />
+          <Typography variant="body2" color="text.secondary">AI is thinking...</Typography>
+        </Box>
+      )}
+
+      {/* Action Buttons */}
+      <Paper sx={{ p: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Tooltip title="Get code suggestions">
+            <Button size="small" variant="outlined" startIcon={<AutoAwesome />} onClick={handleGetCompletions} disabled={!isConfigured || isLoading}>
+              Complete
+            </Button>
+          </Tooltip>
+          <Tooltip title="Generate a component">
+            <Button size="small" variant="outlined" startIcon={<SmartToy />} onClick={handleGenerateComponent} disabled={!isConfigured || isLoading}>
+              Generate
+            </Button>
+          </Tooltip>
+          <Tooltip title="Suggest refactoring">
+            <Button size="small" variant="outlined" startIcon={<Lightbulb />} onClick={handleRefactor} disabled={!isConfigured || isLoading}>
+              Refactor
+            </Button>
+          </Tooltip>
+          <Tooltip title="Explain selected code">
+            <Button size="small" variant="outlined" startIcon={<Code />} onClick={handleExplain} disabled={!isConfigured || isLoading}>
+              Explain
+            </Button>
+          </Tooltip>
+        </Box>
+        <Divider sx={{ my: 1 }} />
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Describe component to generate..."
+          value={componentDescription}
+          onChange={(e) => setComponentDescription(e.target.value)}
+        />
+      </Paper>
+
+      {/* Completions List */}
+      <Paper sx={{ flex: 1, overflow: 'auto' }}>
+        <List dense>
+          {completions.length === 0 && (
+            <ListItem>
+              <ListItemText
+                primary="No completions yet"
+                secondary="Use the buttons above to get AI suggestions"
+              />
+            </ListItem>
+          )}
+          {completions.map((completion) => (
+            <ListItemButton
+              key={completion.id}
+              selected={selectedCompletion?.id === completion.id}
+              onClick={() => setSelectedCompletion(completion)}
+            >
+              <ListItemText
+                primary={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {completion.type === 'completion' && <AutoAwesome fontSize="small" color="primary" />}
+                    {completion.type === 'generate' && <SmartToy fontSize="small" color="secondary" />}
+                    {completion.type === 'refactor' && <Lightbulb fontSize="small" color="warning" />}
+                    {completion.type === 'explain' && <Code fontSize="small" color="info" />}
+                    <Typography variant="body2">{completion.suggestion}</Typography>
+                  </Box>
+                }
+                secondary={`${Math.round(completion.confidence * 100)}% confidence`}
+              />
+            </ListItemButton>
+          ))}
+        </List>
+      </Paper>
+
+      {/* Selected Completion Preview */}
+      {selectedCompletion && (
+        <Paper sx={{ p: 1.5, maxHeight: 200, overflow: 'auto' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="subtitle2">{selectedCompletion.suggestion}</Typography>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => onInsertCode?.(selectedCompletion.code)}
+            >
+              Insert Code
+            </Button>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {selectedCompletion.description}
+          </Typography>
+          <Box sx={{ bgcolor: 'grey.900', color: 'grey.100', p: 1, borderRadius: 1, fontFamily: 'monospace', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>
+            {selectedCompletion.code.substring(0, 500)}
+            {selectedCompletion.code.length > 500 && '...'}
+          </Box>
+        </Paper>
+      )}
+
+      {/* Clear buttons */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Button size="small" onClick={clearHistory}>Clear History</Button>
+        <Button size="small" onClick={clearCache}>Clear Cache</Button>
+      </Box>
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Settings color="primary" />
+            AI Settings
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="API Key"
+              type="password"
+              fullWidth
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder="sk-... or sk-ant-..."
+            />
+            <FormControl fullWidth>
+              <InputLabel>Provider</InputLabel>
+              <Select
+                value={selectedProvider}
+                label="Provider"
+                onChange={(e) => {
+                  setSelectedProvider(e.target.value);
+                  const models = AI_MODELS[e.target.value as keyof typeof AI_MODELS];
+                  if (models?.length) setSelectedModel(models[0]);
+                }}
+              >
+                <MenuItem value="anthropic">Anthropic (Claude)</MenuItem>
+                <MenuItem value="openai">OpenAI (GPT)</MenuItem>
+                <MenuItem value="local">Local Model</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth>
+              <InputLabel>Model</InputLabel>
+              <Select value={selectedModel} label="Model" onChange={(e) => setSelectedModel(e.target.value)}>
+                {providerModels.map((model: string) => (
+                  <MenuItem key={model} value={model}>{model}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Alert severity="info">
+              API keys are stored securely in your browser and synced to your account.
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveSettings}>Save</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};

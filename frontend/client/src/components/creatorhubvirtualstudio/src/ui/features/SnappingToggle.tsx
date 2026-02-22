@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { Box, FormControlLabel, Switch, Typography, Stack } from '@mui/material';
+import {
+  Box,
+  FormControlLabel,
+  Switch,
+  Typography,
+  Stack,
+} from '@mui/material';
 
 export default function SnappingToggle() {
   const [grid, setGrid] = React.useState(true);

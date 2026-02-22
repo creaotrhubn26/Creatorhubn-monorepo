@@ -303,23 +303,23 @@ export const TUTORIAL_CATEGORIES = {
     title: 'Google Integrasjon',
     description: 'Komplett økosystem for Google-tjenester',
     color: '#4285F4'
-}'profession-photography': {
+}, 'profession-photography': {
     title: 'Fotografi Verktø',
     description: 'Spesialiserte verktøy for fotografer',
     color: '#FF9800'
-}'profession-videography': {
+}, 'profession-videography': {
     title: 'Video Produksjon',
     description: 'Avanserte video editing og produksjon verktø',
     color: '#9C27B0'
-}'profession-music': {
+}, 'profession-music': {
     title: 'Musikk Produksjon',
     description: 'Audio produksjon og plugin management',
     color: '#FF5722'
-}'profession-vendor': {
+}, 'profession-vendor': {
     title: 'Forretning & Leverandø',
     description: 'Norsk forretningsoptimalisering og leverandør verktø',
     color: '#4CAF50'
-}'ai-tools': {
+}, 'ai-tools': {
     title: 'Intelligent-verktø',
     description: 'Kunstig intelligens for kreativ arbeid',
     color: '#FF9800'

@@ -22,7 +22,7 @@ import {
   Button,
   IconButton,
   Tooltip,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Monitor,
@@ -31,7 +31,7 @@ import {
   Security,
   TrendingUp,
   IntegrationInstructions,
-  Speed,
+  Speed as Speed,
   People,
   Refresh,
   Warning,
@@ -39,15 +39,13 @@ import {
   CheckCircle,
   Assessment,
   Memory,
-  Cpu,
-  HardDrive,
   CloudSync,
   VpnKey,
   BugReport,
   NetworkCheck,
   TimerOff,
   Feedback,
-  MonitorHeart
+  MonitorHeart,
 } from '@mui/icons-material';
 
 // Import existing monitoring components

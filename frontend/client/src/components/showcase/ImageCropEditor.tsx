@@ -12,7 +12,7 @@ import {
   Slider,
   IconButton,
   Grid,
-  Paper
+  Paper,
 } from '@mui/material';
 import {
   RotateLeft as RotateLeftIcon,
@@ -20,7 +20,7 @@ import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
   CenterFocusStrong as FocusIcon,
-  Crop as CropIcon
+  Crop as CropIcon,
 } from '@mui/icons-material';
 
 interface CropSettings {

@@ -15,14 +15,14 @@ import {
   Chip,
   Stack,
   Alert,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   ThumbUp,
   ThumbDown,
   Help,
   BugReport,
-  Close
+  Close,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -251,7 +251,7 @@ export function SmartInteractionTracker({ isEnabled }: SmartInteractionTrackerPr
       PaperProps={{
         sx: {
           borderRadius: '16px',
-          background: 'linear-gradient(145deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
           backdropFilter: 'blur(20px)',
           boxShadow: '0 20px 60px rgba(25,140,0,0.15)',
           border: '1px solid rgba(25,140,0,0.2)',

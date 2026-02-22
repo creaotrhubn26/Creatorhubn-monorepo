@@ -14,12 +14,9 @@ import {
   Typography,
   Box,
   Paper,
-  Alert
+  Alert,
 } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  Close as CloseIcon
-} from '@mui/icons-material';
+import { CheckCircle as CheckCircleIcon, Close as CloseIcon } from '@mui/icons-material';
 import type { SplitSheetContributor, SignatureData } from './types';
 
 interface SplitSheetSignatureDialogProps {

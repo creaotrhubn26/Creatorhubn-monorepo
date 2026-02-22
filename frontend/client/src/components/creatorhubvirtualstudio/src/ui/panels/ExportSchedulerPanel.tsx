@@ -65,7 +65,7 @@ import {
   Download,
   FolderOpen,
   Timer,
-  Speed,
+  Speed as Speed,
   HighQuality,
   VideoFile,
   Layers,

@@ -81,15 +81,25 @@ import {
   CheckBoxOutlineBlank as CheckboxOutlineIcon,
   Public as PublicIcon,
   Lock as LockIcon,
+  Assignment as CheckOutIcon,
+  AssignmentReturn as CheckInIcon,
+  Summarize as ReportIcon,
+  WifiOff as OfflineIcon,
+  Sync as SyncIcon,
+  AssignmentLate as MissingItemIcon,
 } from '@mui/icons-material';
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { 
   Equipment, 
   equipmentApi, 
   equipmentBookingsApi, 
-  equipmentAvailabilityApi, 
+  equipmentAvailabilityApi,
+  equipmentConflictsApi,
+  equipmentCheckoutApi,
   EquipmentBooking,
   EquipmentAvailability,
+  EquipmentConflict,
+  EquipmentCheckout,
   crewApi,
   locationsApi,
   CastingCrew,
@@ -106,7 +116,7 @@ const TOUCH_TARGET_SIZE = 44;
 
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #ff9800',
+    outline: '3px solid #9333ea',
     outlineOffset: 2,
   },
 };
@@ -160,6 +170,8 @@ const DEFAULT_CATEGORY_OPTIONS = [
 ];
 
 import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import equipPng from './icons/Keep/roleroom_equip.png';
 
 interface EquipmentManagementPanelProps {
   projectId: string;
@@ -221,12 +233,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [imageSearchLoading, setImageSearchLoading] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchControllerRef = useRef<AbortController | null>(null);
 
   const [crewMembers, setCrewMembers] = useState<CastingCrew[]>([]);
   const [locations, setLocations] = useState<CastingLocation[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedEquipmentForAssign, setSelectedEquipmentForAssign] = useState<Equipment | null>(null);
   const [selectedCrewId, setSelectedCrewId] = useState('');
+  const [bulkAssignCrewId, setBulkAssignCrewId] = useState('');
 
   const [bookingsDialogOpen, setBookingsDialogOpen] = useState(false);
   const [selectedEquipmentBookings, setSelectedEquipmentBookings] = useState<Equipment | null>(null);
@@ -312,12 +326,39 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [isDragging, setIsDragging] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
-  const handleAddCustomCategory = async () => {
-    if (newCategoryName.trim() && !allCategories.includes(newCategoryName.trim())) {
-      const updated = [...customCategories, newCategoryName.trim()];
-      setCustomCategories(updated);
-      await equipmentCategoriesService.saveCustomCategories(projectId, updated);
-      setFormData({ ...formData, category: newCategoryName.trim() });
+  // ── Check-in / Check-out ───────────────────────────────
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [checkoutEquipment, setCheckoutEquipment] = useState<Equipment | null>(null);
+  const [checkoutForm, setCheckoutForm] = useState({ crewId: '', quantity: 1, purpose: '' });
+  const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
+  const [checkinEquipment, setCheckinEquipment] = useState<Equipment | null>(null);
+  const [checkinForm, setCheckinForm] = useState<{ condition: Equipment['condition']; notes: string }>({ condition: 'good', notes: '' });
+  // Tracks all active (not yet checked-in) checkouts so we can resolve checkoutId for check-in
+  const [activeCheckouts, setActiveCheckouts] = useState<EquipmentCheckout[]>([]);
+
+  // ── Booking conflict warnings ──────────────────────────
+  const [bookingConflicts, setBookingConflicts] = useState<EquipmentConflict[]>([]);
+  const [conflictChecking, setConflictChecking] = useState(false);
+
+  // ── Reports ────────────────────────────────────────────
+  const [reportsDialogOpen, setReportsDialogOpen] = useState(false);
+  const [reportsTab, setReportsTab] = useState(0);
+
+  // ── Offline outbox — typed discriminated union ─────────
+  type OfflineCheckoutEntry = {
+    id: string; type: 'checkout'; ts: string;
+    payload: { equipmentId: string; crewId: string; quantity: number; purpose: string };
+  };
+  type OfflineCheckinEntry = {
+    id: string; type: 'checkin'; ts: string;
+    payload: { equipmentId: string; condition: Equipment['condition']; notes: string };
+  };
+  type OfflineEntry = OfflineCheckoutEntry | OfflineCheckinEntry;
+
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [offlineOutboxOpen, setOfflineOutboxOpen] = useState(false);
+  const [offlineQueue, setOfflineQueue] = useState<OfflineEntry[]>([]);
       setNewCategoryName('');
       setNewCategoryDialogOpen(false);
       showSuccess(`Kategori "${newCategoryName.trim()}" lagt til`);
@@ -331,25 +372,66 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     showSuccess(`Kategori "${category}" fjernet`);
   };
 
+  const loadActiveCheckouts = async () => {
+    try {
+      const data = await equipmentCheckoutApi.getActive(projectId);
+      setActiveCheckouts(Array.isArray(data) ? data : []);
+    } catch {
+      // Non-fatal: active checkout tracking is best-effort
+    }
+  };
+
   useEffect(() => {
     loadEquipment();
     loadCrewAndLocations();
     loadTemplates();
+    loadActiveCheckouts();
+  }, [projectId]);
+
+  // Multi-user realtime: poll every 30 s while online
+  useEffect(() => {
+    const onOnline  = () => { setIsOnline(true);  loadEquipment(); };
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online',  onOnline);
+    window.addEventListener('offline', onOffline);
+    const timer = setInterval(() => { if (navigator.onLine) loadEquipment(); }, 30_000);
+    return () => {
+      window.removeEventListener('online',  onOnline);
+      window.removeEventListener('offline', onOffline);
+      clearInterval(timer);
+    };
+  }, [projectId]);
+
+  // Offline outbox: restore queue from localStorage on mount / project change
+  useEffect(() => {
+    const raw = localStorage.getItem(`equipment_outbox_${projectId}`) ?? '[]';
+    try {
+      const q = JSON.parse(raw);
+      setOfflineQueue(q);
+      setOfflineQueueCount(q.length);
+    } catch {
+      setOfflineQueue([]);
+      setOfflineQueueCount(0);
+    }
   }, [projectId]);
 
   const loadEquipment = async () => {
     if (!projectId) return;
     setLoading(true);
+    let cancelled = false;
     try {
       const data = await equipmentApi.getAll(projectId);
-      setEquipment(Array.isArray(data) ? data : []);
+      if (!cancelled) setEquipment(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading equipment:', error);
-      showError('Kunne ikke laste utstyr');
-      setEquipment([]);
+      if (!cancelled) {
+        console.error('Error loading equipment:', error);
+        showError('Kunne ikke laste utstyr');
+        setEquipment([]);
+      }
     } finally {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+    return () => { cancelled = true; };
   };
 
   const loadCrewAndLocations = async () => {
@@ -388,9 +470,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  // Image search functions - Multi-source search
+  // Image search functions - Multi-source search via backend proxies (no keys in client)
   const searchImages = useCallback(async (query: string) => {
     if (!query.trim()) return;
+
+    // Cancel any previous in-flight search
+    searchControllerRef.current?.abort();
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const { signal } = controller;
+
     setImageSearchLoading(true);
     setImageSearchResults([]);
     
@@ -398,80 +487,78 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       const results: typeof imageSearchResults = [];
       const searchPromises: Promise<void>[] = [];
       
-      // 1. Pexels API - High quality professional photos
+      // 1. Pexels — via backend proxy (key stays server-side)
       searchPromises.push((async () => {
         try {
-          const pexelsKey = 'fJrDEkdGshhWRVqg2vbfChdB0tHv7YRqAPDT1RpORbmZNBIc8y2MJLGq';
           const response = await fetch(
-            `https://api.pexels.com/v1/search?query=${encodeURIComponent(query + ' equipment')}&per_page=8`,
-            { headers: { Authorization: pexelsKey } }
+            `/api/references/pexels/search?q=${encodeURIComponent(query)}&per_page=8`,
+            { signal }
           );
           if (response.ok) {
             const data = await response.json();
-            data.photos?.forEach((img: any) => {
+            (data.results || []).forEach((img: any) => {
               results.push({
-                id: `pexels-${img.id}`,
-                url: img.src.large,
-                thumbnailUrl: img.src.small,
-                description: img.alt || query,
+                id: img.id,
+                url: img.url,
+                thumbnailUrl: img.thumbnailUrl,
+                description: img.description || query,
                 photographer: img.photographer,
-                source: 'pexels',
+                source: img.source,
               });
             });
           }
-        } catch (e) {
-          console.error('Pexels search error:', e);
+        } catch (e: any) {
+          if (e?.name !== 'AbortError') console.error('Pexels search error:', e);
         }
       })());
 
-      // 2. Pixabay API - Free commercial use images
+      // 2. Pixabay — via backend proxy (key stays server-side)
       searchPromises.push((async () => {
         try {
-          const pixabayKey = '47201336-17af53d0215adf94b45dd99c2';
           const response = await fetch(
-            `https://pixabay.com/api/?key=${pixabayKey}&q=${encodeURIComponent(query)}&image_type=photo&per_page=8&safesearch=true`
+            `/api/references/pixabay/search?q=${encodeURIComponent(query)}&per_page=8`,
+            { signal }
           );
           if (response.ok) {
             const data = await response.json();
-            data.hits?.forEach((img: any) => {
+            (data.results || []).forEach((img: any) => {
               results.push({
-                id: `pixabay-${img.id}`,
-                url: img.largeImageURL,
-                thumbnailUrl: img.previewURL,
-                description: img.tags,
-                photographer: img.user,
-                source: 'pixabay',
+                id: img.id,
+                url: img.url,
+                thumbnailUrl: img.thumbnailUrl,
+                description: img.description || query,
+                photographer: img.photographer,
+                source: img.source,
               });
             });
           }
-        } catch (e) {
-          console.error('Pixabay search error:', e);
+        } catch (e: any) {
+          if (e?.name !== 'AbortError') console.error('Pixabay search error:', e);
         }
       })());
 
-      // 3. Unsplash API - High quality artistic photos
+      // 3. Unsplash — via backend proxy (key stays server-side)
       searchPromises.push((async () => {
         try {
-          const unsplashKey = 'ZcLn-MZQqBqDC-VdaHZ6rlnV3GEbBJvJJlsnIH9DOPI';
           const response = await fetch(
-            `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query + ' film production')}&per_page=8&orientation=landscape`,
-            { headers: { Authorization: `Client-ID ${unsplashKey}` } }
+            `/api/references/unsplash/search?q=${encodeURIComponent(query + ' film production')}&per_page=8&orientation=landscape`,
+            { signal }
           );
           if (response.ok) {
             const data = await response.json();
-            data.results?.forEach((img: any) => {
+            (data.results || []).forEach((img: any) => {
               results.push({
-                id: `unsplash-${img.id}`,
-                url: img.urls.regular,
-                thumbnailUrl: img.urls.thumb,
-                description: img.alt_description || img.description,
-                photographer: img.user?.name,
-                source: 'unsplash',
+                id: img.id,
+                url: img.url,
+                thumbnailUrl: img.thumbnailUrl,
+                description: img.description || query,
+                photographer: img.attribution,
+                source: img.source,
               });
             });
           }
-        } catch (e) {
-          console.error('Unsplash search error:', e);
+        } catch (e: any) {
+          if (e?.name !== 'AbortError') console.error('Unsplash search error:', e);
         }
       })());
 
@@ -576,7 +663,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     const file = event.target.files?.[0];
     if (!file) return;
     
-    // Convert to base64 data URL for preview and storage
+    // TODO: Replace base64 data-URL storage with signed-URL upload to object storage
+    //       (e.g. Supabase Storage / S3) to avoid bloating the database row.
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
@@ -768,20 +856,6 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  const handleDelete = async (eq: Equipment) => {
-    if (!confirm(`Er du sikker på at du vil slette "${eq.name}"?`)) return;
-    
-    try {
-      await equipmentApi.delete(eq.id);
-      showSuccess('Utstyr slettet');
-      loadEquipment();
-      onUpdate?.();
-    } catch (error) {
-      console.error('Error deleting equipment:', error);
-      showError('Kunne ikke slette utstyr');
-    }
-  };
-
   const handleOpenAssign = (eq: Equipment) => {
     setSelectedEquipmentForAssign(eq);
     setSelectedCrewId('');
@@ -906,18 +980,28 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     const ids = Array.from(selectedEquipmentIds);
     try {
       if (bulkActionType === 'delete') {
-        await Promise.all(ids.map(id => equipmentApi.delete(id)));
-        showSuccess(`${ids.length} utstyr slettet`);
+        const results = await Promise.allSettled(ids.map(id => equipmentApi.delete(id)));
+        const failed = results.filter(r => r.status === 'rejected').length;
+        const ok = ids.length - failed;
+        if (failed > 0) showError(`${ok} slettet, ${failed} feilet`);
+        else showSuccess(`${ok} utstyr slettet`);
       } else if (bulkActionType === 'status') {
-        await Promise.all(ids.map(id => equipmentApi.update(id, { status: bulkNewStatus })));
-        showSuccess(`Status oppdatert for ${ids.length} utstyr`);
+        const results = await Promise.allSettled(ids.map(id => equipmentApi.update(id, { status: bulkNewStatus })));
+        const failed = results.filter(r => r.status === 'rejected').length;
+        const ok = ids.length - failed;
+        if (failed > 0) showError(`${ok} oppdatert, ${failed} feilet`);
+        else showSuccess(`Status oppdatert for ${ok} utstyr`);
       } else if (bulkActionType === 'assign') {
-        if (selectedCrewId) {
-          await Promise.all(ids.map(id => equipmentApi.assign(id, selectedCrewId, 'responsible')));
-          showSuccess(`${ids.length} utstyr tilordnet`);
+        if (bulkAssignCrewId) {
+          const results = await Promise.allSettled(ids.map(id => equipmentApi.assign(id, bulkAssignCrewId, 'responsible')));
+          const failed = results.filter(r => r.status === 'rejected').length;
+          const ok = ids.length - failed;
+          if (failed > 0) showError(`${ok} tilordnet, ${failed} feilet`);
+          else showSuccess(`${ok} utstyr tilordnet`);
         }
       }
       setSelectedEquipmentIds(new Set());
+      setBulkAssignCrewId('');
       loadEquipment();
       onUpdate?.();
     } catch (error) {
@@ -965,13 +1049,39 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     reader.onload = async (e) => {
       try {
         const text = e.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim());
+
+        // RFC 4180-compliant CSV parser — handles quoted fields and embedded delimiters
+        const parseCSVRow = (line: string, delimiter = ';'): string[] => {
+          const result: string[] = [];
+          let field = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) {
+              if (ch === '"' && line[i + 1] === '"') { field += '"'; i++; }
+              else if (ch === '"') inQuotes = false;
+              else field += ch;
+            } else {
+              if (ch === '"') { inQuotes = true; }
+              else if (ch === delimiter) { result.push(field.trim()); field = ''; }
+              else field += ch;
+            }
+          }
+          result.push(field.trim());
+          return result;
+        };
+
+        // Auto-detect delimiter (semicolon vs comma)
+        const firstLine = text.split(/\r?\n/)[0] || '';
+        const delimiter = firstLine.includes(';') ? ';' : ',';
+
+        const lines = text.split(/\r?\n/).filter(line => line.trim());
         if (lines.length < 2) {
           showError('Filen er tom eller ugyldig');
           return;
         }
         
-        const headers = lines[0].split(';').map(h => h.replace(/"/g, '').trim().toLowerCase());
+        const headers = parseCSVRow(lines[0], delimiter).map(h => h.toLowerCase());
         const nameIdx = headers.findIndex(h => h.includes('navn'));
         const categoryIdx = headers.findIndex(h => h.includes('kategori'));
         const brandIdx = headers.findIndex(h => h.includes('merke'));
@@ -980,28 +1090,32 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         const quantityIdx = headers.findIndex(h => h.includes('antall'));
         const descIdx = headers.findIndex(h => h.includes('beskrivelse'));
         
+        const rowsToImport = lines.slice(1).map(line => parseCSVRow(line, delimiter));
+        const validRows = rowsToImport.filter(cols => nameIdx >= 0 && cols[nameIdx]);
+
+        // Batch creates in parallel (max concurrency avoids overwhelming the API)
+        const BATCH_SIZE = 10;
         let imported = 0;
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(';').map(c => c.replace(/"/g, '').trim());
-          const name = nameIdx >= 0 ? cols[nameIdx] : '';
-          if (!name) continue;
-          
-          await equipmentApi.create({
-            project_id: projectId,
-            name,
-            category: categoryIdx >= 0 ? cols[categoryIdx] : '',
-            brand: brandIdx >= 0 ? cols[brandIdx] : '',
-            model: modelIdx >= 0 ? cols[modelIdx] : '',
-            serial_number: serialIdx >= 0 ? cols[serialIdx] : '',
-            quantity: quantityIdx >= 0 ? parseInt(cols[quantityIdx]) || 1 : 1,
-            description: descIdx >= 0 ? cols[descIdx] : '',
-            status: 'available',
-            condition: 'good',
-          });
-          imported++;
+        for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+          const batch = validRows.slice(i, i + BATCH_SIZE);
+          const results = await Promise.allSettled(batch.map(cols =>
+            equipmentApi.create({
+              project_id: projectId,
+              name: cols[nameIdx],
+              category: categoryIdx >= 0 ? cols[categoryIdx] : '',
+              brand: brandIdx >= 0 ? cols[brandIdx] : '',
+              model: modelIdx >= 0 ? cols[modelIdx] : '',
+              serial_number: serialIdx >= 0 ? cols[serialIdx] : '',
+              quantity: quantityIdx >= 0 ? parseInt(cols[quantityIdx]) || 1 : 1,
+              description: descIdx >= 0 ? cols[descIdx] : '',
+              status: 'available',
+              condition: 'good',
+            })
+          ));
+          imported += results.filter(r => r.status === 'fulfilled').length;
         }
         
-        showSuccess(`${imported} utstyr importert`);
+        showSuccess(`${imported} av ${validRows.length} utstyr importert`);
         loadEquipment();
         onUpdate?.();
       } catch (error) {
@@ -1015,12 +1129,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   // 5. QR Code generation
   const generateQRCode = (eq: Equipment): string => {
-    // Generate a QR code URL using a public API
+    // Only embed the equipment's own identifiers — no project context to avoid data leaks
+    // via third-party QR service logs.
     const data = JSON.stringify({
       id: eq.id,
       name: eq.name,
       serial: eq.serial_number,
-      project: projectId,
     });
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`;
   };
@@ -1118,6 +1232,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       showError('Fyll inn start- og sluttdato');
       return;
     }
+    // Warn on conflicts but still allow creation (user-override flow)
+    if (bookingConflicts.length > 0) {
+      const ok = window.confirm(
+        `Det finnes ${bookingConflicts.length} konflikt(er) i denne perioden. Vil du opprette bookingen likevel?`
+      );
+      if (!ok) return;
+    }
     try {
       await equipmentBookingsApi.create(selectedEquipmentBookings.id, {
         start_date: bookingForm.startDate,
@@ -1127,8 +1248,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         status: 'pending',
       });
       showSuccess('Booking opprettet');
+      setBookingConflicts([]);
       setCreateBookingDialogOpen(false);
-      // Refresh bookings
       handleOpenBookings(selectedEquipmentBookings);
     } catch (error) {
       console.error('Booking creation error:', error);
@@ -1136,7 +1257,198 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
+  // Check for booking conflicts whenever both dates are filled
+  const checkBookingConflicts = async (startDate: string, endDate: string) => {
+    if (!selectedEquipmentBookings || !startDate || !endDate) {
+      setBookingConflicts([]);
+      return;
+    }
+    setConflictChecking(true);
+    try {
+      const { conflicts } = await equipmentConflictsApi.check(
+        selectedEquipmentBookings.id, startDate, endDate
+      );
+      setBookingConflicts(conflicts);
+    } catch {
+      setBookingConflicts([]);
+    } finally {
+      setConflictChecking(false);
+    }
+  };
+
+  // ── Check-out / Check-in ─────────────────────────────────
+  const OUTBOX_KEY = `equipment_outbox_${projectId}`;
+
+  const persistOfflineQueue = (q: OfflineEntry[]) => {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(q));
+    setOfflineQueue(q);
+    setOfflineQueueCount(q.length);
+  };
+
+  const handleOpenCheckout = (eq: Equipment) => {
+    setCheckoutEquipment(eq);
+    setCheckoutForm({ crewId: '', quantity: 1, purpose: '' });
+    setCheckoutDialogOpen(true);
+  };
+
+  const handleConfirmCheckout = async () => {
+    if (!checkoutEquipment || !checkoutForm.crewId) return;
+    const payload: OfflineCheckoutEntry['payload'] = {
+      equipmentId: checkoutEquipment.id,
+      crewId: checkoutForm.crewId,
+      quantity: checkoutForm.quantity,
+      purpose: checkoutForm.purpose,
+    };
+    if (!isOnline) {
+      const entry: OfflineCheckoutEntry = { id: crypto.randomUUID(), type: 'checkout', payload, ts: new Date().toISOString() };
+      persistOfflineQueue([...offlineQueue, entry]);
+      showSuccess('Lagret i offline-kø — synkroniseres når du er online');
+      setCheckoutDialogOpen(false);
+      return;
+    }
+    try {
+      // Create the checkout record via the proper API, which also sets equipment status
+      const checkout = await equipmentCheckoutApi.checkOut(checkoutEquipment.id, {
+        checked_out_to: checkoutForm.crewId,
+        quantity: checkoutForm.quantity,
+        purpose: checkoutForm.purpose,
+      });
+      // If backend doesn't update status automatically, do it explicitly
+      await equipmentApi.update(checkoutEquipment.id, { status: 'in_use' });
+      setActiveCheckouts(prev => [...prev, checkout]);
+      showSuccess(`${checkoutEquipment.name} sjekket ut`);
+      setCheckoutDialogOpen(false);
+      loadEquipment();
+    } catch {
+      // Fallback: update status directly if checkout API is not yet deployed
+      try {
+        await equipmentApi.update(checkoutEquipment.id, { status: 'in_use' });
+        await equipmentApi.assign(checkoutEquipment.id, checkoutForm.crewId, 'responsible');
+        showSuccess(`${checkoutEquipment.name} sjekket ut (lokal status)`);
+        setCheckoutDialogOpen(false);
+        loadEquipment();
+      } catch {
+        showError('Kunne ikke sjekke ut utstyr');
+      }
+    }
+  };
+
+  const handleOpenCheckin = (eq: Equipment) => {
+    setCheckinEquipment(eq);
+    setCheckinForm({ condition: eq.condition, notes: '' });
+    setCheckinDialogOpen(true);
+  };
+
+  const handleConfirmCheckin = async () => {
+    if (!checkinEquipment) return;
+    const payload: OfflineCheckinEntry['payload'] = {
+      equipmentId: checkinEquipment.id,
+      condition: checkinForm.condition,
+      notes: checkinForm.notes,
+    };
+    if (!isOnline) {
+      const entry: OfflineCheckinEntry = { id: crypto.randomUUID(), type: 'checkin', payload, ts: new Date().toISOString() };
+      persistOfflineQueue([...offlineQueue, entry]);
+      showSuccess('Lagret i offline-kø — synkroniseres når du er online');
+      setCheckinDialogOpen(false);
+      return;
+    }
+    // Find the active checkout record for this equipment
+    const activeCheckout = activeCheckouts.find(c => c.equipment_id === checkinEquipment.id);
+    try {
+      if (activeCheckout) {
+        // Use the proper check-in API with the real checkout ID
+        await equipmentCheckoutApi.checkIn(activeCheckout.id, {
+          condition_on_return: checkinForm.condition,
+          notes: checkinForm.notes || undefined,
+        });
+        setActiveCheckouts(prev => prev.filter(c => c.id !== activeCheckout.id));
+      }
+      // Always update equipment status and condition directly as well
+      await equipmentApi.update(checkinEquipment.id, {
+        status: 'available',
+        condition: checkinForm.condition,
+        notes: checkinForm.notes || undefined,
+      });
+      showSuccess(`${checkinEquipment.name} levert inn`);
+      setCheckinDialogOpen(false);
+      loadEquipment();
+    } catch {
+      showError('Kunne ikke sjekke inn utstyr');
+    }
+  };
+
+  /** Replay offline outbox when user is back online */
+  const handleSyncOfflineQueue = async () => {
+    if (!isOnline || offlineQueue.length === 0) return;
+    let ok = 0;
+    const failed: OfflineEntry[] = [];
+    for (const entry of offlineQueue) {
+      try {
+        if (entry.type === 'checkout') {
+          const { equipmentId, crewId, quantity, purpose } = entry.payload;
+          await equipmentCheckoutApi.checkOut(equipmentId, {
+            checked_out_to: crewId,
+            quantity,
+            purpose,
+          });
+          await equipmentApi.update(equipmentId, { status: 'in_use' });
+        } else {
+          const { equipmentId, condition, notes } = entry.payload;
+          // Try to find active checkout to record proper check-in
+          const checkout = activeCheckouts.find(c => c.equipment_id === equipmentId);
+          if (checkout) {
+            await equipmentCheckoutApi.checkIn(checkout.id, { condition_on_return: condition, notes: notes || undefined });
+          }
+          await equipmentApi.update(equipmentId, { status: 'available', condition });
+        }
+        ok++;
+      } catch {
+        failed.push(entry);
+      }
+    }
+    persistOfflineQueue(failed);
+    if (ok > 0) {
+      loadEquipment();
+      loadActiveCheckouts();
+    }
+    showSuccess(`Synkronisert ${ok} operasjon(er).${failed.length > 0 ? ` ${failed.length} feilet.` : ''}`);
+  };
+
+  // ── Reports ──────────────────────────────────────────────
+  const downloadCSV = (rows: string[][], filename: string) => {
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadGearList = () => {
+    const header = ['Navn', 'Kategori', 'Merke', 'Modell', 'Status', 'Tilstand', 'Antall', 'Serienummer', 'Ansvarlig'];
+    const rows = equipment.map(eq => [
+      eq.name, eq.category ?? '', eq.brand ?? '', eq.model ?? '',
+      STATUS_LABELS[eq.status] ?? eq.status,
+      CONDITION_LABELS[eq.condition] ?? eq.condition,
+      String(eq.quantity), eq.serial_number ?? '',
+      getCrewName(eq.assignees?.[0]?.crew_id ?? ''),
+    ]);
+    downloadCSV([header, ...rows], `gear-list-${projectId}.csv`);
+  };
+
+  const missingItems = useMemo(
+    () => equipment.filter(eq => eq.status === 'available' && !eq.assignees?.length),
+    [equipment]
+  );
+
+  const maintenanceItems = useMemo(
+    () => equipment.filter(eq => eq.status === 'maintenance' || eq.condition === 'needs_repair'),
+    [equipment]
+  );
+
   // 9. Form validation
+
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
     
@@ -1188,6 +1500,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     const files = e.dataTransfer.files;
     if (files.length > 0 && files[0].type.startsWith('image/')) {
       const file = files[0];
+      // TODO: Replace base64 data-URL storage with signed-URL upload to object storage
+      //       (e.g. Supabase Storage / S3) to avoid bloating the database row.
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
@@ -1220,10 +1534,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
     
     filtered.sort((a, b) => {
-      let aVal = a[sortField] || '';
-      let bVal = b[sortField] || '';
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      // Treat quantity as a number so that 0 sorts correctly (not as falsy empty string)
+      if (sortField === 'quantity') {
+        const aNum = typeof a.quantity === 'number' ? a.quantity : 0;
+        const bNum = typeof b.quantity === 'number' ? b.quantity : 0;
+        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      }
+      let aVal: string = (a[sortField] as string | undefined) ?? '';
+      let bVal: string = (b[sortField] as string | undefined) ?? '';
+      aVal = aVal.toLowerCase();
+      bVal = bVal.toLowerCase();
       if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
@@ -1248,15 +1568,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  const getCrewName = (crewId: string) => {
-    const crew = crewMembers.find(c => c.id === crewId);
-    return crew?.name || 'Ukjent';
-  };
+  // O(1) lookups — avoids O(n) linear search on every render
+  const crewById = useMemo(
+    () => new Map(crewMembers.map(c => [c.id, c])),
+    [crewMembers]
+  );
+  const locationById = useMemo(
+    () => new Map(locations.map(l => [l.id, l])),
+    [locations]
+  );
 
-  const getLocationName = (locationId: string) => {
-    const loc = locations.find(l => l.id === locationId);
-    return loc?.name || '';
-  };
+  const getCrewName = (crewId: string) => crewById.get(crewId)?.name ?? 'Ukjent';
+  const getLocationName = (locationId: string) => locationById.get(locationId)?.name ?? '';
 
   // Category icon colors for visual enhancement
   const getCategoryColor = (category: string | undefined): string => {
@@ -1269,8 +1592,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       lyd: '#9c27b0',
       grip: '#795548',
       rig: '#795548',
-      safety: '#ff5722',
-      sikkerhet: '#ff5722',
+      safety: '#7c3aed',
+      sikkerhet: '#7c3aed',
       transport: '#607d8b',
       props: '#00bcd4',
       wardrobe: '#3f51b5',
@@ -1287,7 +1610,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   return (
     <Box sx={{ p: containerPadding }}>
-      {loading && <LinearProgress sx={{ mb: 2, bgcolor: 'rgba(255,152,0,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#ff9800' } }} />}
+      {loading && <LinearProgress sx={{ mb: 2, bgcolor: 'rgba(147,51,234,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#9333ea' } }} />}
       
       {/* Header with gradient background */}
       <Box sx={{ 
@@ -1299,19 +1622,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         mb: 3,
         p: 2,
         borderRadius: 3,
-        background: 'linear-gradient(135deg, rgba(255,152,0,0.15) 0%, rgba(255,87,34,0.1) 100%)',
-        border: '1px solid rgba(255,152,0,0.2)',
+        background: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(109,40,217,0.1) 100%)',
+        border: '1px solid rgba(147,51,234,0.2)',
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box sx={{
             width: 48,
             height: 48,
             borderRadius: 2,
-            background: 'linear-gradient(135deg, #ff9800 0%, #ff5722 100%)',
+            background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(255,152,0,0.3)',
+            boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
           }}>
             <BuildIcon sx={{ color: '#fff', fontSize: 28 }} />
           </Box>
@@ -1351,11 +1674,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 ...focusVisibleStyles, 
                 minWidth: TOUCH_TARGET_SIZE, 
                 minHeight: TOUCH_TARGET_SIZE,
-                bgcolor: filterOpen ? 'rgba(255,152,0,0.2)' : 'rgba(255,255,255,0.05)',
-                '&:hover': { bgcolor: 'rgba(255,152,0,0.2)' },
+                bgcolor: filterOpen ? 'rgba(147,51,234,0.2)' : 'rgba(255,255,255,0.05)',
+                '&:hover': { bgcolor: 'rgba(147,51,234,0.2)' },
               }}
             >
-              <FilterIcon sx={{ color: filterOpen ? '#ff9800' : 'inherit' }} />
+              <FilterIcon sx={{ color: filterOpen ? '#9333ea' : 'inherit' }} />
             </IconButton>
           </Tooltip>
           <Tooltip title={viewMode === 'grid' ? 'Tabellvisning' : 'Rutenettvisning'}>
@@ -1377,14 +1700,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             startIcon={<AddIcon />}
             onClick={() => handleOpenDialog()}
             sx={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #ff5722 100%)',
+              background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
               color: '#fff',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
-              boxShadow: '0 4px 12px rgba(255,152,0,0.3)',
+              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
               '&:hover': { 
-                background: 'linear-gradient(135deg, #ffb74d 0%, #ff7043 100%)',
-                boxShadow: '0 6px 16px rgba(255,152,0,0.4)',
+                background: 'linear-gradient(135deg, #c084fc 0%, #a855f7 100%)',
+                boxShadow: '0 6px 16px rgba(147,51,234,0.4)',
               },
               ...focusVisibleStyles,
             }}
@@ -1407,6 +1730,46 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               Maler
             </Button>
           </Tooltip>
+          <Tooltip title="Rapporter">
+            <Button
+              variant="outlined"
+              startIcon={<ReportIcon />}
+              onClick={() => setReportsDialogOpen(true)}
+              sx={{
+                borderColor: '#9c27b0',
+                color: '#9c27b0',
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { borderColor: '#ba68c8', bgcolor: 'rgba(156,39,176,0.1)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              Rapporter
+            </Button>
+          </Tooltip>
+          {offlineQueueCount > 0 && (
+            <Tooltip title={isOnline ? `${offlineQueueCount} ventende operasjoner — klikk for å synkronisere` : `Offline — ${offlineQueueCount} operasjoner i kø`}>
+              <Button
+                variant="outlined"
+                startIcon={isOnline ? <SyncIcon /> : <OfflineIcon />}
+                onClick={isOnline ? handleSyncOfflineQueue : () => setOfflineOutboxOpen(true)}
+                sx={{
+                  borderColor: isOnline ? '#9333ea' : '#f44336',
+                  color: isOnline ? '#9333ea' : '#f44336',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  animation: isOnline ? 'pulse 1.5s infinite' : 'none',
+                  '@keyframes pulse': {
+                    '0%': { opacity: 1 },
+                    '50%': { opacity: 0.6 },
+                    '100%': { opacity: 1 },
+                  },
+                  '&:hover': { bgcolor: isOnline ? 'rgba(147,51,234,0.1)' : 'rgba(244,67,54,0.1)' },
+                  ...focusVisibleStyles,
+                }}
+              >
+                {offlineQueueCount} i kø
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip title="Kjøp utstyr via foto.no">
             <Button
               variant="outlined"
@@ -1468,12 +1831,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             gap: 2, 
             p: 1.5, 
             mt: 1.5,
-            bgcolor: 'rgba(255,152,0,0.1)', 
+            bgcolor: 'rgba(147,51,234,0.1)', 
             borderRadius: 2,
-            border: '1px solid rgba(255,152,0,0.3)',
+            border: '1px solid rgba(147,51,234,0.3)',
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CheckboxIcon sx={{ color: '#ff9800' }} />
+              <CheckboxIcon sx={{ color: '#9333ea' }} />
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
                 {selectedEquipmentIds.size} valgt
               </Typography>
@@ -1490,7 +1853,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               size="small"
               startIcon={<EditIcon />}
               onClick={() => handleBulkAction('status')}
-              sx={{ color: '#ff9800', '&:hover': { bgcolor: 'rgba(255,152,0,0.15)' } }}
+              sx={{ color: '#9333ea', '&:hover': { bgcolor: 'rgba(147,51,234,0.15)' } }}
             >
               Endre status
             </Button>
@@ -1532,7 +1895,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           {[
             { label: 'Tilgjengelig', value: equipment.filter(e => e.status === 'available').length, color: '#4caf50' },
             { label: 'I bruk', value: equipment.filter(e => e.status === 'in_use').length, color: '#2196f3' },
-            { label: 'Vedlikehold', value: equipment.filter(e => e.status === 'maintenance').length, color: '#ff9800' },
+            { label: 'Vedlikehold', value: equipment.filter(e => e.status === 'maintenance').length, color: '#9333ea' },
             { label: 'Totalt', value: equipment.reduce((sum, e) => sum + (e.quantity || 1), 0), color: '#9c27b0' },
           ].map((stat) => (
             <Box
@@ -1598,7 +1961,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: '#ff9800' }} />
+                  <SearchIcon sx={{ color: '#9333ea' }} />
                 </InputAdornment>
               ),
             }}
@@ -1609,8 +1972,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 color: '#fff',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                '&.Mui-focused fieldset': { borderColor: '#9333ea' },
               },
             }}
           />
@@ -1625,7 +1988,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
               }}
               MenuProps={{
                 PaperProps: {
@@ -1655,7 +2018,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
+                '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
               }}
               MenuProps={{
                 PaperProps: {
@@ -1699,47 +2062,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         <Grid container spacing={2.5}>
           {filteredEquipment.length === 0 ? (
             <Grid size={{ xs: 12 }}>
-              <Box sx={{
-                p: 6,
-                textAlign: 'center',
-                bgcolor: 'rgba(255,255,255,0.02)',
-                borderRadius: 3,
-                border: '2px dashed rgba(255,255,255,0.1)',
-              }}>
-                <Box sx={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: '50%',
-                  bgcolor: 'rgba(255,152,0,0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: 2,
-                }}>
-                  <BuildIcon sx={{ fontSize: 40, color: 'rgba(255,152,0,0.5)' }} />
-                </Box>
-                <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
-                  Ingen utstyr funnet
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
-                  {searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' 
-                    ? 'Prøv å endre søkekriteriene' 
-                    : 'Legg til ditt første utstyr for å komme i gang'}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleOpenDialog()}
-                  sx={{ 
-                    borderColor: '#ff9800', 
-                    color: '#ff9800',
-                    '&:hover': { borderColor: '#ffb74d', bgcolor: 'rgba(255,152,0,0.1)' },
-                  }}
-                >
-                  Legg til utstyr
-                </Button>
-              </Box>
+              <RoleRoomEmptyState
+                iconSrc={equipPng}
+                title="Ingen utstyr funnet"
+                subtitle={searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' 
+                  ? 'Prøv å endre søkekriteriene' 
+                  : 'Legg til ditt første utstyr for å komme i gang'}
+                color="#9333ea"
+                buttonLabel="Legg til utstyr"
+                onAction={() => handleOpenDialog()}
+              />
             </Grid>
           ) : (
             filteredEquipment.map((eq, index) => (
@@ -1749,7 +2081,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 bgcolor: 'rgba(28, 33, 40, 0.8)',
                 backdropFilter: 'blur(10px)',
                 border: selectedEquipmentIds.has(eq.id) 
-                  ? '2px solid #ff9800' 
+                  ? '2px solid #9333ea' 
                   : '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 3,
                 height: '100%',
@@ -1759,9 +2091,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 overflow: 'hidden',
                 position: 'relative',
                 '&:hover': {
-                  borderColor: selectedEquipmentIds.has(eq.id) ? '#ffb74d' : 'rgba(255,152,0,0.5)',
+                  borderColor: selectedEquipmentIds.has(eq.id) ? '#c084fc' : 'rgba(147,51,234,0.5)',
                   transform: 'translateY(-4px)',
-                  boxShadow: '0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,152,0,0.2)',
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(147,51,234,0.2)',
                 },
               }}>
                 {/* Selection checkbox */}
@@ -1775,9 +2107,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     size="small"
                     onClick={(e) => { e.stopPropagation(); toggleSelectEquipment(eq.id); }}
                     sx={{ 
-                      bgcolor: selectedEquipmentIds.has(eq.id) ? '#ff9800' : 'rgba(0,0,0,0.5)',
+                      bgcolor: selectedEquipmentIds.has(eq.id) ? '#9333ea' : 'rgba(0,0,0,0.5)',
                       backdropFilter: 'blur(4px)',
-                      '&:hover': { bgcolor: selectedEquipmentIds.has(eq.id) ? '#ffb74d' : 'rgba(0,0,0,0.7)' },
+                      '&:hover': { bgcolor: selectedEquipmentIds.has(eq.id) ? '#c084fc' : 'rgba(0,0,0,0.7)' },
                     }}
                   >
                     {selectedEquipmentIds.has(eq.id) 
@@ -1921,11 +2253,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         label={eq.category} 
                         size="small" 
                         sx={{ 
-                          bgcolor: 'rgba(255,152,0,0.15)', 
-                          color: '#ffb74d', 
+                          bgcolor: 'rgba(147,51,234,0.15)', 
+                          color: '#c084fc', 
                           fontSize: '0.7rem',
                           fontWeight: 600,
-                          border: '1px solid rgba(255,152,0,0.2)',
+                          border: '1px solid rgba(147,51,234,0.2)',
                         }} 
                       />
                     )}
@@ -2009,12 +2341,42 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
-                          '&:hover': { color: '#ff9800', bgcolor: 'rgba(255,152,0,0.1)' },
+                          '&:hover': { color: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
                         }}
                       >
                         <ScheduleIcon sx={{ fontSize: 18 }} />
                       </IconButton>
                     </Tooltip>
+                    {eq.status === 'in_use' ? (
+                      <Tooltip title="Lever inn">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenCheckin(eq)}
+                          sx={{
+                            ...focusVisibleStyles,
+                            color: '#4caf50',
+                            bgcolor: 'rgba(76,175,80,0.12)',
+                            '&:hover': { bgcolor: 'rgba(76,175,80,0.2)' },
+                          }}
+                        >
+                          <CheckInIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    ) : eq.status === 'available' ? (
+                      <Tooltip title="Sjekk ut">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenCheckout(eq)}
+                          sx={{
+                            ...focusVisibleStyles,
+                            color: '#2196f3',
+                            '&:hover': { bgcolor: 'rgba(33,150,243,0.1)' },
+                          }}
+                        >
+                          <CheckOutIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    ) : null}
                     <Tooltip title="Tilordne ansvarlig">
                       <IconButton
                         size="small"
@@ -2126,14 +2488,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           <Table>
             <TableHead>
               <TableRow sx={{ 
-                background: 'linear-gradient(135deg, rgba(255,152,0,0.1) 0%, rgba(255,87,34,0.05) 100%)',
+                background: 'linear-gradient(135deg, rgba(147,51,234,0.1) 0%, rgba(109,40,217,0.05) 100%)',
               }}>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                   <TableSortLabel
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ff9800' }, '& .MuiTableSortLabel-icon': { color: '#ff9800 !important' } }}
+                    sx={{ color: '#fff', '&.Mui-active': { color: '#9333ea' }, '& .MuiTableSortLabel-icon': { color: '#9333ea !important' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -2143,7 +2505,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     active={sortField === 'category'}
                     direction={sortField === 'category' ? sortDirection : 'asc'}
                     onClick={() => handleSort('category')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ff9800' }, '& .MuiTableSortLabel-icon': { color: '#ff9800 !important' } }}
+                    sx={{ color: '#fff', '&.Mui-active': { color: '#9333ea' }, '& .MuiTableSortLabel-icon': { color: '#9333ea !important' } }}
                   >
                     Kategori
                   </TableSortLabel>
@@ -2154,7 +2516,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ff9800' }, '& .MuiTableSortLabel-icon': { color: '#ff9800 !important' } }}
+                    sx={{ color: '#fff', '&.Mui-active': { color: '#9333ea' }, '& .MuiTableSortLabel-icon': { color: '#9333ea !important' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -2171,7 +2533,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   key={eq.id} 
                   sx={{ 
                     transition: 'all 0.2s',
-                    '&:hover': { bgcolor: 'rgba(255,152,0,0.05)' },
+                    '&:hover': { bgcolor: 'rgba(147,51,234,0.05)' },
                     '&:nth-of-type(odd)': { bgcolor: 'rgba(255,255,255,0.02)' },
                   }}
                 >
@@ -2219,8 +2581,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       label={eq.category || '-'} 
                       size="small"
                       sx={{ 
-                        bgcolor: 'rgba(255,152,0,0.1)', 
-                        color: '#ffb74d',
+                        bgcolor: 'rgba(147,51,234,0.1)', 
+                        color: '#c084fc',
                         fontSize: '0.75rem',
                       }}
                     />
@@ -2280,12 +2642,33 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           sx={{ 
                             ...focusVisibleStyles,
                             color: 'rgba(255,255,255,0.87)',
-                            '&:hover': { color: '#ff9800', bgcolor: 'rgba(255,152,0,0.1)' },
+                            '&:hover': { color: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
                           }}
                         >
                           <ScheduleIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </Tooltip>
+                      {eq.status === 'in_use' ? (
+                        <Tooltip title="Lever inn">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenCheckin(eq)}
+                            sx={{ ...focusVisibleStyles, color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' } }}
+                          >
+                            <CheckInIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
+                      ) : eq.status === 'available' ? (
+                        <Tooltip title="Sjekk ut">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenCheckout(eq)}
+                            sx={{ ...focusVisibleStyles, color: '#2196f3', '&:hover': { bgcolor: 'rgba(33,150,243,0.1)' } }}
+                          >
+                            <CheckOutIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
+                      ) : null}
                       <Tooltip title="Tilordne">
                         <IconButton 
                           size="small" 
@@ -2315,7 +2698,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       <Tooltip title="Slett">
                         <IconButton 
                           size="small" 
-                          onClick={() => handleDelete(eq)} 
+                          onClick={() => handleDeleteClick(eq)} 
                           sx={{ 
                             ...focusVisibleStyles, 
                             color: 'rgba(255,255,255,0.87)',
@@ -2355,7 +2738,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(255,152,0,0.15) 0%, rgba(255,87,34,0.1) 100%)',
+          background: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(109,40,217,0.1) 100%)',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
           py: 2,
         }}>
@@ -2364,11 +2747,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               width: 44,
               height: 44,
               borderRadius: 2,
-              background: 'linear-gradient(135deg, #ff9800 0%, #ff5722 100%)',
+              background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(255,152,0,0.3)',
+              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
             }}>
               <BuildIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
@@ -2411,8 +2794,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: formErrors.name ? '#f44336' : '#ff9800' },
+                    '&:hover fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: formErrors.name ? '#f44336' : '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: formErrors.name ? '#f44336' : 'rgba(255,255,255,0.6)' },
                   '& .MuiFormHelperText-root': { color: '#f44336' },
@@ -2437,7 +2820,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
                     PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)', maxHeight: 350 } }
@@ -2491,8 +2874,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -2510,8 +2893,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -2529,8 +2912,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -2550,8 +2933,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -2569,7 +2952,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
                     PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
@@ -2598,7 +2981,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
                     PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
@@ -2627,7 +3010,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     bgcolor: 'rgba(0,0,0,0.2)',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
                     PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
@@ -2659,8 +3042,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -2680,8 +3063,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     color: '#fff',
                     borderRadius: 2,
                     '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(255,152,0,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                   },
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
@@ -2758,14 +3141,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 sx={{ 
                   p: 2, 
                   borderRadius: 2, 
-                  bgcolor: isDragging ? 'rgba(255,152,0,0.1)' : 'rgba(0,0,0,0.2)',
-                  border: isDragging ? '2px dashed #ff9800' : '1px solid rgba(255,255,255,0.08)',
+                  bgcolor: isDragging ? 'rgba(147,51,234,0.1)' : 'rgba(0,0,0,0.2)',
+                  border: isDragging ? '2px dashed #9333ea' : '1px solid rgba(255,255,255,0.08)',
                   transition: 'all 0.2s',
                 }}
               >
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 1.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
                   Utstyrsbilde
-                  {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#ff9800', color: '#fff', fontSize: '0.7rem' }} />}
+                  {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#9333ea', color: '#fff', fontSize: '0.7rem' }} />}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
                   {/* Image Preview */}
@@ -2774,7 +3157,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     height: 100,
                     bgcolor: 'rgba(255,255,255,0.03)',
                     borderRadius: 2,
-                    border: isDragging ? '2px solid #ff9800' : '2px dashed rgba(255,255,255,0.15)',
+                    border: isDragging ? '2px solid #9333ea' : '2px dashed rgba(255,255,255,0.15)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -2782,7 +3165,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     flexShrink: 0,
                     transition: 'all 0.2s',
                     '&:hover': {
-                      borderColor: 'rgba(255,152,0,0.3)',
+                      borderColor: 'rgba(147,51,234,0.3)',
                     },
                   }}>
                     {formData.imageUrl ? (
@@ -2809,12 +3192,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         setImageSearchQuery(formData.name || formData.category || '');
                       }}
                       sx={{ 
-                        borderColor: 'rgba(255,152,0,0.5)', 
-                        color: '#ff9800',
+                        borderColor: 'rgba(147,51,234,0.5)', 
+                        color: '#9333ea',
                         borderRadius: 2,
                         py: 1,
                         justifyContent: 'flex-start',
-                        '&:hover': { borderColor: '#ff9800', bgcolor: 'rgba(255,152,0,0.1)' },
+                        '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
                       }}
                     >
                       Søk bilder
@@ -2907,16 +3290,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             variant="contained"
             startIcon={<SaveIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              background: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
               color: '#000',
               fontWeight: 700,
               minHeight: TOUCH_TARGET_SIZE,
               borderRadius: 2,
               px: 4,
-              boxShadow: '0 4px 14px rgba(255,152,0,0.3)',
+              boxShadow: '0 4px 14px rgba(147,51,234,0.3)',
               '&:hover': { 
-                background: 'linear-gradient(135deg, #ffb74d 0%, #ff9800 100%)',
-                boxShadow: '0 6px 20px rgba(255,152,0,0.4)',
+                background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)',
+                boxShadow: '0 6px 20px rgba(147,51,234,0.4)',
               },
               ...focusVisibleStyles,
             }}
@@ -3179,7 +3562,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       label={booking.status}
                       size="small"
                       sx={{ 
-                        bgcolor: booking.status === 'confirmed' ? '#4caf50' : '#ff9800',
+                        bgcolor: booking.status === 'confirmed' ? '#4caf50' : '#9333ea',
                         color: '#fff',
                         fontWeight: 600,
                         borderRadius: 1.5,
@@ -3194,18 +3577,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               {availability.map(avail => (
                 <Box key={avail.id} sx={{ 
                   p: 2.5, 
-                  bgcolor: avail.status === 'service' ? 'rgba(255, 152, 0, 0.08)' : 'rgba(244, 67, 54, 0.08)', 
+                  bgcolor: avail.status === 'service' ? 'rgba(147, 51, 234, 0.08)' : 'rgba(244, 67, 54, 0.08)', 
                   borderRadius: 2,
-                  border: `1px solid ${avail.status === 'service' ? 'rgba(255, 152, 0, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
+                  border: `1px solid ${avail.status === 'service' ? 'rgba(147, 51, 234, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
                   transition: 'all 0.2s',
                   '&:hover': { 
-                    bgcolor: avail.status === 'service' ? 'rgba(255, 152, 0, 0.12)' : 'rgba(244, 67, 54, 0.12)',
+                    bgcolor: avail.status === 'service' ? 'rgba(147, 51, 234, 0.12)' : 'rgba(244, 67, 54, 0.12)',
                   },
                 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {avail.status === 'service' ? (
-                        <WarningIcon sx={{ color: '#ff9800' }} />
+                        <WarningIcon sx={{ color: '#9333ea' }} />
                       ) : (
                         <BlockIcon sx={{ color: '#f44336' }} />
                       )}
@@ -3382,7 +3765,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           )}
                           {template.name}
                           {template.is_default && (
-                            <StarIcon sx={{ color: '#ff9800', fontSize: 18 }} />
+                            <StarIcon sx={{ color: '#9333ea', fontSize: 18 }} />
                           )}
                         </Typography>
                         {template.description && (
@@ -4199,8 +4582,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               borderBottom: '1px solid rgba(255,255,255,0.1)',
               px: 2,
               '& .MuiTab-root': { color: 'rgba(255,255,255,0.87)' },
-              '& .Mui-selected': { color: '#ff9800' },
-              '& .MuiTabs-indicator': { bgcolor: '#ff9800' },
+              '& .Mui-selected': { color: '#9333ea' },
+              '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
             }}
           >
             <Tab icon={<SearchIcon />} label="Søk bilder" iconPosition="start" />
@@ -4235,10 +4618,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 onClick={() => searchImages(imageSearchQuery)}
                 disabled={imageSearchLoading || !imageSearchQuery.trim()}
                 sx={{ 
-                  bgcolor: '#ff9800', 
+                  bgcolor: '#9333ea', 
                   color: '#000',
                   minWidth: 100,
-                  '&:hover': { bgcolor: '#f57c00' },
+                  '&:hover': { bgcolor: '#6d28d9' },
                 }}
               >
                 {imageSearchLoading ? <CircularProgress size={20} /> : 'Søk'}
@@ -4260,7 +4643,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     bgcolor: 'rgba(255,255,255,0.1)', 
                     color: '#fff',
                     cursor: 'pointer',
-                    '&:hover': { bgcolor: 'rgba(255,152,0,0.2)' },
+                    '&:hover': { bgcolor: 'rgba(147,51,234,0.2)' },
                   }}
                 />
               ))}
@@ -4269,7 +4652,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             {/* Search Results */}
             {imageSearchLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4, flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <CircularProgress sx={{ color: '#ff9800' }} />
+                <CircularProgress sx={{ color: '#9333ea' }} />
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                   Søker i Pexels, Pixabay, Unsplash, Openverse, Wikimedia...
                 </Typography>
@@ -4287,7 +4670,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       { name: 'unsplash', color: '#2196f3', label: 'Unsplash' },
                       { name: 'openverse', color: '#9c27b0', label: 'Openverse' },
                       { name: 'wikimedia', color: '#3e85ba', label: 'Wikimedia' },
-                      { name: 'shotcafe', color: '#ff9800', label: 'shot.cafe' },
+                      { name: 'shotcafe', color: '#9333ea', label: 'shot.cafe' },
                     ].filter(s => imageSearchResults.some(r => r.source === s.name))
                     .map(s => (
                       <Box
@@ -4321,7 +4704,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         border: '2px solid transparent',
                         transition: 'all 0.2s',
                         '&:hover': { 
-                          border: '2px solid #ff9800',
+                          border: '2px solid #9333ea',
                           transform: 'scale(1.02)',
                         },
                       }}
@@ -4345,7 +4728,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                                 img.source === 'pixabay' ? 'rgba(39,169,85,0.4)' :
                                 img.source === 'openverse' ? 'rgba(156,39,176,0.4)' :
                                 img.source === 'wikimedia' ? 'rgba(62,133,186,0.4)' :
-                                img.source === 'shotcafe' ? 'rgba(255,152,0,0.4)' :
+                                img.source === 'shotcafe' ? 'rgba(147,51,234,0.4)' :
                                 'rgba(100,100,100,0.4)',
                               px: 0.5,
                               borderRadius: 0.5,
@@ -4503,7 +4886,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           gap: 2,
           background: bulkActionType === 'delete' 
             ? 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)'
-            : 'linear-gradient(135deg, rgba(255,152,0,0.15) 0%, rgba(245,124,0,0.1) 100%)',
+            : 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(245,124,0,0.1) 100%)',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
           py: 2,
         }}>
@@ -4513,7 +4896,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             borderRadius: 2,
             background: bulkActionType === 'delete'
               ? 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)'
-              : 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              : 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -4552,8 +4935,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <FormControl fullWidth sx={{ mt: 2 }}>
               <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilordne til</InputLabel>
               <Select
-                value={selectedCrewId}
-                onChange={(e) => setSelectedCrewId(e.target.value)}
+                value={bulkAssignCrewId}
+                onChange={(e) => setBulkAssignCrewId(e.target.value)}
                 label="Tilordne til"
                 sx={{ 
                   bgcolor: 'rgba(255,255,255,0.05)',
@@ -4581,8 +4964,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             onClick={handleConfirmBulkAction}
             variant="contained"
             sx={{ 
-              bgcolor: bulkActionType === 'delete' ? '#f44336' : '#ff9800',
-              '&:hover': { bgcolor: bulkActionType === 'delete' ? '#d32f2f' : '#f57c00' },
+              bgcolor: bulkActionType === 'delete' ? '#f44336' : '#9333ea',
+              '&:hover': { bgcolor: bulkActionType === 'delete' ? '#d32f2f' : '#6d28d9' },
             }}
           >
             Bekreft
@@ -4821,7 +5204,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 label="Startdato"
                 type="date"
                 value={bookingForm.startDate}
-                onChange={(e) => setBookingForm({ ...bookingForm, startDate: e.target.value })}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBookingForm(f => ({ ...f, startDate: v }));
+                  checkBookingConflicts(v, bookingForm.endDate);
+                }}
                 InputLabelProps={{ shrink: true }}
                 fullWidth
                 sx={{
@@ -4837,7 +5224,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 label="Sluttdato"
                 type="date"
                 value={bookingForm.endDate}
-                onChange={(e) => setBookingForm({ ...bookingForm, endDate: e.target.value })}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setBookingForm(f => ({ ...f, endDate: v }));
+                  checkBookingConflicts(bookingForm.startDate, v);
+                }}
                 InputLabelProps={{ shrink: true }}
                 fullWidth
                 sx={{
@@ -4850,6 +5241,32 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 }}
               />
             </Box>
+            {conflictChecking && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'rgba(255,255,255,0.6)' }}>
+                <CircularProgress size={14} sx={{ color: 'inherit' }} />
+                <Typography variant="caption">Sjekker konflikter…</Typography>
+              </Box>
+            )}
+            {!conflictChecking && bookingConflicts.length > 0 && (
+              <Box sx={{
+                p: 2, borderRadius: 2,
+                bgcolor: 'rgba(147,51,234,0.12)',
+                border: '1px solid rgba(147,51,234,0.4)',
+                display: 'flex', alignItems: 'flex-start', gap: 1.5,
+              }}>
+                <WarningIcon sx={{ color: '#9333ea', mt: 0.25, flexShrink: 0 }} />
+                <Box>
+                  <Typography variant="body2" sx={{ color: '#c084fc', fontWeight: 600 }}>
+                    {bookingConflicts.length} konflikt{bookingConflicts.length > 1 ? 'er' : ''} funnet
+                  </Typography>
+                  {bookingConflicts.map(c => (
+                    <Typography key={c.id} variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', display: 'block' }}>
+                      {c.type === 'booking' ? `Booking: ${c.purpose ?? ''}` : c.reason ?? c.type} ({c.start_date} – {c.end_date})
+                    </Typography>
+                  ))}
+                </Box>
+              </Box>
+            )}
             <TextField
               label="Formål"
               value={bookingForm.purpose}
@@ -4895,6 +5312,229 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Check-out Dialog ─────────────────────────── */}
+      <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
+        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
+          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #2196f3, #1565c0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CheckOutIcon sx={{ color: '#fff' }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Sjekk ut utstyr</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkoutEquipment?.name}</Typography>
+          </Box>
+          <IconButton onClick={() => setCheckoutDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack spacing={2.5}>
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Sjekkes ut til *</InputLabel>
+              <Select value={checkoutForm.crewId} onChange={(e) => setCheckoutForm(f => ({ ...f, crewId: e.target.value }))} label="Sjekkes ut til *"
+                sx={{ bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}>
+                {crewMembers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Antall" type="number" inputProps={{ min: 1, max: checkoutEquipment?.quantity ?? 99 }}
+              value={checkoutForm.quantity}
+              onChange={(e) => setCheckoutForm(f => ({ ...f, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
+              fullWidth
+              sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }}
+            />
+            <TextField label="Formål" value={checkoutForm.purpose} onChange={(e) => setCheckoutForm(f => ({ ...f, purpose: e.target.value }))} fullWidth
+              sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
+            {!isOnline && (
+              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(147,51,234,0.1)', border: '1px solid rgba(147,51,234,0.3)', display: 'flex', gap: 1, alignItems: 'center' }}>
+                <OfflineIcon sx={{ color: '#9333ea', fontSize: 18 }} />
+                <Typography variant="caption" sx={{ color: '#c084fc' }}>Du er offline — operasjonen lagres i kø og synkroniseres automatisk</Typography>
+              </Box>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+          <Button onClick={() => setCheckoutDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
+          <Button onClick={handleConfirmCheckout} variant="contained" disabled={!checkoutForm.crewId}
+            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
+            {isOnline ? 'Sjekk ut' : 'Legg i kø'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Check-in Dialog ──────────────────────────── */}
+      <Dialog open={checkinDialogOpen} onClose={() => setCheckinDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
+        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
+          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #4caf50, #2e7d32)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CheckInIcon sx={{ color: '#fff' }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Lever inn utstyr</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkinEquipment?.name}</Typography>
+          </Box>
+          <IconButton onClick={() => setCheckinDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Stack spacing={2.5}>
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilstand ved retur</InputLabel>
+              <Select value={checkinForm.condition} onChange={(e) => setCheckinForm(f => ({ ...f, condition: e.target.value as Equipment['condition'] }))} label="Tilstand ved retur"
+                sx={{ bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}>
+                {Object.entries(CONDITION_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField label="Merknader" multiline rows={2} value={checkinForm.notes} onChange={(e) => setCheckinForm(f => ({ ...f, notes: e.target.value }))} fullWidth
+              sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+          <Button onClick={() => setCheckinDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
+          <Button onClick={handleConfirmCheckin} variant="contained" sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' } }}>Lever inn</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Reports Dialog ───────────────────────────── */}
+      <Dialog open={reportsDialogOpen} onClose={() => setReportsDialogOpen(false)} maxWidth="md" fullWidth TransitionComponent={Grow}
+        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 0 }}>
+          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #9c27b0, #6a1b9a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ReportIcon sx={{ color: '#fff' }} />
+          </Box>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Rapporter</Typography>
+          <IconButton onClick={() => setReportsDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <Tabs value={reportsTab} onChange={(_, v) => setReportsTab(v)} sx={{ px: 3, '& .MuiTabs-indicator': { bgcolor: '#9c27b0' }, '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', '&.Mui-selected': { color: '#ce93d8' } } }}>
+          <Tab label="Utstyrsliste" />
+          <Tab label={`Manglende (${missingItems.length})`} />
+          <Tab label={`Vedlikehold / Rep. (${maintenanceItems.length})`} />
+        </Tabs>
+        <DialogContent sx={{ pt: 2 }}>
+          {reportsTab === 0 && (
+            <Box>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+                Fullstendig utstyrsliste for prosjektet — {equipment.length} elementer
+              </Typography>
+              <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                {equipment.map(eq => (
+                  <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <Chip label={STATUS_LABELS[eq.status]} size="small" sx={{ bgcolor: `${STATUS_COLORS[eq.status]}20`, color: STATUS_COLORS[eq.status], fontSize: '0.65rem', minWidth: 80 }} />
+                    <Typography variant="body2" sx={{ color: '#fff', flex: 1, fontWeight: 600 }}>{eq.name}</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.brand} {eq.model}</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', minWidth: 50 }}>×{eq.quantity}</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', minWidth: 80 }}>{getCrewName(eq.assignees?.[0]?.crew_id ?? '')}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+          {reportsTab === 1 && (
+            <Box>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+                Tilgjengelig utstyr uten tildelt ansvarlig — {missingItems.length} elementer
+              </Typography>
+              {missingItems.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
+                  <Typography sx={{ color: '#4caf50' }}>Alt utstyr er tilordnet</Typography>
+                </Box>
+              ) : (
+                <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                  {missingItems.map(eq => (
+                    <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <MissingItemIcon sx={{ color: '#9333ea', fontSize: 18, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ color: '#fff', flex: 1, fontWeight: 600 }}>{eq.name}</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.category}</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>×{eq.quantity}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+          {reportsTab === 2 && (
+            <Box>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+                Utstyr som trenger vedlikehold eller reparasjon — {maintenanceItems.length} elementer
+              </Typography>
+              {maintenanceItems.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
+                  <Typography sx={{ color: '#4caf50' }}>Ingen vedlikeholdsoppgaver</Typography>
+                </Box>
+              ) : (
+                <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                  {maintenanceItems.map(eq => (
+                    <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <WarningIcon sx={{ color: '#f44336', fontSize: 18, flexShrink: 0 }} />
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>{eq.name}</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.notes ?? 'Ingen merknader'}</Typography>
+                      </Box>
+                      <Chip label={CONDITION_LABELS[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], fontSize: '0.65rem' }} />
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+          <Button onClick={() => setReportsDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
+          <Button onClick={handleDownloadGearList} variant="contained" startIcon={<DownloadIcon />}
+            sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#8e24aa' } }}>
+            Last ned CSV
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Offline outbox viewer ────────────────────── */}
+      <Dialog open={offlineOutboxOpen} onClose={() => setOfflineOutboxOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
+        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
+          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #f44336, #b71c1c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <OfflineIcon sx={{ color: '#fff' }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Offline-kø</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{offlineQueueCount} operasjon(er) venter</Typography>
+          </Box>
+          <IconButton onClick={() => setOfflineOutboxOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {offlineQueue.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
+              <Typography sx={{ color: '#4caf50' }}>Ingen ventende operasjoner</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
+              {offlineQueue.map(e => (
+                <Box key={e.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  {e.type === 'checkout' ? <CheckOutIcon sx={{ color: '#2196f3', fontSize: 20 }} /> : <CheckInIcon sx={{ color: '#4caf50', fontSize: 20 }} />}
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                      {e.type === 'checkout' ? 'Sjekk ut' : 'Lever inn'} — {e.payload.equipmentId.slice(0, 8)}…
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                      {new Date(e.ts).toLocaleString('nb-NO')}
+                    </Typography>
+                  </Box>
+                  <Chip label="Venter" size="small" sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc' }} />
+                </Box>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+          <Button onClick={() => { persistOfflineQueue([]); setOfflineOutboxOpen(false); }} sx={{ color: '#f44336' }}>Slett kø</Button>
+          <Button onClick={() => setOfflineOutboxOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
+          <Button onClick={handleSyncOfflineQueue} variant="contained" startIcon={<SyncIcon />} disabled={!isOnline}
+            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
+            Synkroniser nå
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </Box>
   );
 }

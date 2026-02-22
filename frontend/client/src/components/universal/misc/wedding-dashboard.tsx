@@ -1,11 +1,32 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
-import { Card as MuiCard, CardContent, CardHeader, Typography, Box } from '@mui/material';
+import {
+  Card as MuiCard,
+  CardContent,
+  CardHeader,
+  Typography,
+  Box,
+} from '@mui/material';
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Badge, Button, LinearProgress as Progress } from "@mui/material";
+import { Badge, Button, LinearProgress as Progress } from '@mui/material';
 import { Link } from "wouter";
-import { Event, Favorite, Group, LocationOn, Schedule, Warning, AutoAwesome, Flag as Target, NotificationsActive, CardGiftcard, PhotoCamera, Palette, SettingsOutlined, CheckCircle } from '@mui/icons-material';
+import {
+  Event,
+  Favorite,
+  Group,
+  LocationOn,
+  Schedule,
+  Warning,
+  AutoAwesome,
+  Flag as Target,
+  NotificationsActive,
+  CardGiftcard,
+  PhotoCamera,
+  Palette,
+  SettingsOutlined,
+  CheckCircle,
+} from '@mui/icons-material';
 
 interface WeddingDashboardProps { 
   weddingId?: number; 

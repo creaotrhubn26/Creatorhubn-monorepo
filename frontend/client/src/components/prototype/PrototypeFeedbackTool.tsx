@@ -155,7 +155,7 @@ export function PrototypeFeedbackTool({ isVisible = true }: PrototypeFeedbackToo
         PaperProps={{
           sx: {
             borderRadius: '20px',
-            background: 'linear-gradient(145deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
             backdropFilter: 'blur(20px)',
             boxShadow: '0 20px 60px rgba(25,140,0,0.15)',
             border: '1px solid rgba(25,140,0,0.2)' }}}
@@ -234,7 +234,7 @@ export function PrototypeFeedbackTool({ isVisible = true }: PrototypeFeedbackToo
                             border: `2px solid ${field.value === type.value ? type.color : 'transparent'}`,
                             background: field.value === type.value
                                 ? `${type.color}10`
-                                : 'rgba(2, 5, 5,255,255,0.5)',
+                                : 'rgba(255,255,255,0.5)',
                             transition: 'all 0.2s ease', '&:hover': {
                               transform: 'translateY(-2px)',
                               boxShadow: `0 8px 24px ${type.color}20`,

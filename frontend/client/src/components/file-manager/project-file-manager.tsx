@@ -2,9 +2,9 @@ import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
+import {
+  Box,
+  Typography,
   Card,
   CardContent,
   Grid,
@@ -18,9 +18,9 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
 } from '@mui/material';
-import { 
+import {
   Folder,
   PhotoLibrary,
   VideoLibrary,
@@ -31,7 +31,7 @@ import {
   Share,
   Delete,
   Visibility,
-  Edit
+  Edit,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { UniversalFileUpload } from '../universal/UniversalFileUpload';

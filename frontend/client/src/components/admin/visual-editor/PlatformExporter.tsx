@@ -20,7 +20,15 @@ import {
   LinearProgress,
   Alert,
 } from '@mui/material';
-import { GitHub, Code, Cloud, GetApp, ContentCopy, CheckCircle, Launch } from '@mui/icons-material';
+import {
+  GitHub,
+  Code,
+  Cloud,
+  GetApp,
+  ContentCopy,
+  CheckCircle,
+  Launch,
+} from '@mui/icons-material';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { deploymentService } from '@/services/DeploymentService';

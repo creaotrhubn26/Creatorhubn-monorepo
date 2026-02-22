@@ -27,7 +27,7 @@ import {
   Divider,
   Badge,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -44,7 +44,7 @@ import {
   Report,
   Timeline,
   AutoAwesome,
-  Insights
+  Insights,
 } from '@mui/icons-material';
 
 interface AIInsight {

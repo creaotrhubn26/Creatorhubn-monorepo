@@ -23,11 +23,7 @@ import {
   Slider,
   Alert,
 } from '@mui/material';
-import {
-  Videocam as CameraIcon,
-  Straighten as MeasureIcon,
-  Visibility as EyeIcon,
-} from '@mui/icons-material';
+import { Videocam as CameraIcon, Straighten as MeasureIcon, Visibility as EyeIcon } from '@mui/icons-material';
 import { useShotPlannerStore, useCurrentScene } from './store';
 
 export const GuidesPanel: React.FC = () => {

@@ -22,7 +22,7 @@ import {
   ListItem,
   ListItemText,
   Chip,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   ContentCut,
@@ -31,7 +31,7 @@ import {
   Save,
   FolderOpen,
   Undo,
-  Redo
+  Redo,
 } from '@mui/icons-material';
 import { BeatClip } from '../services/storyArcDataIntegration';
 import { timelineEngine } from '../services/timeline-engine';

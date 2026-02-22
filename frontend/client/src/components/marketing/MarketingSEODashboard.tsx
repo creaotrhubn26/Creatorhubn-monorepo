@@ -60,7 +60,7 @@ import {
   Email,
   Google,
   Language,
-  Speed,
+  Speed as Speed,
   Description,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

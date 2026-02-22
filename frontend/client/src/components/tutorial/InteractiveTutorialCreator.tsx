@@ -34,7 +34,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon
+  ListItemIcon,
 } from '@mui/material';
 import {
   VideoCall as VideoIcon,
@@ -56,7 +56,7 @@ import {
   Quiz as FAQIcon,
   Star as StarIcon,
   Timer as TimerIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 
 // Import badge system
@@ -150,14 +150,16 @@ export const InteractiveTutorialCreator: React.FC<InteractiveTutorialCreatorProp
   const [currentStep, setCurrentStep] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(profession || 'photographer');
   const [recording, setRecording] = useState(false);
   const [recordingType, setRecordingType] = useState<'video' | 'screenshot'>('video');
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState(', ');
   const [selectedTab, setSelectedTab] = useState(0);
   const [recordingTimer, setRecordingTimer] = useState(0);
-  const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const [analysisResults, setAnalysisResults] = useState<{videoScore: number; screenshotScore: number; commentCount: number; qualityGrade: string} | null>(null);
+  const [playingStepId, setPlayingStepId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -173,6 +175,20 @@ export const InteractiveTutorialCreator: React.FC<InteractiveTutorialCreatorProp
   }
     return () => clearInterval(interval);
 }, [recording]);
+
+  // Compute analysis results when session changes
+  useEffect(() => {
+    const videoCount = session.steps.filter(s => s.type === 'video').length;
+    const screenshotCount = session.steps.filter(s => s.type === 'screenshot').length;
+    const commentCount = session.steps.reduce((sum, step) => sum + step.comments.length, 0);
+    const qualityGrade = session.rating >= 4 ? 'A' : session.rating >= 3 ? 'B' : session.rating >= 2 ? 'C' : 'D';
+    setAnalysisResults({
+      videoScore: videoCount * 10,
+      screenshotScore: screenshotCount * 5,
+      commentCount,
+      qualityGrade,
+    });
+  }, [session]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -263,7 +279,7 @@ export const InteractiveTutorialCreator: React.FC<InteractiveTutorialCreatorProp
     const step: TutorialStep = {
       id: `step_${Date.now()}`,
       type: 'screenshot',
-      title: `Screenshot Step ${session.steps.length +, 1}`,
+      title: `Screenshot Step ${session.steps.length + 1}`,
       description: 'Screenshot with analysis',
       timestamp: Date.now(),
       comments: []
@@ -287,7 +303,7 @@ export const InteractiveTutorialCreator: React.FC<InteractiveTutorialCreatorProp
       type,
       severity: 'medium',
       resolved: false,
-      authorId: 'current_user',
+      authorId: userId || 'current_user',
       createdAt: new Date().toISOString()
 };
 
@@ -395,6 +411,13 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
             color={getPriorityScore() > 70 ? "success" : getPriorityScore() > 40 ? "warning" : "default"}
             variant="outlined"
           />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <TimerIcon fontSize="small" color="action" />
+            <Typography variant="body2" color="text.secondary">
+              {session.estimatedDuration > 0 ? `${session.estimatedDuration} min` : formatTime(recordingTimer)}
+            </Typography>
+          </Box>
+          <CompactBadgeDisplay currentPoints={userPoints} size="small" showPoints />
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
           {recording && (
@@ -473,6 +496,47 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                   <Alert severity="info">
                     💡 <strong>Tips: </strong> Video-tutorials får høyere prioritet i FAQ-systemet og er mer verdifulle for brukere.
                   </Alert>
+
+                  <Divider />
+
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}
+                    onClick={() => setShowSettings(prev => !prev)}
+                  >
+                    <SettingsIcon color="action" />
+                    <Typography variant="subtitle2">Avanserte Innstillinger</Typography>
+                  </Box>
+                  {showSettings && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 2 }}>
+                      <TextField
+                        label="Estimert varighet (minutter)"
+                        type="number"
+                        value={session.estimatedDuration}
+                        onChange={(e) => setSession(prev => ({ ...prev, estimatedDuration: parseInt(e.target.value) || 0 }))}
+                        size="small"
+                      />
+                      <TextField
+                        label="Kategori"
+                        value={session.category}
+                        onChange={(e) => setSession(prev => ({ ...prev, category: e.target.value }))}
+                        size="small"
+                      />
+                    </Box>
+                  )}
+
+                  <Divider />
+
+                  {selectedProject && (
+                    <Box sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="subtitle2">Valgt Prosjekt</Typography>
+                      <Typography variant="body2">{selectedProject.name || selectedProject.title || 'Prosjekt'}</Typography>
+                    </Box>
+                  )}
+                  {onProjectSelect && (
+                    <Button variant="outlined" size="small" onClick={() => onProjectSelect(session)}>
+                      Velg Prosjekt
+                    </Button>
+                  )}
                 </Box>
              )}
 
@@ -483,7 +547,7 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                   <Box sx={{ display: 'flex', gap:  2 }}>
                     {!recording ? (
                       <Button variant="contained"
-                        startIcon={recordingType === 'video' ? <VideoIcon sx={theming.getThemedButtonSx()}> : <PhotoIcon />}
+                        startIcon={recordingType === 'video' ? <VideoIcon /> : <PhotoIcon />}
                         onClick={startRecording}
                         color={recordingType === 'video' ? 'primary' : 'secondary'}
                       >
@@ -569,7 +633,7 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                       size="small"
                       variant="outlined"
                       startIcon={<BugIcon />}
-                      onClick={() => addComment(0'bug')}
+                      onClick={() => addComment(0, 'bug')}
                       color="error"
                     >
                       Bug Report
@@ -578,12 +642,25 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                       size="small"
                       variant="outlined"
                       startIcon={<StarIcon />}
-                      onClick={() => addComment(0'improvement')}
+                      onClick={() => addComment(0, 'improvement')}
                       color="warning"
                     >
                       Forbedring
                     </Button>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<SendIcon />}
+                      onClick={() => addComment(0, 0, 'feedback')}
+                    >
+                      Send Kommentar
+                    </Button>
                   </Box>
+
+                  <FormControlLabel
+                    control={<Switch checked={showComments} onChange={() => setShowComments(prev => !prev)} size="small" />}
+                    label="Vis inline kommentarer"
+                  />
 
                   {/* Code Analysis Integration */}
                   <Alert severity="info">
@@ -614,6 +691,39 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                       ? "✅ Høy kvalitet! Anbefales for FAQ publisering." : "⚠️ Vurder å forbedre tutorial før publisering til FAQ."
                   }
                   </Alert>
+
+                  <Divider />
+
+                  <Typography variant="subtitle2">Forhåndsvisning av opptak</Typography>
+                  {session.steps.filter(s => s.type === 'video').map((step) => (
+                    <Box key={step.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setPlayingStepId(prev => prev === step.id ? null : step.id)}
+                      >
+                        {playingStepId === step.id ? <PauseIcon /> : <PlayIcon />}
+                      </IconButton>
+                      <Typography variant="body2">{step.title}</Typography>
+                      {playingStepId === step.id && step.mediaUrl && (
+                        <video src={step.mediaUrl} autoPlay controls style={{ maxWidth: '200px', borderRadius: 4 }} />
+                      )}
+                    </Box>
+                  ))}
+
+                  {onMeetingCreate && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => onMeetingCreate({
+                        title: `Review: ${session.title}`,
+                        type: 'tutorial_review',
+                        relatedTutorialId: session.id,
+                        scheduledAt: new Date().toISOString()
+                      })}
+                    >
+                      Planlegg Review Møte
+                    </Button>
+                  )}
                 </Box>
               )}
 
@@ -633,10 +743,23 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                     <Typography><strong>Prioritet Score: </strong> {getPriorityScore()}%</Typography>
                   </Card>
 
-                  <Box sx={{ display: 'flex', gap:  2 }}>
+                  <Divider />
+
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <Button variant="contained"
                       startIcon={<SaveIcon />}
-                      onClick={() => console.log('Saving draft...')}
+                      onClick={() => {
+                        console.log('Saving draft...');
+                        if (onWorklogCreate) {
+                          onWorklogCreate({
+                            type: 'tutorial_draft',
+                            tutorialId: session.id,
+                            title: session.title,
+                            duration: recordingTimer,
+                            createdAt: new Date().toISOString()
+                          });
+                        }
+                      }}
                     >
                       Lagre Draft
                     </Button>
@@ -644,10 +767,33 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                     <Button variant="contained"
                       color="success"
                       startIcon={<FAQIcon />}
-                      onClick={publishToFAQ}
+                      endIcon={<PublishIcon />}
+                      onClick={() => {
+                        publishToFAQ();
+                        if (onProjectUpdate) {
+                          onProjectUpdate({
+                            tutorialId: session.id,
+                            title: session.title,
+                            status: 'published',
+                            stepsCount: session.steps.length,
+                            rating: session.rating
+                          });
+                        }
+                      }}
                       disabled={session.rating < 3}
                     >
                       Publiser til FAQ
+                    </Button>
+
+                    <Button
+                      variant="outlined"
+                      startIcon={<ShareIcon />}
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/tutorial/${session.id}`);
+                        alert('Tutorial-lenke kopiert til utklippstavlen!');
+                      }}
+                    >
+                      Del Tutorial
                     </Button>
                   </Box>
 
@@ -675,27 +821,54 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
 
               {selectedTab === 0 && (
                 <Box sx={{ mt:  2 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Tutorial Kommentarer
-                  </Typography>
-                  
-                  <List dense>
-                    {session.steps.flatMap(step => step.comments).map((comment) => (
-                      <ListItem key={comment.id}>
-                        <ListItemIcon>
-                          {comment.type === 'bug' && <BugIcon color="error" />}
-                          {comment.type === 'feedback' && <CommentIcon color="primary" />}
-                          {comment.type === 'improvement' && <StarIcon color="warning" />}
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={comment.text}
-                          secondary={`${comment.type} - ${new Date(comment.createdAt).toLocaleString()}`}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                  
-                  {session.steps.flatMap(step => step.comments).length === 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle1">
+                      Tutorial Kommentarer
+                    </Typography>
+                    <FormControlLabel
+                      control={<Switch checked={showComments} onChange={() => setShowComments(prev => !prev)} size="small" />}
+                      label="Detaljer"
+                    />
+                  </Box>
+
+                  {session.steps.map((step, stepIdx) => (
+                    <Accordion key={step.id} defaultExpanded={step.comments.length > 0}>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography variant="body2">
+                          Step {stepIdx + 1}: {step.title} ({step.comments.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List dense>
+                          {step.comments.map((comment) => (
+                            <ListItem key={comment.id} secondaryAction={
+                              showComments ? (
+                                <Box>
+                                  <IconButton size="small"><ThumbUpIcon fontSize="small" /></IconButton>
+                                  <IconButton size="small"><ThumbDownIcon fontSize="small" /></IconButton>
+                                </Box>
+                              ) : undefined
+                            }>
+                              <ListItemIcon>
+                                {comment.type === 'bug' && <BugIcon color="error" />}
+                                {comment.type === 'feedback' && <CommentIcon color="primary" />}
+                                {comment.type === 'improvement' && <StarIcon color="warning" />}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={comment.text}
+                                secondary={showComments ? `${comment.type} - ${new Date(comment.createdAt).toLocaleString()} - ${comment.severity}` : `${comment.type} - ${new Date(comment.createdAt).toLocaleString()}`}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                        {step.comments.length === 0 && (
+                          <Typography color="text.secondary" variant="body2">Ingen kommentarer for dette steget</Typography>
+                        )}
+                      </AccordionDetails>
+                    </Accordion>
+                  ))}
+
+                  {session.steps.length === 0 && (
                     <Typography color="text.secondary" sx={{ textAlign: 'center', mt:  4 }}>
                       Ingen kommentarer ennå
                     </Typography>
@@ -705,9 +878,12 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
 
               {selectedTab === 1 && (
                 <Box sx={{ mt:  2 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Tutorial Analyse
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <CodeIcon color="primary" />
+                    <Typography variant="subtitle1">
+                      Tutorial Analyse
+                    </Typography>
+                  </Box>
                   
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
                     <Chip
@@ -720,12 +896,22 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                     </Typography>
                     
                     <Typography variant="body2">
-                      <strong>Screenshot bonus: </strong> +{session.steps.filter(s => s.type === 'screenshot').length *, 5} poeng
+                      <strong>Screenshot bonus: </strong> +{session.steps.filter(s => s.type === 'screenshot').length * 5} poeng
                     </Typography>
                     
                     <Typography variant="body2">
-                      <strong>Kvalitet bonus: </strong> +{session.rating *, 5} poeng
+                      <strong>Kvalitet bonus: </strong> +{session.rating * 5} poeng
                     </Typography>
+
+                    {analysisResults && (
+                      <Card variant="outlined" sx={{ p: 1.5 }}>
+                        <Typography variant="subtitle2" gutterBottom>Detaljert Analyse</Typography>
+                        <Typography variant="body2"><strong>Video Score:</strong> {analysisResults.videoScore}</Typography>
+                        <Typography variant="body2"><strong>Screenshot Score:</strong> {analysisResults.screenshotScore}</Typography>
+                        <Typography variant="body2"><strong>Kommentarer:</strong> {analysisResults.commentCount}</Typography>
+                        <Typography variant="body2"><strong>Kvalitetsgrad:</strong> {analysisResults.qualityGrade}</Typography>
+                      </Card>
+                    )}
                   </Box>
                 </Box>
               )}

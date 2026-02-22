@@ -5,7 +5,12 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Dialog, IconButton, Typography } from '@mui/material';
+import {
+  Box,
+  Dialog,
+  IconButton,
+  Typography,
+} from '@mui/material';
 import { ZoomIn, Close } from '@mui/icons-material';
 
 interface ImageContentProps {

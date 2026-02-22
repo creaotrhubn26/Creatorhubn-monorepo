@@ -20,14 +20,14 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
 } from '@mui/material';
 import {
   Send as SendIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Reply as ReplyIcon,
-  CheckCircle as ResolvedIcon
+  CheckCircle as ResolvedIcon,
 } from '@mui/icons-material';
 
 interface Comment {

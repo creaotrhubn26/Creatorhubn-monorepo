@@ -46,7 +46,7 @@ import {
   Settings,
   ColorLens,
   VideoSettings,
-  AudioSettings,
+  Tune as AudioSettings,
   Timeline,
   CloudUpload,
   Download,

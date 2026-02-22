@@ -27,7 +27,6 @@ import {
   Visibility,
   Settings,
   AddCircle as Add,
-  SdDirectionsCard,
   Storage,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -485,7 +484,7 @@ export default function MemoryCardManager() {
           <Grid item xs={12} sm={6} md={3} key={index}>
             <Card
               sx={{
-                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
                 border: `1px solid ${stat.color}30`,
                 borderRadius:  2}}
              sx={theming.getThemedCardSx()}>
@@ -544,7 +543,7 @@ export default function MemoryCardManager() {
             <Grid item xs={12} sm={6} md={4} key={card.id}>
               <Card
                 sx={{
-                  background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
                   border: '1px solid rgba(25,140,0,0.2)',
                   borderRadius: 2, '&:hover': { transform: 'translateY(-2px)',
                     boxShadow: '0 8px 25px rgba(25,140,0,0.15)',
@@ -657,7 +656,7 @@ export default function MemoryCardManager() {
         PaperProps={{
           sx: {
             background:
-              'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+              'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(25,140,0,0.2)',
             borderRadius:  3,
@@ -763,7 +762,7 @@ export default function MemoryCardManager() {
             {/* FASE 2: Security Settings for Memory Card , *, /}
             <Card
               sx={{
-                background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.05) 0%, rgba(2, 5, 5,248,235,0.05) 100%)',
+                background: 'linear-gradient(135deg, rgba(255,140,0,0.05) 0%, rgba(255,248,235,0.05) 100%)',
                 border: '1px solid rgba(25,140,0,0.2)',
                 borderRadius:  2}}
              sx={theming.getThemedCardSx()}>
@@ -965,7 +964,7 @@ export default function MemoryCardManager() {
         PaperProps={{
           sx: {
             background:
-              'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+              'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(25,140,0,0.2)',
             borderRadius:  3,

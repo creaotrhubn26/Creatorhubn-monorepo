@@ -23,7 +23,7 @@ import {
   CircularProgress,
   Card,
   CardContent,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   Visibility,
@@ -31,7 +31,7 @@ import {
   Lock,
   Security,
   AccessTime,
-  Warning
+  Warning,
 } from '@mui/icons-material';
 
 interface ClientAuthDialogProps {

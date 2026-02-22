@@ -13,7 +13,7 @@ import {
   ListItemIcon,
   ListItemSecondaryAction,
   Tooltip,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   Download,
@@ -25,7 +25,7 @@ import {
   Refresh,
   CheckCircle,
   Error as ErrorIcon,
-  FileDownload
+  FileDownload,
 } from '@mui/icons-material';
 import { backgroundDownloadService, type DownloadTask } from '@/services/BackgroundDownloadService';
 

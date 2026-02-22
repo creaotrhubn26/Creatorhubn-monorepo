@@ -1,5 +1,10 @@
 import * as React from 'react';
-import { Box, MenuItem, Select, Typography } from '@mui/material';
+import {
+  Box,
+  MenuItem,
+  Select,
+  Typography,
+} from '@mui/material';
 import { useNodes } from '@/state/selectors';
 import { setActiveCameraId } from '@/core/services/viewports';
 

@@ -5,12 +5,12 @@ import React, { useState, useCallback } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardMedia, 
-  IconButton, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardMedia,
+  IconButton,
   CircularProgress,
   Alert,
   Chip,
@@ -21,26 +21,26 @@ import {
   DialogContent,
   DialogActions,
   Slider,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { 
-  PlayArrow, 
-  Pause, 
-  VolumeUp, 
-  VolumeOff, 
-  Fullscreen, 
-  ZoomIn, 
+import {
+  PlayArrow,
+  Pause,
+  VolumeUp,
+  VolumeOff,
+  Fullscreen,
+  ZoomIn,
   ZoomOut,
   Download,
   Share,
   Image,
   VideoLibrary,
   AudioFile,
-  Description
+  Description,
 } from '@mui/icons-material';
 
 interface PreviewItem {

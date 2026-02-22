@@ -164,22 +164,51 @@ export interface ContactInfo {
   department: string;
 }
 
+// Camera identifiers for multi-camera setups (Pro tier)
+export type CameraId = 'A' | 'B' | 'C' | 'D';
+
+export interface CameraMetadata {
+  /** Camera unit identifier, e.g. 'A' or 'B' */
+  cameraId:  CameraId;
+  /** Camera body label, e.g. 'A-cam (ARRI ALEXA)' */
+  camera?:   string;
+  /** Lens info, e.g. '35mm T1.9' */
+  lens?:     string;
+  /** Frame rate, e.g. 24 */
+  fps?:      number;
+  /** ISO / EI, e.g. 800 */
+  iso?:      number;
+  /** ND filter, e.g. 'ND 1.2' */
+  ndFilter?: string;
+}
+
 export interface Take {
-  id: string;
-  sceneId: string;
-  shotId: string;
-  takeNumber: number;
-  status: 'good' | 'ok' | 'bad' | 'circle' | 'print';
-  duration: number; // seconds
-  timecode?: string;
-  notes?: string;
-  techNotes?: string; // Focus, exposure issues etc.
+  id:          string;
+  sceneId:     string;
+  shotId:      string;
+  takeNumber:  number;
+  status:      'good' | 'ok' | 'bad' | 'circle' | 'print';
+  duration:    number; // seconds
+  timecode?:   string;
+  notes?:      string;
+  techNotes?:  string; // Focus, exposure issues etc.
   soundNotes?: string;
-  circledBy?: string;
-  recordedAt: string;
-  camera: string;
-  lens?: string;
-  slate?: string;
+  circledBy?:  string;
+  recordedAt:  string;
+  /** ISO timestamp when the take was logged (= recordedAt for new takes) */
+  loggedAt?:   string;
+  /** userId who logged the take */
+  loggedBy?:   string;
+  slate?:      string;
+  // ── Multi-camera fields (Pro tier) ──
+  cameraId?:   CameraId;  // primary camera unit
+  camera?:     string;    // camera body label
+  lens?:       string;
+  fps?:        number;
+  iso?:        number;
+  ndFilter?:   string;
+  /** Additional camera units rolling simultaneously */
+  additionalCameras?: CameraMetadata[];
 }
 
 export interface LiveSetStatus {
@@ -1688,35 +1717,110 @@ class ProductionWorkflowService {
     return this.liveSetStatus;
   }
 
-  async cut(status: 'good' | 'ok' | 'bad' | 'circle' | 'print', notes?: string): Promise<Take> {
+  /**
+   * Log a cut. Accepts optional camera metadata (Pro tier) so that
+   * multi-camera shots can record all camera units in one call.
+   * `nextTake` overrides the auto-increment; pass the UI-controlled value
+   * when `autoIncrement` is disabled.
+   */
+  async cut(
+    status:           Take['status'],
+    notes?:           string,
+    cameraMetadata?:  CameraMetadata,
+    additionalCameras?: CameraMetadata[],
+    nextTake?:        number,
+    loggedBy?:        string,
+  ): Promise<Take> {
+    const now = new Date().toISOString();
     const take: Take = {
-      id: `take-${Date.now()}`,
-      sceneId: this.liveSetStatus.currentScene!,
-      shotId: this.liveSetStatus.currentShot!,
+      id:         `take-${Date.now()}`,
+      sceneId:    this.liveSetStatus.currentScene!,
+      shotId:     this.liveSetStatus.currentShot!,
       takeNumber: this.liveSetStatus.currentTake,
       status,
-      duration: Math.floor(Math.random() * 30) + 20, // Random 20-50s
+      duration:   Math.floor(Math.random() * 30) + 20, // TODO: real duration from timer
       notes,
-      recordedAt: new Date().toISOString(),
-      camera: 'A-cam',
+      recordedAt: now,
+      loggedAt:   now,
+      loggedBy,
       slate: `${this.liveSetStatus.currentScene?.replace('scene-', '')}-${this.liveSetStatus.currentTake}`,
+      // Multi-camera metadata
+      cameraId:           cameraMetadata?.cameraId  ?? 'A',
+      camera:             cameraMetadata?.camera    ?? 'A-cam',
+      lens:               cameraMetadata?.lens,
+      fps:                cameraMetadata?.fps,
+      iso:                cameraMetadata?.iso,
+      ndFilter:           cameraMetadata?.ndFilter,
+      additionalCameras,
     };
 
     this.takes.push(take);
+    const resolvedNext = nextTake ?? (this.liveSetStatus.currentTake + 1);
     this.liveSetStatus = {
       ...this.liveSetStatus,
-      currentTake: this.liveSetStatus.currentTake + 1,
-      isRolling: false,
-      lastAction: `CUT - ${status.toUpperCase()}${notes ? `: ${notes}` : ''}`,
-      lastActionTime: new Date().toISOString(),
+      currentTake: resolvedNext,
+      isRolling:   false,
+      lastAction:  `CUT - ${status.toUpperCase()}${notes ? `: ${notes}` : ''}`,
+      lastActionTime: now,
       todayTakes: [...this.liveSetStatus.todayTakes, take],
       todayProgress: {
         ...this.liveSetStatus.todayProgress,
-        completedSetups: this.liveSetStatus.todayProgress.completedSetups + (status === 'circle' || status === 'print' ? 1 : 0),
+        completedSetups:
+          this.liveSetStatus.todayProgress.completedSetups +
+          (status === 'circle' || status === 'print' ? 1 : 0),
       },
     };
 
     return take;
+  }
+
+  /**
+   * Mark the current setup complete and advance to the next setup/scene.
+   * Returns the new liveStatus (with updated currentScene/currentShot/currentTake=1).
+   * TODO [Studio]: broadcast via WebSocket so all clients update.
+   */
+  async setupComplete(
+    sceneId:  string,
+    shotId:   string,
+    userId:   string,
+  ): Promise<LiveSetStatus> {
+    const now = new Date().toISOString();
+    // Mark current scene as partially/fully complete in progress
+    this.liveSetStatus = {
+      ...this.liveSetStatus,
+      currentTake:    1,
+      isRolling:      false,
+      lastAction:     `SETUP COMPLETE — ${sceneId} / ${shotId} — av ${userId}`,
+      lastActionTime: now,
+      todayProgress:  {
+        ...this.liveSetStatus.todayProgress,
+        completedSetups: this.liveSetStatus.todayProgress.completedSetups + 1,
+      },
+    };
+    return this.liveSetStatus;
+  }
+
+  /**
+   * Advance to the next setup in the stripboard.
+   * Finds the next un-shot scene/setup after `currentScene`.
+   * TODO [Studio]: Wire to real stripboard order endpoint.
+   */
+  async nextSetup(shootingDayId: string): Promise<{ sceneId: string; shotId: string } | null> {
+    const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
+    if (!day) return null;
+    const idx = day.scenes.indexOf(this.liveSetStatus.currentScene ?? '');
+    const nextScene = day.scenes[idx + 1] ?? null;
+    if (!nextScene) return null;
+    const nextShotId = `${nextScene}-shot-1`;
+    this.liveSetStatus = {
+      ...this.liveSetStatus,
+      currentScene:   nextScene,
+      currentShot:    nextShotId,
+      currentTake:    1,
+      lastAction:     'NEXT SETUP',
+      lastActionTime: new Date().toISOString(),
+    };
+    return { sceneId: nextScene, shotId: nextShotId };
   }
 
   async getTodayTakes(shootingDayId: string): Promise<Take[]> {

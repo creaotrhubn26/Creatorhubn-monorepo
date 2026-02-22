@@ -46,11 +46,11 @@ import {
   Psychology as OnnxIcon,
   SmartToy as AIIcon,
   Image as PhotoIcon,
-  VideocamLibrary as VideoIcon,
-  AudioDescription as AudioIcon,
+  VideoLibrary as VideoIcon,
+  Audiotrack as AudioIcon,
   AutoFixHigh as EnhanceIcon,
   CloudUpload,
-  Speed,
+  Speed as Speed,
   Memory,
   Analytics,
   TrendingUp,
@@ -64,8 +64,8 @@ import {
   PhoneAndroid,
   Tune,
   ModelTraining,
-  CameraAltAlt,
-  MusicNoteNote,
+  CameraAlt as CameraAltAlt,
+  MusicNote as MusicNoteNote,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

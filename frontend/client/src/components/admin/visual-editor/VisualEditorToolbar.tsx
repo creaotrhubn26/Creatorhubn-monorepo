@@ -19,7 +19,7 @@ import {
   Badge,
   ToggleButtonGroup,
   ToggleButton,
-  Divider
+  Divider,
 } from '@mui/material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';
@@ -46,7 +46,7 @@ import {
   GridOn as GridIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
-  Science as ScienceIcon
+  Science as ScienceIcon,
 } from '@mui/icons-material';
 
 interface VisualEditorToolbarProps {

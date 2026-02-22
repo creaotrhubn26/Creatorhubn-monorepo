@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -58,7 +58,7 @@ import {
   Step,
   StepLabel,
   StepContent,
-  StepButton
+  StepButton,
 } from '@mui/material';
 import {
   Palette,
@@ -107,7 +107,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -124,7 +124,7 @@ import {
   Timer,
   Event,
   Timeline,
-  FlowChart,
+  AccountTree as FlowChart,
   AccountTree,
   Hub,
   Share,
@@ -200,7 +200,7 @@ import {
   FormatSize as FormatSizeIcon,
   FormatColorText as FormatColorTextIcon,
   FormatColorFill as FormatColorFillIcon,
-  ColorLens as ColorLensIcon
+  ColorLens as ColorLensIcon,
 } from '@mui/icons-material';
 import { useDesignSystem, UseDesignSystemOptions } from '../../../hooks/useDesignSystem';
 import { DesignSystemConfig, DesignToken, DesignGuideline, DesignTheme } from '../../../utils/designSystemManager';

@@ -28,7 +28,7 @@ import {
   DialogTitle,
   DialogContent,
   Divider,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -39,10 +39,10 @@ import {
   Security,
   AutoAwesome,
   CheckCircle,
-  Speed,
+  Speed as Speed,
   Public,
   Analytics,
-  Google
+  Google,
 } from '@mui/icons-material';
 
 interface LightroomInteractiveDemoProps {
@@ -88,7 +88,7 @@ const DEMO_STEPS = [
     description: 'Showcase URLs integreres i XMP sidecar filer',
     detail: '<creatorhub:showcaseUrl> feltet oppdateres',
     action: 'SEO metadata genereres',
-    icon: theming.getThemedIcon('')
+    icon: <Security />
 },
   {
     id: 'real-time-sync',
@@ -102,8 +102,8 @@ const DEMO_STEPS = [
 
 const INTEGRATION_FEATURES = [
   { title: 'Google Photos Backup', icon: <Google />, status: 'active',},
-  { title: 'SEO Optimalisering', icon: theming.getThemedIcon(', '), status: 'active',},
-  { title: 'GDPR Compliance', icon: theming.getThemedIcon(', '), status: 'active',},
+  { title: 'SEO Optimalisering', icon: <Security />, status: 'active',},
+  { title: 'GDPR Compliance', icon: <Security />, status: 'active',},
   { title: 'Responsive Design', icon: <Public />, status: 'active',}
 ];
 
@@ -174,7 +174,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
               sx={{
                 background: `linear-gradient(135deg, ${customBranding.color} 0%, #1976d2 100%)`,
                 color: 'white',
-                fontWeight: 60
+                fontWeight: 60,
                 minWidth: 10, '&:hover': {
                   transform: 'translateY(-2px)',
                   boxShadow: `0 8px 25px ${customBranding.color}40`
@@ -263,7 +263,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                   sx={{
                     bgcolor: `${customBranding.color}10`,
                     color: customBranding.color,
-                    fontWeight: 50& .MuiChip-icon': {
+                    fontWeight: 500, '& .MuiChip-icon': {
                       color: customBranding.color
                 }
                 }}
@@ -361,7 +361,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
               <Typography variant="h6" sx={{  mb: 2, color: customBranding.color  }}>
                 ⚡ Real-time Synkronisering
               </Typography>
-              <Box component="ul" sx={{ pl: 2'& li': { mb:  1 } }}>
+              <Box component="ul" sx={{ pl: 2, '& li': { mb:  1 } }}>
                 <li><Typography variant="body2">Endringer i Lightroom → Umiddelbar oppdatering på web</Typography></li>
                 <li><Typography variant="body2">Kunde kommentarer → Varsling til fotograf</Typography></li>
                 <li><Typography variant="body2">Prosjekt oppdateringer → Alle parter varsles</Typography></li>
@@ -382,11 +382,11 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Box sx={{ 
-                  width:  28, height:  28, borderRadius: '50, %', 
+                  width:  28, height:  28, borderRadius: '50%', 
                   bgcolor: customBranding.color, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700}}>1</Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Last ned CreatorHub Norge Lightroom Plugin
                 </Typography>
               </Box>
@@ -407,7 +407,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Box sx={{ 
-                  width:  28, height:  28, borderRadius: '50, %', 
+                  width:  28, height:  28, borderRadius: '50%', 
                   bgcolor: customBranding.color, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700}}>2</Box>
@@ -457,11 +457,11 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Box sx={{ 
-                  width:  28, height:  28, borderRadius: '50, %', 
+                  width:  28, height:  28, borderRadius: '50%', 
                   bgcolor: customBranding.color, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700}}>3</Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Installer Plugin
                 </Typography>
               </Box>
@@ -485,11 +485,11 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Box sx={{ 
-                  width:  28, height:  28, borderRadius: '50, %', 
+                  width:  28, height:  28, borderRadius: '50%', 
                   bgcolor: customBranding.color, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700}}>4</Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Aktiver Plugin
                 </Typography>
               </Box>
@@ -510,11 +510,11 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Box sx={{ 
-                  width:  28, height:  28, borderRadius: '50, %', 
+                  width:  28, height:  28, borderRadius: '50%', 
                   bgcolor: customBranding.color, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700}}>5</Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Start Synkronisering
                 </Typography>
               </Box>
@@ -541,7 +541,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                 <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
                   • Logg inn med din CreatorHub Norge konto
                 </Typography>
-                <Typography variant="body2" sx={{ color: customBranding.color, fontWeight: 600}>
+                <Typography variant="body2" sx={{ color: customBranding.color, fontWeight: 600 }}>
                   🎉 Klar! Collections synkroniseres automatisk til showcase
                 </Typography>
               </Box>
@@ -550,7 +550,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
 
           {/* Troubleshooting Tips */}
           <Box sx={{ p: 3, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2, mb: 3 }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, color: customBranding.color, fontWeight: 600}>
+            <Typography variant="subtitle2" sx={{ mb: 2, color: customBranding.color, fontWeight: 600 }}>
               💡 Feilsøking & Tips
             </Typography>
             <Box sx={{ pl:  2 }}>
@@ -589,7 +589,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
             💡 Praktisk Bruk: Emma & Jon Bryllup
           </Typography>
           <Box sx={{ p: 3, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2 }}>
-            <Box component="ol" sx={{ pl: 2'& li': { mb: 1.5,} }}>
+            <Box component="ol" sx={{ pl: 2, '& li': { mb: 1.5 } }}>
               <li><Typography variant="body2"><strong>I Lightroom: </strong> Organiser 247 bilder i "Emma & Jon Bryllup" collection</Typography></li>
               <li><Typography variant="body2"><strong>Sync til CreatorHub:</strong> Plugin sender collection og metadata automatisk</Typography></li>
               <li><Typography variant="body2"><strong>Automatisk Showcase:</strong> Collection blir til offentlig gallery på web</Typography></li>

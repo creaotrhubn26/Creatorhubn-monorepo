@@ -1,5 +1,11 @@
 import React from 'react';
-import { Box, TextField, Button, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  TextField,
+  Button,
+  Stack,
+  Typography,
+} from '@mui/material';
 import UniversalFileUpload from '@/components/universal/UniversalFileUpload';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 

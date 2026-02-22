@@ -22,7 +22,7 @@ import {
   FormatAlignRight,
   FormatAlignJustify,
   Link as LinkIcon,
-  Visibility
+  Visibility,
 } from '@mui/icons-material';
 
 export const PropertiesPanel: React.FC = () => {

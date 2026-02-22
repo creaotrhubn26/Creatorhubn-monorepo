@@ -9,14 +9,14 @@ import {
   Chip,
   Badge,
   CircularProgress,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Videocam,
   PhotoCamera,
   Refresh,
   NewReleases,
-  Update
+  Update,
 } from '@mui/icons-material';
 import { useCameraDiscovery } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';

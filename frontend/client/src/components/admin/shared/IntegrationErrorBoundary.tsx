@@ -15,13 +15,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   Error as ErrorIcon,
   Refresh as RefreshIcon,
   ExpandMore as ExpandIcon,
-  BugReport as BugIcon
+  BugReport as BugIcon,
 } from '@mui/icons-material';
 
 interface Props {

@@ -46,7 +46,7 @@ import {
   Loop,
   KeyboardArrowLeft,
   KeyboardArrowRight,
-  Speed,
+  Speed as Speed,
   AutoFixHigh,
   Face as FaceIcon,
   Sync,
@@ -59,7 +59,32 @@ import {
   NotificationsActive,
 } from '@mui/icons-material';
 import { ThemeProvider } from '@mui/material/styles';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Stepper, Step, StepLabel, StepContent, Snackbar, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, LinearProgress, Checkbox, List, ListItem, ListItemButton, ListItemText, ListItemSecondaryAction, CircularProgress, ListItemText as ListItemTextType } from '@mui/material';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Snackbar,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  LinearProgress,
+  Checkbox,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  ListItemSecondaryAction,
+  CircularProgress,
+  ListItemText as ListItemTextType,
+} from '@mui/material';
 import { CheckCircle } from '@mui/icons-material';
 import { storyArcStudioTheme } from '../theme/storyArcStudioTheme';
 import EnhancementRatingDialog from './ai-training/EnhancementRatingDialog';
@@ -108,13 +133,13 @@ import { webWorkerEngine } from '../services/web-worker-engine';
 import { ThumbnailCacheService } from '../services/thumbnail-cache-service';
 import { audioAnalysisEngine } from '../services/audio-analysis-engine';
 import { faceDetectionWorker, type FaceDetectionProgress, type FaceDetectionResult } from '../services/face-detection-worker';
-import { 
-  FilterVintage, 
-  Palette, 
-  TextFields, 
+import {
+  FilterVintage,
+  Palette,
+  TextFields,
   Subtitles,
   MusicNote,
-  RemoveCircle
+  RemoveCircle,
 } from '@mui/icons-material';
 
 interface StoryArcStudioProps {

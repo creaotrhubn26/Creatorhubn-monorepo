@@ -45,13 +45,6 @@ import {
   alpha,
   Snackbar,
 } from '@mui/material';
-import {
-  TabPanel,
-  TabContext,
-  TabList,
-  TabListProps,
-  TabPanelProps
-} from '@mui/lab';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import {
   Add,
@@ -95,7 +88,7 @@ import {
   AutoFixHigh,
   AutoAwesome,
   AutoAwesomeMotion,
-  Speed,
+  Speed as Speed,
   Timeline,
   Schedule,
   AccessTime,
@@ -122,7 +115,7 @@ import {
   Public,
   Language,
   Translate,
-  GTranslate
+  GTranslate,
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
@@ -1444,7 +1437,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff8c00',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(2, 5, 5,140,0,0.4)',
+          boxShadow: '0 8px 24px rgba(255,140,0,0.4)',
           border: '2px solid #3b82f6'
         },
         actions: {
@@ -1513,7 +1506,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff8c00',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 6px 20px rgba(2, 5, 5,140,0,0.3)'
+          boxShadow: '0 6px 20px rgba(255,140,0,0.3)'
         }
       }
     },
@@ -1569,7 +1562,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff9800',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(2, 5, 5,152,0,0.4)'
+          boxShadow: '0 8px 24px rgba(255,152,0,0.4)'
         },
         actions: {
           enabled: true,
@@ -1634,7 +1627,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff6b35',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(2, 5, 5,107,53,0.3)'
+          boxShadow: '0 8px 24px rgba(255,107,53,0.3)'
         },
         actions: {
           enabled: true,
@@ -1732,7 +1725,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff9800',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(2, 5, 5,152,0,0.3)'
+          boxShadow: '0 8px 24px rgba(255,152,0,0.3)'
         }
       }
     },
@@ -1972,7 +1965,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff8c00',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(2, 5, 5,140,0,0.3)'
+          boxShadow: '0 8px 24px rgba(255,140,0,0.3)'
         },
         actions: {
           enabled: true,
@@ -2129,7 +2122,7 @@ export default function ToastDesigner() {
           backgroundColor: '#ff9800',
           textColor: '#ffffff',
           borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(2, 5, 5,152,0,0.3)'
+          boxShadow: '0 8px 24px rgba(255,152,0,0.3)'
         },
         actions: {
           enabled: true,

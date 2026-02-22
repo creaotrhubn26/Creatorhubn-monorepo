@@ -27,7 +27,7 @@ import {
   Select,
   MenuItem,
   Tooltip,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   Task,
@@ -43,7 +43,7 @@ import {
   MoreVert,
   Refresh,
   FilterList,
-  Sort
+  Sort,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

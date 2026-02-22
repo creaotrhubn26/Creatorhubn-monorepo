@@ -28,19 +28,19 @@ import {
   MenuItem,
 } from '@mui/material';
 import {
-  Videocamcam,
+  Videocam as Videocamcam,
   Movie,
   Edit,
   AutoAwesome,
   CloudUpload,
   TrendingUp as TimelineIcon,
   ColorLens,
-  VolumeUpUp,
+  VolumeUp as VolumeUpUp,
   Subtitles,
   Download,
   Share,
   Analytics,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 
 interface VideoProject {

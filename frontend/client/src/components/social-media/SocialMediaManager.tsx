@@ -53,7 +53,7 @@ import {
   Visibility as VisibilityIcon,
   ThumbUp as ThumbUpIcon,
   Comment as CommentIcon,
-  VideocamLibrary as TikTokIcon,
+  VideoLibrary as TikTokIcon,
   Send as SendIcon,
   PlayArrow as PlayArrowIcon,
   Pause as PauseIcon,

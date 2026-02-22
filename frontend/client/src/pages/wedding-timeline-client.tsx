@@ -15,7 +15,14 @@ import {
   Container,
   LinearProgress,
 } from '@mui/material';
-import { AccessTime, Event, Search, Key, Lock, Schedule } from '@mui/icons-material';
+import {
+  AccessTime,
+  Event,
+  Search,
+  Key,
+  Lock,
+  Schedule,
+} from '@mui/icons-material';
 import { useLocation, useRoute } from 'wouter';
 import WeddingTimelineClient from '@/components/wedding/WeddingTimelineClient';
 import { useQuery } from '@tanstack/react-query';

@@ -38,7 +38,7 @@ import {
   Alert,
   Grid,
   Paper,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   PersonAdd,
@@ -47,7 +47,7 @@ import {
   Group,
   CameraAlt,
   MusicNote,
-  ContactPage
+  ContactPage,
 } from '@mui/icons-material';
 import { ProjectCollaborator } from '@/types/project-collaborator';
 

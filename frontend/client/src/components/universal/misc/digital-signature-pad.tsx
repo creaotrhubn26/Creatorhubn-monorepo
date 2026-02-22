@@ -1,33 +1,33 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Card, 
-  CardContent, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
   CircularProgress,
   IconButton,
   Tooltip,
   Paper,
-  Grid
+  Grid,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  Edit, 
-  Clear, 
-  Save, 
-  Download, 
+import {
+  Edit,
+  Clear,
+  Save,
+  Download,
   Close,
   CheckCircle,
-  Error
+  Error,
 } from '@mui/icons-material';
 
 interface DigitalSignaturePadProps {

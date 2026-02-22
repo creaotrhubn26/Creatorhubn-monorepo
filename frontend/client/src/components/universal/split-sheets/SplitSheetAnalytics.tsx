@@ -16,14 +16,14 @@ import {
   Stack,
   Chip,
   Paper,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   AttachMoney as MoneyIcon,
   TrendingUp as TrendingUpIcon,
   People as PeopleIcon,
   Assessment as AssessmentIcon,
-  CheckCircle as CheckCircleIcon
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useDynamicProfessions } from '../hooks/useDynamicProfessions';

@@ -37,7 +37,7 @@ import {
   ListItemButton,
   ListItemAvatar,
   Avatar,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -51,7 +51,7 @@ import {
   ViewModule as MasonryIcon,
   ViewCarousel as CarouselIcon,
   Search as SearchIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 interface DriveFolder {

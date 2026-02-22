@@ -246,6 +246,7 @@ import {
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { useToast } from './ToastStack';
 import { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location } from '../models/casting';
+import type { StoryLogicState } from '../services/storyLogicService';
 import { manuscriptService } from '../services/manuscriptService';
 import { RichTextEditor } from './RichTextEditor';
 import { ScriptDiffViewer } from './ScriptDiffViewer';
@@ -267,11 +268,12 @@ import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 interface ManuscriptPanelProps {
   projectId?: string;
   onManuscriptChange?: (manuscript: Manuscript) => void;
+  storyLogicData?: StoryLogicState | null;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
 
-const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, onManuscriptChange }) => {
+const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, onManuscriptChange, storyLogicData }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -1919,6 +1921,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                   dialogueLines={dialogueLines}
                   acts={acts}
                   projectId={projectId}
+                  storyLogicData={storyLogicData}
                   onSceneUpdate={async (updatedScene) => {
                     // Update local state
                     setScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
@@ -2625,7 +2628,7 @@ Anna går raskt gjennom regnet.
       {castingRoles.length > 0 && (
         <Alert severity="success" sx={{ mt: responsive.spacing }}>
           <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-            <strong>{castingRoles.length}</strong> roller fra Casting Planner er tilgjengelig i autocomplete.
+            <strong>{castingRoles.length}</strong> roller fra The Role Room er tilgjengelig i autocomplete.
             {castingLocations.length > 0 && ` ${castingLocations.length} lokasjoner tilgjengelig.`}
           </Typography>
         </Alert>

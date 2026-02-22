@@ -1,6 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Container, Typography, Paper, Button, Stack, Tabs, Tab, Dialog, DialogTitle, DialogContent, DialogActions, Alert, Chip, CircularProgress } from '@mui/material';
-import { ArrowBack, VideoLibrary, EditNote, MovieCreation, Notes, CloudDone, CloudSync, CloudOff, Refresh, ColorLens, AutoFixHigh, PlayArrow, Stop, CheckCircle, Error, Code } from '@mui/icons-material';
+import {
+  Box,
+  Container,
+  Typography,
+  Paper,
+  Button,
+  Stack,
+  Tabs,
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  Chip,
+  CircularProgress,
+} from '@mui/material';
+import {
+  ArrowBack,
+  VideoLibrary,
+  EditNote,
+  MovieCreation,
+  Notes,
+  CloudDone,
+  CloudSync,
+  CloudOff,
+  Refresh,
+  ColorLens,
+  AutoFixHigh,
+  PlayArrow,
+  Stop,
+  CheckCircle,
+  Error,
+  Code,
+} from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

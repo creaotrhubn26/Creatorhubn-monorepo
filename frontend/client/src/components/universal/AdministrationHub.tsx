@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { Box, Tabs as MuiTabs, Tab, Paper, Typography } from '@mui/material';
+import {
+  Box,
+  Tabs as MuiTabs,
+  Tab,
+  Paper,
+  Typography,
+} from '@mui/material';
 import { Article, Payments, AdminPanelSettings } from '@mui/icons-material';
 import PriceAdministration from '../PriceAdministration';
 import UniversalContractHub from './contracts/UniversalContractHub';

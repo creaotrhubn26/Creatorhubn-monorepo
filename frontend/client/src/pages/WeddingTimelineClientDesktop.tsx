@@ -21,7 +21,13 @@ import {
   useTheme,
 } from '@mui/material';
 import { RingIcon } from '../components/shared/CreatorHubIcons';
-import { AccessTime, Event, Search, Schedule, CalendarToday as CalendarTodayToday } from '@mui/icons-material';
+import {
+  AccessTime,
+  Event,
+  Search,
+  Schedule,
+  CalendarToday as CalendarTodayToday,
+} from '@mui/icons-material';
 import { useLocation, useRoute } from 'wouter';
 import WeddingTimelineClient from '@/components/wedding/WeddingTimelineClient';
 import { useQuery } from '@tanstack/react-query';
@@ -76,7 +82,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
         background: `
         linear-gradient(135deg, #fff5f5 0%, #ffe0cc 25%, #ffcc80 50%, #ffb74d 75%, #f57c00 100%),
         radial-gradient(circle at 20% 80%, rgba(2, 4, 5,124,0,0.2) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(2, 5, 5,204,128,0.3) 0%, transparent 50%)
+        radial-gradient(circle at 80% 20%, rgba(255,204,128,0.3) 0%, transparent 50%)
       `,
         position: 'relative', '&::before': {
           content: '',

@@ -1,4 +1,4 @@
-import { useState, useId, useMemo, useEffect, type ReactElement } from 'react';
+import { useState, useId, useMemo, useEffect, useRef, useCallback, type ReactElement } from 'react';
 import {
   Box,
   Typography,
@@ -12,6 +12,7 @@ import {
   DialogActions,
   TextField,
   Select,
+  Menu,
   MenuItem,
   FormControl,
   InputLabel,
@@ -20,7 +21,6 @@ import {
   Grid,
   Tooltip,
   useMediaQuery,
-  useTheme,
   InputAdornment,
   ToggleButton,
   ToggleButtonGroup,
@@ -38,20 +38,40 @@ import {
   Snackbar,
   Avatar,
   Grow,
+  Slide,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Badge,
+  LinearProgress,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  ListItemSecondaryAction,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Person as PersonIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
   Search as SearchIcon,
   ViewModule as ViewModuleIcon,
   ViewList as ViewListIcon,
-  FilterList as FilterListIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  FilterList as FilterListIcon,
+  People as PeopleIcon,
+  Badge as BadgeIcon,
+  ChevronRight as ChevronRightIcon,
+  AssignmentTurnedIn as AssignIcon,
+  CalendarToday as CalendarTodayIcon,
   ContentCopy as CopyIcon,
   CheckCircle as CheckCircleIcon,
   Star as StarIcon,
@@ -62,21 +82,25 @@ import {
   Calculate as CalculateIcon,
   Close as CloseIcon,
   Movie as MovieIcon,
-  Business as BusinessIcon,
-  People as PeopleIcon,
-  SupervisorAccount as SupervisorAccountIcon,
-  Videocam as VideocamIcon,
-  CameraAlt as CameraAltIcon,
-  Lightbulb as LightbulbIcon,
-  Build as BuildIcon,
-  GraphicEq as GraphicEqIcon,
-  Face as FaceIcon,
-  Checkroom as CheckroomIcon,
-  MoreHoriz as MoreHorizIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
-  Badge as BadgeIcon,
-  PieChart as PieChartIcon,
+  PersonAdd as PersonAddIcon,
+  WarningAmber as WarningAmberIcon,
+  CheckCircleOutline as ConfirmedIcon,
+  HourglassEmpty as PendingIcon,
+  MailOutline as InvitedIcon,
+  Block as UnavailableIcon,
+  ChevronLeft as ChevronLeftIcon,
+  Groups as GroupsDetailIcon,
+  Sync as SyncIcon,
+  WifiOff as WifiOffIcon,
+  EventNote as CallsheetIcon,
+  TableChart as DoodIcon,
+  CalendarMonth as CalendarMonthIcon,
+  FiberManualRecord as DotIcon,
+  Schedule as ScheduleIcon,
+  LinkOff as UnassignIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import { 
@@ -88,13 +112,16 @@ import {
   RateIcon,
   SplitSheetIcon,
 } from './icons/CastingIcons';
-import { CrewMember, CrewRole } from '../models/casting';
+import { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
 import { castingService } from '../services/castingService';
-import CrewAvailabilityDrawer from './CrewAvailabilityDrawer';
-import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { useToast } from './ToastStack';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import { CallSheetGenerator } from './CallSheetGenerator';
+import { detectConflicts } from '../hooks/useCrewData';
+import crewPng from './icons/Keep/roleroom_crew.png';
+import { CrewManagementGuide } from './production/CrewManagementGuide';
 
-// Sort options
+// ─── Sort / view types ────────────────────────────────────────────────────────
 type SortField = 'name' | 'role' | 'rate' | 'availability';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
@@ -110,24 +137,791 @@ const focusVisibleStyles = {
   },
 };
 
+// ─── Department config ────────────────────────────────────────────────────────
+type DeptKey = 'production' | 'camera' | 'lighting' | 'sound' | 'post' | 'art' | 'wardrobe' | 'other';
+
+const DEPT_ORDER: DeptKey[] = ['production', 'camera', 'lighting', 'sound', 'post', 'art', 'wardrobe', 'other'];
+
+const DEPT_LABELS: Record<DeptKey, string> = {
+  production: 'Produksjon',
+  camera: 'Kamera',
+  lighting: 'Lys',
+  sound: 'Lyd',
+  post: 'Post',
+  art: 'Art / Design',
+  wardrobe: 'Kostyme',
+  other: 'Annet',
+};
+
+const DEPT_COLORS: Record<DeptKey, string> = {
+  production: '#ef4444',
+  camera: '#8b5cf6',
+  lighting: '#3b82f6',
+  sound: '#06b6d4',
+  post: '#f59e0b',
+  art: '#ec4899',
+  wardrobe: '#a78bfa',
+  other: '#64748b',
+};
+
+const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
+  director: 'production', producer: 'production', casting_director: 'production',
+  production_manager: 'production', production_assistant: 'production',
+  script_supervisor: 'production', location_manager: 'production',
+  camera_operator: 'camera', camera_assistant: 'camera',
+  cinematographer: 'camera', drone_pilot: 'camera',
+  gaffer: 'lighting', grip: 'lighting',
+  sound_engineer: 'sound', audio_mixer: 'sound',
+  video_editor: 'post', colorist: 'post', vfx_artist: 'post', motion_graphics: 'post',
+  production_designer: 'art',
+  makeup_artist: 'other', wardrobe: 'wardrobe', stylist: 'wardrobe',
+  collaborator: 'other', other: 'other',
+};
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+const STATUS_META: Record<CrewStatus | 'none', { label: string; color: string; bg: string; Icon: React.ElementType }> = {
+  confirmed:   { label: 'Bekreftet',    color: '#10b981', bg: 'rgba(16,185,129,0.18)',  Icon: ConfirmedIcon },
+  pending:     { label: 'Venter',       color: '#ffb800', bg: 'rgba(255,184,0,0.18)',   Icon: PendingIcon },
+  invited:     { label: 'Invitert',     color: '#3b82f6', bg: 'rgba(59,130,246,0.18)',  Icon: InvitedIcon },
+  unavailable: { label: 'Utilgjengelig',color: '#ef4444', bg: 'rgba(239,68,68,0.18)',   Icon: UnavailableIcon },
+  none:        { label: '—',            color: '#64748b', bg: 'rgba(100,116,139,0.12)', Icon: PendingIcon },
+};
+
+function StatusBadge({ status, size = 'small' }: { status?: CrewStatus; size?: 'small' | 'medium' }) {
+  const meta = STATUS_META[status ?? 'none'];
+  const { Icon } = meta;
+  return (
+    <Box sx={{
+      display: 'inline-flex', alignItems: 'center', gap: 0.5,
+      px: size === 'small' ? 0.75 : 1.25, py: size === 'small' ? 0.25 : 0.5,
+      borderRadius: 10, bgcolor: meta.bg, border: `1px solid ${meta.color}44`,
+    }}>
+      <Icon sx={{ fontSize: size === 'small' ? 11 : 14, color: meta.color }} />
+      <Typography sx={{ fontSize: size === 'small' ? 11 : 13, fontWeight: 600, color: meta.color, lineHeight: 1 }}>
+        {meta.label}
+      </Typography>
+    </Box>
+  );
+}
+
+// ─── Availability week dots (Mon–Fri) ─────────────────────────────────────────
+function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; hasConflict?: boolean }) {
+  const today = new Date();
+  // Start from Monday this week
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const days = Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+  const getColor = (dateStr: string) => {
+    const cell = member.availabilityCells?.find(c => c.date === dateStr);
+    if (cell) {
+      if (cell.availability === 'available') return '#10b981';
+      if (cell.availability === 'hold') return '#ffb800';
+      return '#ef4444';
+    }
+    const start = member.availability?.startDate;
+    const end = member.availability?.endDate ?? '9999-12-31';
+    if (!start) return '#374151';
+    return dateStr >= start && dateStr <= end ? '#10b981' : '#374151';
+  };
+  return (
+    <Box sx={{ display: 'flex', gap: 0.4, alignItems: 'center' }}>
+      {days.map((d, i) => (
+        <Tooltip key={d} title={['Ma','Ti','On','To','Fr'][i]} arrow placement="top">
+          <Box sx={{
+            width: 8, height: 8, borderRadius: '50%',
+            bgcolor: getColor(d), flexShrink: 0,
+            border: '1px solid rgba(255,255,255,0.1)',
+          }} />
+        </Tooltip>
+      ))}
+      {hasConflict && (
+        <Tooltip title="Dobbeltbooket!" arrow>
+          <WarningAmberIcon sx={{ fontSize: 12, color: '#ef4444', ml: 0.3 }} />
+        </Tooltip>
+      )}
+    </Box>
+  );
+}
+
+// ─── Department sidebar ───────────────────────────────────────────────────────
+interface DeptSidebarProps {
+  crewMembers: CrewMember[];
+  filterDept: DeptKey | 'all';
+  onDeptClick: (dept: DeptKey | 'all') => void;
+  favorites: Set<string>;
+}
+
+function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: DeptSidebarProps) {
+  const grouped = useMemo(() => {
+    const map = new Map<DeptKey, CrewMember[]>();
+    DEPT_ORDER.forEach(d => map.set(d, []));
+    crewMembers.forEach(m => {
+      const d = ROLE_TO_DEPT[m.role] ?? 'other';
+      map.get(d)!.push(m);
+    });
+    return map;
+  }, [crewMembers]);
+
+  return (
+    <Box sx={{
+      width: 200, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.08)',
+      overflowY: 'auto', display: 'flex', flexDirection: 'column',
+      bgcolor: 'rgba(0,0,0,0.2)',
+    }}>
+      {/* All crews */}
+      <Box
+        onClick={() => onDeptClick('all')}
+        sx={{
+          px: 2, py: 1.25, cursor: 'pointer', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          bgcolor: filterDept === 'all' ? 'rgba(0,212,255,0.12)' : 'transparent',
+          borderLeft: filterDept === 'all' ? '3px solid #00d4ff' : '3px solid transparent',
+          '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <GroupsDetailIcon sx={{ fontSize: 15, color: filterDept === 'all' ? '#00d4ff' : 'rgba(255,255,255,0.5)' }} />
+          <Typography sx={{ color: filterDept === 'all' ? '#00d4ff' : 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: 600 }}>
+            Alle
+          </Typography>
+        </Box>
+        <Chip label={crewMembers.length} size="small" sx={{ height: 18, fontSize: 11, color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.12)' }} />
+      </Box>
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+      {DEPT_ORDER.map(dept => {
+        const members = grouped.get(dept) ?? [];
+        if (members.length === 0) return null;
+        const color = DEPT_COLORS[dept];
+        const active = filterDept === dept;
+        return (
+          <Box
+            key={dept}
+            onClick={() => onDeptClick(active ? 'all' : dept)}
+            sx={{
+              px: 2, py: 1, cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between',
+              bgcolor: active ? `${color}18` : 'transparent',
+              borderLeft: active ? `3px solid ${color}` : '3px solid transparent',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+            }}
+          >
+            <Typography sx={{ color: active ? color : 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: active ? 700 : 400 }}>
+              {DEPT_LABELS[dept]}
+            </Typography>
+            <Chip label={members.length} size="small" sx={{ height: 16, fontSize: 10, color, bgcolor: `${color}1a` }} />
+          </Box>
+        );
+      })}
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mt: 1 }} />
+      {/* Favorites */}
+      {favorites.size > 0 && (
+        <Box sx={{ px: 2, py: 1 }}>
+          <Typography sx={{ color: '#ffc107', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <StarIcon sx={{ fontSize: 12 }} />
+            Favoritter ({favorites.size})
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ─── Bulk action bar ──────────────────────────────────────────────────────────
+interface BulkBarProps {
+  selectedIds: Set<string>;
+  totalCount: number;
+  isAllSelected: boolean;
+  onSelectAll: () => void;
+  onDelete: () => void;
+  onChangeStatus: (status: CrewStatus) => void;
+  onDeselect: () => void;
+  onAssignDay: () => void;
+  productionDays: ProductionDay[];
+}
+
+function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChangeStatus, onDeselect, onAssignDay }: BulkBarProps) {
+  const [statusAnchor, setStatusAnchor] = useState<HTMLElement | null>(null);
+  if (selectedIds.size === 0) return null;
+  return (
+    <Slide direction="up" in mountOnEnter unmountOnExit>
+      <Box sx={{
+        position: 'sticky', bottom: 0, left: 0, right: 0, zIndex: 50,
+        bgcolor: '#0d1117', borderTop: '1px solid rgba(0,212,255,0.25)',
+        display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
+        px: { xs: 1.5, sm: 3 }, py: 1.25,
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
+      }}>
+        {/* Select All */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 0.5 }}>
+          <Checkbox
+            checked={isAllSelected}
+            indeterminate={selectedIds.size > 0 && !isAllSelected}
+            onChange={onSelectAll}
+            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: '#00d4ff' }, p: 0.5 }}
+          />
+          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Select All</Typography>
+        </Box>
+        {/* Assign to Day */}
+        <Button
+          size="small" variant="outlined"
+          startIcon={<AssignIcon sx={{ fontSize: 15 }} />}
+          onClick={onAssignDay}
+          sx={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+            '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' } }}
+        >
+          Assign to Day
+        </Button>
+        {/* Change Status */}
+        <Button
+          size="small" variant="outlined"
+          endIcon={<ExpandMoreIcon sx={{ fontSize: 14 }} />}
+          onClick={e => setStatusAnchor(e.currentTarget)}
+          sx={{ borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}
+        >
+          Change Status
+        </Button>
+        <Menu
+          anchorEl={statusAnchor}
+          open={Boolean(statusAnchor)}
+          onClose={() => setStatusAnchor(null)}
+          PaperProps={{ sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' } }}
+        >
+          {(['confirmed','pending','invited','unavailable'] as CrewStatus[]).map(s => {
+            const meta = STATUS_META[s];
+            const { Icon } = meta;
+            return (
+              <MenuItem key={s} onClick={() => { onChangeStatus(s); setStatusAnchor(null); }}
+                sx={{ gap: 1, fontSize: 13, '&:hover': { bgcolor: meta.bg } }}>
+                <Icon sx={{ fontSize: 15, color: meta.color }} />
+                <Typography sx={{ color: meta.color, fontSize: 13 }}>{meta.label}</Typography>
+              </MenuItem>
+            );
+          })}
+        </Menu>
+        {/* Remove */}
+        <Button
+          size="small" variant="outlined"
+          startIcon={<DeleteIcon sx={{ fontSize: 15 }} />}
+          onClick={onDelete}
+          sx={{ borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+            '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
+        >
+          Remove {selectedIds.size}
+        </Button>
+        {/* Right side */}
+        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Chip
+            label={selectedIds.size}
+            size="small"
+            onDelete={onDeselect}
+            sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff', fontWeight: 700, height: 22, fontSize: 12 }}
+          />
+          <Tooltip title="Synkroniser">
+            <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><SyncIcon sx={{ fontSize: 18 }} /></IconButton>
+          </Tooltip>
+          <Tooltip title="Eksporter">
+            <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><CalendarMonthIcon sx={{ fontSize: 18 }} /></IconButton>
+          </Tooltip>
+          <Tooltip title="Liste">
+            <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><ViewListIcon sx={{ fontSize: 18 }} /></IconButton>
+          </Tooltip>
+          <Tooltip title="Grid">
+            <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><ViewModuleIcon sx={{ fontSize: 18 }} /></IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+    </Slide>
+  );
+}
+
+// ─── Invite crew dialog ───────────────────────────────────────────────────────
+interface InviteDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onInvite: (data: { name: string; role: CrewRole; email?: string; phone?: string }) => void;
+  getRoleLabel: (role: CrewRole) => string;
+  crewRoles: CrewRole[];
+}
+
+function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: InviteDialogProps) {
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<CrewRole>('other');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    onInvite({ name: name.trim(), role, email: email || undefined, phone: phone || undefined });
+    setName(''); setRole('other'); setEmail(''); setPhone('');
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
+      PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(0,212,255,0.2)' } }}>
+      <DialogTitle sx={{ color: '#00d4ff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <PersonAddIcon /> Inviter crewmedlem
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          <TextField label="Navn *" fullWidth value={name} onChange={e => setName(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
+          <FormControl fullWidth>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.7)' }}>Rolle</InputLabel>
+            <Select value={role} onChange={e => setRole(e.target.value as CrewRole)} label="Rolle"
+              sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }}>
+              {crewRoles.map(r => <MenuItem key={r} value={r}>{getRoleLabel(r)}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField label="E-post" fullWidth type="email" value={email} onChange={e => setEmail(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
+          <TextField label="Telefon" fullWidth type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Avbryt</Button>
+        <Button variant="contained" onClick={handleSubmit} disabled={!name.trim()}
+          sx={{ bgcolor: '#00d4ff', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#00b8e6' } }}>
+          Send invitasjon
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── Offline banner ───────────────────────────────────────────────────────────
+function OfflineBanner({ pending }: { pending: number }) {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  if (online && pending === 0) return null;
+  return (
+    <Box sx={{
+      display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75,
+      bgcolor: online ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+      border: `1px solid ${online ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+      borderRadius: 1, mb: 1.5, fontSize: 13,
+    }}>
+      {online ? <SyncIcon sx={{ fontSize: 16, color: '#10b981' }} /> : <WifiOffIcon sx={{ fontSize: 16, color: '#ef4444' }} />}
+      <Typography sx={{ fontSize: 13, color: online ? '#10b981' : '#ef4444' }}>
+        {online ? `Synkroniserer ${pending} ventende endringer…` : `Offline – ${pending} endringer venter`}
+      </Typography>
+    </Box>
+  );
+}
+
+// ─── DOOD helpers ─────────────────────────────────────────────────────────────
+
+type CrewDOODCode = 'W' | 'H' | 'O' | 'SW' | 'WF' | 'SWF' | 'TF' | 'T';
+
+const DOOD_COLORS: Record<CrewDOODCode, { bg: string; text: string }> = {
+  W:   { bg: 'rgba(16,185,129,0.85)',  text: '#fff' },
+  SW:  { bg: 'rgba(16,185,129,0.85)',  text: '#fff' },
+  WF:  { bg: 'rgba(16,185,129,0.85)',  text: '#fff' },
+  SWF: { bg: 'rgba(16,185,129,0.85)',  text: '#fff' },
+  H:   { bg: 'rgba(255,184,0,0.85)',   text: '#000' },
+  T:   { bg: 'rgba(59,130,246,0.85)',  text: '#fff' },
+  TF:  { bg: 'rgba(59,130,246,0.85)',  text: '#fff' },
+  O:   { bg: 'rgba(96,125,139,0.4)',   text: 'rgba(255,255,255,0.5)' },
+};
+
+function getMemberDOODCode(
+  memberId: string,
+  dayId: string,
+  assignments: CrewAssignment[],
+  allDays: ProductionDay[],
+): CrewDOODCode | null {
+  const a = assignments.find(x => x.crewMemberId === memberId && x.shootDayId === dayId);
+  if (!a) return null;
+  if (a.assignmentStatus === 'release') return 'O';
+  if (a.assignmentStatus === 'hold') return 'H';
+  // Travel day — T unless it is also the final active day in this run
+  if (a.assignmentStatus === 'travel') {
+    const memberActiveDays = assignments
+      .filter(x => x.crewMemberId === memberId && (x.assignmentStatus === 'assigned' || x.assignmentStatus === 'travel'))
+      .map(x => x.shootDayId);
+    const dayIdx = allDays.findIndex(d => d.id === dayId);
+    const isLast = !allDays.slice(dayIdx + 1).some(d => memberActiveDays.includes(d.id));
+    return isLast ? 'TF' : 'T';
+  }
+  // 'assigned' = work day — apply S/F decoration
+  const memberWorkDays = assignments
+    .filter(x => x.crewMemberId === memberId && x.assignmentStatus === 'assigned')
+    .map(x => x.shootDayId);
+  const dayIdx = allDays.findIndex(d => d.id === dayId);
+  const isFirst = !allDays.slice(0, dayIdx).some(d => memberWorkDays.includes(d.id));
+  const isLast  = !allDays.slice(dayIdx + 1).some(d => memberWorkDays.includes(d.id));
+  if (isFirst && isLast) return 'SWF';
+  if (isFirst) return 'SW';
+  if (isLast)  return 'WF';
+  return 'W';
+}
+
+// ─── DOODMiniStrip ───────────────────────────────────────────────────────────
+
+interface DOODMiniStripProps {
+  member: CrewMember;
+  productionDays: ProductionDay[];
+  assignments: CrewAssignment[];
+}
+
+function DOODMiniStrip({ member, productionDays, assignments }: DOODMiniStripProps) {
+  if (!productionDays.length) return null;
+  const memberAssignments = assignments.filter(a => a.crewMemberId === member.id);
+  if (!memberAssignments.length) return null;
+
+  return (
+    <Box sx={{ mt: 1, mb: 0.5 }}>
+      <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', mb: 0.5, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+        DOOD
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+        {productionDays.map((day, idx) => {
+          const code = getMemberDOODCode(member.id, day.id, assignments, productionDays);
+          if (!code) return (
+            <Tooltip key={day.id} title={`Dag ${idx + 1} – ${day.date}`}>
+              <Box sx={{ width: 22, height: 22, borderRadius: 0.5, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography sx={{ fontSize: 8, color: 'rgba(255,255,255,0.25)' }}>–</Typography>
+              </Box>
+            </Tooltip>
+          );
+          const colors = DOOD_COLORS[code];
+          return (
+            <Tooltip key={day.id} title={`Dag ${idx + 1} – ${day.date} – ${code} (${day.callTime ?? ''})`}>
+              <Box sx={{ width: 26, height: 22, borderRadius: 0.5, bgcolor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'default' }}>
+                <Typography sx={{ fontSize: 8, fontWeight: 800, color: colors.text, fontFamily: 'monospace' }}>{code}</Typography>
+              </Box>
+            </Tooltip>
+          );
+        })}
+      </Box>
+    </Box>
+  );
+}
+
+// ─── AssignShootDayDialog ─────────────────────────────────────────────────────
+
+interface AssignShootDayDialogProps {
+  open: boolean;
+  onClose: () => void;
+  member: CrewMember | null;
+  productionDays: ProductionDay[];
+  assignments: CrewAssignment[];
+  onAssign: (crewMemberId: string, dayId: string, date: string, status: 'assigned' | 'hold' | 'travel' | 'release', unit: 'A' | 'B', callTime: string) => void;
+  onUnassign: (crewMemberId: string, dayId: string) => void;
+}
+
+function AssignShootDayDialog({
+  open, onClose, member, productionDays, assignments, onAssign, onUnassign,
+}: AssignShootDayDialogProps) {
+  const [unit, setUnit] = useState<'A' | 'B'>('A');
+  if (!member) return null;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 3 } }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+        <CalendarMonthIcon sx={{ color: '#00d4ff' }} />
+        Tilordne {member.name} til innspillingsdager
+      </DialogTitle>
+      <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.1)', p: 0 }}>
+        <Box sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', mb: 0.5 }}>Enhet</Typography>
+          <RadioGroup row value={unit} onChange={e => setUnit(e.target.value as 'A' | 'B')}>
+            {(['A', 'B'] as const).map(u => (
+              <FormControlLabel key={u} value={u} control={<Radio size="small" sx={{ color: '#00d4ff', '&.Mui-checked': { color: '#00d4ff' } }} />}
+                label={<Typography sx={{ fontSize: 13, color: '#fff' }}>{u}-enhet</Typography>} />
+            ))}
+          </RadioGroup>
+        </Box>
+        <List dense disablePadding>
+          {productionDays.length === 0 && (
+            <ListItem>
+              <ListItemText primary={<Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Ingen innspillingsdager planlagt ennå.</Typography>} />
+            </ListItem>
+          )}
+          {productionDays.map((day, idx) => {
+            const existing = assignments.find(a => a.crewMemberId === member.id && a.shootDayId === day.id);
+            const code = getMemberDOODCode(member.id, day.id, assignments, productionDays);
+            return (
+              <ListItem key={day.id} disablePadding divider sx={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                <ListItemButton dense disableRipple sx={{ py: 0.75, px: 2, cursor: 'default', '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
+                  <ListItemText
+                    primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', minWidth: 28 }}>D{idx + 1}</Typography>
+                      <Typography sx={{ fontSize: 13, color: '#fff' }}>{day.date}</Typography>
+                      {day.callTime && <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Call: {day.callTime}</Typography>}
+                      {code && (
+                        <Box sx={{ px: 0.75, py: 0.25, borderRadius: 0.5, bgcolor: DOOD_COLORS[code]?.bg, ml: 0.5 }}>
+                          <Typography sx={{ fontSize: 10, fontWeight: 800, color: DOOD_COLORS[code]?.text, fontFamily: 'monospace' }}>{code}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  }
+                />
+                </ListItemButton>
+                <ListItemSecondaryAction>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    {!existing ? (
+                      <>
+                        <Button size="small" variant="outlined"
+                          onClick={() => onAssign(member.id, day.id, day.date, 'assigned', unit, day.callTime ?? '07:00')}
+                          sx={{ fontSize: 11, color: '#10b981', borderColor: '#10b981', minWidth: 36, py: 0.25, px: 0.5 }}>W</Button>
+                        <Button size="small" variant="outlined"
+                          onClick={() => onAssign(member.id, day.id, day.date, 'hold', unit, day.callTime ?? '07:00')}
+                          sx={{ fontSize: 11, color: '#ffb800', borderColor: '#ffb800', minWidth: 36, py: 0.25, px: 0.5 }}>H</Button>
+                        <Button size="small" variant="outlined"
+                          onClick={() => onAssign(member.id, day.id, day.date, 'travel', unit, day.callTime ?? '07:00')}
+                          sx={{ fontSize: 11, color: '#3b82f6', borderColor: '#3b82f6', minWidth: 36, py: 0.25, px: 0.5 }}>T</Button>
+                      </>
+                    ) : (
+                      <Tooltip title="Fjern fra denne dagen">
+                        <IconButton size="small" onClick={() => onUnassign(member.id, day.id)} sx={{ color: '#ff4444', ...focusVisibleStyles }}>
+                          <UnassignIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </ListItemSecondaryAction>
+              </ListItem>
+            );
+          })}
+        </List>
+      </DialogContent>
+      <DialogActions sx={{ px: 2, py: 1.5, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Lukk</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── DOODOverviewPanel ────────────────────────────────────────────────────────
+
+interface DOODOverviewPanelProps {
+  open: boolean;
+  onClose: () => void;
+  crewMembers: CrewMember[];
+  productionDays: ProductionDay[];
+  assignments: CrewAssignment[];
+  getRoleLabel: (role: CrewRole) => string;
+}
+
+function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignments, getRoleLabel }: DOODOverviewPanelProps) {
+  const crewWithAssignments = crewMembers.filter(m =>
+    assignments.some(a => a.crewMemberId === m.id),
+  );
+
+  // Work day count per crew member
+  const workDayCount = (memberId: string) =>
+    assignments.filter(a => a.crewMemberId === memberId && a.assignmentStatus === 'assigned').length;
+  const holdDayCount = (memberId: string) =>
+    assignments.filter(a => a.crewMemberId === memberId && a.assignmentStatus === 'hold').length;
+
+  return (
+    <Drawer
+      anchor="bottom"
+      open={open}
+      onClose={onClose}
+      PaperProps={{ sx: { bgcolor: '#1c2128', borderTop: '2px solid rgba(0,212,255,0.3)', borderRadius: '12px 12px 0 0', maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' } }}
+    >
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2.5, pt: 2, pb: 1, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <DoodIcon sx={{ color: '#00d4ff', fontSize: 22 }} />
+          <Box>
+            <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Days Out Of Days</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
+              {crewWithAssignments.length} crew · {productionDays.length} innspillingsdager
+            </Typography>
+          </Box>
+        </Box>
+        <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.6)', ...focusVisibleStyles }}>
+          <CloseIcon />
+        </IconButton>
+      </Box>
+
+      {/* Legend */}
+      <Box sx={{ display: 'flex', gap: 2, px: 2.5, pb: 1, flexShrink: 0, flexWrap: 'wrap' }}>
+        {([
+          ['W',   'W – Arbeid'],
+          ['SW',  'SW – Start'],
+          ['WF',  'WF – Slutt'],
+          ['SWF', 'SWF – En dag'],
+          ['H',   'H – Hold'],
+          ['T',   'T – Reise'],
+          ['O',   'O – Av'],
+        ] as [CrewDOODCode, string][]).map(([code, label]) => (
+          <Box key={code} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <DotIcon sx={{ fontSize: 14, color: DOOD_COLORS[code]?.bg }} />
+            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{label}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      {productionDays.length === 0 ? (
+        <Box sx={{ p: 3, textAlign: 'center' }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>Ingen innspillingsdager planlagt ennå.</Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, mt: 0.5 }}>Legg til dager i Stripboard-modulen.</Typography>
+        </Box>
+      ) : (
+        <Box sx={{ overflowX: 'auto', overflowY: 'auto', flex: 1 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ bgcolor: '#1c2128', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: 12, minWidth: 160, borderColor: 'rgba(255,255,255,0.1)', position: 'sticky', left: 0, zIndex: 3 }}>
+                  Crewmedlem
+                </TableCell>
+                {productionDays.map((day, idx) => (
+                  <TableCell key={day.id} align="center" sx={{ bgcolor: '#1c2128', color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: 700, borderColor: 'rgba(255,255,255,0.1)', minWidth: 38, px: 0.5, whiteSpace: 'nowrap' }}>
+                    <Box>D{idx + 1}</Box>
+                    <Box sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>{day.date?.slice(5)}</Box>
+                  </TableCell>
+                ))}
+                <TableCell align="center" sx={{ bgcolor: '#1c2128', color: '#10b981', fontSize: 10, fontWeight: 700, borderColor: 'rgba(255,255,255,0.1)', minWidth: 38 }}>W</TableCell>
+                <TableCell align="center" sx={{ bgcolor: '#1c2128', color: '#ffb800', fontSize: 10, fontWeight: 700, borderColor: 'rgba(255,255,255,0.1)', minWidth: 38 }}>H</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {crewMembers.map(member => {
+                const wCount = workDayCount(member.id);
+                const hCount = holdDayCount(member.id);
+                return (
+                  <TableRow key={member.id} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
+                    <TableCell sx={{ color: '#fff', fontSize: 12, borderColor: 'rgba(255,255,255,0.07)', position: 'sticky', left: 0, bgcolor: '#1c2128', zIndex: 1 }}>
+                      <Box>
+                        <Typography sx={{ fontSize: 12, fontWeight: 600 }}>{member.name}</Typography>
+                        <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>{getRoleLabel(member.role)}</Typography>
+                      </Box>
+                    </TableCell>
+                    {productionDays.map(day => {
+                      const code = getMemberDOODCode(member.id, day.id, assignments, productionDays);
+                      return (
+                        <TableCell key={day.id} align="center" sx={{ borderColor: 'rgba(255,255,255,0.07)', p: 0.5 }}>
+                          {code ? (
+                            <Tooltip title={`${member.name} – Dag ${day.date} – ${code}`}>
+                              <Box sx={{ width: 28, height: 18, borderRadius: 0.5, bgcolor: DOOD_COLORS[code]?.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto' }}>
+                                <Typography sx={{ fontSize: 8, fontWeight: 800, color: DOOD_COLORS[code]?.text, fontFamily: 'monospace' }}>{code}</Typography>
+                              </Box>
+                            </Tooltip>
+                          ) : (
+                            <Box sx={{ width: 28, height: 18, borderRadius: 0.5, border: '1px solid rgba(255,255,255,0.06)', mx: 'auto' }} />
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell align="center" sx={{ borderColor: 'rgba(255,255,255,0.07)', color: wCount > 0 ? '#10b981' : 'rgba(255,255,255,0.3)', fontWeight: 700, fontSize: 12 }}>{wCount || '–'}</TableCell>
+                    <TableCell align="center" sx={{ borderColor: 'rgba(255,255,255,0.07)', color: hCount > 0 ? '#ffb800' : 'rgba(255,255,255,0.3)', fontWeight: 700, fontSize: 12 }}>{hCount || '–'}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
+    </Drawer>
+  );
+}
+
+// ─── CallsheetDrawer ──────────────────────────────────────────────────────────
+
+interface CallsheetDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  projectId: string;
+  crew: CrewMember[];
+  selectedDay: ProductionDay | null;
+  scenes: SceneBreakdown[];
+  /** All production days for the day-picker inside the drawer */
+  productionDays: ProductionDay[];
+}
+
+function CallsheetDrawer({ open, onClose, projectId, crew, selectedDay: initialDay, scenes, productionDays }: CallsheetDrawerProps) {
+  const [currentDay, setCurrentDay] = useState<ProductionDay | null>(initialDay);
+  // Sync if parent changes the initial day (e.g. user clicks a different day)
+  useEffect(() => { setCurrentDay(initialDay); }, [initialDay]);
+
+  return (
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      PaperProps={{ sx: { width: { xs: '100vw', md: 700, lg: 800 }, bgcolor: '#13181e', borderLeft: '2px solid rgba(0,212,255,0.25)', display: 'flex', flexDirection: 'column' } }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, px: 2, pt: 2, pb: 1, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CallsheetIcon sx={{ color: '#00d4ff' }} />
+          <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Callsheet-generator</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {productionDays.length > 1 && (
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <Select
+                value={currentDay?.id ?? ''}
+                onChange={e => setCurrentDay(productionDays.find(d => d.id === e.target.value) ?? null)}
+                displayEmpty
+                sx={{ color: '#fff', fontSize: 13, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' } }}
+                MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
+              >
+                <MenuItem value="">Alle dager</MenuItem>
+                {productionDays.map((d, idx) => (
+                  <MenuItem key={d.id} value={d.id} sx={{ fontSize: 13 }}>Dag {idx + 1} – {d.date}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.6)', ...focusVisibleStyles }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </Box>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <CallSheetGenerator
+          projectId={projectId}
+          crew={crew}
+          scenes={scenes}
+          productionDay={currentDay ?? undefined}
+        />
+      </Box>
+    </Drawer>
+  );
+}
 
 
 interface CrewManagementPanelProps {
   projectId: string;
   onUpdate?: () => void;
   profession?: 'photographer' | 'videographer' | null;
-  totalBudget?: number; // Total project budget for split sheet percentage calculations
+  totalBudget?: number;
   onTotalBudgetChange?: (budget: number) => void;
+  /** Shoot day schedule from the Stripboard module */
+  productionDays?: ProductionDay[];
+  /** Scenes list for Callsheet pre-fill */
+  scenes?: SceneBreakdown[];
 }
 
-export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudget = 0, onTotalBudgetChange }: CrewManagementPanelProps) {
-  const theme = useTheme();
-  // iPad / tablet detection for responsive design
-  const isTablet = useMediaQuery('(min-width: 768px) and (max-width: 1024px)');
+export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudget = 0, onTotalBudgetChange, productionDays: propProductionDays = [], scenes: propScenes = [] }: CrewManagementPanelProps) {
   const isMobile = useMediaQuery('(max-width: 767px)');
-  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const dialogTitleId = useId();
   const dialogDescId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
@@ -140,12 +934,15 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   useEffect(() => {
     const loadCrew = async () => {
       if (projectId) {
+        setIsLoading(true);
         try {
           const crew = await castingService.getCrew(projectId);
           setCrewMembers(Array.isArray(crew) ? crew : []);
         } catch (error) {
           console.error('Error loading crew:', error);
           setCrewMembers([]);
+        } finally {
+          setIsLoading(false);
         }
       }
     };
@@ -191,11 +988,14 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState<CrewRole | 'all'>('all');
   const [filterAvailable, setFilterAvailable] = useState(false);
+  const [filterAssignedToday, setFilterAssignedToday] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [showFilters, setShowFilters] = useState(false);
   const [showStats, setShowStats] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -238,6 +1038,61 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   const [showCostCalculator, setShowCostCalculator] = useState(false);
   const [costStartDate, setCostStartDate] = useState('');
   const [costEndDate, setCostEndDate] = useState('');
+
+  // New architecture state
+  const [filterDept, setFilterDept] = useState<DeptKey | 'all'>('all');
+  const [filterStatus, setFilterStatus] = useState<CrewStatus | 'all'>('all');
+  const [showDeptSidebar, setShowDeptSidebar] = useState(true);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [offlinePending, setOfflinePending] = useState<number>(() => {
+    try {
+      const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
+      return q.filter(a => a.projectId === projectId).length;
+    } catch { return 0; }
+  });
+
+  // ── Production / Stripboard integration ──────────────────────────────────
+  const [productionDays, setProductionDays] = useState<ProductionDay[]>(propProductionDays);
+  const [crewAssignments, setCrewAssignments] = useState<CrewAssignment[]>([]);
+  const [callsheetOpen, setCallsheetOpen] = useState(false);
+  const [callsheetDay, setCallsheetDay] = useState<ProductionDay | null>(null);
+  const [doodOpen, setDoodOpen] = useState(false);
+  const [assignDayOpen, setAssignDayOpen] = useState(false);
+  const [assigningMember, setAssigningMember] = useState<CrewMember | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  // Keep productionDays in sync with parent prop changes
+  useEffect(() => { setProductionDays(propProductionDays); }, [propProductionDays]);
+
+  // Load crew assignments from service
+  useEffect(() => {
+    if (!projectId) return;
+    castingService.getCrewAssignments(projectId)
+      .then((data: CrewAssignment[]) => setCrewAssignments(Array.isArray(data) ? data : []))
+      .catch(() => { /* service unavailable — start with empty assignments */ });
+  }, [projectId]);
+
+  // Debounce search query (300 ms) – avoids re-filtering on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Keep offlinePending in sync with the localStorage queue (written by useCrewData)
+  useEffect(() => {
+    const countPending = () => {
+      try {
+        const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
+        setOfflinePending(q.filter(a => a.projectId === projectId).length);
+      } catch { setOfflinePending(0); }
+    };
+    window.addEventListener('online', countPending);
+    window.addEventListener('storage', countPending);
+    return () => {
+      window.removeEventListener('online', countPending);
+      window.removeEventListener('storage', countPending);
+    };
+  }, [projectId]);
 
   // Profession-specific crew role priorities
   const getCrewRoles = (): CrewRole[] => {
@@ -355,35 +1210,51 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     return labels[role] || role;
   };
 
-  const getRoleIcon = (role: CrewRole): ReactElement => {
-    const icons: Record<CrewRole, ReactElement> = {
-      director: <MovieIcon sx={{ fontSize: '1rem' }} />,
-      producer: <BusinessIcon sx={{ fontSize: '1rem' }} />,
-      casting_director: <PeopleIcon sx={{ fontSize: '1rem' }} />,
-      production_manager: <SupervisorAccountIcon sx={{ fontSize: '1rem' }} />,
-      cinematographer: <VideocamIcon sx={{ fontSize: '1rem' }} />,
-      camera_operator: <VideocamIcon sx={{ fontSize: '1rem' }} />,
-      camera_assistant: <CameraAltIcon sx={{ fontSize: '1rem' }} />,
-      drone_pilot: <CameraAltIcon sx={{ fontSize: '1rem' }} />,
-      video_editor: <MovieIcon sx={{ fontSize: '1rem' }} />,
-      colorist: <MovieIcon sx={{ fontSize: '1rem' }} />,
-      gaffer: <LightbulbIcon sx={{ fontSize: '1rem' }} />,
-      grip: <BuildIcon sx={{ fontSize: '1rem' }} />,
-      sound_engineer: <GraphicEqIcon sx={{ fontSize: '1rem' }} />,
-      audio_mixer: <GraphicEqIcon sx={{ fontSize: '1rem' }} />,
-      vfx_artist: <MovieIcon sx={{ fontSize: '1rem' }} />,
-      motion_graphics: <MovieIcon sx={{ fontSize: '1rem' }} />,
-      production_assistant: <PersonIcon sx={{ fontSize: '1rem' }} />,
-      script_supervisor: <PersonIcon sx={{ fontSize: '1rem' }} />,
-      location_manager: <PersonIcon sx={{ fontSize: '1rem' }} />,
-      production_designer: <PersonIcon sx={{ fontSize: '1rem' }} />,
-      makeup_artist: <FaceIcon sx={{ fontSize: '1rem' }} />,
-      wardrobe: <CheckroomIcon sx={{ fontSize: '1rem' }} />,
-      stylist: <CheckroomIcon sx={{ fontSize: '1rem' }} />,
-      collaborator: <PeopleIcon sx={{ fontSize: '1rem' }} />,
-      other: <MoreHorizIcon sx={{ fontSize: '1rem' }} />,
-    };
-    return icons[role] || <MoreHorizIcon sx={{ fontSize: '1rem' }} />;
+  const ROLE_WEBP: Record<CrewRole, string> = {
+    director:              '/role-room-assets/roleroom_director.webp',
+    producer:              '/role-room-assets/roleroom_producer.webp',
+    casting_director:      '/role-room-assets/roleroom_casting_director.webp',
+    production_manager:    '/role-room-assets/roleroom_photo_director.webp',
+    cinematographer:       '/role-room-assets/roleroom_filmfotograf.webp',
+    camera_operator:       '/role-room-assets/roleroom_photographer.webp',
+    camera_assistant:      '/role-room-assets/roleroom_photo_assistant.webp',
+    drone_pilot:           '/role-room-assets/roleroom_camera.webp',
+    video_editor:          '/role-room-assets/roleroom_cinemag.webp',
+    colorist:              '/role-room-assets/roleroom_cinemag.webp',
+    gaffer:                '/role-room-assets/roleroom_lys.webp',
+    grip:                  '/role-room-assets/roleroom_camera.webp',
+    sound_engineer:        '/role-room-assets/roleroom_sound_designer.webp',
+    audio_mixer:           '/role-room-assets/roleroom_boom_operator.webp',
+    vfx_artist:            '/role-room-assets/roleroom_cinemag.webp',
+    motion_graphics:       '/role-room-assets/roleroom_composer.webp',
+    production_assistant:  '/role-room-assets/roleroom_photo_assistant.webp',
+    script_supervisor:     '/role-room-assets/roleroom_agent.webp',
+    location_manager:      '/role-room-assets/roleroom_camp.webp',
+    production_designer:   '/role-room-assets/roleroom_photo_director.webp',
+    makeup_artist:         '/role-room-assets/roleroom_skuespiller.webp',
+    wardrobe:              '/role-room-assets/roleroom_skuespiller.webp',
+    stylist:               '/role-room-assets/roleroom_skuespiller.webp',
+    collaborator:          '/role-room-assets/roleroom_klient.webp',
+    other:                 '/role-room-assets/roleroom_crew.webp',
+  };
+
+  const getRoleIcon = (role: CrewRole, size: number = 20): ReactElement => {
+    const src = ROLE_WEBP[role] ?? ROLE_WEBP.other;
+    return (
+      <Box
+        component="img"
+        src={src}
+        alt={getRoleLabel(role)}
+        sx={{
+          width: size,
+          height: size,
+          objectFit: 'cover',
+          borderRadius: '50%',
+          display: 'block',
+          flexShrink: 0,
+        }}
+      />
+    );
   };
 
   // Check if crew member is currently available
@@ -393,11 +1264,19 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     return member.availability.startDate <= today && member.availability.endDate >= today;
   };
 
+  // Stable today string – computed once at mount (date won't change during a session)
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
   // Statistics calculations
   const stats = useMemo(() => {
     const roleCount: Record<string, number> = {};
     let totalRate = 0;
     let availableCount = 0;
+    const assignedTodaySet = new Set(
+      crewAssignments
+        .filter(a => a.shootDayDate === todayStr && a.assignmentStatus === 'assigned')
+        .map(a => a.crewMemberId),
+    );
 
     crewMembers.forEach(member => {
       roleCount[member.role] = (roleCount[member.role] || 0) + 1;
@@ -405,21 +1284,25 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       if (isAvailableNow(member)) availableCount++;
     });
 
+    const conflicts = detectConflicts(crewAssignments);
+
     return {
       total: crewMembers.length,
       roleCount,
       totalDailyRate: totalRate,
       availableNow: availableCount,
+      assignedToday: assignedTodaySet.size,
+      totalConflicts: conflicts.length,
     };
-  }, [crewMembers]);
+  }, [crewMembers, crewAssignments, todayStr]);
 
   // Filtered and sorted crew members
   const filteredAndSortedCrew = useMemo(() => {
     let result = [...crewMembers];
 
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    // Search filter (debounced – avoids re-filtering on every keystroke)
+    if (debouncedSearch.trim()) {
+      const query = debouncedSearch.toLowerCase();
       result = result.filter(member =>
         member.name.toLowerCase().includes(query) ||
         member.contactInfo?.email?.toLowerCase().includes(query) ||
@@ -433,9 +1316,29 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       result = result.filter(member => member.role === filterRole);
     }
 
+    // Department filter
+    if (filterDept !== 'all') {
+      result = result.filter(member => (ROLE_TO_DEPT[member.role] ?? 'other') === filterDept);
+    }
+
+    // Status filter
+    if (filterStatus !== 'all') {
+      result = result.filter(member => member.status === filterStatus);
+    }
+
     // Availability filter
     if (filterAvailable) {
       result = result.filter(member => isAvailableNow(member));
+    }
+
+    // Assigned today filter – shows only crew with an active shoot-day assignment today
+    if (filterAssignedToday) {
+      const todayAssignedIds = new Set(
+        crewAssignments
+          .filter(a => a.shootDayDate === todayStr && a.assignmentStatus === 'assigned')
+          .map(a => a.crewMemberId),
+      );
+      result = result.filter(member => todayAssignedIds.has(member.id));
     }
 
     // Sorting
@@ -459,7 +1362,15 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     });
 
     return result;
-  }, [crewMembers, searchQuery, filterRole, filterAvailable, sortField, sortDirection]);
+  }, [crewMembers, debouncedSearch, filterRole, filterDept, filterStatus, filterAvailable, filterAssignedToday, crewAssignments, todayStr, sortField, sortDirection]);
+
+  // Conflict map: crewMemberId → has double-booking conflict (O(assignments) once per assignment change)
+  const conflictMap = useMemo<Map<string, boolean>>(() => {
+    const raw = detectConflicts(crewAssignments);
+    const map = new Map<string, boolean>();
+    for (const c of raw) map.set(c.crewMemberId, true);
+    return map;
+  }, [crewAssignments]);
 
   // Bulk operations
   const handleSelectAll = () => {
@@ -498,6 +1409,104 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     }
   };
 
+  // Invite a new crew member (saves with status: 'invited')
+  const handleInviteCrew = async (data: { name: string; role: CrewRole; email?: string; phone?: string }) => {
+    try {
+      const member: CrewMember = {
+        id: `crew-${Date.now()}`,
+        name: data.name,
+        role: data.role,
+        status: 'invited',
+        contactInfo: { email: data.email, phone: data.phone },
+        availability: {},
+        assignedScenes: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await castingService.saveCrew(projectId, member);
+      const crew = await castingService.getCrew(projectId);
+      setCrewMembers(Array.isArray(crew) ? crew : []);
+      showSuccess(`📨 Invitasjon sendt til ${data.name}`, 3000);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error inviting crew member:', error);
+      showError('Feil ved invitasjon av crewmedlem');
+    }
+  };
+
+  // Bulk-update status for all selected crew members
+  const handleBulkStatusChange = async (status: CrewStatus) => {
+    try {
+      for (const id of selectedIds) {
+        const m = crewMembers.find(x => x.id === id);
+        if (m) await castingService.saveCrew(projectId, { ...m, status, updatedAt: new Date().toISOString() });
+      }
+      const crew = await castingService.getCrew(projectId);
+      setCrewMembers(Array.isArray(crew) ? crew : []);
+      const count = selectedIds.size;
+      setSelectedIds(new Set());
+      showSuccess(`✅ Status oppdatert for ${count} crewmedlem(mer)`, 3000);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating crew status:', error);
+      showError('Feil ved statusoppdatering');
+    }
+  };
+
+  // Bulk assign to shoot day – opens AssignShootDayDialog for first selected member
+  const handleBulkAssignDay = useCallback(() => {
+    const firstId = [...selectedIds][0];
+    if (!firstId) return;
+    const member = crewMembers.find(m => m.id === firstId);
+    if (member) { setAssigningMember(member); setAssignDayOpen(true); }
+  }, [selectedIds, crewMembers]);
+
+  // Assign crew member to active scene / shoot day
+  const handleAssignToScene = useCallback((member: CrewMember) => {
+    setAssigningMember(member);
+    setAssignDayOpen(true);
+  }, []);
+
+  const handleCrewAssign = useCallback(async (
+    crewMemberId: string, dayId: string, date: string,
+    status: 'assigned' | 'hold' | 'travel' | 'release', unit: 'A' | 'B', callTime: string,
+  ) => {
+    const newAssignment: CrewAssignment = {
+      id: `ca-${Date.now()}`,
+      crewMemberId,
+      shootDayId: dayId,
+      shootDayDate: date,
+      unit,
+      callTime,
+      assignmentStatus: status,
+    };
+    const updated = [
+      ...crewAssignments.filter(a => !(a.crewMemberId === crewMemberId && a.shootDayId === dayId)),
+      newAssignment,
+    ];
+    setCrewAssignments(updated);
+    try {
+      await castingService.saveCrewAssignment(projectId, newAssignment);
+      const code = getMemberDOODCode(crewMemberId, dayId, updated, productionDays) ?? status.toUpperCase();
+      showSuccess(`✅ ${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet Dag – ${date} (${code})`, 3000);
+    } catch {
+      showInfo('Tilordning lagret lokalt (sync ved neste tilkobling)');
+    }
+    if (onUpdate) onUpdate();
+  }, [crewAssignments, projectId, productionDays, crewMembers, showSuccess, showInfo, onUpdate]);
+
+  const handleCrewUnassign = useCallback(async (crewMemberId: string, dayId: string) => {
+    const updated = crewAssignments.filter(a => !(a.crewMemberId === crewMemberId && a.shootDayId === dayId));
+    setCrewAssignments(updated);
+    try {
+      await castingService.deleteCrewAssignment(projectId, crewMemberId, dayId);
+      showSuccess('Tilordning fjernet', 2000);
+    } catch {
+      showInfo('Fjernet lokalt (sync ved neste tilkobling)');
+    }
+    if (onUpdate) onUpdate();
+  }, [crewAssignments, projectId, showSuccess, showInfo, onUpdate]);
+
   // Copy to clipboard
   const handleCopy = async (text: string, fieldId: string) => {
     try {
@@ -510,14 +1519,14 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   };
 
   // Sort handler
-  const handleSort = (field: SortField) => {
+  const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection('asc');
     }
-  };
+  }, [sortField, sortDirection]);
 
   // Toggle favorite with database sync
   const toggleFavorite = async (id: string) => {
@@ -869,29 +1878,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   }, [costStartDate, costEndDate, crewMembers, selectedIds]);
 
   // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+N or Cmd+N to add new crew
-      if ((e.ctrlKey || e.metaKey) && e.key === 'n' && !dialogOpen) {
-        e.preventDefault();
-        handleOpenDialog();
-      }
-      // Escape to close dialog
-      if (e.key === 'Escape' && dialogOpen) {
-        handleCloseDialog();
-      }
-      // Ctrl+E to export
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !dialogOpen) {
-        e.preventDefault();
-        exportToCSV();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen]);
-
-  const handleOpenDialog = (crewMember?: CrewMember) => {
+  const handleOpenDialog = useCallback((crewMember?: CrewMember) => {
     if (crewMember) {
       setEditingCrewMember(crewMember);
       setFormData(crewMember);
@@ -913,9 +1900,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       });
     }
     setDialogOpen(true);
-  };
+  }, [profession]);
 
-  const handleCloseDialog = () => {
+  const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
     setEditingCrewMember(null);
     setFormData({
@@ -926,7 +1913,41 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       assignedScenes: [],
       notes: '',
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+N or Cmd+N to add new crew
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n' && !dialogOpen) {
+        e.preventDefault();
+        handleOpenDialog();
+      }
+      // Escape to close dialog
+      if (e.key === 'Escape' && dialogOpen) {
+        handleCloseDialog();
+      }
+      // Ctrl+E to export
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !dialogOpen) {
+        e.preventDefault();
+        exportToCSV();
+      }
+      // Ctrl+F to focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !dialogOpen) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      // F (no modifier) to open invite dialog
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target as HTMLElement)?.isContentEditable;
+      if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping && !dialogOpen && !inviteDialogOpen) {
+        e.preventDefault();
+        setInviteDialogOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dialogOpen, inviteDialogOpen, handleOpenDialog, handleCloseDialog, exportToCSV]);
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
@@ -973,698 +1994,315 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     }
   };
 
-  // Responsive padding for iPad/tablet/mobile
-  const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
-
   return (
     <Box
+      ref={panelRef}
       component="section"
-      role="region"
-      aria-label="Crewmedlem-administrasjon"
-      sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+      sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, bgcolor: 'transparent' }}
     >
-      {/* Header with title and add button - Responsive */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          justifyContent: 'space-between',
-          alignItems: { xs: 'stretch', sm: 'center' },
-          mb: 2,
-          gap: { xs: 1.5, sm: 2 },
-        }}
-      >
-        {/* Enhanced Title with gradient - matches ProductionDayView */}
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: { xs: 1.5, sm: 2 },
-            py: { xs: 1, sm: 1.5 },
-          }}
-        >
-          <Box
-            sx={{
-              width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
-              height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
-              borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(0, 212, 255, 0.15) 100%)',
-              border: '2px solid rgba(0, 212, 255, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(0, 212, 255, 0.2)',
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(0, 212, 255, 0.3)',
-              },
-            }}
-          >
-            <GroupsIcon
-              sx={{
-                color: '#4dd0e1',
-                fontSize: { xs: 26, sm: 32, md: 30, lg: 36, xl: 42 },
-                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
-              }}
-            />
+      <OfflineBanner pending={offlinePending} />
+
+      {/* ── HEADER ── */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, pt: 1.5, pb: 1, gap: 1, flexWrap: 'wrap' }}>
+        {/* Title */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{ width: 44, height: 44, borderRadius: 2, background: 'linear-gradient(135deg,rgba(0,212,255,0.25),rgba(0,212,255,0.1))', border: '2px solid rgba(0,212,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <GroupsIcon sx={{ color: '#4dd0e1', fontSize: 26 }} />
           </Box>
           <Box>
-            <Typography
-              variant="h5"
-              component="h2"
-              id="crew-panel-title"
-              sx={{
-                color: '#fff',
-                fontWeight: 800,
-                fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.4rem', lg: '1.6rem', xl: '2rem' },
-                lineHeight: 1.2,
-                letterSpacing: '-0.5px',
-                textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #4dd0e1 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
+            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.4rem' }, background: 'linear-gradient(135deg,#fff,#4dd0e1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Produksjonsteam
             </Typography>
-            <Typography
-              sx={{
-                color: 'rgba(255,255,255,0.87)',
-                fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.9rem', xl: '1rem' },
-                fontWeight: 500,
-                mt: 0.25,
-                display: 'flex',
-                alignItems: 'center',
-                gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-              }}
-            >
-              <BadgeIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, opacity: 0.7 }} />
-              Administrer crew og roller
+            <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
+              <BadgeIcon sx={{ fontSize: 13, verticalAlign: 'middle', mr: 0.5, color: 'rgba(255,255,255,0.4)' }} />
+              {crewMembers.length} totalt · {stats.availableNow} tilgjengelig
+              {stats.assignedToday > 0 && ` · ${stats.assignedToday} tilordnet i dag`}
+              {stats.totalConflicts > 0 && (
+                <Typography component="span" sx={{ color: '#ef4444', fontSize: 12, ml: 0.5 }}>
+                  · <WarningAmberIcon sx={{ fontSize: 11, verticalAlign: 'middle', mr: 0.25 }} />
+                  {stats.totalConflicts} konflikt{stats.totalConflicts !== 1 ? 'er' : ''}
+                </Typography>
+              )}
+              {filteredAndSortedCrew.length < crewMembers.length && ` · ${filteredAndSortedCrew.length} vises`}
             </Typography>
           </Box>
         </Box>
 
-        {/* Action buttons - stack on mobile, row on larger screens */}
-        <Box
-          sx={{
-            display: 'flex',
-            gap: { xs: 0.5, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-            flexWrap: 'wrap',
-            justifyContent: { xs: 'space-between', sm: 'flex-end' },
-          }}
-        >
-          {selectedIds.size > 0 && (
-            <Tooltip title={`Slett ${selectedIds.size} valgte`} arrow>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={!isMobile && <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-                onClick={handleBulkDelete}
-                aria-label={`Slett ${selectedIds.size} valgte crewmedlemmer`}
-                sx={{
-                  minHeight: TOUCH_TARGET_SIZE,
-                  minWidth: { xs: TOUCH_TARGET_SIZE, sm: 'auto' },
-                  borderColor: '#ff4444',
-                  color: '#ff4444',
-                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                  px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                  py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                  ...focusVisibleStyles,
-                }}
-              >
-                {isMobile ? <DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : `Slett (${selectedIds.size})`}
-              </Button>
-            </Tooltip>
-          )}
-          <Tooltip title="Beregn kostnader (Ctrl+K)" arrow>
-            <Button
-              variant="outlined"
-              startIcon={!isMobile && <CalculateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-              onClick={() => setShowCostCalculator(!showCostCalculator)}
-              aria-label="Vis kostnadsberegner"
-              sx={{
-                minHeight: TOUCH_TARGET_SIZE,
-                minWidth: { xs: TOUCH_TARGET_SIZE, sm: 'auto' },
-                borderColor: showCostCalculator ? '#00d4ff' : 'rgba(255,255,255,0.3)',
-                color: showCostCalculator ? '#00d4ff' : 'rgba(255,255,255,0.7)',
-                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                ...focusVisibleStyles,
-              }}
-            >
-              {isMobile ? <CalculateIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : 'Kostnad'}
-            </Button>
+        {/* Header actions */}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Tooltip title="Vis/skjul avdelinger">
+            <IconButton onClick={() => setShowDeptSidebar(p => !p)} sx={{ color: showDeptSidebar ? '#00d4ff' : 'rgba(255,255,255,0.5)', ...focusVisibleStyles }}>
+              {showDeptSidebar ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+            </IconButton>
           </Tooltip>
-          <Tooltip title="Eksporter til CSV (Ctrl+E)" arrow>
-            <Button
-              variant="outlined"
-              startIcon={!isMobile && <DownloadIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-              onClick={exportToCSV}
-              aria-label="Eksporter crewliste til CSV"
-              sx={{
-                minHeight: TOUCH_TARGET_SIZE,
-                minWidth: { xs: TOUCH_TARGET_SIZE, sm: 'auto' },
-                borderColor: 'rgba(255,255,255,0.3)',
-                color: 'rgba(255,255,255,0.87)',
-                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                ...focusVisibleStyles,
-              }}
-            >
-              {isMobile ? <DownloadIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : 'Eksporter'}
-            </Button>
+          <Tooltip title={showStats ? 'Skjul statistikk' : 'Vis statistikk'}>
+            <IconButton onClick={() => setShowStats(p => !p)} sx={{ color: showStats ? '#00d4ff' : 'rgba(255,255,255,0.5)', ...focusVisibleStyles }}>
+              {showStats ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
           </Tooltip>
-          <Tooltip title="Legg til nytt crewmedlem (Ctrl+N)" arrow>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-              onClick={() => handleOpenDialog()}
-              aria-label="Legg til nytt crewmedlem"
-              sx={{
-                bgcolor: '#00d4ff',
-                color: '#000',
-                fontWeight: 600,
-                minHeight: TOUCH_TARGET_SIZE,
-                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                flex: { xs: 1, sm: 'none' },
-                ...focusVisibleStyles,
-                '&:hover': { bgcolor: '#00b8e6' },
-              }}
-            >
-              {isMobile ? 'Ny' : 'Legg til'}
-            </Button>
+          <Tooltip title="Eksporter (Ctrl+E)">
+            <IconButton onClick={exportToCSV} sx={{ color: 'rgba(255,255,255,0.7)', ...focusVisibleStyles }}>
+              <DownloadIcon />
+            </IconButton>
           </Tooltip>
+          <Tooltip title="Days Out Of Days (DOOD)">
+            <Badge badgeContent={productionDays.length > 0 ? crewAssignments.length : 0} color="primary" max={99}
+              sx={{ '& .MuiBadge-badge': { fontSize: 10, minWidth: 16, height: 16 } }}>
+              <IconButton onClick={() => setDoodOpen(true)} sx={{ color: productionDays.length > 0 ? '#00d4ff' : 'rgba(255,255,255,0.4)', ...focusVisibleStyles }}>
+                <DoodIcon sx={{ fontSize: 20 }} />
+              </IconButton>
+            </Badge>
+          </Tooltip>
+          <Tooltip title="Callsheet-generator">
+            <IconButton
+              onClick={() => { setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
+              sx={{ color: productionDays.length > 0 ? '#00d4ff' : 'rgba(255,255,255,0.4)', ...focusVisibleStyles }}
+            >
+              <CallsheetIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Hjelp — Crew Management guide">
+            <IconButton onClick={() => setGuideOpen(true)} sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#00d4ff' }, ...focusVisibleStyles }} aria-label="Open Crew Management guide">
+              <HelpIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Kostnadskalkulator">
+            <IconButton onClick={() => setShowCostCalculator(p => !p)} sx={{ color: showCostCalculator ? '#00d4ff' : 'rgba(255,255,255,0.7)', ...focusVisibleStyles }}>
+              <CalculateIcon />
+            </IconButton>
+          </Tooltip>
+          <ToggleButtonGroup value={viewMode} exclusive onChange={(_, v) => v && setViewMode(v)} size="small">
+            <ToggleButton value="grid" sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-selected': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' } }}>
+              <ViewModuleIcon sx={{ fontSize: 18 }} />
+            </ToggleButton>
+            <ToggleButton value="table" sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-selected': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' } }}>
+              <ViewListIcon sx={{ fontSize: 18 }} />
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={() => setInviteDialogOpen(true)}
+            sx={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontWeight: 600, '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' } }}>
+            Inviter (F)
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}
+            sx={{ bgcolor: '#00d4ff', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#00b8e6' } }}>
+            {isMobile ? 'Ny' : 'Legg til'}
+          </Button>
         </Box>
       </Box>
 
-      {/* Cost Calculator Panel - Responsive */}
-      <Collapse in={showCostCalculator}>
-        <Box
-          sx={{
-            mb: 3,
-            p: { xs: 1.5, sm: 2 },
-            bgcolor: 'rgba(0, 212, 255, 0.1)',
-            borderRadius: 2,
-            border: '1px solid rgba(0, 212, 255, 0.3)',
-          }}
-        >
-          <Typography
-            variant="subtitle1"
-            sx={{
-              color: '#00d4ff',
-              fontWeight: 600,
-              mb: 2,
-              fontSize: { xs: '0.9rem', sm: '1rem' },
-            }}
-          >
-            Kostnadsberegner {selectedIds.size > 0 && `(${selectedIds.size} valgte)`}
-          </Typography>
-
-          {/* Date inputs - stack on mobile */}
-          <Box
-            sx={{
-              display: 'flex',
-              gap: { xs: 1, sm: 2 },
-              flexDirection: { xs: 'column', sm: 'row' },
-              flexWrap: 'wrap',
-              alignItems: { xs: 'stretch', sm: 'center' },
-              mb: calculateCost ? 2 : 0,
-            }}
-          >
-            <TextField
-              type="date"
-              label="Fra dato"
-              value={costStartDate}
-              onChange={(e) => setCostStartDate(e.target.value)}
+      {/* ── SEARCH + FILTER TOOLBAR ── */}
+      <Box sx={{ px: 2, pb: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          inputRef={searchInputRef}
+          size="small"
+          placeholder="Søk navn, e-post, telefon…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 18 }} /></InputAdornment> } }}
+          sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { color: '#fff', bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' }, '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' }, '&.Mui-focused fieldset': { borderColor: '#00d4ff' } } }}
+        />
+        {/* Status filter chips */}
+        {(['all', 'confirmed', 'pending', 'invited', 'unavailable'] as const).map(s => {
+          const meta = s === 'all' ? null : STATUS_META[s];
+          const active = filterStatus === s;
+          return (
+            <Chip
+              key={s}
+              label={s === 'all' ? 'Alle' : meta!.label}
               size="small"
-              fullWidth={isMobile}
-              slotProps={{
-                inputLabel: { shrink: true },
-                htmlInput: { 'aria-label': 'Startdato for kostnadsberegning' },
-              }}
-              sx={{
-                flex: { xs: 1, sm: 'none' },
-                minWidth: { sm: 150 },
-                '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  minHeight: TOUCH_TARGET_SIZE,
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-              }}
+              onClick={() => setFilterStatus(s as CrewStatus | 'all')}
+              sx={{ fontWeight: active ? 700 : 400, bgcolor: active ? (meta?.bg ?? 'rgba(0,212,255,0.15)') : 'rgba(255,255,255,0.06)', color: active ? (meta?.color ?? '#00d4ff') : 'rgba(255,255,255,0.6)', border: `1px solid ${active ? (meta?.color ?? '#00d4ff') + '55' : 'rgba(255,255,255,0.1)'}`, cursor: 'pointer' }}
             />
-            <TextField
-              type="date"
-              label="Til dato"
-              value={costEndDate}
-              onChange={(e) => setCostEndDate(e.target.value)}
+          );
+        })}
+        <Tooltip title="Filtrer på tilgjengelighet">
+          <Chip
+            label="Tilgjengelig nå"
+            size="small"
+            onClick={() => setFilterAvailable(p => !p)}
+            sx={{ bgcolor: filterAvailable ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)', color: filterAvailable ? '#10b981' : 'rgba(255,255,255,0.6)', border: `1px solid ${filterAvailable ? '#10b98155' : 'rgba(255,255,255,0.1)'}`, cursor: 'pointer', fontWeight: filterAvailable ? 700 : 400 }}
+          />
+        </Tooltip>
+        {productionDays.length > 0 && (
+          <Tooltip title="Vis kun crew med innspillingstilordning i dag">
+            <Chip
+              label="Tilordnet i dag"
               size="small"
-              fullWidth={isMobile}
-              slotProps={{
-                inputLabel: { shrink: true },
-                htmlInput: { 'aria-label': 'Sluttdato for kostnadsberegning' },
-              }}
-              sx={{
-                flex: { xs: 1, sm: 'none' },
-                minWidth: { sm: 150 },
-                '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  minHeight: TOUCH_TARGET_SIZE,
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-              }}
+              onClick={() => setFilterAssignedToday(p => !p)}
+              sx={{ bgcolor: filterAssignedToday ? 'rgba(0,212,255,0.2)' : 'rgba(255,255,255,0.06)', color: filterAssignedToday ? '#00d4ff' : 'rgba(255,255,255,0.6)', border: `1px solid ${filterAssignedToday ? '#00d4ff55' : 'rgba(255,255,255,0.1)'}`, cursor: 'pointer', fontWeight: filterAssignedToday ? 700 : 400 }}
             />
-          </Box>
-
-          {/* Cost results - responsive grid */}
-          {calculateCost && (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
-                gap: { xs: 1.5, sm: 2 },
-                pt: 2,
-                borderTop: '1px solid rgba(255,255,255,0.1)',
-              }}
-            >
-              <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block' }}>
-                  Antall dager
-                </Typography>
-                <Typography variant="h6" sx={{ color: '#fff', fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-                  {calculateCost.days}
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block' }}>
-                  Team
-                </Typography>
-                <Typography variant="h6" sx={{ color: '#fff', fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>
-                  {calculateCost.crewCount}
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block' }}>
-                  Fast honorar totalt
-                </Typography>
-                <Typography variant="h6" sx={{ color: '#fff', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                  {calculateCost.dailyRate.toLocaleString('nb-NO')} kr
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: { xs: 'center', sm: 'left' }, gridColumn: { xs: 'span 2', sm: 'auto' } }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block' }}>
-                  Totalkostnad
-                </Typography>
-                <Typography
-                  variant="h5"
-                  sx={{
-                    color: '#4caf50',
-                    fontWeight: 700,
-                    fontSize: { xs: '1.25rem', sm: '1.5rem' },
-                  }}
+          </Tooltip>
+        )}
+        {(filterStatus !== 'all' || filterAvailable || filterAssignedToday || filterDept !== 'all' || filterRole !== 'all' || searchQuery) && (
+          <Chip
+            label="Nullstill"
+            size="small"
+            onDelete={() => { setFilterStatus('all'); setFilterAvailable(false); setFilterAssignedToday(false); setFilterDept('all'); setFilterRole('all'); setSearchQuery(''); }}
+            sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#9333ea', border: '1px solid rgba(147,51,234,0.3)' }}
+          />
+        )}
+        {/* Filter panel toggle */}
+        {(() => {
+          const activeFilterCount = [filterRole !== 'all', filterDept !== 'all', filterStatus !== 'all', filterAvailable, filterAssignedToday].filter(Boolean).length;
+          return (
+            <Tooltip title={showFilters ? 'Skjul rollefilter' : 'Vis rollefilter (Ctrl+F)'}>
+              <Badge badgeContent={activeFilterCount} color="primary" overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 10, minWidth: 16, height: 16 } }}>
+                <IconButton
+                  onClick={() => setShowFilters(p => !p)}
+                  sx={{ color: showFilters ? '#00d4ff' : 'rgba(255,255,255,0.5)', ...focusVisibleStyles }}
+                  aria-label="Vis/skjul rollefilter"
                 >
-                  {calculateCost.total.toLocaleString('nb-NO')} kr
-                </Typography>
-              </Box>
-            </Box>
+                  <FilterListIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+              </Badge>
+            </Tooltip>
+          );
+        })()}
+      </Box>
+
+      {/* ── ACTIVE FILTER CHIPS ── */}
+      {(filterAssignedToday || filterDept !== 'all' || filterStatus !== 'all' || filterRole !== 'all') && (
+        <Box sx={{ px: 2, pb: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+          {filterAssignedToday && (
+            <Chip
+              label={`${stats.assignedToday} Assigned Today`}
+              size="small"
+              onDelete={() => setFilterAssignedToday(false)}
+              sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#ffb800', border: '1px solid rgba(147,51,234,0.4)', fontWeight: 700, fontSize: 12 }}
+            />
+          )}
+          {filterDept !== 'all' && (
+            <Chip
+              label={`Dept: ${DEPT_LABELS[filterDept]}`}
+              size="small"
+              onDelete={() => setFilterDept('all')}
+              sx={{ bgcolor: `${DEPT_COLORS[filterDept]}22`, color: DEPT_COLORS[filterDept], border: `1px solid ${DEPT_COLORS[filterDept]}44`, fontWeight: 600, fontSize: 12 }}
+            />
+          )}
+          {filterStatus !== 'all' && (
+            <Chip
+              label={STATUS_META[filterStatus as CrewStatus].label}
+              size="small"
+              onDelete={() => setFilterStatus('all')}
+              sx={{ bgcolor: STATUS_META[filterStatus as CrewStatus].bg, color: STATUS_META[filterStatus as CrewStatus].color, border: `1px solid ${STATUS_META[filterStatus as CrewStatus].color}55`, fontWeight: 600, fontSize: 12 }}
+            />
+          )}
+          {filterRole !== 'all' && (
+            <Chip
+              label={getRoleLabel(filterRole as CrewRole)}
+              size="small"
+              onDelete={() => setFilterRole('all')}
+              sx={{ bgcolor: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)', fontWeight: 600, fontSize: 12 }}
+            />
           )}
         </Box>
-      </Collapse>
-
-      {/* Statistics panel - Responsive grid */}
-      {crewMembers.length > 0 && (
-        <Collapse in={showStats}>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: 'repeat(2, 1fr)',
-                sm: 'repeat(3, 1fr)',
-                md: 'repeat(auto-fit, minmax(100px, 1fr))'
-              },
-              gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-              mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-              bgcolor: 'rgba(0,212,255,0.05)',
-              borderRadius: 2,
-              border: '1px solid rgba(0,212,255,0.2)',
-            }}
-            role="region"
-            aria-label="Crew statistikk"
-          >
-            <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-                <GroupsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#00d4ff' }} />
-              </Box>
-              <Typography
-                variant="h5"
-                sx={{
-                  color: '#00d4ff',
-                  fontWeight: 700,
-                  fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' },
-                }}
-              >
-                {stats.total}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                Totalt
-              </Typography>
-            </Box>
-            <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-                <CheckCircleIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#4caf50' }} />
-              </Box>
-              <Typography
-                variant="h5"
-                sx={{
-                  color: '#4caf50',
-                  fontWeight: 700,
-                  fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' },
-                }}
-              >
-                {stats.availableNow}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                Tilgjengelig
-              </Typography>
-            </Box>
-            <Box sx={{ textAlign: 'center', gridColumn: { xs: 'span 2', sm: 'auto' }, p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-                <CalculateIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ff9800' }} />
-              </Box>
-              <Typography
-                variant="h5"
-                sx={{
-                  color: '#ff9800',
-                  fontWeight: 700,
-                  fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' },
-                }}
-              >
-                {stats.totalDailyRate.toLocaleString('no-NO')} kr
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
-                Total fast honorar
-              </Typography>
-            </Box>
-            {Object.entries(stats.roleCount).slice(0, isMobile ? 2 : 4).map(([role, count]) => (
-              <Box key={role} sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-                  <GroupsIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, color: '#fff', opacity: 0.7 }} />
-                </Box>
-                <Typography
-                  variant="h6"
-                  sx={{
-                    color: '#fff',
-                    fontWeight: 600,
-                    fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' },
-                  }}
-                >
-                  {count}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: 'rgba(255,255,255,0.87)',
-                    fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
-                  }}
-                >
-                  {getRoleLabel(role as CrewRole)}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Collapse>
       )}
 
-      {/* Search, filter, and view controls - Responsive */}
-      {crewMembers.length > 0 && (
-        <Box sx={{ mb: 3 }}>
-          {/* Search bar and controls - stack on mobile */}
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              gap: { xs: 1, sm: 2 },
-              mb: 2,
-              alignItems: { xs: 'stretch', sm: 'center' },
-            }}
+      {/* ── ROLE FILTER PANEL ── */}
+      <Collapse in={showFilters}>
+        <Box sx={{ px: 2, pb: 1 }}>
+          <Accordion
+            disableGutters
+            sx={{ bgcolor: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1, '&:before': { display: 'none' } }}
           >
-            {/* Search field - full width on mobile */}
-            <TextField
-              placeholder={isMobile ? "Søk..." : "Søk etter navn, e-post, telefon..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              size="small"
-              fullWidth
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                    </InputAdornment>
-                  ),
-                  'aria-label': 'Søk i crewmedlemmer',
-                },
-              }}
-              sx={{
-                flex: { sm: 1 },
-                minWidth: { sm: 200, md: 180, lg: 220, xl: 260 },
-                '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  minHeight: TOUCH_TARGET_SIZE,
-                  fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
-                  height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
-                },
-              }}
-            />
-
-            {/* Controls row - always horizontal */}
-            <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'space-between', sm: 'flex-end' } }}>
-              <Tooltip title="Vis/skjul filtre" arrow>
-                <IconButton
-                  onClick={() => setShowFilters(!showFilters)}
-                  aria-label="Vis eller skjul filtre"
-                  aria-expanded={showFilters}
-                  sx={{
-                    color: showFilters ? '#00d4ff' : 'rgba(255,255,255,0.7)',
-                    minWidth: TOUCH_TARGET_SIZE,
-                    minHeight: TOUCH_TARGET_SIZE,
-                    bgcolor: showFilters ? 'rgba(0,212,255,0.1)' : 'transparent',
-                    ...focusVisibleStyles,
-                  }}
-                >
-                  <FilterListIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Vis/skjul statistikk" arrow>
-                <IconButton
-                  onClick={() => setShowStats(!showStats)}
-                  aria-label="Vis eller skjul statistikk"
-                  aria-expanded={showStats}
-                  sx={{
-                    color: showStats ? '#00d4ff' : 'rgba(255,255,255,0.7)',
-                    minWidth: TOUCH_TARGET_SIZE,
-                    minHeight: TOUCH_TARGET_SIZE,
-                    ...focusVisibleStyles,
-                  }}
-                >
-                  {showStats ? <ExpandLessIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <ExpandMoreIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-                </IconButton>
-              </Tooltip>
-
-              <ToggleButtonGroup
-                value={viewMode}
-                exclusive
-                onChange={(_, newMode) => newMode && setViewMode(newMode)}
-                aria-label="Velg visningsmodus"
-                size="small"
-              >
-                <ToggleButton
-                  value="grid"
-                  aria-label="Kortvisning"
-                  sx={{
-                    color: 'rgba(255,255,255,0.87)',
-                    minWidth: TOUCH_TARGET_SIZE,
-                    minHeight: TOUCH_TARGET_SIZE,
-                    '&.Mui-selected': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' },
-                    ...focusVisibleStyles,
-                  }}
-                >
-                  <ViewModuleIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                </ToggleButton>
-                <ToggleButton
-                  value="table"
-                  aria-label="Tabellvisning"
-                  sx={{
-                    color: 'rgba(255,255,255,0.87)',
-                    minWidth: TOUCH_TARGET_SIZE,
-                    minHeight: TOUCH_TARGET_SIZE,
-                    '&.Mui-selected': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' },
-                    ...focusVisibleStyles,
-                  }}
-                >
-                  <ViewListIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-          </Box>
-
-          {/* Filter panel */}
-          {/* Filter panel - Responsive */}
-          <Collapse in={showFilters}>
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                gap: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-                p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                bgcolor: 'rgba(255,255,255,0.03)',
-                borderRadius: 2,
-                flexWrap: 'wrap',
-                alignItems: { xs: 'stretch', sm: 'center' },
-              }}
-              role="group"
-              aria-label="Filteralternativer"
-            >
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150, md: 135, lg: 150, xl: 180 }, flex: { xs: 1, sm: 'none' } }}>
-                <InputLabel
-                  sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}
-                  id="filter-role-label"
-                >
-                  Filtrer på rolle
-                </InputLabel>
+            <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(255,255,255,0.7)' }} />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PeopleIcon sx={{ fontSize: 16, color: '#00d4ff' }} />
+                <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>Rollefilter</Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0, pb: 1.5 }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Filtrer på rolle</InputLabel>
                 <Select
-                  labelId="filter-role-label"
                   value={filterRole}
-                  onChange={(e) => setFilterRole(e.target.value as CrewRole | 'all')}
+                  onChange={e => setFilterRole(e.target.value as CrewRole | 'all')}
                   label="Filtrer på rolle"
-                  sx={{
-                    color: '#fff',
-                    minHeight: TOUCH_TARGET_SIZE,
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                    height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  }}
+                  sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' } }}
                 >
-                  <MenuItem value="all" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
-                      <PeopleIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />
-                      <span>Alle roller</span>
+                  <MenuItem value="all">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PeopleIcon sx={{ fontSize: 18, color: '#00d4ff' }} />
+                      Alle roller
                     </Box>
                   </MenuItem>
-                  {crewRoles.map((role) => (
-                    <MenuItem key={role} value={role} sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
-                      {getRoleLabel(role)}
-                    </MenuItem>
+                  {crewRoles.map(role => (
+                    <MenuItem key={role} value={role}>{getRoleLabel(role)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Button
-                  variant={filterAvailable ? 'contained' : 'outlined'}
-                  onClick={() => setFilterAvailable(!filterAvailable)}
-                  startIcon={<CheckCircleIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-                  aria-pressed={filterAvailable}
-                  sx={{
-                    minHeight: TOUCH_TARGET_SIZE,
-                    flex: { xs: 1, sm: 'none' },
-                    color: filterAvailable ? '#000' : 'rgba(255,255,255,0.7)',
-                    bgcolor: filterAvailable ? '#4caf50' : 'transparent',
-                    borderColor: 'rgba(255,255,255,0.2)',
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                    px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-                    py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                    ...focusVisibleStyles,
-                    '&:hover': {
-                      bgcolor: filterAvailable ? '#43a047' : 'rgba(255,255,255,0.05)',
-                    },
-                  }}
-                >
-                  {isMobile ? 'Tilgjengelig' : 'Kun tilgjengelige'}
-                </Button>
-
-                {(filterRole !== 'all' || filterAvailable || searchQuery) && (
-                  <Button
-                    variant="text"
-                    onClick={() => {
-                      setFilterRole('all');
-                      setFilterAvailable(false);
-                      setSearchQuery('');
-                    }}
-                    sx={{
-                      color: '#ff9800',
-                      minHeight: TOUCH_TARGET_SIZE,
-                      flex: { xs: 1, sm: 'none' },
-                      ...focusVisibleStyles,
-                    }}
-                  >
-                    Nullstill
-                  </Button>
-                )}
-              </Box>
-            </Box>
-          </Collapse>
-
-          {/* Results count - Responsive */}
-          {(searchQuery || filterRole !== 'all' || filterAvailable) && (
-            <Alert
-              severity="info"
-              sx={{
-                mb: 2,
-                bgcolor: 'rgba(0,212,255,0.1)',
-                color: '#fff',
-                py: { xs: 0.5, sm: 1 },
-                '& .MuiAlert-icon': { color: '#00d4ff' },
-                '& .MuiAlert-message': { fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' } },
-              }}
-            >
-              Viser {filteredAndSortedCrew.length} av {crewMembers.length} teammedlemmer
-            </Alert>
-          )}
+            </AccordionDetails>
+          </Accordion>
         </Box>
+      </Collapse>
+
+      {/* ── COST CALCULATOR ── */}
+      <Collapse in={showCostCalculator}>
+        <Box sx={{ mx: 2, mb: 1, p: 2, bgcolor: 'rgba(0,212,255,0.08)', borderRadius: 2, border: '1px solid rgba(0,212,255,0.25)' }}>
+          <Typography sx={{ color: '#00d4ff', fontWeight: 600, mb: 1.5, fontSize: 14 }}>
+            Kostnadsberegner {selectedIds.size > 0 && `(${selectedIds.size} valgte)`}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <TextField type="date" label="Fra" size="small" value={costStartDate} onChange={e => setCostStartDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ '& .MuiOutlinedInput-root': { color: '#fff' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
+            <TextField type="date" label="Til" size="small" value={costEndDate} onChange={e => setCostEndDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ '& .MuiOutlinedInput-root': { color: '#fff' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' } }} />
+            {calculateCost && (
+              <Box sx={{ display: 'flex', gap: 3 }}>
+                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Dager</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.days}</Typography></Box>
+                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Crew</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.crewCount}</Typography></Box>
+                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Total</Typography><Typography sx={{ color: '#4caf50', fontWeight: 700, fontSize: '1.1rem' }}>{calculateCost.total.toLocaleString('nb-NO')} kr</Typography></Box>
+              </Box>
+            )}
+          </Box>
+        </Box>
+      </Collapse>
+
+      {/* ── LOADING INDICATOR ── */}
+      {isLoading && (
+        <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(0,212,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#00d4ff' } }} />
       )}
 
-      {/* Empty state */}
-      {crewMembers.length === 0 ? (
-        <Box
-          role="status"
-          aria-label="Ingen crewmedlemmer"
-          sx={{
-            textAlign: 'center',
-            py: 8,
-            color: 'rgba(255,255,255,0.87)',
-          }}
-        >
-          <PersonIcon sx={{ fontSize: { xs: 60, sm: 70, md: 65, lg: 80, xl: 104 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, opacity: 0.3 }} aria-hidden="true" />
-          <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>Ingen teammedlemmer ennå</Typography>
-          <Typography variant="body2" sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-            Legg til teammedlemmer for å organisere produksjonsteamet
-          </Typography>
+      {/* ── STATS BAR ── */}
+      <Collapse in={showStats && crewMembers.length > 0}>
+        <Box sx={{ mx: 2, mb: 1, p: 1.5, bgcolor: 'rgba(0,212,255,0.05)', borderRadius: 2, border: '1px solid rgba(0,212,255,0.15)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 1.5 }}>
+          {[
+            { label: 'Totalt', value: stats.total, color: '#00d4ff' },
+            { label: 'Tilgjengelig', value: stats.availableNow, color: '#10b981' },
+            { label: 'Fast honorar', value: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, color: '#f59e0b' },
+          ].map(s => (
+            <Box key={s.label} sx={{ textAlign: 'center' }}>
+              <Typography sx={{ color: s.color, fontWeight: 700, fontSize: { xs: '1.2rem', sm: '1.5rem' } }}>{s.value}</Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>{s.label}</Typography>
+            </Box>
+          ))}
         </Box>
-      ) : filteredAndSortedCrew.length === 0 ? (
-        <Box
-          role="status"
-          sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}
-        >
-          <SearchIcon sx={{ fontSize: { xs: 48, sm: 56, md: 52, lg: 64, xl: 80 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, opacity: 0.3 }} />
-          <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>Ingen treff på søket</Typography>
-          <Typography variant="body2" sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-            Prøv å endre søkeord eller filtre
-          </Typography>
-        </Box>
-      ) : viewMode === 'table' ? (
+      </Collapse>
+
+      {/* ── MAIN BODY: dept sidebar + crew list ── */}
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {/* LEFT: department sidebar */}
+        <Collapse in={showDeptSidebar && !isMobile} orientation="horizontal" sx={{ flexShrink: 0 }}>
+          <DeptSidebarPanel crewMembers={crewMembers} filterDept={filterDept} onDeptClick={setFilterDept} favorites={favorites} />
+        </Collapse>
+
+        {/* CENTER: crew list */}
+        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {crewMembers.length === 0 ? (
+            <RoleRoomEmptyState
+              iconSrc={crewPng}
+              title="Ingen teammedlemmer ennå"
+              subtitle="Legg til teammedlemmer for å organisere produksjonsteamet"
+              color="#00d4ff"
+            />
+          ) : filteredAndSortedCrew.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.5)' }}>
+              <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
+              <Typography>Ingen treff – prøv å endre filter</Typography>
+            </Box>
+          ) : viewMode === 'table' ? (
         /* Table View - Responsive with horizontal scroll */
         <TableContainer
           component={Paper}
@@ -1739,20 +2377,51 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                     Tilgjengelighet
                   </TableSortLabel>
                 </TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Status</TableCell>
+                {productionDays.slice(0, 4).map((day, i) => (
+                  <TableCell key={day.id} align="center" sx={{ py: 1, fontSize: 11, color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap', px: 1, fontWeight: 600, letterSpacing: 0.5 }}>
+                    {(['Mon','Tue','Wed','Thu'] as const)[i] ?? new Date(day.date).toLocaleDateString('en', { weekday: 'short' })}
+                  </TableCell>
+                ))}
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredAndSortedCrew.map((member) => (
-                <TableRow
-                  key={member.id}
-                  hover
-                  selected={selectedIds.has(member.id)}
-                  sx={{
-                    '&:hover': { bgcolor: 'rgba(0,212,255,0.05)' },
-                    '&.Mui-selected': { bgcolor: 'rgba(0,212,255,0.1)' },
-                  }}
-                >
+              {filteredAndSortedCrew.flatMap((member, idx) => {
+                const deptKey = ROLE_TO_DEPT[member.role] ?? 'other';
+                const prevDeptKey = idx > 0 ? (ROLE_TO_DEPT[filteredAndSortedCrew[idx - 1].role] ?? 'other') : null;
+                const dColor = DEPT_COLORS[deptKey];
+                const deptCount = filteredAndSortedCrew.filter(m => (ROLE_TO_DEPT[m.role] ?? 'other') === deptKey).length;
+                const deptHeader = deptKey !== prevDeptKey ? (
+                  <TableRow key={`dh-${deptKey}-${idx}`} sx={{ bgcolor: 'rgba(255,255,255,0.022)', '&:hover': { bgcolor: 'rgba(255,255,255,0.035)' } }}>
+                    <TableCell padding="checkbox" sx={{ borderBottom: `1px solid ${dColor}22`, py: 0.5 }} />
+                    <TableCell colSpan={6 + Math.min(productionDays.length, 4)} sx={{ borderBottom: `1px solid ${dColor}22`, py: 0.75 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 3, height: 14, bgcolor: dColor, borderRadius: 1, flexShrink: 0 }} />
+                        <Typography sx={{ fontSize: 11, fontWeight: 700, color: dColor, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                          {DEPT_LABELS[deptKey]}
+                        </Typography>
+                        <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>({deptCount})</Typography>
+                        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => handleOpenDialog()}
+                          sx={{ ml: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.45)', textTransform: 'none', minHeight: 'auto', py: 0.2, px: 1,
+                            '&:hover': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.08)' } }}>
+                          + Add Crew
+                        </Button>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ borderBottom: `1px solid ${dColor}22`, py: 0.5 }} />
+                  </TableRow>
+                ) : null;
+                const memberRow = (
+                  <TableRow
+                    key={member.id}
+                    hover
+                    selected={selectedIds.has(member.id)}
+                    sx={{
+                      '&:hover': { bgcolor: 'rgba(0,212,255,0.05)' },
+                      '&.Mui-selected': { bgcolor: 'rgba(0,212,255,0.1)' },
+                    }}
+                  >
                   <TableCell padding="checkbox">
                     <Checkbox
                       checked={selectedIds.has(member.id)}
@@ -1853,14 +2522,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     {member.availability?.startDate && member.availability?.endDate ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
-                        <Box
-                          sx={{
-                            width: { xs: 8, sm: 9, md: 8.5, lg: 10, xl: 12 },
-                            height: { xs: 8, sm: 9, md: 8.5, lg: 10, xl: 12 },
-                            borderRadius: '50%',
-                            bgcolor: isAvailableNow(member) ? '#4caf50' : '#ff9800',
-                          }}
-                        />
+                        <CalendarTodayIcon sx={{ fontSize: { xs: 11, sm: 12, md: 12, lg: 13, xl: 14 }, color: isAvailableNow(member) ? '#4caf50' : '#9333ea' }} />
                         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>
                           {member.availability.startDate} - {member.availability.endDate}
                         </Typography>
@@ -1871,6 +2533,34 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                       </Typography>
                     )}
                   </TableCell>
+                  <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                      <StatusBadge status={member.status} size="small" />
+                      {conflictMap.has(member.id) && (
+                        <Tooltip title="Dobbeltbooket – sjekk DOOD for konfliktdetaljer">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                            <WarningAmberIcon sx={{ fontSize: 11, color: '#ef4444' }} />
+                            <Typography sx={{ fontSize: 10, color: '#ef4444', fontWeight: 700 }}>Konflikt</Typography>
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </TableCell>
+                  {productionDays.slice(0, 4).map(day => {
+                    const code = getMemberDOODCode(member.id, day.id, crewAssignments, productionDays);
+                    const dotColor = !code ? 'rgba(255,255,255,0.14)' :
+                      (code === 'W' || code === 'SW' || code === 'SWF') ? '#10b981' :
+                      (code === 'H' || code === 'O') ? '#ef4444' : '#ffb800';
+                    return (
+                      <TableCell key={day.id} align="center" sx={{ py: 1, px: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 0.35, justifyContent: 'center' }}>
+                          {([0,1,2] as const).map(i => (
+                            <Box key={i} sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: dotColor }} />
+                          ))}
+                        </Box>
+                      </TableCell>
+                    );
+                  })}
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 } }}>
                       <Tooltip title={favorites.has(member.id) ? 'Fjern favoritt' : 'Legg til favoritt'}>
@@ -1900,6 +2590,15 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="Tilordne til scene">
+                        <IconButton
+                          onClick={() => handleAssignToScene(member)}
+                          aria-label={`Tilordne ${member.name} til scene`}
+                          sx={{ color: 'rgba(0,212,255,0.7)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
+                        >
+                          <AssignIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Slett">
                         <IconButton
                           onClick={() => handleDeleteWithUndo(member.id)}
@@ -1911,8 +2610,10 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                       </Tooltip>
                     </Box>
                   </TableCell>
-                </TableRow>
-              ))}
+                  </TableRow>
+                );
+                return deptHeader ? [deptHeader, memberRow] : [memberRow];
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -1926,7 +2627,8 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         >
           {filteredAndSortedCrew.map((member) => (
             <Grid
-              size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+              item
+              xs={12} sm={6} md={4} lg={3}
               key={member.id}
               role="listitem"
             >
@@ -2036,6 +2738,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                                   border: '1px solid rgba(77,208,225,0.5)',
                                 }}
                               />
+                              <StatusBadge status={member.status} />
                               {isAvailableNow(member) && (
                                 <Chip
                                   label="Tilgjengelig"
@@ -2068,6 +2771,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                       {favorites.has(member.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
                     </IconButton>
                   </Box>
+
+                  {/* Availability week dots */}
+                  <AvailabilityWeekDots member={member} hasConflict={conflictMap.has(member.id)} />
 
                   {/* Contact Info Cards - Enhanced */}
                   <Stack spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }} sx={{ mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
@@ -2362,6 +3068,30 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                           </Box>
                         </Box>
                       )}
+                      {/* ── DOOD strip + shoot day assignments ── */}
+                      {productionDays.length > 0 && (
+                        <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.12)' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                              <DoodIcon sx={{ fontSize: 14, color: '#00d4ff' }} />
+                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#00d4ff', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                Innspillingsdager
+                              </Typography>
+                            </Box>
+                            <Tooltip title="Administrer tilordninger">
+                              <IconButton size="small" onClick={() => handleAssignToScene(member)} sx={{ color: 'rgba(0,212,255,0.7)', p: 0.5, ...focusVisibleStyles }}>
+                                <ScheduleIcon sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                          <DOODMiniStrip member={member} productionDays={productionDays} assignments={crewAssignments} />
+                          {!crewAssignments.some(a => a.crewMemberId === member.id) && (
+                            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>
+                              Ikke tilordnet noen dager – klikk ScheduleIcon for å tilordne
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
                     </Box>
                   </Collapse>
 
@@ -2459,6 +3189,21 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                           <EditIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="Tilordne til scene" arrow>
+                        <IconButton
+                          onClick={() => handleAssignToScene(member)}
+                          aria-label={`Tilordne ${member.name} til scene`}
+                          sx={{
+                            minWidth: TOUCH_TARGET_SIZE,
+                            minHeight: TOUCH_TARGET_SIZE,
+                            color: 'rgba(0,212,255,0.7)',
+                            '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                            ...focusVisibleStyles,
+                          }}
+                        >
+                          <AssignIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Slett" arrow>
                         <IconButton
                           onClick={() => handleDeleteWithUndo(member.id)}
@@ -2482,6 +3227,69 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           ))}
         </Grid>
       )}
+
+        </Box>{/* end center box */}
+      </Box>{/* end main body */}
+
+      {/* ── BULK ACTION BAR ── */}
+      <CrewBulkBar
+        selectedIds={selectedIds}
+        totalCount={filteredAndSortedCrew.length}
+        isAllSelected={selectedIds.size === filteredAndSortedCrew.length && filteredAndSortedCrew.length > 0}
+        onSelectAll={handleSelectAll}
+        onDelete={handleBulkDelete}
+        onChangeStatus={handleBulkStatusChange}
+        onDeselect={() => setSelectedIds(new Set())}
+        onAssignDay={handleBulkAssignDay}
+        productionDays={productionDays}
+      />
+
+      {/* ── INVITE CREW DIALOG ── */}
+      <InviteCrewDialog
+        open={inviteDialogOpen}
+        onClose={() => setInviteDialogOpen(false)}
+        onInvite={handleInviteCrew}
+        getRoleLabel={getRoleLabel}
+        crewRoles={crewRoles}
+      />
+
+      {/* ── ASSIGN TO SHOOT DAY DIALOG ── */}
+      <AssignShootDayDialog
+        open={assignDayOpen}
+        onClose={() => { setAssignDayOpen(false); setAssigningMember(null); }}
+        member={assigningMember}
+        productionDays={productionDays}
+        assignments={crewAssignments}
+        onAssign={handleCrewAssign}
+        onUnassign={handleCrewUnassign}
+      />
+
+      {/* ── DOOD OVERVIEW DRAWER ── */}
+      <DOODOverviewPanel
+        open={doodOpen}
+        onClose={() => setDoodOpen(false)}
+        crewMembers={crewMembers}
+        productionDays={productionDays}
+        assignments={crewAssignments}
+        getRoleLabel={getRoleLabel}
+      />
+
+      {/* ── CALLSHEET DRAWER ── */}
+      <CallsheetDrawer
+        open={callsheetOpen}
+        onClose={() => setCallsheetOpen(false)}
+        projectId={projectId}
+        crew={selectedIds.size > 0 ? crewMembers.filter(m => selectedIds.has(m.id)) : crewMembers}
+        selectedDay={callsheetDay}
+        scenes={propScenes}
+        productionDays={productionDays}
+      />
+
+      {/* ── CREW MANAGEMENT GUIDE ── */}
+      <CrewManagementGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+      />
 
       {/* Undo delete snackbar */}
       <Snackbar
@@ -3258,7 +4066,6 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
               px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-              minHeight: TOUCH_TARGET_SIZE,
               minHeight: TOUCH_TARGET_SIZE,
               minWidth: { xs: 'auto', sm: 100 },
               ...focusVisibleStyles,

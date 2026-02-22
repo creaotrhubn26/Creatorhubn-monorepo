@@ -23,7 +23,7 @@ import {
   Select,
   MenuItem,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Email,
@@ -35,7 +35,7 @@ import {
   Add,
   Edit,
   Delete,
-  Send
+  Send,
 } from '@mui/icons-material';
 import { useClientCommunication } from '../../../hooks/useClientCommunication';
 

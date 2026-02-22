@@ -22,14 +22,14 @@ import {
   ListItemText,
   ListItemIcon,
   Divider,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   StickyNote2 as NotesIcon,
   Add as AddIcon,
   Schedule as TimeIcon,
   Work as ProjectIcon,
-  KeyboardArrowUp as UpIcon
+  KeyboardArrowUp as UpIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

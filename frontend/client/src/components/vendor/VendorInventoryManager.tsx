@@ -38,7 +38,7 @@ import {
   Tabs,
   Tab,
   Collapse,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   Inventory,
@@ -72,7 +72,7 @@ import {
   Assessment,
   Category,
   AccessTime,
-  PhotoLibrary
+  PhotoLibrary,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

@@ -18,7 +18,6 @@ import {
   CircularProgress,
   Tab,
   Tabs,
-  TabPanel,
   InputAdornment,
   Select,
   MenuItem,
@@ -33,9 +32,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   CameraAlt,
-  Videocamcam,
-  LibraryMusicNote,
-  DirectionsBusiness,
+  Videocam as Videocamcam,
+  LibraryMusic as LibraryMusicNote,
+  Business as DirectionsBusiness,
   Search,
   Star,
   TrendingUp,

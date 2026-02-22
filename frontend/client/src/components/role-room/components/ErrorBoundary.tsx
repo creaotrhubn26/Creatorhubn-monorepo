@@ -1,5 +1,10 @@
 import React, { ReactNode, ReactElement } from 'react';
-import { Box, Typography, Button, Paper } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Button,
+  Paper,
+} from '@mui/material';
 import { ErrorOutline as ErrorIcon } from '@mui/icons-material';
 
 interface Props {

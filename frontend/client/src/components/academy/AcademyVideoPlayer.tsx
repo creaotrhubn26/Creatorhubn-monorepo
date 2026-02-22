@@ -50,7 +50,7 @@ import {
   Theaters,
   Movie,
   Settings,
-  Speed,
+  Speed as Speed,
   ClosedCaption,
   PictureInPicture,
   Download,

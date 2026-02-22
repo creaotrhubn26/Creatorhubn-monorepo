@@ -21,14 +21,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Build,
   TrendingUp,
   Warning,
   Refresh,
-  Download
+  Download,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

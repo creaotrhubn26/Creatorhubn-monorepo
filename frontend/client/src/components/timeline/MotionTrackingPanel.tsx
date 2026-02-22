@@ -23,9 +23,14 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Paper
+  Paper,
 } from '@mui/material';
-import { Close, PlayArrow, Stop, GpsFixed } from '@mui/icons-material';
+import {
+  Close,
+  PlayArrow,
+  Stop,
+  GpsFixed,
+} from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 

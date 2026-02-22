@@ -1,5 +1,13 @@
 import * as React from 'react';
-import { Box, Button, List, ListItem, ListItemText, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  Stack,
+  Typography,
+} from '@mui/material';
 
 export default function TimelinePanel() {
   const [items, setItems] = React.useState<{ id: string; label: string; ts: number }[]>([]);

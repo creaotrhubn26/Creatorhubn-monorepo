@@ -17,14 +17,14 @@ import {
   Chip,
   Divider,
   Paper,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   CheckCircle,
   Error,
   ThumbUp,
   ThumbDown,
-  Send
+  Send,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

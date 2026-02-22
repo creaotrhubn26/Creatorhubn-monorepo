@@ -37,7 +37,7 @@ import {
   MenuItem,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   AutoAwesome,
@@ -50,7 +50,7 @@ import {
   Science,
   ContentCopy,
   Download,
-  Upload
+  Upload,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

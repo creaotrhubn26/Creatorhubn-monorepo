@@ -25,13 +25,13 @@ import {
   Paper,
   Tabs,
   Tab,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   AccountBalance as SplitSheetIcon,
   AttachMoney as MoneyIcon,
   CheckCircle as SignedIcon,
-  Pending as PendingIcon
+  Pending as PendingIcon,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import getProfessionIcon from '@/utils/profession-icons';

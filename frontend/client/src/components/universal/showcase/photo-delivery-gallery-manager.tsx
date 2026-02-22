@@ -35,7 +35,7 @@ import {
   Download,
   Analytics,
   PhotoLibrary,
-  VideocamLibrary,
+  VideoLibrary as VideocamLibrary,
   Public,
   Lock,
   Group,

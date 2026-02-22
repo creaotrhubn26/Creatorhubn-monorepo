@@ -40,19 +40,19 @@ import {
   FormControlLabel,
   Switch,
   Divider,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import {
   PlayArrow,
   Stop,
   Timeline,
   VideoLibrary,
-  Images,
+  Collections as Images,
   Animation,
   ViewStream,
   PaletteTwoTone,
   SpeedRounded,
-  Loop
+  Loop,
 } from '@mui/icons-material';
 
 interface AnimationToolsProps {

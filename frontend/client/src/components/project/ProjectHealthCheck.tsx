@@ -25,7 +25,7 @@ import {
   Paper,
   Typography,
   LinearProgress,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -46,7 +46,7 @@ import {
   MusicNote,
   Store,
   Business,
-  Gavel
+  Gavel,
 } from '@mui/icons-material';
 
 interface HealthCheckIssue {
@@ -290,7 +290,7 @@ export default function ProjectHealthCheck({
     
     // Errors teller dobbelt så mye som warnings
     const penaltyPoints = (errorCount * 2) + warningCount;
-    const score = Math.max, (Math.min(100, ((totalFields - penaltyPoints) / totalFields) * 100));
+    const score = Math.max(Math.min(100, ((totalFields - penaltyPoints) / totalFields) * 100));
     
     setHealthScore(Math.round(score));
 };

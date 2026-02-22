@@ -13,7 +13,7 @@ import {
   Stack,
   Paper,
   Tooltip,
-  Fade
+  Fade,
 } from '@mui/material';
 import {
   Close,
@@ -29,8 +29,11 @@ import {
   ZoomIn,
   ZoomOut,
   Fullscreen,
-  FullscreenExit
+  FullscreenExit,
 } from '@mui/icons-material';
+import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 
 interface ShowcaseItem {
   id: string;
@@ -83,7 +86,7 @@ export const QuickPreview: React.FC<QuickPreviewProps> = ({
   favorites
 }) => {
   // Profession system hooks
-  const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
+  const { professionConfigs, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const currentProfession = professionAdapter.profession || profession || 'photographer';

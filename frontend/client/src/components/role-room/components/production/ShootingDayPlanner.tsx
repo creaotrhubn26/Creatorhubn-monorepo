@@ -117,7 +117,7 @@ const WEATHER_ICONS: Record<string, React.ReactNode> = {
 
 const STATUS_COLORS: Record<ShootingDay['status'], string> = {
   planned: '#1976d2',
-  'in-progress': '#ff9800',
+  'in-progress': '#9333ea',
   wrapped: '#4caf50',
   postponed: '#f44336',
   cancelled: '#9e9e9e',

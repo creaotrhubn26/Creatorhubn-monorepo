@@ -17,7 +17,7 @@ import {
   Chip,
   Card as MuiCard,
   CardContent,
-  Fade
+  Fade,
 } from '@mui/material';
 import {
   FolderOpen,
@@ -27,7 +27,7 @@ import {
   CloudSync,
   CreateNewFolder,
   Security,
-  Share
+  Share,
 } from '@mui/icons-material';
 
 interface ProjectFolderCreationModalProps {

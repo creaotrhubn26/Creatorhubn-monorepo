@@ -29,53 +29,36 @@ import {
   AccordionDetails,
 } from '@mui/material';
 import {
-  // Dashboard Icons
   Dashboard as DashboardIcon,
-  PhotoCameraAlt as PhotoCameraIcon,
-  Videocamcam as VideocamIcon,
-  MusicNoteNote as MusicNoteIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Videocam as VideocamIcon,
+  MusicNote as MusicNoteIcon,
   Store as StoreIcon,
-  DirectionsBusiness as BusinessIcon,
-
-  // Component Icons
+  Business as BusinessIcon,
   Widgets as WidgetsIcon,
   ViewModule as ViewModuleIcon,
-  GridOnView as GridViewIcon,
   ViewList as ViewListIcon,
   Timeline as TimelineIcon,
   Assessment as AssessmentIcon,
-
-  // UI Elements
-  Button as ButtonIcon,
   TextFields as TextFieldsIcon,
   CheckBox as CheckBoxIcon,
   RadioButtonChecked as RadioButtonIcon,
   ToggleOn as ToggleOnIcon,
-  Slider as SliderIcon,
-
-  // Layout Icons
   ViewQuilt as ViewQuiltIcon,
   ViewStream as ViewStreamIcon,
   ViewArray as ViewArrayIcon,
   ViewColumn as ViewColumnIcon,
-  CalendarTodayViewDay as CalendarViewDayIcon,
-
-  // Content Icons
   Image as ImageIcon,
   VideoLibrary as VideoLibraryIcon,
-  AudioDescription as AudioFileIcon,
+  Audiotrack as AudioFileIcon,
   InsertDriveFile as InsertDriveFileIcon,
   TableChart as TableChartIcon,
-  BoxChart as BarChartIcon,
-
-  // Actions
+  BarChart as BarChartIcon,
   Add as AddIcon,
   Preview as PreviewIcon,
   Code as CodeIcon,
   Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
-
-  // Professional Tools
   CameraAlt as CameraAltIcon,
   Movie as MovieIcon,
   Album as AlbumIcon,
@@ -170,7 +153,6 @@ export function TemplateSystem({ onSelectTemplate }: TemplateSystemProps) {
       icon: <PhotoCameraIcon />,
       code: `import React from 'react';
 import {
-  Bx,
   Grid,
   Card,
   CardContent,
@@ -181,10 +163,10 @@ import {
   Tab,
   Paper,
   Stack,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
-  PhotoCameraAlt as PhotoCameraIcon,
+  PhotoCamera as PhotoCameraIcon,
   Assignment as AssignmentIcon,
   People as PeopleIcon,
   CameraAlt as CameraAltIcon,
@@ -192,7 +174,7 @@ import {
   Settings as SettingsIcon,
   Timeline as TimelineIcon,
   TrendingUp as TrendingUpIcon,
-  Event as EventIcon
+  Event as EventIcon,
 } from '@mui/icons-material';
 
 function PhotographerDashboard() {
@@ -331,7 +313,6 @@ export default PhotographerDashboard;`,
       icon: <VideocamIcon />,
       code: `import React from 'react';
 import {
-  Bx,
   Grid,
   Card,
   CardContent,
@@ -341,16 +322,16 @@ import {
   Tab,
   Paper,
   Stack,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
-  Videocamcam as VideocamIcon,
+  Videocam as VideocamIcon,
   Movie as MovieIcon,
-  ShoppingDirectionsCart as ShoppingCartIcon,
+  ShoppingCart as ShoppingCartIcon,
   VideoLibrary as VideoLibraryIcon,
   FolderOpen as FolderOpenIcon,
   Settings as SettingsIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 
 function VideographerDashboard() {
@@ -473,7 +454,6 @@ export default VideographerDashboard;`,
       icon: <MusicNoteIcon />,
       code: `import React from 'react';
 import {
-  Bx,
   Grid,
   Card,
   CardContent,
@@ -483,17 +463,17 @@ import {
   Tab,
   Paper,
   Stack,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
-  MusicNoteNote as MusicNoteIcon,
+  MusicNote as MusicNoteIcon,
   Album as AlbumIcon,
   People as PeopleIcon,
   Inventory as InventoryIcon,
   FolderOpen as FolderOpenIcon,
   Settings as SettingsIcon,
   TrendingUp as TrendingUpIcon,
-  MicExternalOn as MicIcon
+  MicExternalOn as MicIcon,
 } from '@mui/icons-material';
 
 function MusicProducerDashboard() {
@@ -661,7 +641,6 @@ export default MusicProducerDashboard;`,
       icon: <StoreIcon />,
       code: `import React from 'react';
 import {
-  Bx,
   Grid,
   Card,
   CardContent,
@@ -671,17 +650,17 @@ import {
   Tab,
   Paper,
   Stack,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   Store as StoreIcon,
   Inventory as InventoryIcon,
-  ShoppingDirectionsCart as ShoppingCartIcon,
+  ShoppingCart as ShoppingCartIcon,
   Warehouse as WarehouseIcon,
   FolderOpen as FolderOpenIcon,
   Settings as SettingsIcon,
   TrendingUp as TrendingUpIcon,
-  AttachMoney as AttachMoneyIcon
+  AttachMoney as AttachMoneyIcon,
 } from '@mui/icons-material';
 
 function VendorDashboard() {
@@ -839,7 +818,13 @@ export default VendorDashboard;`,
       complexity: 'beginner',
       icon: <AssessmentIcon />,
       code: `import React from 'react';
-import { Card, CardContent, Typography, Avatar, Stack } from '@mui/material';
+import {
+  Card,
+  CardContent,
+  Typography,
+  Avatar,
+  Stack,
+} from '@mui/material';
 
 interface StatsCardProps {
   title: string;
@@ -901,13 +886,9 @@ import {
   LinearProgress,
   IconButton,
   Stack,
-  Avatar
+  Avatar,
 } from '@mui/material';
-import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Visibility as VisibilityIcon
-} from '@mui/icons-material';
+import { Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 
 interface ProjectCardProps {
   title: string;
@@ -1038,15 +1019,14 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
 } from '@mui/material';
 import {
   AttachMoney as AttachMoneyIcon,
   TrendingUp as TrendingUpIcon,
-  Calculator as CalculatorIcon,
   Schedule as ScheduleIcon,
-  DirectionsBusiness as BusinessIcon,
-  ExpandMore as ExpandMoreIcon
+  Business as BusinessIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 
 interface PricingRule {
@@ -1299,7 +1279,7 @@ import {
   ListItemSecondaryAction,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -1309,7 +1289,7 @@ import {
   Science as ScienceIcon,
   Group as GroupIcon,
   ExpandMore as ExpandMoreIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 interface Feature {
@@ -1662,13 +1642,13 @@ import {
   ListItemIcon,
   ListItemText,
   useMediaQuery,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   People as PeopleIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 
 const drawerWidth = 240;

@@ -11,7 +11,12 @@ import {
   LinearProgress,
   Divider,
 } from '@mui/material';
-import { SmartToy, Science, Visibility, VisibilityOff } from '@mui/icons-material';
+import {
+  SmartToy,
+  Science,
+  Visibility,
+  VisibilityOff,
+} from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';

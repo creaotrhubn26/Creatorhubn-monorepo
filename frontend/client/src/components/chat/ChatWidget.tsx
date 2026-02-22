@@ -34,7 +34,7 @@ import {
   Chat,
   Close,
   Send,
-  AttachDescription,
+  AttachFile as AttachDescription,
   EmojiEmotions,
   Person,
   Google,
@@ -42,7 +42,7 @@ import {
   AddCircle as Add,
   MoreVert,
   AlternateEmail,
-  VideocamCall,
+  VideoCall as VideocamCall,
 } from '@mui/icons-material';
 
 interface ChatWidgetProps {
@@ -389,7 +389,7 @@ export default function ChatWidget({
             borderRadius: 3,
             maxHeight: '90vh',
             height: '700px',
-            background: 'linear-gradient(135deg, rgba(2, 5, 5, 255, 255, 0.95), rgba(2, 4, 8, 250, 252, 0.9))',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(2, 4, 8, 250, 252, 0.9))',
             backdropFilter: 'blur(10px)',
         }}}
         TransitionComponent={Slide}
@@ -649,7 +649,7 @@ export default function ChatWidget({
                               <AttachFile />
                             </IconButton>
                           </InputAdornment>
-                       , ),
+                        ),
                         endAdornment: (
                           <InputAdornment position="end">
                             <Box
@@ -672,14 +672,14 @@ export default function ChatWidget({
                                       border: `1px solid ${getProfessionColor()}40`,
                                       animation: 'pulse 2s ease-in-out infinite','&:hover': {
                                         bgcolor: `${getProfessionColor()}25`,
-                                        transform: 'scale(1.05, )',
+                                        transform: 'scale(1.05)',
                                     }, '@keyframes pulse': {
                                         '0%, 100%': {
                                           opacity:  1,
-                                          transform: 'scale(1, )',
-                                      }'50%': {
+                                          transform: 'scale(1)',
+                                      }, '50%': {
                                           opacity: 0.8,
-                                          transform: 'scale(1.02, )',
+                                          transform: 'scale(1.02)',
                                       },
                                     }}}
                                   >
@@ -803,9 +803,9 @@ export default function ChatWidget({
                             height:  16,
                             border: `2px solid ${getProfessionColor()}`,
                             borderTop: '2px solid transparent',
-                            borderRadius: '50, %',
+                            borderRadius: '50%',
                             animation: 'spin 1s linear infinite', '@keyframes spin': {
-                              '0%': { transform: 'rotate(0deg)',}'100%': { transform: 'rotate(360deg)',},
+                              '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' },
                           }}}
                         />
                         <Typography variant="caption" color="text.secondary">

@@ -35,7 +35,7 @@ import {
   TextField,
   CircularProgress,
   Snackbar,
-  MenuItem
+  MenuItem,
 } from '@mui/material';
 import {
   Business,
@@ -63,7 +63,7 @@ import {
   CreditCard,
   Add as AddIcon,
   AccountBalance,
-  Language
+  Language,
 } from '@mui/icons-material';
 
 // Import existing components
@@ -77,7 +77,7 @@ import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import { usePlatformPricing, platformPricingService } from '../../services/PlatformPricingService';
 import { useQueryClient } from '@tanstack/react-query';
-import { getAllProfessionFeatures } from '../../../shared/profession-feature-matrix';
+import { getAllProfessionFeatures } from '@shared/profession-feature-matrix';
 import PlanFeaturePreview from '../subscription/PlanFeaturePreview';
 import { EnterpriseInquiryForm } from '../enterprise/EnterpriseInquiryForm';
 import EnterpriseTeamManagement from '../enterprise/EnterpriseTeamManagement';
@@ -513,7 +513,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 0: Bedriftsprofil */}
       <TabPanel value={settingsTabValue} index={0}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Business sx={{ color: customBranding.color }} />
@@ -526,7 +526,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 1: Mine Funksjoner - Feature Access Overview */}
       <TabPanel value={settingsTabValue} index={1}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Extension sx={{ color: customBranding.color }} />
@@ -683,7 +683,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 2: Prisadministrasjon */}
       <TabPanel value={settingsTabValue} index={2}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <AttachMoney sx={{ color: customBranding.color }} />
@@ -1218,7 +1218,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 3: Google Workspace Lagring */}
       <TabPanel value={settingsTabValue} index={3}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Storage sx={{ color: customBranding.color }} />
@@ -1308,7 +1308,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     size="small"
                     fullWidth
                     sx={{ mt: 2 }}
-                    onClick={() => window.open('https://drive.google.com/settings/storage', ','_blank')}
+                    onClick={() => window.open('https://drive.google.com/settings/storage', '_blank')}
                   >
                     Administrer Google Lagring
                   </Button>
@@ -1329,7 +1329,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 4: Backup & Sync */}
       <TabPanel value={settingsTabValue} index={4}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <CloudDone sx={{ color: customBranding.color }} />
@@ -1404,6 +1404,30 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     size="small"
                     onClick={() =>
                       updateSetting('projectCreation', {
+                        timelinePrefill: Object.fromEntries(
+                          Object.keys(timelinePrefill).map(k => [k, true])
+                        ) as UserSettings['projectCreation']['timelinePrefill']
+                      })
+                    }
+                  >
+                    Velg alle
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() =>
+                      updateSetting('projectCreation', {
+                        timelinePrefill: Object.fromEntries(
+                          Object.keys(timelinePrefill).map(k => [k, false])
+                        ) as UserSettings['projectCreation']['timelinePrefill']
+                      })
+                    }
+                  >
+                    Fjern alle
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
 
               {/* Timeline Settings */}
               <Box sx={{ mb: 4 }}>
@@ -1825,43 +1849,6 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                   />
                 </FormGroup>
               </Box>
-                        timelinePrefill: Object.keys(timelinePrefillDefaults).reduce(
-                          (acc, key) => ({ ...acc, [key]: true }),
-                          {} as typeof timelinePrefillDefaults
-                        )
-                      })
-                    }
-                  >
-                    Velg alle
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() =>
-                      updateSetting('projectCreation', {
-                        timelinePrefill: Object.keys(timelinePrefillDefaults).reduce(
-                          (acc, key) => ({ ...acc, [key]: false }),
-                          {} as typeof timelinePrefillDefaults
-                        )
-                      })
-                    }
-                  >
-                    Fjern alle
-                  </Button>
-                </Box>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() =>
-                    updateSetting('projectCreation', {
-                      timelinePrefill: timelinePrefillDefaults
-                    })
-                  }
-                >
-                  Tilbakestill standard
-                </Button>
-              </Box>
-            </Box>
 
             <Divider sx={{ my: 3 }} />
 
@@ -1932,7 +1919,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                     borderColor: customBranding.color,
                     color: customBranding.color
                   }}
-                  onClick={() => window.open('/api/backup/download/latest', ','_blank')}
+                  onClick={() => window.open('/api/backup/download/latest', '_blank')}
                 >
                   Last ned siste backup
                 </Button>
@@ -2008,7 +1995,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab 5: Profession Suites */}
       <TabPanel value={settingsTabValue} index={5}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <SmartToy sx={{ color: customBranding.color }} />
@@ -2269,7 +2256,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
       {/* Tab 5: Foto integrasjoner - ONLY for photographers */}
       {profession === 'photographer' && (
         <TabPanel value={settingsTabValue} index={6}>
-          <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+          <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
             <MuiCardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                 <PhotoLibrary sx={{ color: customBranding.color }} />
@@ -2379,7 +2366,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab Marketplace: Marketplace - UNIVERSAL FOR ALLE PROFESJONER */}
       <TabPanel value={settingsTabValue} index={profession === 'photographer' ? 7 : 6}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Store sx={{ color: customBranding.color }} />
@@ -2418,7 +2405,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab FAQ: FAQ Veiledninger - UNIVERSAL FOR ALLE PROFESJONER */}
       <TabPanel value={settingsTabValue} index={profession === 'photographer' ? 8 : 7}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Quiz sx={{ color: customBranding.color }} />
@@ -2444,7 +2431,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
       {/* Tab Preferences: Brukerpreferanser */}
       <TabPanel value={settingsTabValue} index={profession === 'photographer' ? 9 : 8}>
-        <MuiCard sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.9)' }}>
+        <MuiCard sx={{ bgcolor: 'rgba(255,255,255,0.9)' }}>
           <MuiCardContent>
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
               <Settings sx={{ color: customBranding.color }} />
@@ -3115,7 +3102,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                         sx={{
                           bgcolor: plan.popular ? customBranding.color : 'transparent',
                           borderColor: customBranding.color,
-                          color: plan.popular ? 'white' : customBranding.color'&:hover': {
+                          color: plan.popular ? 'white' : customBranding.color, '&:hover': {
                             bgcolor: plan.popular ? customBranding.darkColor || customBranding.color : alpha(customBranding.color, 0.1)
                           }
                         }}

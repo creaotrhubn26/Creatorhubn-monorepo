@@ -29,13 +29,13 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   Gavel as LegalIcon,
   Description as DocumentIcon,
   CheckCircle as CheckIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import type { SplitSheet } from './types';
 

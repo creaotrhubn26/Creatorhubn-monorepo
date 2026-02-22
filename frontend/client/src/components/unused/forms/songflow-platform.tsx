@@ -7,17 +7,17 @@ import { useQuery } from '@tanstack/react-query';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { 
-  Box, 
-  Typography, 
-  Card as MuiCard, 
-  CardContent, 
-  Grid, 
-  Button, 
-  Chip, 
-  List, 
-  ListItem, 
-  ListItemText, 
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent,
+  Grid,
+  Button,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
   ListItemIcon,
   ListItemSecondaryAction,
   IconButton,
@@ -33,7 +33,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   LibraryMusic,
@@ -52,7 +52,7 @@ import {
   CloudQueue as GoogleDrive,
   AccessTime,
   Person,
-  Star
+  Star,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';

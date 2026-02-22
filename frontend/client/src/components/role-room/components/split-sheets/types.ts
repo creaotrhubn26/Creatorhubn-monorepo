@@ -236,7 +236,7 @@ export const STATUS_DISPLAY_NAMES: Record<SplitSheetStatus, string> = {
 // Status colors
 export const STATUS_COLORS: Record<SplitSheetStatus, string> = {
   draft: '#9e9e9e',
-  pending_signatures: '#ff9800',
+  pending_signatures: '#9333ea',
   completed: '#4caf50',
   archived: '#757575'
 };
@@ -386,7 +386,7 @@ export const CONTRACT_STATUS_DISPLAY_NAMES: Record<ContractStatus, string> = {
 // Contract status colors
 export const CONTRACT_STATUS_COLORS: Record<ContractStatus, string> = {
   draft: '#9e9e9e',
-  pending_signatures: '#ff9800',
+  pending_signatures: '#9333ea',
   signed: '#4caf50',
   archived: '#757575'
 };

@@ -32,7 +32,7 @@ import {
   Repeat,
   RepeatOne,
   SlowMotionVideo,
-  Speed,
+  Speed as Speed,
   Fullscreen,
   VolumeUp,
   VolumeOff,

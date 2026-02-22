@@ -41,7 +41,14 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material';
-import { Add, Edit, Delete, Tag, ExpandMore, Rule } from '@mui/icons-material';
+import {
+  Add,
+  Edit,
+  Delete,
+  Tag,
+  ExpandMore,
+  Rule,
+} from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface Channel {

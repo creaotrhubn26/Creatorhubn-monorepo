@@ -11,7 +11,7 @@ import {
   Tooltip,
   Typography,
   Badge,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -21,7 +21,7 @@ import {
   Error as ErrorIcon,
   CheckCircle as DeliveredIcon,
   Visibility as ViewIcon,
-  Link as LinkIcon
+  Link as LinkIcon,
 } from '@mui/icons-material';
 
 interface EmailActivityIndicatorProps {

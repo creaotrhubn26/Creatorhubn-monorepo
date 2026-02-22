@@ -13,11 +13,7 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import {
-  Edit as EditIcon,
-  CheckCircle as CheckCircleIcon,
-	  History as HistoryIcon,
-	} from '@mui/icons-material';
+import { Edit as EditIcon, CheckCircle as CheckCircleIcon, History as HistoryIcon } from '@mui/icons-material';
 	import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 
 interface EditPostDialogProps {

@@ -44,7 +44,7 @@ import {
   Snackbar,
   SnackbarContent,
   Collapse,
-  Chip
+  Chip,
 } from '@mui/material';
 
 // Import icons from MUI
@@ -74,7 +74,7 @@ import {
   Preview,
   Check,
   Image as ImageIcon,
-  AutoAwesome
+  AutoAwesome,
 } from '@mui/icons-material';
 
 // Import our extracted components

@@ -28,7 +28,6 @@ import {
 } from '@mui/material';
 import {
   Palette,
-  Typography as TypographyIcon,
   Image,
   Code,
   Settings,

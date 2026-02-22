@@ -5,13 +5,13 @@ import React, { useState } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
+import {
+  Box,
+  Typography,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
   DialogActions,
   TextField,
   Chip,
@@ -22,21 +22,21 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { 
-  VideoLibrary, 
-  Add, 
-  Edit, 
-  Delete, 
-  PlayArrow, 
+import {
+  VideoLibrary,
+  Add,
+  Edit,
+  Delete,
+  PlayArrow,
   Pause,
   Timeline,
-  AutoAwesome
+  AutoAwesome,
 } from '@mui/icons-material';
 
 interface Chapter {

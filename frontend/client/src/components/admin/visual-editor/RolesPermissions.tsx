@@ -48,14 +48,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Checkbox
+  Checkbox,
 } from '@mui/material';
 import {
   AdminPanelSettings,
   Edit,
   Security,
   Person,
-  Engineering
+  Engineering,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';

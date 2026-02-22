@@ -2,12 +2,12 @@ import { useTheming } from '../utils/theming-helper';
 import React, { useState, useCallback, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Card as MuiCard, 
-  CardContent, 
+import {
+  Box,
+  Typography,
+  Button,
+  Card as MuiCard,
+  CardContent,
   CardHeader,
   LinearProgress,
   Grid,
@@ -34,15 +34,15 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
 } from '@mui/material';
-import { 
-  CloudUpload, 
-  VideoFile, 
-  Settings, 
-  PlayArrow, 
-  GetApp, 
-  Timeline, 
+import {
+  CloudUpload,
+  VideoFile,
+  Settings,
+  PlayArrow,
+  GetApp,
+  Timeline,
   Movie,
   Edit,
   ExpandMore,
@@ -50,7 +50,7 @@ import {
   TrendingUp,
   AccessTime,
   People,
-  PhotoCamera
+  PhotoCamera,
 } from '@mui/icons-material';
 
 interface VideoFile {

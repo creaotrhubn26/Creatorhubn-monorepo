@@ -33,7 +33,7 @@ import {
   Badge,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   Add,
@@ -51,7 +51,7 @@ import {
   ContentCopy,
   Refresh,
   Save,
-  Cancel
+  Cancel,
 } from '@mui/icons-material';
 import { useCameraDiscovery } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';

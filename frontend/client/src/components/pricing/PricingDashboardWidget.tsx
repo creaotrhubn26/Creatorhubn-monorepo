@@ -23,7 +23,7 @@ import {
   ListItemIcon,
   Divider,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   LocalOffer as PriceIcon,
@@ -34,7 +34,7 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Add as AddIcon,
-  Calculate as CalculateIcon
+  Calculate as CalculateIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

@@ -24,7 +24,7 @@ import {
   InputAdornment,
   Badge,
   Alert,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Close,
@@ -32,7 +32,7 @@ import {
   Check,
   Search,
   Star,
-  Speed as SpeedIcon
+  Speed as SpeedIcon,
 } from '@mui/icons-material';
 import { hybridTransitionEngine } from '../../services/hybrid-transition-engine';
 

@@ -24,7 +24,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  TextField
+  TextField,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -34,7 +34,7 @@ import {
   Speed as SpeedIcon,
   SlowMotionVideo,
   FastForward,
-  Pause
+  Pause,
 } from '@mui/icons-material';
 import { SpeedRampEngine, SpeedPreset, SpeedKeyframe } from '../../services/speed-ramp-engine';
 

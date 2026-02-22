@@ -20,13 +20,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Business as BusinessIcon,
   Preview as PreviewIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import debounce from 'lodash/debounce';
 import { apiRequest } from '../lib/queryClient';

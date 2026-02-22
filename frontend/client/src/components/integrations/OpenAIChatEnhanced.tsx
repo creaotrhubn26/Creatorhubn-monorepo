@@ -9,13 +9,13 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Box, 
-  Card, 
-  CardContent, 
-  Typography, 
-  Button, 
-  TextField, 
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  TextField,
   CircularProgress,
   Paper,
   Avatar,
@@ -28,7 +28,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { 
+import {
   Send as SendIcon,
   SmartToy as AIIcon,
   Person as PersonIcon,

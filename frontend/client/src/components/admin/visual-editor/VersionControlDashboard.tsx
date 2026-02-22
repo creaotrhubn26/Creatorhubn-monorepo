@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -54,30 +54,23 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent
 } from '@mui/material';
 import {
   History,
   Timeline,
-  Branch,
+  ForkRight as Branch,
   Commit,
   Tag,
-  Diff,
-  Rollback,
+  Compare as Diff,
+  Undo as Rollback,
   Add,
   Edit,
   Delete,
-  Move,
-  Copy,
-  Rename,
+  OpenWith as Move,
+  ContentCopy as Copy,
+  DriveFileRenameOutline as Rename,
   Merge,
-  Split,
+  CallSplit as Split,
   CheckCircle,
   Error,
   Info,
@@ -97,7 +90,7 @@ import {
   ExpandMore,
   ExpandLess,
   Flag,
-  Globe,
+  Public as Globe,
   Book,
   School,
   Work,
@@ -105,7 +98,7 @@ import {
   Person,
   Group,
   PublicOff,
-  PublicOn,
+  Public as PublicOn,
   Sync,
   SyncProblem,
   CloudOff,
@@ -116,7 +109,7 @@ import {
   Queue,
   BarChart,
   PieChart,
-  ShowChart
+  ShowChart,
 } from '@mui/icons-material';
 import { useVersionControl, UseVersionControlOptions } from '../../../hooks/useVersionControl';
 import { VersionControlConfig, Version, Change, Branch, Commit, Tag, Diff } from '../../../utils/versionControlManager';

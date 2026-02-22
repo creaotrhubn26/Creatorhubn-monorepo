@@ -1,7 +1,17 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
-import { Button, Card as MuiCard, CardContent, Box } from '@mui/material';
-import { PhotoCamera, Videocam, Headset, CheckCircle } from "@mui/icons-material";
+import {
+  Button,
+  Card as MuiCard,
+  CardContent,
+  Box,
+} from '@mui/material';
+import {
+  PhotoCamera,
+  Videocam,
+  Headset,
+  CheckCircle,
+} from '@mui/icons-material';
 
 interface CreatorNavigationProps { 
   onNavigate: (path: string) => void; 

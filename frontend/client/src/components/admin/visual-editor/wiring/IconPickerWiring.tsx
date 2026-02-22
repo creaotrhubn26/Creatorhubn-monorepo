@@ -28,7 +28,6 @@ import {
   Favorite,
   FavoriteBorder,
   FormatSize,
-  // Material Icons - Common
   Home,
   Settings,
   Person,
@@ -134,7 +133,7 @@ import {
   LightMode,
   Contrast,
   Tune,
-  Speed,
+  Speed as Speed,
   Timer,
   PlayArrow,
   Pause,

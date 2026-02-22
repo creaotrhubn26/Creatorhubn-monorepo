@@ -26,11 +26,11 @@ import {
   AccordionDetails,
 } from '@mui/material';
 import {
-  VideocamLibrary,
+  VideoLibrary as VideocamLibrary,
   Upload,
   AutoFixHigh,
   Download,
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Folder,
   Schedule,
   CheckCircle,
@@ -256,14 +256,14 @@ export default function CreatorHubVideoSuite() {
               <MuiCard
                 sx={{
                   background:
-                    'linear-gradient(135deg, rgba(2, 5, 5, 0.1) 0%, rgba(2, 5, 5, 0.05) 100%)',
+                    'linear-gradient(135deg, rgba(255, 0.1) 0%, rgba(255, 0.05) 100%)',
                   border: '2px dashed rgba(25, 140, 0, 0.3)',
                   cursor: 'pointer',
                   transition: 'all 0.3s ease',
                   '&:hover': {
                     border: '2px dashed rgba(25, 140, 0, 0.6)',
                     background:
-                      'linear-gradient(135deg, rgba(2, 5, 5, 0.15) 0%, rgba(2, 5, 5, 0.08) 100%)',
+                      'linear-gradient(135deg, rgba(255, 0.15) 0%, rgba(255, 0.08) 100%)',
                   },
                 }}
               >

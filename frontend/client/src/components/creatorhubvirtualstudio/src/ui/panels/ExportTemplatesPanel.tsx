@@ -51,8 +51,7 @@ import {
   Favorite,
   FavoriteBorder,
   Star,
-  // Template Icons
-  Rocket,
+  RocketLaunch as Rocket,
   YouTube,
   Instagram,
   Smartphone,
@@ -71,7 +70,6 @@ import {
   Chat,
   Archive,
   Save,
-  // Category Icons
   Groups,
   Settings,
 } from '@mui/icons-material';

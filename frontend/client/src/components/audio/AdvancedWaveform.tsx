@@ -8,14 +8,14 @@ import {
   Chip,
   Tooltip,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   ZoomIn,
   ZoomOut,
   ZoomOutMap,
   PlayArrow,
-  Pause
+  Pause,
 } from '@mui/icons-material';
 
 interface AdvancedWaveformProps {

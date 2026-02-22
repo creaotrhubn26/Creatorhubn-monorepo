@@ -8,9 +8,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import {
-  // Snackbar removed - Zero Toast Compliance
-  // Alert removed - Zero Toast Compliance
-  // AlertTitle removed - Zero Toast Compliance
   Box,
   Typography,
   IconButton,
@@ -40,8 +37,8 @@ import {
   CloudDone as UploadCompleteIcon,
   FolderOpen as FolderIcon,
   Photo as PhotoIcon,
-  VideocamDescription as VideoIcon,
-  LibraryMusicNote as AudioIcon,
+  Videocam as VideoIcon,
+  LibraryMusic as AudioIcon,
   Description as DocumentIcon,
   Error as ErrorIcon,
   CheckCircle as SuccessIcon,

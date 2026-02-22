@@ -63,7 +63,7 @@ import {
   CircularProgress,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   Analytics as AnalyticsIcon,
@@ -95,7 +95,7 @@ import {
   Schedule as ScheduleIcon,
   ExpandMore as ExpandMoreIcon,
   FilterList as FilterListIcon,
-  DateRange as DateRangeIcon
+  DateRange as DateRangeIcon,
 } from '@mui/icons-material';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { useToast } from '../../hooks/use-toast';

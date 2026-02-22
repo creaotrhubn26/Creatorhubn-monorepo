@@ -17,7 +17,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
 } from '@mui/material';
 import {
   Email,
@@ -31,7 +31,7 @@ import {
   Build,
   LibraryMusic,
   Videocam,
-  Lightbulb
+  Lightbulb,
 } from '@mui/icons-material';
 
 // Import actual components

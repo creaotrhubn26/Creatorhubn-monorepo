@@ -11,7 +11,7 @@ import {
   Chip,
   TextField,
   InputAdornment,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Lock as LockIcon,
@@ -21,7 +21,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Pin as PinIcon,
-  Password as PasswordIcon
+  Password as PasswordIcon,
 } from '@mui/icons-material';
 import { generatePinFromProjectName } from '@/utils/pinGenerator';
 

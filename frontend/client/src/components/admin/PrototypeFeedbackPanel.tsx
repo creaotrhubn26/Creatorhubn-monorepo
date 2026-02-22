@@ -56,12 +56,11 @@ import {
   GetApp,
   Clear,
   People,
-  // New icons for enhanced feedback data
-  Screenshot,
+  Screenshot as Screenshot,
   Mic,
   Videocam,
   DeviceHub,
-  Speed,
+  Speed as Speed,
   MyLocation,
   Timeline,
   EmojiEvents,
@@ -902,7 +901,7 @@ export default function PrototypeFeedbackPanel({
                     borderColor: 'divider',
                     bgcolor: groupByProfession ? '#ff8c00' : 'transparent',
                     color: groupByProfession ? 'white' : '#ff8c00','&:hover': { 
-                      bgcolor: groupByProfession ? '#e67e00' : 'rgba(2, 5, 5, 140, 0, 0.1)'
+                      bgcolor: groupByProfession ? '#e67e00' : 'rgba(255, 140, 0, 0.1)'
                     }
                   }}
                 >
@@ -1185,7 +1184,7 @@ export default function PrototypeFeedbackPanel({
                             <ListItem
                               sx={{
                                 bgcolor: feedback.priority === 'critical' ? 'rgba(2, 4, 4, 675, 4, 0.05)' :
-                                        feedback.priority === 'high' ? 'rgba(2, 5, 5, 152, 0, 0.05)' : 'transparent',
+                                        feedback.priority === 'high' ? 'rgba(255, 152, 0, 0.05)' : 'transparent',
                                 borderRadius: 1,
                                 mb: 1,
                                 borderLeft: `4px solid ${config.color}`
@@ -1294,7 +1293,7 @@ export default function PrototypeFeedbackPanel({
                     <ListItem
                       sx={{
                         bgcolor: feedback.priority === 'critical' ? 'rgba(2, 4, 4, 675, 4, 0.05)' :
-                                feedback.priority === 'high' ? 'rgba(2, 5, 5, 152, 0, 0.05)' : 'transparent',
+                                feedback.priority === 'high' ? 'rgba(255, 152, 0, 0.05)' : 'transparent',
                         borderRadius: 1,
                         mb: 1 }}
                     >
@@ -1308,9 +1307,9 @@ export default function PrototypeFeedbackPanel({
                               gap: 1,
                               mb: 1,
                               p: 1,
-                              bgcolor: 'rgba(2, 5, 5, 140, 0, 0.1)',
+                              bgcolor: 'rgba(255, 140, 0, 0.1)',
                               borderRadius: 1,
-                              border: '1px solid rgba(2, 5, 5, 140, 0, 0.3)'
+                              border: '1px solid rgba(255, 140, 0, 0.3)'
                           }}>
                               <Person sx={{ color: '#ff8c00', fontSize: 18 }} />
                               <Typography variant="body2" sx={{ fontWeight: 600, color: '#ff8c00' }}>
@@ -1611,10 +1610,10 @@ export default function PrototypeFeedbackPanel({
               {/* User Information in Dialog */}
               <Box sx={{ 
                 p: 2,
-                bgcolor: 'rgba(2, 5, 5, 140, 0, 0.1)', 
+                bgcolor: 'rgba(255, 140, 0, 0.1)', 
                 borderRadius: 1,
                 mb: 3,
-                border: '1px solid rgba(2, 5, 5, 140, 0, 0.3)'
+                border: '1px solid rgba(255, 140, 0, 0.3)'
             }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#ff8c00', mb: 1 }}>
                   📝 Tilbakemelding fra: </Typography>
@@ -1770,7 +1769,7 @@ export default function PrototypeFeedbackPanel({
           {selectedFeedback && (
             <Box>
               {/* Bruker informasjon - Prominent */}
-              <Card sx={{ mb: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ mb: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Person sx={{ fontSize: 32, color: '#ff8c00' }} />

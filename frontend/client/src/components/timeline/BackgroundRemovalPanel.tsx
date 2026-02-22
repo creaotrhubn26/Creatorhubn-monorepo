@@ -19,9 +19,15 @@ import {
   TextField,
   IconButton,
   LinearProgress,
-  Chip
+  Chip,
 } from '@mui/material';
-import { Close, RemoveCircle, BlurOn as Blur, Image, AutoAwesome } from '@mui/icons-material';
+import {
+  Close,
+  RemoveCircle,
+  BlurOn as Blur,
+  Image,
+  AutoAwesome,
+} from '@mui/icons-material';
 import { Switch, FormControlLabel } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

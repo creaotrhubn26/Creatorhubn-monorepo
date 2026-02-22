@@ -36,7 +36,7 @@ import {
   Tooltip,
   ButtonGroup,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   TrendingUp as TimelineIcon,
@@ -59,7 +59,7 @@ import {
   Cancel,
   SelectAll,
   History,
-  AccessTime
+  AccessTime,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

@@ -6,13 +6,13 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import { useVisualEditor } from './VisualEditorContext';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -60,7 +60,7 @@ import {
   StepLabel,
   StepContent,
   StepButton,
-  Slider
+  Slider,
 } from '@mui/material';
 import {
   Description,
@@ -109,7 +109,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -237,7 +237,7 @@ import {
   PlayArrow as PlayArrowIcon,
   Remove as RemoveIcon,
   Add as AddIcon,
-  Description as DescriptionIcon
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { useTemplate, UseTemplateOptions } from '../../../hooks/useTemplate';
 import { Template as TemplateType } from '../../../utils/templateManager';

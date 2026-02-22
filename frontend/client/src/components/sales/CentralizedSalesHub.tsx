@@ -7,19 +7,19 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Grid, 
-  Button, 
-  Chip, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  ListItemAvatar, 
-  Avatar, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
   LinearProgress,
   Alert,
   Dialog,
@@ -33,15 +33,15 @@ import {
   InputLabel,
   Tab,
   Tabs,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
-import { 
-  TrendingUp, 
-  Assignment, 
-  Phone, 
-  Email, 
-  AttachMoney, 
-  Person, 
+import {
+  TrendingUp,
+  Assignment,
+  Phone,
+  Email,
+  AttachMoney,
+  Person,
   Business,
   EventNote,
   StarRate,
@@ -49,7 +49,7 @@ import {
   Add,
   Schedule,
   WorkOutline,
-  Description as DescriptionIcon
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -173,11 +173,12 @@ export default function CentralizedSalesHub({
 });
 
   // Fetch sales leads
-  const { data: leads = [], isLoading: leadsLoading } = useQuery({
+  const { data: leadsRaw = [], isLoading: leadsLoading } = useQuery({
     queryKey: ['/api/sales/leads', selectedStatus, userId],
     queryFn: () => apiRequest(`/api/sales/leads/${selectedStatus}?userId=${userId}`),
     retry: false,
 });
+  const leads = Array.isArray(leadsRaw) ? leadsRaw : [];
 
   // Update lead status mutation
   const updateLeadMutation = useMutation({

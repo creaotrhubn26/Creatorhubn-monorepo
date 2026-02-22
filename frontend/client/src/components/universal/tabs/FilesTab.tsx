@@ -15,7 +15,6 @@ import {
   CardContent,
   CardActions,
   Button,
-
   List,
   ListItem,
   ListItemIcon,
@@ -24,21 +23,17 @@ import {
   IconButton,
   Chip,
   CircularProgress,
-  // Snackbar removed - Zero Toast Compliance
-  // Alert removed - Zero Toast Compliance
-
   Dialog,
   DialogTitle,
-  DialogContent, 
+  DialogContent,
   DialogActions,
   LinearProgress,
   Alert,
-  AlertTitle
+  AlertTitle,
 } from '@mui/material';
 import {
   FolderOpen,
   InsertDriveFile,
-
   Delete,
   CloudUpload,
   Sync,
@@ -55,7 +50,7 @@ import {
   Build,
   AutoFixHigh,
   Lightbulb,
-  Rocket,
+  RocketLaunch as Rocket,
   Construction,
   PhotoCamera,
   Palette,
@@ -65,7 +60,7 @@ import {
   EventNote,
   Security,
   Collections,
-  PhotoLibrary
+  PhotoLibrary,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -840,7 +835,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
         fullWidth
         PaperProps={{
           sx: {
-            background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(25,255,255,0.2)' }
     }}
@@ -902,7 +897,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
               <Box sx={{ 
                 p:  3, 
                 mb:  3,
-                background: 'linear-gradient(135deg, rgba(2, 5, 5, 1930.05) 0%, rgba(2, 5, 5, 1520.05) 100%)',
+                background: 'linear-gradient(135deg, rgba(255, 1930.05) 0%, rgba(255, 1520.05) 100%)',
                 borderRadius:  2,
                 border: '1px solid rgba(25, 1930.2)'
           }}>

@@ -36,7 +36,7 @@ import {
   ListItemIcon,
   Divider,
   CircularProgress,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Update,
@@ -56,7 +56,7 @@ import {
   BugReport,
   Shield,
   AutoFixHigh,
-  MonitorHeart
+  MonitorHeart,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getProfessionIcon } from '@/utils/profession-icons';

@@ -49,6 +49,18 @@ import {
   speakText,
   stopSpeaking,
 } from '../services/scriptAnalysisService';
+import {
+  speak as ttsSpeak,
+  stopTTS,
+  pauseTTS,
+  resumeTTS,
+  assignCharacterVoices,
+  preloadTTS,
+  TTS_VOICES,
+  TTS_LANGUAGES,
+  type TTSVoice,
+  type TTSLanguage,
+} from '../services/ttsService';
 
 interface DialogueLine {
   character: string;
@@ -147,6 +159,12 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [skipActionLines, setSkipActionLines] = useState(true);
   
+  // AI TTS state
+  const [useAiTts, setUseAiTts] = useState(true);
+  const [aiVoice, setAiVoice] = useState<TTSVoice>('nova');
+  const [aiLanguage, setAiLanguage] = useState<TTSLanguage | ''>('');
+  const [aiCharacterVoices, setAiCharacterVoices] = useState<Record<string, TTSVoice>>({});
+  
   const playingRef = useRef(false);
   const currentIndexRef = useRef(0);
 
@@ -176,6 +194,25 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
     };
   }, [characters]);
 
+  // Auto-assign AI voices to characters
+  useEffect(() => {
+    if (characters.length > 0 && Object.keys(aiCharacterVoices).length === 0) {
+      setAiCharacterVoices(assignCharacterVoices(characters));
+    }
+  }, [characters]);
+
+  // Preload first few lines with AI TTS for instant playback
+  useEffect(() => {
+    if (useAiTts && dialogueLines.length > 0) {
+      const firstLines = dialogueLines.slice(0, 3).map(l => ({
+        text: l.text,
+        voice: aiCharacterVoices[l.character] ?? aiVoice,
+        language: aiLanguage || undefined,
+      }));
+      preloadTTS(firstLines).catch(() => {});
+    }
+  }, [useAiTts, dialogueLines.length > 0, aiVoice]);
+
   // Update refs when state changes
   useEffect(() => {
     playingRef.current = isPlaying && !isPaused;
@@ -187,19 +224,32 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
     if (index >= dialogueLines.length) return false;
     
     const line = dialogueLines[index];
-    const voice = characterVoices[line.character];
     
     // Highlight line in editor
     onLineHighlight?.(line.lineNumber);
     
     try {
-      await speakText(line.text, voice, speed, 1);
+      if (useAiTts) {
+        // Use OpenAI TTS with per-character voice
+        const charVoice = aiCharacterVoices[line.character] ?? aiVoice;
+        await ttsSpeak(line.text, {
+          voice: charVoice,
+          language: aiLanguage || undefined,
+          speed,
+          volume,
+          model: 'tts-1',
+        });
+      } else {
+        // Fallback to browser SpeechSynthesis
+        const voice = characterVoices[line.character];
+        await speakText(line.text, voice, speed, 1);
+      }
       return true;
     } catch (error) {
       console.error('TTS error:', error);
       return false;
     }
-  }, [dialogueLines, characterVoices, speed, onLineHighlight]);
+  }, [dialogueLines, characterVoices, aiCharacterVoices, aiVoice, aiLanguage, speed, volume, useAiTts, onLineHighlight]);
 
   // Play from current position
   const play = useCallback(async () => {
@@ -229,14 +279,21 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
   const pause = useCallback(() => {
     setIsPaused(true);
     playingRef.current = false;
-    stopSpeaking();
-  }, []);
+    if (useAiTts) {
+      pauseTTS();
+    } else {
+      stopSpeaking();
+    }
+  }, [useAiTts]);
 
   // Resume
   const resume = useCallback(() => {
     setIsPaused(false);
+    if (useAiTts) {
+      resumeTTS();
+    }
     play();
-  }, [play]);
+  }, [play, useAiTts]);
 
   // Stop
   const stop = useCallback(() => {
@@ -245,8 +302,12 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
     setCurrentIndex(0);
     currentIndexRef.current = 0;
     playingRef.current = false;
-    stopSpeaking();
-  }, []);
+    if (useAiTts) {
+      stopTTS();
+    } else {
+      stopSpeaking();
+    }
+  }, [useAiTts]);
 
   // Skip to next line
   const next = useCallback(() => {
@@ -443,6 +504,88 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
 
           <Divider sx={{ my: 2 }} />
 
+          {/* AI TTS Toggle */}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={useAiTts}
+                onChange={(e) => setUseAiTts(e.target.checked)}
+                size="small"
+                color="secondary"
+              />
+            }
+            label={
+              <Typography variant="body2">
+                AI voices{' '}
+                <Chip label="HD" size="small" color="secondary" variant="outlined" sx={{ height: 18, fontSize: 10, ml: 0.5 }} />
+              </Typography>
+            }
+          />
+
+          {useAiTts && (
+            <>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Language:
+                </Typography>
+                <FormControl size="small" sx={{ minWidth: 130 }}>
+                  <Select
+                    value={aiLanguage}
+                    onChange={(e) => setAiLanguage(e.target.value as TTSLanguage)}
+                    displayEmpty
+                    sx={{ fontSize: '0.8rem' }}
+                  >
+                    <MenuItem value="" sx={{ fontSize: '0.85rem' }}>
+                      <em>Auto-detect</em>
+                    </MenuItem>
+                    {TTS_LANGUAGES.map(l => (
+                      <MenuItem key={l.id} value={l.id} sx={{ fontSize: '0.85rem' }}>
+                        {l.flag} {l.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                Voice per character
+              </Typography>
+              <Stack spacing={1} sx={{ mt: 1 }}>
+                {characters.map(char => (
+                  <Stack key={`ai-${char}`} direction="row" alignItems="center" spacing={2}>
+                    <Avatar
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        bgcolor: getCharacterColor(char),
+                        fontSize: '0.7rem',
+                      }}
+                    >
+                      {char.charAt(0)}
+                    </Avatar>
+                    <Typography variant="body2" sx={{ minWidth: 90, fontWeight: 500, fontSize: '0.8rem' }}>
+                      {char}
+                    </Typography>
+                    <FormControl size="small" sx={{ flex: 1 }}>
+                      <Select
+                        value={aiCharacterVoices[char] || aiVoice}
+                        onChange={(e) => setAiCharacterVoices(prev => ({ ...prev, [char]: e.target.value as TTSVoice }))}
+                        sx={{ fontSize: '0.8rem' }}
+                      >
+                        {TTS_VOICES.map(v => (
+                          <MenuItem key={v.id} value={v.id} sx={{ fontSize: '0.85rem' }}>
+                            {v.label} — {v.description}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                ))}
+              </Stack>
+            </>
+          )}
+
+          <Divider sx={{ my: 2 }} />
+
           <FormControlLabel
             control={
               <Switch
@@ -451,7 +594,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
                 size="small"
               />
             }
-            label={<Typography variant="body2">Hopp over handlingslinjer</Typography>}
+            label={<Typography variant="body2">Skip action lines</Typography>}
           />
         </Paper>
       )}

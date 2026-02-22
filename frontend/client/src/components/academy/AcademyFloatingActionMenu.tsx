@@ -62,7 +62,7 @@ import {
   ExpandMore,
   ExpandLess,
   AutoAwesome,
-  Speed,
+  Speed as Speed,
   Security,
   Backup,
   Restore,
@@ -300,7 +300,6 @@ function AcademyFloatingActionMenu({
   const [notificationSort, setNotificationSort] = useState<'recent' | 'oldest' | 'priority'>('recent');
   const [showNotificationOptions, setShowNotificationOptions] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saving' | 'saved' | 'error' | 'idle'>('idle');
-  );
 
   const { analytics, performance, debugging, features } = useEnhancedMasterIntegration();
 

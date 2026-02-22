@@ -36,7 +36,7 @@ import {
   Paper,
   Stack,
   Alert,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Search,
@@ -65,7 +65,7 @@ import {
   PhotoCamera,
   Videocam,
   LibraryMusic,
-  Store
+  Store,
 } from '@mui/icons-material';
 import { useIntegratedComponents } from './UniversalIntegrationSystem';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";

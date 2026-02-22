@@ -18,7 +18,7 @@ import {
   Divider,
   LinearProgress,
   Rating,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -32,7 +32,7 @@ import {
   TrendingUp as TrendingIcon,
   CheckCircle as VerifiedIcon,
   Flag as FlagIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { keyframes } from '@mui/system';

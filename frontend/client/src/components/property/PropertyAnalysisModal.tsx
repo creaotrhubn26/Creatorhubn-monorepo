@@ -28,12 +28,12 @@ import {
   Paper,
   IconButton,
   Tooltip,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   LocationOn,
   PhotoCamera,
-  Drone,
+  FlightTakeoff as Drone,
   Warning,
   Accessible,
   DirectionsCar,
@@ -44,7 +44,7 @@ import {
   Close,
   Map,
   Satellite,
-  Terrain as TerrainIcon
+  Terrain as TerrainIcon,
 } from '@mui/icons-material';
 import { useExternalData } from '../../services/ExternalDataService';
 import { useGoogleMaps } from '../../services/GoogleMapsService';

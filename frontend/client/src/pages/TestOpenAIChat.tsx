@@ -4,7 +4,13 @@
  */
 
 import React from 'react';
-import { Box, Container, Typography, Alert, AlertTitle } from '@mui/material';
+import {
+  Box,
+  Container,
+  Typography,
+  Alert,
+  AlertTitle,
+} from '@mui/material';
 import OpenAIChat from '@/components/integrations/OpenAIChat';
 
 export default function TestOpenAIChat() {

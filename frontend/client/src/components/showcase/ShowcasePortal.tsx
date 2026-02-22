@@ -26,7 +26,7 @@ import {
 } from '@mui/material';
 import {
   PhotoLibrary,
-  VideocamLibrary,
+  VideoLibrary as VideocamLibrary,
   Favorite,
   FavoriteBorder,
   Share,
@@ -40,8 +40,8 @@ import {
   Info,
   Close,
   Search,
-  FilterListList,
-  PlayArrowArrow,
+  FilterList as FilterListList,
+  PlayArrow as PlayArrowArrow,
   Star,
   LocationOn,
   CalendarToday,
@@ -200,7 +200,7 @@ const ShowcasePortal: React.FC<ShowcasePortalProps> = ({
         position="fixed"
         elevation={0}
         sx={{
-          bgcolor: isDark ? 'rgba(6, 26, 26, 0.95)' : 'rgba(2, 5, 5, 255, 255, 0.95)',
+          bgcolor: isDark ? 'rgba(6, 26, 26, 0.95)' : 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(10px)',
           borderBottom: `1px solid ${isDark ? '#333', : '#e0e0e0'}`}}
       >
@@ -353,7 +353,7 @@ const ShowcasePortal: React.FC<ShowcasePortalProps> = ({
               left:  0,
               right:  0,
               bottom:  0,
-              background: `linear-gradient(45deg, ${isDark ? 'rgba(0,0,0,0.7)' : 'rgba(2, 5, 5,255,255,0.7)'} 0%, transparent 100%)`,
+              background: `linear-gradient(45deg, ${isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'} 0%, transparent 100%)`,
               display: 'flex',
               alignItems: 'center',
               p:  4}}

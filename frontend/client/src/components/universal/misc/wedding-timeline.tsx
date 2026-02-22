@@ -1,16 +1,16 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Card as MuiCard, 
-  CardContent, 
-  List, 
-  ListItem, 
-  ListItemText, 
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
   ListItemIcon,
-  Chip, 
-  Button, 
+  Chip,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -27,18 +27,18 @@ import {
   Fab,
   Tabs,
   Tab,
-  Paper
+  Paper,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  Schedule, 
-  Person, 
-  PersonAdd, 
-  Email, 
+import {
+  Schedule,
+  Person,
+  PersonAdd,
+  Email,
   Phone,
   CheckCircle,
   Warning,
-  VolumeUpUp,
+  VolumeUp as VolumeUpUp,
   Chat,
   PriorityHigh,
   AddCircle as Add,
@@ -48,7 +48,7 @@ import {
   EventNote,
   People,
   LocationOn,
-  Lightbulb
+  Lightbulb,
 } from '@mui/icons-material';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { apiRequest } from '@/lib/queryClient';
@@ -118,9 +118,9 @@ export default function WeddingTimeline({
   // Glassmorphism effect for professional design
   const glassEffect = `
     linear-gradient(135deg, 
-      rgba(2, 5, 5, 0.1) 0%, 
-      rgba(2, 5, 5, 0.05) 50%, 
-      rgba(2, 5, 5, 0.02) 100%
+      rgba(255, 0.1) 0%, 
+      rgba(255, 0.05) 50%, 
+      rgba(255, 0.02) 100%
     )
   `;
   // State management - Original 4 Tab Structure

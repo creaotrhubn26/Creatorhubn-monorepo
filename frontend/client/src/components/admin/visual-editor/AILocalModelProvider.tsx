@@ -47,7 +47,7 @@ import {
   Download,
   PlayArrow,
   Stop,
-  Speed,
+  Speed as Speed,
   Memory,
   Storage,
   Close,
@@ -274,7 +274,7 @@ export default function AILocalModelProvider({
       if (provider === 'ollama') {
         response = await fetch(`${endpoint}/api/generate`, {
           method: 'POST',
-          headers: { , 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: selectedModel,
             prompt: 'Write a simple Hello World function in JavaScript',
@@ -288,7 +288,7 @@ export default function AILocalModelProvider({
       } else if (provider === 'lmstudio') {
         response = await fetch(`${endpoint}/v1/completions`, {
           method: 'POST',
-          headers: { , 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: selectedModel,
             prompt: 'Write a simple Hello World function in JavaScript',
@@ -334,7 +334,7 @@ export default function AILocalModelProvider({
 
     // Persist server-first
     fetch('/api/user/kv', {
-      method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'ai_local_provider_config', value: config })
     }).catch((err: unknown) => console.error('Operation failed:', err));
     // Local fallback
@@ -367,7 +367,7 @@ export default function AILocalModelProvider({
       try {
         const response = await fetch(`${endpoint}/api/pull`, {
           method: 'POST',
-          headers: { , 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: modelId }),
         });
 
@@ -429,7 +429,7 @@ export default function AILocalModelProvider({
                 sx={{ bgcolor: 'rgba(7, 6, 1, 758, 0, 0.3)', color: 'white' }} />
             )}
           </Box>
-          <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+          <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
             <Close />
           </IconButton>
         </Box>
@@ -453,7 +453,7 @@ export default function AILocalModelProvider({
             <Alert severity="info" icon={<Info />}>
               Local models run on your computer without internet. Perfect for privacy, offline work,
               and zero API costs!
-              <Button size="small" sx={{ ml: 2 } onClick={() => setInstallDialogOpen(true)}>
+              <Button size="small" sx={{ ml: 2 }} onClick={() => setInstallDialogOpen(true)}>
                 Installation Guide
               </Button>
             </Alert>
@@ -603,7 +603,7 @@ export default function AILocalModelProvider({
                                 ? 'Installed'
                                 : 'Download'}
                             </Button>
-                          }}
+                          }
                         >
                           <ListItemText
                             primary={model.name}
@@ -629,7 +629,7 @@ export default function AILocalModelProvider({
                   label="Max Tokens"
                   type="number"
                   value={maxTokens}
-                  onChange={(e) => setMaxTokens(Number(e.target.value)}
+                  onChange={(e) => setMaxTokens(Number(e.target.value))}
                   fullWidth
                   helperText="Maximum tokens to generate (lower = faster)"
                 />
@@ -637,7 +637,7 @@ export default function AILocalModelProvider({
                   label="Temperature"
                   type="number"
                   value={temperature}
-                  onChange={(e) => setTemperature(Number(e.target.value)}
+                  onChange={(e) => setTemperature(Number(e.target.value))}
                   inputProps={{ min: 0, max: 2, step: 0.1 }}
                   fullWidth
                   helperText="Creativity (0 = focused, 2 = creative)"
@@ -648,7 +648,7 @@ export default function AILocalModelProvider({
                       checked={streamResponse}
                       onChange={(e) => setStreamResponse(e.target.checked)}
                     />
-                  }}
+                  }
                   label="Stream responses (show tokens as they generate)"
                 />
               </Stack>
@@ -667,7 +667,7 @@ export default function AILocalModelProvider({
                   Test Selected Model
                 </Button>
                 {testResult && (
-                  <Alert severity={testResult.success ? 'success' : 'error'}, sx={{ mt: 2 }}>
+                  <Alert severity={testResult.success ? 'success' : 'error'} sx={{ mt: 2 }}>
                     {testResult.message}
                   </Alert>
                 )}
@@ -774,12 +774,12 @@ export default function AILocalModelProvider({
       </Snackbar>
     </>
   );
-}}
+}
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
   const sizes = ['Bytes','KB','MB','GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k);
-  return Math.round((bytes / Math.pow(k, i) * 100) / 100 + '' + sizes[i];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + '' + sizes[i];
 }

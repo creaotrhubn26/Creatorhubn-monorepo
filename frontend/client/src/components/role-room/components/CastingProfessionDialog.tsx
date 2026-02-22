@@ -184,8 +184,8 @@ export function CastingProfessionDialog({ open, onSelect }: CastingProfessionDia
               transition={{ delay: 0.2 }}
             >
               <img
-                src="/casting-planner-logo.png"
-                alt="Casting Planner"
+                src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+                alt="The Role Room"
                 style={{
                   width: 120,
                   height: 120,

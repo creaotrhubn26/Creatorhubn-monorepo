@@ -1,11 +1,11 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Grid, 
-  Button, 
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -22,19 +22,19 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
 } from '@mui/material';
-import { 
-  Photo, 
-  AutoFixHigh, 
-  Analytics, 
-  Lightbulb, 
+import {
+  Photo,
+  AutoFixHigh,
+  Analytics,
+  Lightbulb,
   Warning,
   CheckCircle,
   Error,
   Refresh,
   Download,
-  Share
+  Share,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

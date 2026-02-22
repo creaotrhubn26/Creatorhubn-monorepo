@@ -193,7 +193,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       case 'container': return `      <div style=${style} className=${className}>\n        {/* Container content */}\n      </div>\n`;
       case 'image': return `      <img style=${style} className=${className} src="${element.props.src || 'placeholder.jpg'}" alt="${element.props.alt || 'Image'}" />\n`;
       default: return `      <div style=${style} className=${className}></div>\n`;
-    }}
+    }
   };
 
   const generateCSS = () => {
@@ -600,7 +600,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                 cursorSmoothCaretAnimation: 'on',
                 smoothScrolling: true,
                 bracketPairColorization: { enabled: true },
-              }
+              }}
             />
           </TabPanel>
 
@@ -624,7 +624,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                 formatOnType: true,
                 suggestOnTriggerCharacters: true,
                 quickSuggestions: true,
-              }
+              }}
             />
           </TabPanel>
 
@@ -647,7 +647,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                   scrollBeyondLastLine: false,
                   formatOnPaste: true,
                   formatOnType: true,
-                }
+                }}
               />
             </TabPanel>
           )}
@@ -673,7 +673,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                   onChange={(e) => setShowMinimap(e.target.checked)}
                   size="small"
                 />
-              }}
+              }
               label="Show Minimap"
               sx={{ color: '#CCCCCC', mb: 1, display: 'flex' }} />
 
@@ -684,7 +684,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                   onChange={(e) => setWordWrap(e.target.checked)}
                   size="small"
                 />
-              }}
+              }
               label="Word Wrap"
               sx={{ color: '#CCCCCC', mb: 1, display: 'flex' }} />
 
@@ -695,7 +695,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                   onChange={(e) => setAutoSave(e.target.checked)}
                   size="small"
                 />
-              }}
+              }
               label="Auto Save"
               sx={{ color: '#CCCCCC', mb: 1, display: 'flex' }} />
 
@@ -706,7 +706,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                   onChange={(e) => setLiveSync(e.target.checked)}
                   size="small"
                 />
-              }}
+              }
               label="Live Sync"
               sx={{ color: '#CCCCCC', mb: 2, display: 'flex' }} />
 
@@ -718,7 +718,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
               min="10"
               max="24"
               value={fontSize}
-              onChange={(e) => setFontSize(Number(e.target.value)}
+              onChange={(e) => setFontSize(Number(e.target.value))}
               style={{ width: '100%', marginBottom: 16 }} />
 
             {versionHistory.length > 0 && (

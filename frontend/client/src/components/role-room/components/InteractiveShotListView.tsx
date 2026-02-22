@@ -45,7 +45,7 @@ import {
   TouchApp,
   Fullscreen,
   FullscreenExit,
-  Speed,
+  Speed as Speed,
   Warning,
   Star,
   Home,

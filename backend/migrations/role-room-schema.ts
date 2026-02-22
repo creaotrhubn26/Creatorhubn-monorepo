@@ -305,3 +305,88 @@ export const marketplaceInstallations = pgTable('marketplace_installations', {
 }, (table) => [
   uniqueIndex('marketplace_installations_user_app_unique').using('btree', table.userId, table.appId),
 ]);
+
+// ── Equipment Management System ──────────────────────────────
+
+export const castingEquipment = pgTable('casting_equipment', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  brand: varchar('brand', { length: 100 }),
+  model: varchar('model', { length: 100 }),
+  category: varchar('category', { length: 100 }),
+  status: varchar('status', { length: 50 }).default('available').notNull(),
+  condition: varchar('condition', { length: 50 }).default('good').notNull(),
+  serialNumber: varchar('serial_number', { length: 150 }),
+  purchaseDate: date('purchase_date'),
+  purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }),
+  rentalRateDay: numeric('rental_rate_day', { precision: 10, scale: 2 }),
+  quantity: integer('quantity').default(1).notNull(),
+  notes: text('notes'),
+  imageUrl: text('image_url'),
+  vendorUrl: text('vendor_url'),
+  isGlobal: boolean('is_global').default(false).notNull(),
+  tags: jsonb('tags').default([]).notNull(),
+  location: varchar('location', { length: 200 }),
+  assignees: jsonb('assignees').default([]).notNull(),
+  bookingStart: timestamp('booking_start', { withTimezone: true, mode: 'string' }),
+  bookingEnd: timestamp('booking_end', { withTimezone: true, mode: 'string' }),
+  metadata: jsonb('metadata').default({}).notNull(),
+  createdBy: varchar('created_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_casting_equipment_project').using('btree', table.projectId),
+  index('idx_casting_equipment_status').using('btree', table.status),
+  index('idx_casting_equipment_category').using('btree', table.category),
+]);
+
+export const equipmentBookings = pgTable('equipment_bookings', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  equipmentId: uuid('equipment_id').notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  bookedBy: varchar('booked_by', { length: 255 }).notNull(),
+  eventId: varchar('event_id', { length: 255 }),
+  startDate: timestamp('start_date', { withTimezone: true, mode: 'string' }).notNull(),
+  endDate: timestamp('end_date', { withTimezone: true, mode: 'string' }).notNull(),
+  status: varchar('status', { length: 30 }).default('confirmed').notNull(),
+  quantity: integer('quantity').default(1).notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_equipment_bookings_equipment').using('btree', table.equipmentId),
+  index('idx_equipment_bookings_project').using('btree', table.projectId),
+]);
+
+export const equipmentCheckouts = pgTable('equipment_checkouts', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  equipmentId: uuid('equipment_id').notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  checkedOutTo: varchar('checked_out_to', { length: 255 }).notNull(),
+  checkedOutBy: varchar('checked_out_by', { length: 255 }),
+  checkedOutAt: timestamp('checked_out_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  checkedInAt: timestamp('checked_in_at', { withTimezone: true, mode: 'string' }),
+  quantity: integer('quantity').default(1).notNull(),
+  purpose: text('purpose'),
+  conditionOnReturn: varchar('condition_on_return', { length: 50 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_equipment_checkouts_equipment').using('btree', table.equipmentId),
+  index('idx_equipment_checkouts_project').using('btree', table.projectId),
+]);
+
+export const equipmentTemplates = pgTable('equipment_templates', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
+  name: varchar('name', { length: 200 }).notNull(),
+  description: text('description'),
+  category: varchar('category', { length: 100 }),
+  items: jsonb('items').default([]).notNull(),
+  createdBy: varchar('created_by', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_equipment_templates_project').using('btree', table.projectId),
+]);

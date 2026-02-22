@@ -38,8 +38,8 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-	  MoreVert as MoreVertIcon,
-	} from '@mui/icons-material';
+  MoreVert as MoreVertIcon,
+} from '@mui/icons-material';
 	import { getCourseCategoryIcon, getCourseLevelIcon, getProfessionIcon } from '@/utils/profession-icons';
   import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
   import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';

@@ -24,7 +24,7 @@ import {
   InputLabel,
   TextField,
   Alert,
-  Collapse
+  Collapse,
 } from '@mui/material';
 import {
   PlaylistPlay,
@@ -33,7 +33,7 @@ import {
   Cancel,
   ExpandMore,
   ExpandLess,
-  AudioFile
+  AudioFile,
 } from '@mui/icons-material';
 
 interface BatchProcessingPanelProps {

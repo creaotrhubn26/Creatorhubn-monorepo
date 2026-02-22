@@ -15,7 +15,7 @@ import {
   Chip,
   Alert,
   ToggleButtonGroup,
-  ToggleButton
+  ToggleButton,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -23,7 +23,7 @@ import {
   AutoFixHigh,
   CompareArrows,
   CheckCircle,
-  Close
+  Close,
 } from '@mui/icons-material';
 
 interface AudioEnhancementDialogProps {

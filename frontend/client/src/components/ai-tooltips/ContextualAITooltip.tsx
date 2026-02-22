@@ -23,7 +23,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Psychology as AiIcon,
@@ -39,7 +39,7 @@ import {
   Close as CloseIcon,
   AutoFixHigh as MagicIcon,
   School as LearnIcon,
-  Build as ToolIcon
+  Build as ToolIcon,
 } from '@mui/icons-material';
 
 interface AIGuidance {

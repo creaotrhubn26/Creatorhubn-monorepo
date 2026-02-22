@@ -32,9 +32,14 @@ import {
   ListItemText,
   ListItemIcon,
   Chip,
-  Image
 } from '@mui/material';
-import { Folder, FileUpload as UploadIcon, CloudUpload, VideoLibrary } from '@mui/icons-material';
+import {
+  Folder,
+  FileUpload as UploadIcon,
+  CloudUpload,
+  VideoLibrary,
+  Image as ImageIcon,
+} from '@mui/icons-material';
 import { FileUpload } from '@/lib/upload';
 
 interface Asset {
@@ -269,7 +274,8 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
         projectId: selectedProject?.id,
       });
 
-      onNotificationCreate?.({\n        id: `media_imported_${Date.now()}`,
+      onNotificationCreate?.({
+        id: `media_imported_${Date.now()}`,
         type: 'success',
         title: 'Media Imported',
         message: `${uploadedAssets.length} assets organized and imported`,
@@ -464,7 +470,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
                 {mediaAssets.images.length > 0 && (
                   <ListItem>
                     <ListItemIcon>
-                      <Image />
+                      <ImageIcon />
                     </ListItemIcon>
                     <ListItemText 
                       primary="Images" 
@@ -544,7 +550,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 8 }}>
                   {previewAsset.type?.includes('image') ? (
-                    <Image
+                    <Box
                       component="img"
                       src={previewAsset.url}
                       alt={previewAsset.name}

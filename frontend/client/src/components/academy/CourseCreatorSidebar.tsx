@@ -82,7 +82,7 @@ import {
   Sync,
   SyncDisabled,
   AutoAwesome,
-  Speed,
+  Speed as Speed,
   Security,
   Backup,
   Restore,

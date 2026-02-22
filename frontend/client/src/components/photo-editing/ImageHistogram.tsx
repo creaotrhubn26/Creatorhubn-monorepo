@@ -1,15 +1,15 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Grid, 
-  Button, 
-  Slider, 
-  FormControl, 
-  InputLabel, 
-  Select, 
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Button,
+  Slider,
+  FormControl,
+  InputLabel,
+  Select,
   MenuItem,
   Chip,
   Card,
@@ -18,17 +18,17 @@ import {
   Switch,
   FormControlLabel,
   Divider,
-  Stack
+  Stack,
 } from '@mui/material';
-import { 
-  Photo, 
-  Palette, 
-  Brightness6, 
-  Contrast, 
+import {
+  Photo,
+  Palette,
+  Brightness6,
+  Contrast,
   Tune,
   Refresh,
   Download,
-  Share
+  Share,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

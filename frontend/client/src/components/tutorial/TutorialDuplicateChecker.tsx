@@ -15,7 +15,7 @@ import {
   ListItemIcon,
   ListItemText,
   Card,
-  CardContent
+  CardContent,
 } from '@mui/material';
 import {
   Warning as WarningIcon,
@@ -23,7 +23,7 @@ import {
   VideoLibrary as VideoIcon,
   PhotoLibrary as PhotoIcon,
   Quiz as FAQIcon,
-  Visibility as ViewIcon
+  Visibility as ViewIcon,
 } from '@mui/icons-material';
 
 interface ExistingTutorial {

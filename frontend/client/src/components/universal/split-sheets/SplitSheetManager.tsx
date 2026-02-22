@@ -41,7 +41,7 @@ import {
   Tabs,
   Tab,
   alpha,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -57,7 +57,7 @@ import {
   Pending as PendingIcon,
   Drafts as DraftIcon,
   Archive as ArchiveIcon,
-  LibraryMusic as MusicIcon
+  LibraryMusic as MusicIcon,
 } from '@mui/icons-material';
 import SplitSheetEditor from './SplitSheetEditor';
 import SplitSheetViewer from './SplitSheetViewer';

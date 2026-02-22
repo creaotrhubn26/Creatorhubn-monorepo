@@ -22,7 +22,7 @@ import {
   Divider,
   Alert,
   IconButton,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   VideoLibrary as VideoIcon,
@@ -40,7 +40,7 @@ import {
   Videocam as VideographerIcon,
   AudioFile as MusicProducerIcon,
   Store as VendorIcon,
-  Person as UserIcon
+  Person as UserIcon,
 } from '@mui/icons-material';
 
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';

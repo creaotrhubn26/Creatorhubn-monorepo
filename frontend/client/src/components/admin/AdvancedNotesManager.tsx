@@ -21,7 +21,7 @@ import {
   Chip,
   IconButton,
   Stack,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   NoteAdd,

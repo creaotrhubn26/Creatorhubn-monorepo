@@ -16,7 +16,19 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('ViewfinderView, ');
-import { Box, IconButton, Tooltip, Paper, Typography, Stack, Slider, Collapse, Divider, Switch, FormControlLabel } from '@mui/material';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  Paper,
+  Typography,
+  Stack,
+  Slider,
+  Collapse,
+  Divider,
+  Switch,
+  FormControlLabel,
+} from '@mui/material';
 import {
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,

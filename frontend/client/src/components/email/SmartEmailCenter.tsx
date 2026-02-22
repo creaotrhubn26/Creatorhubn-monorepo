@@ -48,7 +48,7 @@ import {
   FormControl,
   InputLabel,
   LinearProgress,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Email as EmailIcon,

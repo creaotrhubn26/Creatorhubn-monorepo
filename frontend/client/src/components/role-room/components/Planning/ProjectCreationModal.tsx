@@ -1,6 +1,6 @@
 /**
  * CreatorHub Norge - Project Creation Modal
- * The modal is designed to be used in the CreatorHub Norge Virtual studio for creating new projects,but should be adaptable for other professions and also connected to the Casting Planner.
+ * The modal is designed to be used in the CreatorHub Norge Virtual studio for creating new projects,but should be adaptable for other professions and also connected to the The Role Room.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -72,7 +72,7 @@ import {
   ListItemAvatar,
   Avatar,
   Autocomplete,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -98,12 +98,10 @@ import {
   Payment,
   DirectionsCar,
   Notes,
-  // Project type icons
   Favorite,
   Portrait,
   Business,
   MusicNote,
-  // Wedding culture icons
   AccountBalance,
   Star,
   Movie,
@@ -115,7 +113,6 @@ import {
   Home,
   Public,
   Circle,
-  // Draft management icons
   History,
   Compare,
   Restore,
@@ -491,7 +488,7 @@ const PROJECT_PHASES: Record<string, { name: string; description: string; color:
   post_production: {
     name: 'Post-production',
     description: 'Redigering, fargekorrigering, levering',
-    color: '#ff9800',
+    color: '#9333ea',
     categories: ['editing','color_grading','sound_design','delivery','client_review']
   },
   business: {
@@ -835,7 +832,7 @@ const LABELING_SCHEMES = {
 // Helper function for dynamic project type defaults
 const getDefaultProjectType = (profession: string, isCastingPlanner: boolean = false): string => {
   if (isCastingPlanner) {
-    // In casting planner, avoid wedding as default
+    // In The Role Room, avoid wedding as default
     const typeMap: Record<string, string> = {
       photographer: 'portrait',
       videographer: 'video',
@@ -1033,9 +1030,9 @@ interface ProjectCreationWithMemoryCardsProps {
   onProjectSelect?: (project: any) => void;
   // New: open Event Management with prefilled event
   onOpenEventManagement?: (eventData: any) => void;
-  // Casting Planner mode - simplifies UI and hides non-relevant features
+  // The Role Room mode - simplifies UI and hides non-relevant features
   isCastingPlanner?: boolean;
-  getTerm?: (key: string) => string; // Terminology helper from Casting Planner
+  getTerm?: (key: string) => string; // Terminology helper from The Role Room
 }
 
 // Local MemoryCardConfig, SelectedMemoryCard, and LabelingKey types imported from ./types
@@ -2646,7 +2643,7 @@ useEffect(() => {
                     </CardContent>
                   </Card>
 
-                  {/* Add Project Type Dialog - Hidden in Casting Planner */}
+                  {/* Add Project Type Dialog - Hidden in The Role Room */}
                   {!isCastingPlanner && (
                     <AddProjectTypeDialog
                       open={addProjectTypeDialogOpen}
@@ -2957,7 +2954,7 @@ useEffect(() => {
         </DialogActions>
       </Dialog>
 
-      {/* Connect to Event Management prompt - Hidden in Casting Planner */}
+      {/* Connect to Event Management prompt - Hidden in The Role Room */}
       {!isCastingPlanner && (
         <Dialog open={connectDialogOpen} onClose={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); }}>
           <DialogTitle sx={{ fontWeight: 700, fontSize: '1.25rem' }}>Koble til Event Management?</DialogTitle>

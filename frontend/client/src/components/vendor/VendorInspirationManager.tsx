@@ -41,7 +41,7 @@ import {
   ImageListItem,
   ImageListItemBar,
   Tab,
-  Tabs
+  Tabs,
 } from '@mui/material';
 import {
   AutoAwesome,
@@ -65,7 +65,7 @@ import {
   Send,
   Block,
   Inbox,
-  Reply
+  Reply,
 } from '@mui/icons-material';
 
 interface VendorInspirationManagerProps {

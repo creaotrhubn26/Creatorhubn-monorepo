@@ -22,7 +22,7 @@ import {
   BugReport,
   Comment,
   Timer,
-  Speed,
+  Speed as Speed,
   AccountTree,
   Info,
   Code,

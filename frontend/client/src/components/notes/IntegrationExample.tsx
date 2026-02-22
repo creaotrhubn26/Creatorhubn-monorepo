@@ -1,6 +1,12 @@
 import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { Box, Paper, Typography, Button, Stack } from '@mui/material';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Stack,
+} from '@mui/material';
 import CreatorHubNotes from './CreatorHubNotes';
 
 /**

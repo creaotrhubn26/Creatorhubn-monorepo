@@ -44,8 +44,8 @@ import {
   NewReleases,
   Schedule,
   GetApp,
-  PhotoCameraAlt,
-  Videocamcam,
+  PhotoCamera as PhotoCameraAlt,
+  Videocam as Videocamcam,
   Build,
   Launch,
 } from '@mui/icons-material';

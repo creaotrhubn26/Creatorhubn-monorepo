@@ -110,7 +110,7 @@ export default function AIModelComparison({
         const engine = new AICodeCompletionEngine({
           provider: model.provider,
           model: modelId,
-          temperature: 0.7
+          temperature: 0.7,
           maxTokens: 1000,
           enabled: true,
           autoSuggest: false,
@@ -162,7 +162,7 @@ export default function AIModelComparison({
     setFavoriteModel((prev) => (prev === model ? null : model));
     // Persist server-first, fallback to local
     fetch('/api/user/kv', {
-      method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'favorite_ai_model', value: model })
     }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('favorite_ai_model', model);
@@ -201,7 +201,7 @@ export default function AIModelComparison({
             AI Model Comparison
           </Typography>
         </Box>
-        <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+        <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
           <Close />
         </IconButton>
       </Box>
@@ -329,7 +329,7 @@ export default function AIModelComparison({
                       sx={{
                         bgcolor: '#1E1E1E',
                         color: '#D4D4D4',
-                        p: 1.5
+                        p: 1.5,
                         borderRadius: 1,
                         overflow: 'auto',
                         fontSize: '11px',

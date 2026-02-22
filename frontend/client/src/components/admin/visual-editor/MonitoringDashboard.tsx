@@ -49,7 +49,7 @@ import {
   DialogActions,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -63,7 +63,6 @@ import {
   Speed as SpeedIcon,
   Memory as MemoryIcon,
   NetworkCheck as NetworkIcon,
-  // Cpu as CpuIcon,
   Storage as StorageIcon,
   Timeline as TimelineIcon,
   Assessment as AssessmentIcon,
@@ -84,7 +83,7 @@ import {
   RestartAlt as RestartIcon,
   Clear as ClearIcon,
   Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon
+  VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { usePerformanceProfiler } from '@/hooks/usePerformanceProfiler';
 import { useCachingStrategy } from '@/hooks/useCachingStrategy';

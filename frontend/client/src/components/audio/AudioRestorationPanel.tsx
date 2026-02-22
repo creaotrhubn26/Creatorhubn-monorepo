@@ -21,13 +21,13 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   AutoFixHigh,
   GraphicEq,
   CleaningServices,
-  VolumeOff
+  VolumeOff,
 } from '@mui/icons-material';
 
 interface AudioRestorationPanelProps {

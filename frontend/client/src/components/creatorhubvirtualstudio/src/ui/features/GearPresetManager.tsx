@@ -8,7 +8,7 @@ import {
   Stack,
   TextField,
   Typography,
-} from'@mui/material';
+} from '@mui/material';
 
 export default function GearPresetManager() {
   const [name, setName] = React.useState('Preset');

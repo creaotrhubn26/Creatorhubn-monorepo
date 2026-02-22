@@ -15,13 +15,13 @@ import {
   Grid,
   LinearProgress,
   Tooltip,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import {
   FileDownload as ExportIcon,
   Delete as ClearIcon,
   Visibility as ViewIcon,
-  Timeline as TimelineIcon
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { harRecorder, HAREntry } from '../../utils/harRecorder';
 

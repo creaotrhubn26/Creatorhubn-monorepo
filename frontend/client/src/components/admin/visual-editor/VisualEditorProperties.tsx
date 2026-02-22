@@ -29,7 +29,7 @@ import {
   Tooltip,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -48,7 +48,7 @@ import {
   MonetizationOn as CostIcon,
   ColorLens as ColorIcon,
   GridOn as GridIcon,
-  Science as ScienceIcon
+  Science as ScienceIcon,
 } from '@mui/icons-material';
 import { getVisualEditorTokens } from './visualEditorTokens';
 

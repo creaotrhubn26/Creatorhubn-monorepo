@@ -120,18 +120,18 @@ export const PROFESSION_DASHBOARD_CONFIG: Record<string, ProfessionDashboardConf
       },
       {
         tabId: 'wedding_timeline',
-        label: 'Bryllupstidslinje',
+        label: 'Evendi',
         icon: 'Event',
         enabled: true,
         required: true, // Required for photographers
         order: 2,
-        description: 'Arrangementsplanlegging med kulturtilpasning',
+        description: 'Arrangementsplanlegging med kulturtilpasning via Evendi',
         component: 'EvendiTimelineAdmin',
         features: {
           timeline_editor: {
             enabled: true,
             label: 'Tidslinjeeditor',
-            description: 'Rediger bryllupstidslinje',
+            description: 'Rediger tidslinje via Evendi',
             optional: false,
           },
           cultural_presets: {
@@ -388,18 +388,18 @@ export const PROFESSION_DASHBOARD_CONFIG: Record<string, ProfessionDashboardConf
       },
       {
         tabId: 'wedding_timeline',
-        label: 'Bryllupstidslinje',
+        label: 'Evendi',
         icon: 'Event',
         enabled: false, // ⭐ CAN BE ENABLED BY ADMIN
         required: false,
         order: 2,
-        description: 'Arrangementsplanlegging for videografer',
+        description: 'Arrangementsplanlegging for videografer via Evendi',
         component: 'EvendiTimelineAdmin',
         features: {
           timeline_editor: {
             enabled: true,
             label: 'Tidslinjeeditor',
-            description: 'Rediger bryllupstidslinje',
+            description: 'Rediger tidslinje via Evendi',
             optional: false,
           },
           photographer_sync: {
@@ -964,18 +964,18 @@ export const PROFESSION_DASHBOARD_CONFIG: Record<string, ProfessionDashboardConf
       },
       {
         tabId: 'wedding_timeline',
-        label: 'Bryllupstidslinje',
+        label: 'Evendi',
         icon: 'Event',
         enabled: true,
         required: true,
         order: 2,
-        description: 'Arrangementsplanlegging for foto + video team',
+        description: 'Arrangementsplanlegging for foto + video team via Evendi',
         component: 'EvendiTimelineAdmin',
         features: {
           timeline_editor: {
             enabled: true,
             label: 'Tidslinjeeditor',
-            description: 'Rediger bryllupstidslinje',
+            description: 'Rediger tidslinje via Evendi',
             optional: false,
           },
           team_shot_list: {

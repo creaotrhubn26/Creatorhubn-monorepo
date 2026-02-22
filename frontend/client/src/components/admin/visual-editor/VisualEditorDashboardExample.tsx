@@ -18,27 +18,27 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Dashboard,
-  Template,
+  Description as Template,
   Group,
   Analytics,
   CloudSync,
   Animation,
-  Design,
-  Plugin,
-  Export,
-  VersionControl,
-  Workflow,
-  AI,
-  ML,
-  Revenue,
-  Client,
-  System,
+  Brush as Design,
+  Extension as Plugin,
+  FileDownload as Export,
+  History as VersionControl,
+  AccountTree as Workflow,
+  AutoAwesome as AI,
+  ModelTraining as ML,
+  AttachMoney as Revenue,
+  Person as Client,
+  SettingsApplications as System,
   Monitor,
-  Audit
+  FactCheck as Audit,
 } from '@mui/icons-material';
 
 import { useVisualEditor } from './VisualEditorContext';

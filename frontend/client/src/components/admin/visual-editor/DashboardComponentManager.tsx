@@ -41,7 +41,7 @@ import {
   Stack,
   Badge,
   Tooltip,
-  Paper
+  Paper,
 } from '@mui/material';
 
 import {
@@ -51,8 +51,8 @@ import {
   Settings,
   Code,
   Palette,
-  Layout,
-  Behavior,
+  ViewQuilt as Layout,
+  Psychology as Behavior,
   Visibility,
   VisibilityOff,
   Save,
@@ -77,7 +77,7 @@ import {
   AutoFixHigh,
   Star,
   Article,
-  Chat
+  Chat,
 } from '@mui/icons-material';
 
 import { 

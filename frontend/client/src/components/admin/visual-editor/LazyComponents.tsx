@@ -4,7 +4,12 @@
  */
 
 import React, { Suspense, lazy } from 'react';
-import { Box, CircularProgress, Typography, Skeleton } from '@mui/material';
+import {
+  Box,
+  CircularProgress,
+  Typography,
+  Skeleton,
+} from '@mui/material';
 
 // Lazy load heavy components
 const ScrollStoriesDialog = lazy(() => import('./ScrollStoriesDialog'));

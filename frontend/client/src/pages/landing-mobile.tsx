@@ -3703,7 +3703,7 @@ const LandingMobile: React.FC<LandingCustomizationProps> = ({
                 width: 40,
                 height: 40,
                 borderRadius: '8px',
-                background: 'rgba(2, 5, 5,255,255,0.9)',
+                background: 'rgba(255,255,255,0.9)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

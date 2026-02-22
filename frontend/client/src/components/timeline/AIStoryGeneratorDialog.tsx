@@ -28,7 +28,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  TextField
+  TextField,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -36,7 +36,7 @@ import {
   Movie,
   Timeline as TimelineIcon,
   CheckCircle,
-  Psychology
+  Psychology,
 } from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

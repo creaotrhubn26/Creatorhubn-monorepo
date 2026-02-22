@@ -20,9 +20,14 @@ import {
   Tabs,
   Tab,
   Button,
-  Badge
+  Badge,
 } from '@mui/material';
-import { Close, Palette, AutoFixHigh, Compare } from '@mui/icons-material';
+import {
+  Close,
+  Palette,
+  AutoFixHigh,
+  Compare,
+} from '@mui/icons-material';
 import { ColorGradingEngine } from '../../services/color-grading-engine';
 import { LUTEngine } from '../../services/lut-engine';
 import LUTLibrary from './LUTLibrary';

@@ -14,17 +14,17 @@ import {
   Chip,
   Alert,
   Grid,
-  Paper
+  Paper,
 } from '@mui/material';
 import {
   CheckCircle,
   RadioButtonUnchecked,
-  Speed,
+  Speed as Speed,
   Timer,
   TrendingUp,
   PlayArrow,
   ExpandMore,
-  ExpandLess
+  ExpandLess,
 } from '@mui/icons-material';
 
 interface ProgressStep {

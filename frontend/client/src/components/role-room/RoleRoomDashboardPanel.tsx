@@ -74,6 +74,7 @@ import {
   useCreateCastingRole,
   useAddCandidate,
   useAddCrewMember,
+  useRoleRoomBootstrap,
 } from '../../hooks/useRoleRoom';
 
 import type {
@@ -120,6 +121,9 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
   profession,
   creatorhubProjectId,
 }) => {
+  // Auto-provision API key on first load
+  useRoleRoomBootstrap(userId);
+
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<SubTab>('roles');
   const [newProjectOpen, setNewProjectOpen] = useState(false);

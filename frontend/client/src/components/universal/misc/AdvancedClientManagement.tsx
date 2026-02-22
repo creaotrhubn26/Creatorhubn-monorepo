@@ -36,7 +36,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
 import {
@@ -62,7 +62,7 @@ import {
   Assessment,
   Search,
   FilterList,
-  MoreVert
+  MoreVert,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

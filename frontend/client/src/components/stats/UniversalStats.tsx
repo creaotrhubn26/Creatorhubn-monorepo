@@ -11,7 +11,7 @@ import {
   Grid,
   LinearProgress,
   Chip,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -25,7 +25,7 @@ import {
   Assessment,
   CalendarToday,
   Star,
-  Visibility
+  Visibility,
 } from '@mui/icons-material';
 
 interface StatsProps {

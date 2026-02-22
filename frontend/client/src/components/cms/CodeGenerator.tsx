@@ -51,7 +51,7 @@ import {
   Stepper,
   Step,
   StepLabel,
-  StepContent
+  StepContent,
 } from '@mui/material';
 import {
   Code,
@@ -86,7 +86,7 @@ import {
   Info,
   Cloud,
   Security,
-  ConnectedTv
+  ConnectedTv,
 } from '@mui/icons-material';
 import MonacoEditor from '@monaco-editor/react';
 import { apiRequest } from '@/lib/queryClient';
@@ -1146,7 +1146,7 @@ import {
   Tabs,
   Tab,
   CircularProgress,
-  Alert
+  Alert,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 import { ${profession}Icon, AddIcon, SettingsIcon } from '@mui/icons-material';

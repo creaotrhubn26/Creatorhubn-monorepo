@@ -85,7 +85,7 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
               label={branding.customDomain}
               size="small"
               sx={{
-                bgcolor: 'rgba(2, 5, 5, 255, 255, 0.2)',
+                bgcolor: 'rgba(255, 255, 255, 0.2)',
                 color: 'white' }} />
           )}
         </Toolbar>

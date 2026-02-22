@@ -33,7 +33,7 @@ import {
   Receipt as QuoteIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-  Calculate as CalculateIcon
+  Calculate as CalculateIcon,
 } from '@mui/icons-material';
 
 interface QuoteGeneratorModalProps {

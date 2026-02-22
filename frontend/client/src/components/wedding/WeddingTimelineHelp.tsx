@@ -16,7 +16,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import {
   Close,
@@ -29,7 +29,7 @@ import {
   Pending,
   CalendarToday,
   GetApp,
-  Share
+  Share,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';

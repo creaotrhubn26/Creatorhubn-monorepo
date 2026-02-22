@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useMemo, useEffect, useState } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -28,7 +28,7 @@ import {
   CardActions,
   Divider,
   Alert,
-  AlertTitle
+  AlertTitle,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -36,13 +36,13 @@ import {
   Stop,
   Refresh,
   Settings,
-  Speed,
+  Speed as Speed,
   Memory,
   Visibility,
   Analytics,
   Warning,
   CheckCircle,
-  Error
+  Error,
 } from '@mui/icons-material';
 import { useCanvasOptimization, UseCanvasOptimizationOptions } from '../../../hooks/useCanvasOptimization';
 import { CanvasConfig, RenderObject, Viewport } from '../../../utils/canvasOptimizer';

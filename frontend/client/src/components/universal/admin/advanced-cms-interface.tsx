@@ -63,14 +63,14 @@ import {
   Security,
   CloudUpload,
   DataUsage,
-  Speed,
+  Speed as Speed,
   Analytics,
   Notifications,
   Group,
   Store,
-  PhotoCameraAlt,
-  Videocamcam,
-  LibraryMusicNote,
+  PhotoCamera as PhotoCameraAlt,
+  Videocam as Videocamcam,
+  LibraryMusic as LibraryMusicNote,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 

@@ -24,14 +24,14 @@ import {
   MenuItem,
   Slider,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   AttachMoney,
   TrendingUp,
   Assessment,
   Lightbulb,
-  Calculate
+  Calculate,
 } from '@mui/icons-material';
 import { useRevenueOptimizer } from '../../../hooks/useRevenueOptimizer';
 

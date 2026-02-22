@@ -32,12 +32,6 @@ import {
   Step,
   StepLabel,
   StepContent,
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
   Table,
   TableBody,
   TableCell,
@@ -47,7 +41,7 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
 } from '@mui/material';
 import {
   CloudUpload as DeployIcon,
@@ -67,7 +61,7 @@ import {
   Speed as PerformanceIcon,
   MonitorHeart as MonitorIcon,
   Code as CodeIcon,
-  BugReport as TestIcon
+  BugReport as TestIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 

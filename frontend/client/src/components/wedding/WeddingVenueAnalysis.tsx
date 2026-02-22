@@ -26,7 +26,7 @@ import {
   Divider,
   Paper,
   Badge,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Favorite,
@@ -43,7 +43,7 @@ import {
   Group,
   Restaurant,
   MusicNote,
-  LocalFlorist
+  LocalFlorist,
 } from '@mui/icons-material';
 import { useExternalData } from '../../services/ExternalDataService';
 import { useGoogleMaps } from '../../services/GoogleMapsService';

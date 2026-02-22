@@ -15,7 +15,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   CloudDone,
@@ -26,7 +26,7 @@ import {
   FolderShared,
   Email,
   CalendarMonth,
-  VideoCall
+  VideoCall,
 } from '@mui/icons-material';
 
 interface GoogleOAuthSetupProps {

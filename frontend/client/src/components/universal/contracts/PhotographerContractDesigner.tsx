@@ -55,7 +55,7 @@ import {
   AddCircle as AddIcon,
   Delete as DeleteIcon,
   Upload as UploadIcon,
-  DescriptionContentCopy as FileCopyIcon,
+  ContentCopy as FileCopyIcon,
   DragIndicator as DragIcon,
   ExpandMore as ExpandMoreIcon,
   Save as SaveIcon,

@@ -22,13 +22,9 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  Grid
+  Grid,
 } from '@mui/material';
-import { 
-  Send as SendIcon,
-  Check as CheckIcon,
-  Error as ErrorIcon
-} from '@mui/icons-material';
+import { Send as SendIcon, Check as CheckIcon, Error as ErrorIcon } from '@mui/icons-material';
 import { useUniversalAPI, API_SERVICES } from '@/hooks/useUniversalAPI';
 
 export default function UniversalAPIInterface() {

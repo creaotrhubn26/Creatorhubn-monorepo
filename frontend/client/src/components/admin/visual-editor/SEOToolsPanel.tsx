@@ -28,12 +28,9 @@ import {
   Chip,
   Alert,
   Grid,
-  Paper
+  Paper,
 } from '@mui/material';
-import {
-  Analytics,
-  Language
-} from '@mui/icons-material';
+import { Analytics, Language } from '@mui/icons-material';
 
 interface SEOToolsPanelProps {
   selectedProject?: { id: string; name?: string };
@@ -561,3 +558,5 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
     </Paper>
   );
 };
+
+export default SEOToolsPanel;

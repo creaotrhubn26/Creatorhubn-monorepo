@@ -18,8 +18,8 @@ import {
   School as SchoolIcon,
   TrendingUp as TrendingUpIcon,
   Refresh as RefreshIcon,
-	  Info as InfoIcon,
-	} from '@mui/icons-material';
+  Info as InfoIcon,
+} from '@mui/icons-material';
 	import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 
 interface AnalyticsData {

@@ -1,5 +1,10 @@
 import * as React from 'react';
-import { Box, Stack, Typography, Divider } from '@mui/material';
+import {
+  Box,
+  Stack,
+  Typography,
+  Divider,
+} from '@mui/material';
 import { useNodes } from '@/state/selectors';
 import { getThreeScene, getActiveCameraId, setActiveCameraId } from '@/core/services/viewports';
 

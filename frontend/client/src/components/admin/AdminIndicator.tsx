@@ -6,13 +6,9 @@ import {
   Typography,
   Paper,
   Avatar,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
-import {
-  AdminPanelSettings,
-  Shield,
-  Verified
-} from '@mui/icons-material';
+import { AdminPanelSettings, Shield, Verified } from '@mui/icons-material';
 
 interface AdminIndicatorProps {
   userEmail?: string;

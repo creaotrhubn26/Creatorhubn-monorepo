@@ -17,7 +17,7 @@ import {
   Box,
   Chip,
   IconButton,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -25,11 +25,11 @@ import {
   Key as KeyIcon,
   Webhook as WebhookIcon,
   Security as SecurityIcon,
-  Test as TestIcon,
+  BugReport as TestIcon,
   Refresh as RefreshIcon,
   Analytics as AnalyticsIcon,
   Settings as SettingsIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useUserPermissions } from '@/hooks/useUserPermissions';
 

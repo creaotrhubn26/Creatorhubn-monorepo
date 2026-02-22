@@ -43,7 +43,7 @@ import {
   Badge,
   Avatar,
   InputAdornment,
-  Fab
+  Fab,
 } from '@mui/material';
 import {
   Psychology,
@@ -65,7 +65,7 @@ import {
   Search,
   SmartToy,
   AutoFixHigh,
-  Insights
+  Insights,
 } from '@mui/icons-material';
 import { useAIAssistant } from '../../../hooks/useAIAssistant';
 

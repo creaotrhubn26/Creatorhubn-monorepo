@@ -1,15 +1,56 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Box, Typography, Paper, Grid, Button, Card, CardContent, Chip, LinearProgress, Alert, 
-  List, ListItem, ListItemText, ListItemIcon, Divider, Stack, Slider, FormControl, 
-  InputLabel, Select, MenuItem, Switch, FormControlLabel, Dialog, DialogTitle, 
-  DialogContent, DialogActions, Avatar, Tooltip, IconButton
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  LinearProgress,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Stack,
+  Slider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Avatar,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
-import { 
-  Face, Palette, AutoFixHigh, Lightbulb, CameraAlt, ColorLens, 
-  Refresh, Download, Share, Info, CheckCircle, Warning, Error,
-  WbSunny, WbTwilight, WbIncandescent, FlashOn, Nature
+import {
+  Face,
+  Palette,
+  AutoFixHigh,
+  Lightbulb,
+  CameraAlt,
+  ColorLens,
+  Refresh,
+  Download,
+  Share,
+  Info,
+  CheckCircle,
+  Warning,
+  Error,
+  WbSunny,
+  WbTwilight,
+  WbIncandescent,
+  FlashOn,
+  Nature,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

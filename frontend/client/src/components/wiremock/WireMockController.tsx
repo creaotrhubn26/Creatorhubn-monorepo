@@ -39,7 +39,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  TextField
+  TextField,
 } from '@mui/material';
 import {
   PlayArrow as PlayArrowIcon,
@@ -50,7 +50,7 @@ import {
   Add as AddIcon,
   ToggleOn as ToggleOnIcon,
   ToggleOff as ToggleOffIcon,
-  Science as TestTubeIcon
+  Science as TestTubeIcon,
 } from '@mui/icons-material';
 import { useWireMock } from '@/hooks/useWireMock';
 import { ContextualAITooltip } from '../ai-tooltips/ContextualAITooltip';

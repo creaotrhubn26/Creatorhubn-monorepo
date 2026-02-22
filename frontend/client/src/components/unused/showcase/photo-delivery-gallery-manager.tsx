@@ -32,7 +32,7 @@ import {
   Badge,
   LinearProgress,
   Alert,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   AddCircle as Add,
@@ -51,7 +51,7 @@ import {
   Favorite,
   Link as LinkIcon,
   Settings,
-  Send
+  Send,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';

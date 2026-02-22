@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ChangeEvent, type ReactNode, type ReactElement } from 'react';
+import { useShotListRealTime } from '../hooks/useShotListRealTime';
 import { useToast } from './ToastStack';
 import jsPDF from 'jspdf';
 import {
@@ -56,11 +57,19 @@ import {
   useMediaQuery,
   Grow,
   CircularProgress as MUICircularProgress,
+  Badge,
+  Popover,
+  List,
+  ListItem,
+  ListItemText,
+  Divider as MuiDivider,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  History as HistoryIcon,
   Movie as MovieIcon,
   PhotoCamera as PhotoCameraIcon,
   Search as SearchIcon,
@@ -91,6 +100,7 @@ import {
   PersonAdd as AssignIcon,
   Lock as ReserveIcon,
   LockOpen as UnreserveIcon,
+  ArrowForward as NextIcon,
 } from '@mui/icons-material';
 import { TeamIcon, DashboardCustomIcon as DashboardIcon, StatsIcon } from './icons/CastingIcons';
 import { TeamDashboard } from './TeamDashboard';
@@ -103,7 +113,7 @@ import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { 
   convertShotListToStoryboardFrames, 
   generateStoryboardName,
-  StoryboardFrame 
+  type StoryboardFrame 
 } from '../services/shotListToStoryboardConverter';
 import { useStoryboardStore, useStoryboards, useCurrentStoryboard } from '../state/storyboardStore';
 import { storyboardAIGenerationService } from '../services/storyboardAIGenerationService';
@@ -112,7 +122,11 @@ import { ProductionDayCardInfo } from './ProductionDayCardInfo';
 import { castingAuthService } from '../services/castingAuthService';
 import settingsService, { getCurrentUserId } from '../services/settingsService';
 import { useAuth } from '@/hooks/useAuth';
-import { ShotPlannerPanel } from '../services/shotPlanner';
+const ShotPlannerPanel = lazy(() =>
+  import('../services/shotPlanner').then((m) => ({ default: m.ShotPlannerPanel as React.ComponentType }))
+);
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import scenesPng from './icons/Keep/roleroom_scenes.png';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -155,17 +169,23 @@ function SortableShotItem({ id, children }: SortableShotItemProps) {
       <Box
         {...attributes}
         {...listeners}
+        role="button"
+        aria-label="Drag to reorder shot"
+        aria-roledescription="sortable"
+        tabIndex={0}
         sx={{
           cursor: 'grab',
           color: 'rgba(255,255,255,0.6)',
           display: 'flex',
           alignItems: 'center',
-          pt: 0.5,
+          justifyContent: 'center',
+          minWidth: TOUCH_TARGET_SIZE,
+          minHeight: TOUCH_TARGET_SIZE,
           '&:hover': { color: 'rgba(255,255,255,0.87)' },
           '&:active': { cursor: 'grabbing' },
         }}
       >
-        <DragIndicatorIcon sx={{ fontSize: 16 }} />
+        <DragIndicatorIcon sx={{ fontSize: 18 }} />
       </Box>
       <Box sx={{ flex: 1 }}>{children}</Box>
     </Box>
@@ -187,6 +207,15 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   const { user } = useAuth();
   const branding = useBrandingSettings();
 
+  // ── Real-time collaboration ─────────────────────────────────────────────
+  const rt = useShotListRealTime({
+    projectId,
+    userId:   user?.id ?? 'anonymous',
+    userName: (user as any)?.displayName ?? user?.email?.split('@')[0] ?? 'Ukjent',
+  });
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const auditLogAnchorRef = useRef<HTMLButtonElement | null>(null);
+
   // Unique IDs for WCAG
   const baseId = useId();
   const dialogTitleId = `${baseId}-dialog-title`;
@@ -196,40 +225,28 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   // Core state
   const [shotLists, setShotLists] = useState<ShotList[]>([]);
   const [productionDays, setProductionDays] = useState<ProductionDay[]>([]);
-  const [shotListProductionDays, setShotListProductionDays] = useState<Map<string, ProductionDay>>(new Map());
-  
   // Load shot lists and production days when projectId changes
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
-      if (projectId) {
-        try {
-          const [lists, days] = await Promise.all([
-            castingService.getShotLists(projectId),
-            productionPlanningService.getProductionDays(projectId),
-          ]);
-          setShotLists(Array.isArray(lists) ? lists : []);
-          setProductionDays(Array.isArray(days) ? days : []);
-          
-          // Map shot lists to production days
-          const shotListToDayMap = new Map<string, ProductionDay>();
-          lists.forEach(shotList => {
-            const productionDay = days.find(day => 
-              day.scenes.includes(shotList.sceneId)
-            );
-            if (productionDay) {
-              shotListToDayMap.set(shotList.id, productionDay);
-            }
-          });
-          setShotListProductionDays(shotListToDayMap);
-        } catch (error) {
-          console.error('Error loading shot lists and production days:', error);
-          setShotLists([]);
-          setProductionDays([]);
-          setShotListProductionDays(new Map());
-        }
+      if (!projectId) return;
+      try {
+        const [lists, days] = await Promise.all([
+          castingService.getShotLists(projectId),
+          productionPlanningService.getProductionDays(projectId),
+        ]);
+        if (cancelled) return;
+        setShotLists(Array.isArray(lists) ? lists : []);
+        setProductionDays(Array.isArray(days) ? days : []);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error loading shot lists and production days:', error);
+        setShotLists([]);
+        setProductionDays([]);
       }
     };
-    loadData();
+    void loadData();
+    return () => { cancelled = true; };
   }, [projectId]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -297,6 +314,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   const [showFilters, setShowFilters] = useState(false);
   const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'all'>('all');
   const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'mine' | 'unassigned' | string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<ShotPriority | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ShotStatus | null>(null);
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>('scene');
@@ -360,26 +379,30 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   
   // Load roles and crew when projectId changes
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
-      if (projectId) {
-        try {
-          const [loadedRoles, loadedCrew] = await Promise.all([
-            castingService.getRoles(projectId),
-            castingService.getCrew(projectId),
-          ]);
-          setRoles(Array.isArray(loadedRoles) ? loadedRoles : []);
-          setCrewMembers(Array.isArray(loadedCrew) ? loadedCrew : []);
-        } catch (error) {
-          console.error('Error loading data:', error);
-          setRoles([]);
-          setCrewMembers([]);
-        }
+      if (!projectId) return;
+      try {
+        const [loadedRoles, loadedCrew] = await Promise.all([
+          castingService.getRoles(projectId),
+          castingService.getCrew(projectId),
+        ]);
+        if (cancelled) return;
+        setRoles(Array.isArray(loadedRoles) ? loadedRoles : []);
+        setCrewMembers(Array.isArray(loadedCrew) ? loadedCrew : []);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error loading data:', error);
+        setRoles([]);
+        setCrewMembers([]);
       }
     };
-    loadData();
+    void loadData();
+    return () => { cancelled = true; };
   }, [projectId]);
 
   useEffect(() => {
+    let cancelled = false;
     const loadCurrentUserRole = async () => {
       if (!projectId || !user?.id) {
         setCurrentUserRole(null);
@@ -387,18 +410,58 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       }
       try {
         const role = await castingAuthService.getUserRole(projectId, user.id);
+        if (cancelled) return;
         setCurrentUserRole(role?.role || null);
       } catch (error) {
+        if (cancelled) return;
         console.error('Error loading current user role:', error);
         setCurrentUserRole(null);
       }
     };
-    loadCurrentUserRole();
+    void loadCurrentUserRole();
+    return () => { cancelled = true; };
   }, [projectId, user?.id]);
 
-  const availableScenes = castingService.getAvailableScenes();
-  
-  // Get all storyboards to check for related ones
+  const availableScenes = useMemo(() => castingService.getAvailableScenes(), []);
+
+  // O(1) lookup maps for scenes and roles
+  const sceneById = useMemo(() => new Map(availableScenes.map(s => [s.id, s])), [availableScenes]);
+  const roleById = useMemo(() => new Map(roles.map(r => [r.id, r])), [roles]);
+
+  // Derived: map each production day to the scene IDs it contains
+  const dayBySceneId = useMemo(() => {
+    const map = new Map<string, ProductionDay>();
+    productionDays.forEach(day => {
+      (day.scenes || []).forEach((sceneId: string) => {
+        if (!map.has(sceneId)) map.set(sceneId, day);
+      });
+    });
+    return map;
+  }, [productionDays]);
+
+  // Derived: map each shot list to its production day (replaces O(N×M) state)
+  const shotListProductionDays = useMemo(() => {
+    const map = new Map<string, ProductionDay>();
+    shotLists.forEach(sl => {
+      const day = dayBySceneId.get(sl.sceneId);
+      if (day) map.set(sl.id, day);
+    });
+    return map;
+  }, [shotLists, dayBySceneId]);
+
+  // ── Apply incoming real-time events to local state ───────────────────────
+  useEffect(() => {
+    return rt.onRemoteEvent(event => {
+      // For all state-changing events, we reload from the source of truth.
+      // This keeps CRDT-style convergence simple without a dedicated merge layer.
+      const reloadable = ['ShotAssigned', 'ShotStatusChanged', 'ShotReordered', 'ShotListCreated'];
+      if (reloadable.includes(event.type)) {
+        castingService.getShotLists(projectId).then(lists => {
+          setShotLists(Array.isArray(lists) ? lists : []);
+        }).catch(console.error);
+      }
+    });
+  }, [rt.onRemoteEvent, projectId]);
   const storyboards = useStoryboards();
   const currentStoryboard = useCurrentStoryboard();
   const { loadStoryboard } = useStoryboardStore();
@@ -440,15 +503,28 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     void loadFavorites();
   }, [projectId, user?.id]);
 
-  // Save favorites to DB
+  // Save favorites to DB (debounced — avoids a write on every single toggle)
+  const favoritesSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!projectId) return;
+    if (favoritesSaveTimerRef.current) clearTimeout(favoritesSaveTimerRef.current);
     const resolvedUserId = user?.id || getCurrentUserId();
-    void settingsService.setSetting('shotlist-favorites', [...favorites], {
-      userId: resolvedUserId,
-      projectId,
-    });
+    favoritesSaveTimerRef.current = setTimeout(() => {
+      void settingsService.setSetting('shotlist-favorites', [...favorites], {
+        userId: resolvedUserId,
+        projectId,
+      });
+    }, 400);
+    return () => {
+      if (favoritesSaveTimerRef.current) clearTimeout(favoritesSaveTimerRef.current);
+    };
   }, [favorites, projectId, user?.id]);
+
+  // Refs holding the latest action handlers so the keyboard effect never has stale closures
+  const kbActionsRef = useRef<{ openDialog: () => void; exportCsv: () => void }>({
+    openDialog: () => {},
+    exportCsv: () => {},
+  });
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -460,11 +536,11 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       }
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
-        handleOpenDialog();
+        kbActionsRef.current.openDialog();
       }
       if (e.ctrlKey && e.key === 'e') {
         e.preventDefault();
-        handleExportCSV();
+        kbActionsRef.current.exportCsv();
       }
       if (e.key === 'Escape') {
         if (shotDialogOpen) handleCloseShotDialog();
@@ -473,19 +549,17 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen, shotDialogOpen, availableScenes.length]);
+  }, [dialogOpen, shotDialogOpen]);
 
   // Helper functions
   const getSceneName = (sceneId: string, sceneName?: string): string => {
     if (sceneName) return sceneName;
     if (!sceneId) return 'Uspesifisert scene';
-    const scene = availableScenes.find(s => s.id === sceneId);
-    return scene?.name || sceneId;
+    return sceneById.get(sceneId)?.name || sceneId;
   };
 
   const getRoleName = (roleId: string): string => {
-    const role = roles.find(r => r.id === roleId);
-    return role?.name || roleId;
+    return roleById.get(roleId)?.name || roleId;
   };
 
   const getUserRoleLabel = (role?: UserRoleType | null): string => {
@@ -581,11 +655,11 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     const colors: Record<ShotType, string> = {
       'Wide': '#4caf50',
       'Medium': '#2196f3',
-      'Close-up': '#ff9800',
+      'Close-up': '#9333ea',
       'Extreme Close-up': '#e91e63',
       'Establishing': '#9c27b0',
       'Detail': '#00bcd4',
-      'Two Shot': '#ff5722',
+      'Two Shot': '#7c3aed',
       'Over Shoulder': '#795548',
       'Point of View': '#607d8b',
     };
@@ -600,13 +674,13 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
 
   const priorityConfig: Record<ShotPriority, { label: string; color: string; bgColor: string }> = {
     critical: { label: 'Kritisk', color: '#f44336', bgColor: 'rgba(244,67,54,0.15)' },
-    important: { label: 'Viktig', color: '#ff9800', bgColor: 'rgba(255,152,0,0.15)' },
+    important: { label: 'Viktig', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
     nice_to_have: { label: 'Bonus', color: '#9e9e9e', bgColor: 'rgba(158,158,158,0.15)' },
   };
 
   const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: string }> = {
     not_started: { label: 'Venter', color: '#78909c', bgColor: 'rgba(120,144,156,0.15)' },
-    in_progress: { label: 'Pågår', color: '#ff9800', bgColor: 'rgba(255,152,0,0.15)' },
+    in_progress: { label: 'Pågår', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
     completed: { label: 'Fullført', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
   };
 
@@ -692,6 +766,22 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       }).filter((sl) => sl.shots.length > 0);
     }
 
+    // Priority filter (on shots)
+    if (priorityFilter !== null) {
+      result = result.map((sl) => ({
+        ...sl,
+        shots: sl.shots.filter((shot) => (shot.priority || 'important') === priorityFilter),
+      })).filter((sl) => sl.shots.length > 0);
+    }
+
+    // Status filter (on shots)
+    if (statusFilter !== null) {
+      result = result.map((sl) => ({
+        ...sl,
+        shots: sl.shots.filter((shot) => (shot.status || 'not_started') === statusFilter),
+      })).filter((sl) => sl.shots.length > 0);
+    }
+
     // Sort - favorites first
     result.sort((a, b) => {
       const aFav = favorites.has(a.id) ? 1 : 0;
@@ -706,32 +796,42 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
         case 'shots':
           comparison = a.shots.length - b.shots.length;
           break;
-        case 'updated':
-          comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        case 'updated': {
+          const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+          const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+          comparison = ta - tb;
           break;
+        }
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
     return result;
-  }, [shotLists, searchQuery, sortField, sortDirection, favorites, availableScenes, mediaTypeFilter, assigneeFilter, user?.id]);
+  }, [shotLists, searchQuery, sortField, sortDirection, favorites, availableScenes, mediaTypeFilter, assigneeFilter, priorityFilter, statusFilter, user?.id]);
 
   // Statistics
   const stats = useMemo(() => {
     const totalShots = shotLists.reduce((acc, sl) => acc + sl.shots.length, 0);
     const shotTypeCount: Record<string, number> = {};
+    const byStatus: Record<ShotStatus, number> = { not_started: 0, in_progress: 0, completed: 0 };
 
     shotLists.forEach((sl) => {
       sl.shots.forEach((shot) => {
         shotTypeCount[shot.shotType] = (shotTypeCount[shot.shotType] || 0) + 1;
+        const s: ShotStatus = shot.status || 'not_started';
+        byStatus[s] = (byStatus[s] || 0) + 1;
       });
     });
+
+    const completionPercent = totalShots > 0 ? Math.round((byStatus.completed / totalShots) * 100) : 0;
 
     return {
       totalLists: shotLists.length,
       totalShots,
       shotTypeCount,
       favorites: favorites.size,
+      byStatus,
+      completionPercent,
     };
   }, [shotLists, favorites]);
 
@@ -802,6 +902,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
         assigneeId: shot.assigneeId || '',
       });
       setShowAdvancedCamera(hasAdvancedCameraValues(shot));
+      // Soft-lock: signal to collaborators that we're editing this shot
+      rt.acquireLock(shotListId, shot.id);
     } else {
       const shotList = shotLists.find(sl => sl.id === shotListId);
       const preset = getShotPreset(shotList);
@@ -831,6 +933,10 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   };
 
   const handleCloseShotDialog = () => {
+    // Release soft-lock before closing
+    if (editingShot && currentShotListId) {
+      rt.releaseLock(currentShotListId, editingShot.id);
+    }
     setShotDialogOpen(false);
     setEditingShot(null);
     setCurrentShotListId(null);
@@ -1350,6 +1456,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       const lists = await castingService.getShotLists(projectId);
       setShotLists(Array.isArray(lists) ? lists : []);
       toast.showSuccess(`Shot tilordnet ${assigneeName}`);
+      // Broadcast assignment to collaborators
+      rt.emitShotAssigned({ shotListId: shotList.id, shotId: shot.id, assigneeId, assigneeName });
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error assigning shot:', error);
@@ -1387,6 +1495,12 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     if (!editingShotList) {
       // Collapse all other scenes, expand only the new one
       setExpandedCards(new Set([shotList.id]));
+      // Broadcast creation to collaborators
+      rt.emitShotListCreated({
+        shotListId: shotList.id,
+        sceneId:    shotList.sceneId,
+        sceneName:  shotList.sceneName || shotList.sceneId,
+      });
     }
     
     handleCloseDialog();
@@ -1522,7 +1636,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       }
 
       // Convert shots to storyboard frames
-      const frames = convertShotListToStoryboardFrames(
+      const frames: StoryboardFrame[] = convertShotListToStoryboardFrames(
         shotsToConvert,
         (roleId) => getRoleName(roleId)
       );
@@ -1603,6 +1717,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     };
     
     setShotLists(prev => prev.map(sl => sl.id === shotListId ? updatedShotList : sl));
+    // Broadcast reorder immediately so collaborators see it before DB round-trip
+    rt.emitShotReordered({ shotListId, orderedShotIds: reorderedShots.map(s => s.id) });
     
     try {
       await castingService.saveShotList(projectId, updatedShotList);
@@ -1619,6 +1735,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       ...updates,
       ...(updates.status === 'completed' ? { completedAt: new Date().toISOString() } : {}),
     };
+    const previousShot = shotList.shots.find(s => s.id === shotId);
     const updatedShots = shotList.shots.map((shot) =>
       shot.id === shotId ? { ...shot, ...normalizedUpdates, updatedAt: new Date().toISOString() } : shot
     );
@@ -1629,6 +1746,15 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     };
     try {
       await castingService.saveShotList(projectId, updatedShotList);
+      // Broadcast status change
+      if (updates.status && previousShot) {
+        rt.emitShotStatusChanged({
+          shotListId:     shotList.id,
+          shotId,
+          previousStatus: previousShot.status ?? 'not_started',
+          newStatus:      updates.status,
+        });
+      }
       const lists = await castingService.getShotLists(projectId);
       setShotLists(Array.isArray(lists) ? lists : []);
       if (onUpdate) onUpdate();
@@ -2244,6 +2370,10 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   const selectedPriorityInfo = priorityConfig[shotFormData.priority || 'important'];
   const estimatedMinutes = shotFormData.estimatedTime ?? 5;
 
+  // Keep keyboard action refs up-to-date on every render (safe — refs are not reactive)
+  kbActionsRef.current.openDialog = handleOpenDialog;
+  kbActionsRef.current.exportCsv = handleExportCSV;
+
   return (
     <Box
       component="section"
@@ -2296,6 +2426,29 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
             >
               Administrer shot lists
             </Typography>
+            {/* Real-time connection + presence badge */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
+              <Box
+                sx={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                  bgcolor:
+                    rt.connectionStatus === 'connected'   ? '#4caf50' :
+                    rt.connectionStatus === 'offline'     ? '#ef5350' : '#9333ea',
+                  boxShadow:
+                    rt.connectionStatus === 'connected' ? '0 0 0 2px rgba(76,175,80,0.25)' : 'none',
+                }}
+              />
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.65rem', lineHeight: 1 }}>
+                {rt.connectionStatus === 'connected'
+                  ? rt.presence.size > 0
+                    ? `${[...rt.presence.values()].map(p => p.userName).join(', ')} er også her`
+                    : 'Live'
+                  : rt.connectionStatus === 'offline' ? 'Offline' : 'Kobler til…'}
+              </Typography>
+            </Box>
           </Box>
         </Box>
 
@@ -2308,6 +2461,49 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
             justifyContent: { xs: 'space-between', sm: 'flex-end' },
           }}
         >
+          {/* Audit log button */}
+          <Tooltip title={`Aktivitetslogg (${rt.auditLog.length})`}>
+            <IconButton
+              ref={auditLogAnchorRef}
+              onClick={() => setShowAuditLog(v => !v)}
+              aria-label="Vis aktivitetslogg"
+              sx={{
+                color: rt.auditLog.length > 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.35)',
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                ...focusVisibleStyles,
+              }}
+            >
+              <Badge
+                badgeContent={rt.auditLog.length}
+                max={99}
+                sx={{ '& .MuiBadge-badge': { bgcolor: '#e91e63', color: '#fff', fontSize: '0.6rem' } }}
+              >
+                <HistoryIcon fontSize="small" />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Statistikk">
+            <Button
+              variant="outlined"
+              onClick={() => setShowStats(v => !v)}
+              aria-label="Vis/skjul statistikk"
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: '#4caf50',
+                borderColor: '#4caf50',
+                px: { xs: 1, sm: 2 },
+                ...focusVisibleStyles,
+                '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' },
+              }}
+            >
+              <StatsIcon />
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Stats</Box>}
+            </Button>
+          </Tooltip>
+
           <Tooltip title="Åpne Team Dashboard">
             <Button
               variant="outlined"
@@ -2356,11 +2552,11 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: '#ff9800',
-                borderColor: '#ff9800',
+                color: '#9333ea',
+                borderColor: '#9333ea',
                 px: { xs: 1, sm: 2 },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: 'rgba(255,152,0,0.1)' },
+                '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
               }}
             >
               <PdfIcon />
@@ -2448,6 +2644,53 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Favoritter</Typography>
           </Box>
+          <Box sx={{ textAlign: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9c27b0' }} />
+            </Box>
+            <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+              {productionDays.length}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Produksjonsdager</Typography>
+          </Box>
+          {/* Status breakdown */}
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h4" sx={{ color: '#78909c', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+              {stats.byStatus.not_started}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Venter</Typography>
+          </Box>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+              {stats.byStatus.in_progress}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Pågår</Typography>
+          </Box>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+              {stats.byStatus.completed}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Fullført</Typography>
+          </Box>
+          {/* Overall completion progress bar */}
+          {stats.totalShots > 0 && (
+            <Box sx={{ gridColumn: '1 / -1', mt: 0.5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>Fremdrift totalt</Typography>
+                <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 600 }}>{stats.completionPercent}%</Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={stats.completionPercent}
+                sx={{
+                  height: 6,
+                  borderRadius: 3,
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  '& .MuiLinearProgress-bar': { bgcolor: '#4caf50', borderRadius: 3 },
+                }}
+              />
+            </Box>
+          )}
           {!isMobile && Object.entries(stats.shotTypeCount).slice(0, 3).map(([type, count]) => (
             <Box key={type} sx={{ textAlign: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -2544,7 +2787,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
             </MenuItem>
             <MenuItem value="unassigned">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ff9800' }} />
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#9333ea' }} />
                 Ikke tilordnet
               </Box>
             </MenuItem>
@@ -2628,8 +2871,95 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
               </Button>
             </Tooltip>
           )}
+
+          <Tooltip title={showFilters ? 'Skjul filtre' : 'Vis filtre'}>
+            <Button
+              variant={showFilters ? 'contained' : 'outlined'}
+              onClick={() => setShowFilters(v => !v)}
+              aria-pressed={showFilters}
+              aria-label="Vis/skjul avanserte filtre"
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                bgcolor: showFilters ? 'rgba(0,212,255,0.2)' : 'transparent',
+                color: showFilters ? '#00d4ff' : 'rgba(255,255,255,0.7)',
+                borderColor: showFilters ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                ...focusVisibleStyles,
+              }}
+            >
+              <FilterIcon />
+            </Button>
+          </Tooltip>
         </Box>
       </Box>
+
+      {/* Advanced Filter Panel */}
+      <Collapse in={showFilters}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            mb: 2,
+            p: 2,
+            bgcolor: 'rgba(0,212,255,0.05)',
+            borderRadius: 2,
+            border: '1px solid rgba(0,212,255,0.2)',
+          }}
+          role="region"
+          aria-label="Avanserte filtre"
+        >
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Prioritet</InputLabel>
+            <Select
+              value={priorityFilter ?? 'all'}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPriorityFilter(v === 'all' ? null : (v as ShotPriority));
+              }}
+              label="Prioritet"
+              MenuProps={{ sx: { zIndex: Z_INDEX.selectMenu } }}
+              sx={{
+                color: '#fff',
+                minHeight: TOUCH_TARGET_SIZE,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.3)' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.6)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff' },
+              }}
+            >
+              <MenuItem value="all">Alle</MenuItem>
+              <MenuItem value="critical">Kritisk</MenuItem>
+              <MenuItem value="important">Viktig</MenuItem>
+              <MenuItem value="nice_to_have">Bonus</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Status</InputLabel>
+            <Select
+              value={statusFilter ?? 'all'}
+              onChange={(e) => {
+                const v = e.target.value;
+                setStatusFilter(v === 'all' ? null : (v as ShotStatus));
+              }}
+              label="Status"
+              MenuProps={{ sx: { zIndex: Z_INDEX.selectMenu } }}
+              sx={{
+                color: '#fff',
+                minHeight: TOUCH_TARGET_SIZE,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.3)' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,212,255,0.6)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff' },
+              }}
+            >
+              <MenuItem value="all">Alle</MenuItem>
+              <MenuItem value="not_started">Venter</MenuItem>
+              <MenuItem value="in_progress">Pågår</MenuItem>
+              <MenuItem value="completed">Fullført</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+      </Collapse>
 
       {/* Results count */}
       {searchQuery && (
@@ -2648,18 +2978,12 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
 
       {/* Empty state */}
       {shotLists.length === 0 ? (
-        <Box
-          role="status"
-          sx={{ textAlign: 'center', py: { xs: 4, sm: 8 }, color: 'rgba(255,255,255,0.87)' }}
-        >
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-            <VideoCallIcon sx={{ fontSize: { xs: 48, sm: 64 }, opacity: 0.3 }} />
-          </Box>
-          <Typography variant="body1">Ingen shot lists ennå</Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Opprett shot lists for å planlegge opptak per scene
-          </Typography>
-        </Box>
+        <RoleRoomEmptyState
+          iconSrc={scenesPng}
+          title="Ingen shot lists ennå"
+          subtitle="Opprett shot lists for å planlegge opptak per scene"
+          color="#e91e63"
+        />
       ) : filteredAndSortedShotLists.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
@@ -2851,6 +3175,75 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                           height: 22,
                         }}
                       />
+                      {/* Per-card status mini-chips + progress */}
+                      {shotList.shots.length > 0 && (() => {
+                        const ns = shotList.shots.filter(s => (s.status || 'not_started') === 'not_started').length;
+                        const ip = shotList.shots.filter(s => s.status === 'in_progress').length;
+                        const done = shotList.shots.filter(s => s.status === 'completed').length;
+                        const pct = Math.round((done / shotList.shots.length) * 100);
+                        return (
+                          <>
+                            <Box sx={{ display: 'flex', gap: 0.4, ml: 0.5 }}>
+                              {ns > 0 && <Chip label={ns} size="small" sx={{ bgcolor: 'rgba(120,144,156,0.2)', color: '#78909c', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
+                              {ip > 0 && <Chip label={ip} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#9333ea', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
+                              {done > 0 && <Chip label={done} size="small" sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#4caf50', height: 18, fontSize: '9px', minWidth: 22, '& .MuiChip-label': { px: 0.75 } }} />}
+                            </Box>
+                            <Tooltip title={`${pct}% fullført`}>
+                              <LinearProgress
+                                variant="determinate"
+                                value={pct}
+                                sx={{ width: 44, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: pct === 100 ? '#4caf50' : '#9333ea', borderRadius: 2 } }}
+                              />
+                            </Tooltip>
+                          </>
+                        );
+                      })()}
+                      {/* Coverage warning chips */}
+                      {shotList.shots.length > 0 && (() => {
+                        const unassigned = shotList.shots.filter(s => !s.assigneeId && !s.reservedBy).length;
+                        const noEst = shotList.shots.filter(s => !s.estimatedTime).length;
+                        const productionDay = shotListProductionDays.get(shotList.id);
+                        const daysUntil = productionDay
+                          ? Math.ceil((new Date(productionDay.date).getTime() - Date.now()) / 86_400_000)
+                          : null;
+                        const nearDeadline = daysUntil !== null && daysUntil >= 0 && daysUntil <= 3;
+                        const notStartedCount = shotList.shots.filter(s => (s.status || 'not_started') === 'not_started').length;
+                        if (unassigned === 0 && noEst === 0 && !(nearDeadline && notStartedCount > 0)) return null;
+                        return (
+                          <Box sx={{ display: 'flex', gap: 0.4, ml: 0.5 }}>
+                            {unassigned > 0 && (
+                              <Tooltip title={`${unassigned} shot${unassigned > 1 ? 's' : ''} uten ansvarlig`}>
+                                <Chip
+                                  icon={<AssignIcon style={{ fontSize: 11 }} />}
+                                  label={unassigned}
+                                  size="small"
+                                  sx={{ bgcolor: 'rgba(147,51,234,0.18)', color: '#ffa726', height: 18, fontSize: '9px', minWidth: 32, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.5 } }}
+                                />
+                              </Tooltip>
+                            )}
+                            {noEst > 0 && (
+                              <Tooltip title={`${noEst} shot${noEst > 1 ? 's' : ''} mangler estimert tid`}>
+                                <Chip
+                                  icon={<TimeIcon style={{ fontSize: 11 }} />}
+                                  label={noEst}
+                                  size="small"
+                                  sx={{ bgcolor: 'rgba(120,144,156,0.18)', color: '#90a4ae', height: 18, fontSize: '9px', minWidth: 32, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.5 } }}
+                                />
+                              </Tooltip>
+                            )}
+                            {nearDeadline && notStartedCount > 0 && (
+                              <Tooltip title={`${notStartedCount} ustartet shot \u2014 innspilling om ${daysUntil ?? 0} dag${daysUntil === 1 ? '' : 'er'}`}>
+                                <Chip
+                                  icon={<WarningIcon style={{ fontSize: 11 }} />}
+                                  label="!"
+                                  size="small"
+                                  sx={{ bgcolor: 'rgba(244,67,54,0.18)', color: '#ef5350', height: 18, fontSize: '10px', fontWeight: 700, minWidth: 28, '& .MuiChip-label': { px: 0.5 }, '& .MuiChip-icon': { ml: 0.5 } }}
+                                />
+                              </Tooltip>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
                       <Tooltip title="Rediger scene">
@@ -2881,6 +3274,41 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                       </Tooltip>
                     </Box>
                   </Box>
+
+                  {/* Storyboard Generation Progress */}
+                  {generatingStoryboardImages[shotList.id] && (
+                    <Box
+                      sx={{
+                        mb: 1.5,
+                        p: 1,
+                        bgcolor: 'rgba(0,212,255,0.08)',
+                        borderRadius: 1.5,
+                        border: '1px solid rgba(0,212,255,0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                      }}
+                    >
+                      {storyboardGenerationProgress[shotList.id] ? (
+                        <>
+                          <MUICircularProgress size={14} sx={{ color: '#00d4ff', flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ color: '#00d4ff', flex: 1 }}>
+                            Genererer bilde {storyboardGenerationProgress[shotList.id].current} / {storyboardGenerationProgress[shotList.id].total}
+                          </Typography>
+                          {storyboardGenerationProgress[shotList.id].current >= storyboardGenerationProgress[shotList.id].total && (
+                            <WarningIcon sx={{ fontSize: 14, color: '#9333ea' }} />
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <MUICircularProgress size={14} sx={{ color: '#00d4ff', flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ color: '#00d4ff' }}>
+                            Starter storyboard-generering…
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
+                  )}
 
                   {/* Quick Add Shot - Always visible */}
                   <Box
@@ -2974,12 +3402,40 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                     </Box>
                   </Box>
 
+                  {/* Production Day Info */}
+                  {shotListProductionDays.get(shotList.id) != null && (
+                    <Box sx={{ mb: 1.5 }}>
+                      <ProductionDayCardInfo
+                        productionDay={shotListProductionDays.get(shotList.id) ?? null}
+                        shots={shotList.shots}
+                        compact
+                      />
+                    </Box>
+                  )}
+
                   {/* Expandable shots list */}
                   <Collapse in={expandedCards.has(shotList.id)}>
                     <Box sx={{ mb: 1.5, p: 1, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1 }}>
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 600, mb: 1, display: 'block' }}>
                         Shots i denne listen:
                       </Typography>
+                      {/* Status summary inside drilldown */}
+                      {shotList.shots.length > 0 && (() => {
+                        const counts: Record<ShotStatus, number> = { not_started: 0, in_progress: 0, completed: 0 };
+                        shotList.shots.forEach(s => { const st: ShotStatus = s.status || 'not_started'; counts[st]++; });
+                        return (
+                          <Box sx={{ display: 'flex', gap: 0.75, mb: 1, flexWrap: 'wrap' }}>
+                            {(['not_started', 'in_progress', 'completed'] as ShotStatus[]).map(st => counts[st] > 0 && (
+                              <Chip
+                                key={st}
+                                label={`${statusConfig[st].label}: ${counts[st]}`}
+                                size="small"
+                                sx={{ bgcolor: statusConfig[st].bgColor, color: statusConfig[st].color, height: 20, fontSize: '0.68rem', fontWeight: 600, '& .MuiChip-label': { px: 1 } }}
+                              />
+                            ))}
+                          </Box>
+                        );
+                      })()}
                       <DndContext
                         sensors={sensors}
                         collisionDetection={closestCenter}
@@ -3083,7 +3539,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                         borderRadius: 1,
                                         bgcolor: {
                                           red: '#f44336',
-                                          orange: '#ff9800',
+                                          orange: '#9333ea',
                                           yellow: '#ffeb3b',
                                           green: '#4caf50',
                                           blue: '#2196f3',
@@ -3164,6 +3620,16 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                           {shot.reservedBy === user?.id ? <UnreserveIcon sx={{ fontSize: 16 }} /> : <ReserveIcon sx={{ fontSize: 16 }} />}
                                         </IconButton>
                                       </span>
+                                    </Tooltip>
+                                    <Tooltip title={`Neste status: ${getNextStatus(shot.status || 'not_started')}`}>
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleUpdateShotInline(shotList, shot.id, { status: getNextStatus(shot.status || 'not_started') })}
+                                        sx={{ p: 0.5, color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#4caf50' } }}
+                                        aria-label="Sett neste status"
+                                      >
+                                        <NextIcon sx={{ fontSize: 16 }} />
+                                      </IconButton>
                                     </Tooltip>
                                     <Tooltip title="Rediger">
                                       <IconButton
@@ -3253,12 +3719,67 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                       '& .MuiChip-icon': { color: 'inherit', fontSize: '14px !important' },
                                     }}
                                   />
+
+                                  {/* Quick assign */}
+                                  {crewMembers.length > 0 && (
+                                    <Tooltip title={shot.assigneeId ? `Tilordnet: ${getAssigneeLabel(shot.assigneeId)}` : 'Tilordne'}>
+                                      <FormControl size="small">
+                                        <Select
+                                          value={shot.assigneeId || ''}
+                                          onChange={(e) => {
+                                            const memberId = e.target.value;
+                                            const name = crewMembers.find((m) => m.id === memberId)?.name || '';
+                                            handleQuickAssign(shotList, shot, memberId, name);
+                                          }}
+                                          displayEmpty
+                                          MenuProps={{ sx: { zIndex: Z_INDEX.selectMenu } }}
+                                          renderValue={(val) => (
+                                            <AssignIcon sx={{ fontSize: 14, color: val ? '#4caf50' : 'rgba(255,255,255,0.4)' }} />
+                                          )}
+                                          sx={{
+                                            height: 26,
+                                            minWidth: 36,
+                                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+                                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                                            '& .MuiSelect-select': { py: 0.5, px: 0.75, display: 'flex', alignItems: 'center' },
+                                            '& .MuiSelect-icon': { display: 'none' },
+                                            bgcolor: shot.assigneeId ? 'rgba(76,175,80,0.1)' : 'transparent',
+                                          }}
+                                        >
+                                          <MenuItem value="">
+                                            <em>Ingen</em>
+                                          </MenuItem>
+                                          {crewMembers.map((member) => (
+                                            <MenuItem key={member.id} value={member.id}>
+                                              {member.name}
+                                            </MenuItem>
+                                          ))}
+                                        </Select>
+                                      </FormControl>
+                                    </Tooltip>
+                                  )}
                                   
+                                  {/* Assignee name chip */}
+                                  {shot.assigneeId && crewMembers.length > 0 && (
+                                    <Chip
+                                      label={getAssigneeLabel(shot.assigneeId)}
+                                      size="small"
+                                      onDelete={() => { handleQuickAssign(shotList, shot, '', ''); }}
+                                      sx={{
+                                        bgcolor: 'rgba(76,175,80,0.1)',
+                                        color: '#4caf50',
+                                        height: 22,
+                                        fontSize: '0.65rem',
+                                        maxWidth: 100,
+                                        '& .MuiChip-deleteIcon': { fontSize: 13, color: '#4caf50', '&:hover': { color: '#81c784' } },
+                                        '& .MuiChip-label': { px: 1 },
+                                      }}
+                                    />
+                                  )}
+
                                   {/* Time estimate */}
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 'auto' }}>
-                                    <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.7rem' }}>
-                                      Tid:
-                                    </Typography>
+                                    <TimeIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }} />
                                     <TextField
                                       size="small"
                                       type="number"
@@ -3295,8 +3816,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                       label={shot.reservedByName || 'Reservert'}
                                       size="small"
                                       sx={{
-                                        bgcolor: 'rgba(255,152,0,0.15)',
-                                        color: '#ff9800',
+                                        bgcolor: 'rgba(147,51,234,0.15)',
+                                        color: '#9333ea',
                                         height: 24,
                                         fontSize: '0.65rem',
                                         '& .MuiChip-icon': { color: 'inherit' },
@@ -3514,6 +4035,50 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                       </Box>
                     </Box>
                   </Collapse>
+
+                  {/* Next up shots - shown when card is collapsed */}
+                  {!expandedCards.has(shotList.id) && getNextUpShots(shotList).length > 0 && (
+                    <Box
+                      sx={{
+                        mb: 1.5,
+                        p: 1,
+                        bgcolor: 'rgba(233,30,99,0.05)',
+                        borderRadius: 1.5,
+                        border: '1px solid rgba(233,30,99,0.15)',
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ color: '#e91e63', fontWeight: 600, mb: 0.5, display: 'block' }}>
+                        Neste opp:
+                      </Typography>
+                      <Stack spacing={0.5}>
+                        {getNextUpShots(shotList).map((s) => (
+                          <Box key={s.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                            <Box
+                              sx={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                flexShrink: 0,
+                                bgcolor: priorityConfig[s.priority || 'important'].color,
+                              }}
+                            />
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: 'rgba(255,255,255,0.87)',
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {s.description || getShotTypeLabel(s.shotType)}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
 
                   {/* Notes preview - matching ProductionDayView style with animated icon */}
                   {shotList.notes && !expandedCards.has(shotList.id) && (
@@ -4068,7 +4633,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                     {[
                       { value: undefined, label: 'Ingen', color: 'rgba(255,255,255,0.2)' },
                       { value: 'red', label: 'Rød', color: '#f44336' },
-                      { value: 'orange', label: 'Oransje', color: '#ff9800' },
+                      { value: 'orange', label: 'Oransje', color: '#9333ea' },
                       { value: 'yellow', label: 'Gul', color: '#ffeb3b' },
                       { value: 'green', label: 'Grønn', color: '#4caf50' },
                       { value: 'blue', label: 'Blå', color: '#2196f3' },
@@ -5001,6 +5566,27 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
           >
             Avbryt
           </Button>
+          {selectedShotListForStoryboard && (
+            <Button
+              onClick={() => {
+                handleExportStoryboardPDF(selectedShotListForStoryboard);
+                handleCloseStoryboardDialog();
+              }}
+              variant="outlined"
+              disabled={selectedShotsForConversion.size === 0}
+              startIcon={<ExportIcon />}
+              sx={{
+                color: '#9333ea',
+                borderColor: '#9333ea',
+                minHeight: TOUCH_TARGET_SIZE,
+                ...focusVisibleStyles,
+                '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
+                '&:disabled': { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' },
+              }}
+            >
+              Eksporter PDF
+            </Button>
+          )}
           <Button
             onClick={handleConvertToStoryboard}
             variant="contained"
@@ -5206,7 +5792,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
         }}
       >
         <DialogTitle sx={{ color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <PdfIcon sx={{ color: '#ff9800' }} />
+          <PdfIcon sx={{ color: '#9333ea' }} />
           Eksporter til PDF
         </DialogTitle>
         <DialogContent>
@@ -5259,6 +5845,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
             <Button
               variant="outlined"
               fullWidth
+              startIcon={<ExportIcon />}
               onClick={() => {
                 handleExportAllPDF();
                 setShowExportDialog(false);
@@ -5270,7 +5857,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                 borderColor: 'rgba(255,255,255,0.2)',
                 justifyContent: 'flex-start',
                 textAlign: 'left',
-                '&:hover': { borderColor: '#ff9800', bgcolor: 'rgba(255,152,0,0.1)' },
+                '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
               }}
             >
               <Box>
@@ -5280,6 +5867,38 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                 </Typography>
               </Box>
             </Button>
+
+            {exportSceneId && (() => {
+              const selectedForStoryboard = shotLists.find((sl) => sl.id === exportSceneId);
+              if (!selectedForStoryboard) return null;
+              return (
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<ExportIcon />}
+                  onClick={() => {
+                    handleExportStoryboardPDF(selectedForStoryboard);
+                    setShowExportDialog(false);
+                    setExportSceneId(null);
+                  }}
+                  sx={{
+                    py: 2,
+                    color: '#00d4ff',
+                    borderColor: 'rgba(0,212,255,0.3)',
+                    justifyContent: 'flex-start',
+                    textAlign: 'left',
+                    '&:hover': { borderColor: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' },
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ fontWeight: 600 }}>Storyboard PDF</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Eksporter {getSceneName(selectedForStoryboard.sceneId, selectedForStoryboard.sceneName)} som storyboard
+                    </Typography>
+                  </Box>
+                </Button>
+              );
+            })()}
             
             {!exportSceneId && (
               <>
@@ -5938,6 +6557,108 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Audit Log Popover ──────────────────────────────────────────────────────── */}
+      <Popover
+        open={showAuditLog}
+        anchorEl={auditLogAnchorRef.current}
+        onClose={() => setShowAuditLog(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1a1a2e',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 2,
+            width: 380,
+            maxWidth: '90vw',
+          },
+        }}
+      >
+        <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <HistoryIcon sx={{ color: '#e91e63', fontSize: 18 }} />
+            <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+              Aktivitetslogg
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {/* Live connection dot */}
+            <Box sx={{
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+              bgcolor: rt.connectionStatus === 'connected' ? '#4caf50' : rt.connectionStatus === 'offline' ? '#ef5350' : '#9333ea',
+            }} />
+            <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
+              {rt.connectionStatus === 'connected' ? 'Live' : rt.connectionStatus === 'offline' ? 'Offline' : 'Kobler til…'}
+            </Typography>
+            <IconButton size="small" onClick={() => setShowAuditLog(false)} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}>
+              <CloseIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Box>
+        </Box>
+
+        {/* Presence row */}
+        {rt.presence.size > 0 && (
+          <Box sx={{ px: 2, py: 1, bgcolor: 'rgba(76,175,80,0.07)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>Også aktiv:</Typography>
+            {[...rt.presence.values()].map(p => (
+              <Chip
+                key={p.userId}
+                label={p.userName}
+                size="small"
+                sx={{ height: 20, fontSize: '0.68rem', bgcolor: 'rgba(76,175,80,0.2)', color: '#4caf50', border: '1px solid rgba(76,175,80,0.3)' }}
+              />
+            ))}
+          </Box>
+        )}
+
+        {/* Log entries */}
+        <Box sx={{ maxHeight: 340, overflowY: 'auto' }}>
+          {rt.auditLog.length === 0 ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem' }}>
+                Ingen aktivitet registrert ennå
+              </Typography>
+            </Box>
+          ) : (
+            <List dense disablePadding>
+              {rt.auditLog.map((entry, idx) => (
+                <Fragment key={entry.id}>
+                  <ListItem
+                    alignItems="flex-start"
+                    sx={{
+                      px: 2,
+                      py: 1,
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.25 }}>
+                          <Typography component="span" sx={{ color: '#e91e63', fontWeight: 600, fontSize: '0.8rem' }}>
+                            {entry.userName}
+                          </Typography>
+                          <Typography component="span" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
+                            {entry.action}
+                          </Typography>
+                        </Box>
+                      }
+                      secondary={
+                        <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>
+                          {new Date(entry.timestamp).toLocaleString('nb-NO', { timeStyle: 'short', dateStyle: 'short' })}
+                        </Typography>
+                      }
+                    />
+                  </ListItem>
+                  {idx < rt.auditLog.length - 1 && (
+                    <MuiDivider sx={{ borderColor: 'rgba(255,255,255,0.05)', mx: 2 }} />
+                  )}
+                </Fragment>
+              ))}
+            </List>
+          )}
+        </Box>
+      </Popover>
 
     </Box>
   );

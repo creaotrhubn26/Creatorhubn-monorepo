@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, memo, type FC, type ReactNode, type ChangeEvent, type MouseEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useReducer, memo, type FC, type ReactNode, type ChangeEvent, type MouseEvent } from 'react';
 import {
   Box,
   Typography,
@@ -26,6 +26,7 @@ import {
   Alert,
   useMediaQuery,
   useTheme,
+  Skeleton,
 } from '@mui/material';
 import {
   Theaters as SceneIcon,
@@ -66,14 +67,12 @@ import {
   Phone as PhoneIcon,
   Email as EmailIcon,
   VideoLibrary as VideoLibraryIcon,
-  // Production Workflow Icons
   FiberManualRecord as LiveIcon,
   ViewWeek as StripboardIcon,
   CalendarMonth as CalendarIcon,
   Description as CallSheetIcon,
   Refresh as RefreshIcon,
   Settings as SettingsIcon,
-  // Additional icons to replace emojis
   WbSunny as SunIcon,
   NightsStay as MoonIcon,
   WbTwilight as TwilightIcon,
@@ -108,9 +107,24 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { SceneBreakdown, DialogueLine, Act, Manuscript, CastingShot, ShotList, Candidate, Role, ShotType } from '../models/casting';
+import type { StoryLogicState } from '../services/storyLogicService';
 import { ProductionEstimateDialog } from './ProductionEstimateDialog';
 import { castingService } from '../services/castingService';
 import { sceneNeedsService } from '../services/sceneNeedsService';
+import {
+  speak as ttsSpeak,
+  stopTTS,
+  pauseTTS,
+  resumeTTS,
+  isTTSPlaying,
+  assignCharacterVoices,
+  preloadTTS,
+  clearTTSCache,
+  TTS_VOICES,
+  TTS_LANGUAGES,
+  type TTSVoice,
+  type TTSLanguage,
+} from '../services/ttsService';
 
 // Production Workflow Components
 import LiveSetMode from './production/LiveSetMode';
@@ -123,14 +137,71 @@ import {
   downloadCallSheetPDF,
   DEFAULT_CALL_SHEET_OPTIONS,
 } from './production';
-import type { CallSheet, ShootingDay, LiveSetStatus } from './production';
+import type { ShootingDay, LiveSetStatus } from './production';
+import AddShotDialog from './production/AddShotDialog';
+import ProductionNotesPanel from './production/ProductionNotesPanel';
+import {
+  type NoteType,
+  type ProductionNotes,
+  type ShotSearchResult,
+  addShotReducer,
+  deriveSceneStatus,
+  type DerivedSceneStatus,
+  loadZoomPreference,
+  saveZoomPreference,
+  loadFullscreenPreference,
+  saveFullscreenPreference,
+  type SelectedMap,
+  selectedMapToggle,
+  selectedMapFromIds,
+  selectedMapSize,
+  selectedMapHas,
+  selectedMapIds,
+  EMPTY_SELECTION,
+  type SceneFilters,
+  DEFAULT_FILTERS,
+  // Workflow UI FSM
+  type WorkflowUIState,
+  type CallSheetRef,
+  type BulkShotTemplate,
+  workflowReducer,
+  INITIAL_WORKFLOW_STATE,
+  loadWorkflowPreference,
+  saveWorkflowPreference,
+  // Checklist
+  type ChecklistKey,
+  type SceneChecklist,
+  EMPTY_CHECKLIST,
+  deriveReadinessScore,
+  // Search UI FSM
+  type SearchSource,
+  type ShotCafeFilm,
+  type ReferenceImageResult,
+  searchReducer,
+  INITIAL_SEARCH_STATE,
+  // Inspector UI FSM
+  inspectorReducer,
+  INITIAL_INSPECTOR_STATE,
+  loadExpandedSections,
+  saveExpandedSections,
+  // Shot metadata types
+  type ShotMeta as _ShotMeta,
+  type ShotMetadataMap,
+  type ShotPreset,
+  buildDefaultShotMeta,
+  metaToShotProperties,
+  shotPropertiesToMeta,
+  DEFAULT_SHOT_PROPERTIES,
+} from './production/types';
+import { useSceneHistory } from './production/useSceneHistory';
+import { useEquipmentInventory } from './production/useEquipmentInventory';
 
 // ============================================
 // 7-TIER RESPONSIVE SYSTEM
 // ============================================
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
 
-const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean } => {
+const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean; breakpointSpacing: number } => {
   const theme = useTheme();
   const isXs = useMediaQuery('(max-width:599px)');
   const isSm = useMediaQuery('(min-width:600px) and (max-width:899px)');
@@ -144,8 +215,10 @@ const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boole
   const isMobile = tier === 'xs' || tier === 'sm';
   const isTablet = tier === 'md';
   const isDesktop = tier === 'lg' || tier === 'xl' || tier === 'xxl' || tier === '4k';
+  // Use theme spacing and isXs for fine-grained responsive control
+  const breakpointSpacing = isXs ? theme.spacing(0.5) as unknown as number : theme.spacing(1) as unknown as number;
 
-  return { tier, isMobile, isTablet, isDesktop, is4K };
+  return { tier, isMobile, isTablet, isDesktop, is4K, breakpointSpacing };
 };
 
 const getResponsiveValues = (tier: ScreenTier) => {
@@ -202,6 +275,7 @@ interface ProductionManuscriptViewProps {
   dialogueLines: DialogueLine[];
   acts: Act[];
   projectId: string;
+  storyLogicData?: StoryLogicState | null;
   onSceneUpdate?: (scene: SceneBreakdown) => void;
   onSceneDelete?: (sceneId: string) => void;
   onSceneCreate?: (scene: SceneBreakdown) => void;
@@ -210,12 +284,21 @@ interface ProductionManuscriptViewProps {
   onClose?: () => void;
 }
 
+// ============================================
+// UI Design Tokens — single source for all scene-list colours
+// ============================================
+const UI = {
+  bg:       { selected: 'rgba(59,130,246,0.1)', selectedHover: 'rgba(59,130,246,0.15)', hover: 'rgba(255,255,255,0.02)', transparent: 'transparent', thumbnail: '#1a2230' },
+  text:     { primary: '#d1d5db', secondary: '#9ca3af', muted: '#6b7280', dimmed: '#4b5563', white: '#fff' },
+  border:   { default: '#252d3d', selected: '#3b82f6', transparent: 'transparent' },
+  accent:   { blue: '#3b82f6', red: '#ef4444' },
+  status:   { complete: '#4caf50', partial: '#9333ea', missing: '#f44336' },
+  needs:    { cam: '#f97316', light: '#fbbf24', sound: '#06b6d4' },
+  ring:     { selected: '0 0 0 1px rgba(59,130,246,0.35)' },
+} as const;
+
 // Status colors
-const STATUS_COLORS = {
-  complete: '#4caf50',
-  partial: '#ff9800', 
-  missing: '#f44336',
-};
+const STATUS_COLORS = UI.status;
 
 // Shot type colors for timeline
 const SHOT_COLORS: Record<string, string> = {
@@ -236,11 +319,18 @@ interface SortableSceneItemProps {
   status: string;
   statusColor: string;
   needs: { cam: boolean; light: boolean; sound: boolean };
-  shots: CastingShot[];
+  shotsCount: number;
   showTags: boolean;
   thumbnail?: string;
   onSceneClick: (scene: SceneBreakdown) => void;
 }
+
+// Status icon helper — accessibility: never rely on colour alone
+const STATUS_ICON: Record<string, ReactNode> = {
+  complete: <CheckCircleIcon sx={{ fontSize: 12, color: UI.status.complete }} />,
+  partial:  <WarningIcon      sx={{ fontSize: 12, color: UI.status.partial }} />,
+  missing:  <CancelIcon        sx={{ fontSize: 12, color: UI.status.missing }} />,
+};
 
 const SortableSceneItem: FC<SortableSceneItemProps> = memo(({
   scene,
@@ -248,7 +338,7 @@ const SortableSceneItem: FC<SortableSceneItemProps> = memo(({
   status,
   statusColor,
   needs,
-  shots,
+  shotsCount,
   showTags,
   thumbnail,
   onSceneClick,
@@ -262,132 +352,225 @@ const SortableSceneItem: FC<SortableSceneItemProps> = memo(({
     isDragging,
   } = useSortable({ id: scene.id });
 
+  // Thumbnail loading state (#5)
+  const [thumbLoaded, setThumbLoaded] = useState(!thumbnail);
+  useEffect(() => {
+    if (thumbnail) {
+      setThumbLoaded(false);
+      const img = new Image();
+      img.onload = () => setThumbLoaded(true);
+      img.onerror = () => setThumbLoaded(true);
+      img.src = thumbnail;
+    }
+  }, [thumbnail]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Build needs tooltip string (#7)
+  const needsLabels: string[] = [];
+  if (needs.cam)   needsLabels.push('Camera');
+  if (needs.light) needsLabels.push('Light');
+  if (needs.sound) needsLabels.push('Sound');
+
   return (
     <Box
       ref={setNodeRef}
       style={style}
-      onClick={() => onSceneClick(scene)}
       sx={{
-        px: 2,
-        py: 1.5,
         display: 'flex',
         alignItems: 'center',
-        cursor: isDragging ? 'grabbing' : 'pointer',
-        bgcolor: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-        borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent',
-        transition: 'all 0.15s',
-        '&:hover': { 
-          bgcolor: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.02)',
-          transform: 'translateX(2px)',
-        },
+        px: 0.5,
+        py: 0,
+        cursor: isDragging ? 'grabbing' : 'default',
+        bgcolor: isSelected ? UI.bg.selected : UI.bg.transparent,
+        borderLeft: isSelected ? `3px solid ${UI.border.selected}` : `3px solid ${UI.border.transparent}`,
+        boxShadow: isSelected ? UI.ring.selected : 'none',
+        transition: 'background-color 0.15s, box-shadow 0.15s',
       }}
     >
-      {/* Drag Handle */}
+      {/* Drag Handle — enlarged hit area, isolated from select (#1 #4) */}
       <Box
         {...attributes}
         {...listeners}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Drag scene ${scene.sceneNumber}`}
         sx={{
           display: 'flex',
           alignItems: 'center',
-          mr: 1,
+          justifyContent: 'center',
+          px: 1,
+          py: 0.5,
           cursor: 'grab',
-          color: '#6b7280',
-          '&:hover': { color: '#9ca3af' },
+          color: UI.text.muted,
+          borderRadius: '4px',
+          '&:hover': { color: UI.text.secondary, bgcolor: 'rgba(255,255,255,0.04)' },
         }}
       >
         <DragIcon sx={{ fontSize: 16 }} />
       </Box>
 
-      {/* Scene Thumbnail/Icon */}
+      {/* Select zone — thumbnail + info (#1) */}
       <Box
+        onClick={() => onSceneClick(scene)}
         sx={{
-          width: 44,
-          height: 32,
-          borderRadius: '6px',
-          bgcolor: isSelected ? '#3b82f6' : '#1a2230',
-          border: `1px solid ${isSelected ? '#3b82f6' : '#252d3d'}`,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          mr: 1.5,
-          position: 'relative',
-          overflow: 'hidden',
-          backgroundImage: thumbnail ? `url(${thumbnail})` : 'none',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
+          flex: 1,
+          minWidth: 0,
+          cursor: 'pointer',
+          px: 1,
+          py: 1.5,
+          borderRadius: '6px',
+          '&:hover': { bgcolor: isSelected ? UI.bg.selectedHover : UI.bg.hover },
         }}
       >
-        {!thumbnail && (
-          <Typography sx={{ 
-            fontSize: 11, 
-            fontWeight: 700, 
-            color: isSelected ? '#fff' : '#9ca3af',
-          }}>
-            {scene.sceneNumber}
-          </Typography>
-        )}
-        {/* Status indicator */}
-        <Box sx={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 3,
-          bgcolor: statusColor,
-        }} />
-      </Box>
-
-      {/* Scene info */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography sx={{
-          fontSize: 12,
-          fontWeight: isSelected ? 600 : 500,
-          color: isSelected ? '#fff' : '#d1d5db',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
-          {scene.intExt}. {scene.locationName}
-        </Typography>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography sx={{ fontSize: 10, color: '#6b7280' }}>
-            {scene.timeOfDay}
-          </Typography>
-          {shots.length > 0 && (
-            <Typography sx={{ fontSize: 10, color: '#4b5563' }}>
-              • {shots.length} shots
+        {/* Scene Thumbnail/Icon (#5 fallback + #8 scene number badge) */}
+        <Box
+          sx={{
+            width: 44,
+            height: 32,
+            borderRadius: '6px',
+            bgcolor: isSelected ? UI.accent.blue : UI.bg.thumbnail,
+            border: `1px solid ${isSelected ? UI.accent.blue : UI.border.default}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mr: 1.5,
+            position: 'relative',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}
+        >
+          {/* Background thumbnail or skeleton */}
+          {thumbnail && thumbLoaded && (
+            <Box sx={{ position: 'absolute', inset: 0, backgroundImage: `url(${thumbnail})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+          )}
+          {thumbnail && !thumbLoaded && (
+            <Skeleton variant="rectangular" width={44} height={32} sx={{ bgcolor: 'rgba(255,255,255,0.05)', position: 'absolute', inset: 0 }} />
+          )}
+          {!thumbnail && (
+            <Typography sx={{ fontSize: 11, fontWeight: 700, color: isSelected ? UI.text.white : UI.text.secondary }}>
+              {scene.sceneNumber}
             </Typography>
           )}
-        </Stack>
+          {/* Scene number badge — always visible when thumbnail present (#8) */}
+          {thumbnail && (
+            <Box sx={{ position: 'absolute', top: 1, left: 1, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: '3px', px: 0.4, lineHeight: 1 }}>
+              <Typography sx={{ fontSize: 8, fontWeight: 700, color: UI.text.white }}>{scene.sceneNumber}</Typography>
+            </Box>
+          )}
+          {/* Status icon badge — accessibility, not colour alone (#6) */}
+          <Box sx={{ position: 'absolute', bottom: 1, right: 1 }}>
+            {STATUS_ICON[status]}
+          </Box>
+          {/* Status color bar */}
+          <Box sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, bgcolor: statusColor }} />
+        </Box>
+
+        {/* Scene info */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{
+            fontSize: 12,
+            fontWeight: isSelected ? 600 : 500,
+            color: isSelected ? UI.text.white : UI.text.primary,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {scene.intExt}. {scene.locationName}
+          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography sx={{ fontSize: 10, color: UI.text.muted }}>
+              {scene.timeOfDay}
+            </Typography>
+            {shotsCount > 0 && (
+              <Typography sx={{ fontSize: 10, color: UI.text.dimmed }}>
+                • {shotsCount} shots
+              </Typography>
+            )}
+          </Stack>
+        </Box>
       </Box>
 
-      {/* Needs indicator dots */}
-      {showTags && (needs.cam || needs.light || needs.sound) && (
-        <Stack direction="row" spacing={0.5} sx={{ ml: 1 }}>
-          {needs.cam && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#f97316' }} />}
-          {needs.light && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#fbbf24' }} />}
-          {needs.sound && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#06b6d4' }} />}
-        </Stack>
+      {/* Needs indicator — with tooltip (#7) */}
+      {showTags && needsLabels.length > 0 && (
+        <Tooltip title={`Needs: ${needsLabels.join(', ')}`} placement="left" arrow>
+          <Stack direction="row" spacing={0.5} sx={{ ml: 0.5, mr: 0.5 }}>
+            {needs.cam   && <CameraIcon sx={{ fontSize: 12, color: UI.needs.cam }} />}
+            {needs.light && <LightIcon  sx={{ fontSize: 12, color: UI.needs.light }} />}
+            {needs.sound && <MicIcon    sx={{ fontSize: 12, color: UI.needs.sound }} />}
+          </Stack>
+        </Tooltip>
       )}
     </Box>
   );
 }); // End of memo for SortableSceneItem
 
-// Debounce helper
-const useDebounce = <T,>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debouncedValue;
-};
+// ============================================
+// Debounce hooks — bærekraftig pattern
+// ============================================
+
+/**
+ * Debounced callback — for object/array autosave without state churn.
+ * Returns { debounced, cancel, flush }.
+ * - debounced(...args): starts/restarts the delay timer
+ * - cancel(): clears pending invocation
+ * - flush(): fires immediately if pending
+ */
+function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: number) {
+  const fnRef = useRef(fn);
+  useEffect(() => { fnRef.current = fn; }, [fn]);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingArgsRef = useRef<Parameters<T> | null>(null);
+
+  const cancel = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    pendingArgsRef.current = null;
+  }, []);
+
+  const flush = useCallback(() => {
+    if (timerRef.current && pendingArgsRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      fnRef.current(...pendingArgsRef.current);
+      pendingArgsRef.current = null;
+    }
+  }, []);
+
+  const debounced = useCallback((...args: Parameters<T>) => {
+    pendingArgsRef.current = args;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      fnRef.current(...args);
+      pendingArgsRef.current = null;
+      timerRef.current = null;
+    }, delay);
+  }, [delay]);
+
+  // Auto-cancel on unmount
+  useEffect(() => cancel, [cancel]);
+
+  return { debounced, cancel, flush };
+}
+
+// ============================================
+// Module-level constants (outside component body to avoid re-creation)
+// ============================================
+const AVAILABLE_CAMERAS = [
+  'Sony FX6', 'Sony FX3', 'Sony A7S III', 'Sony Venice 2',
+  'RED Komodo', 'RED V-Raptor', 'ARRI Alexa Mini LF', 'ARRI Alexa 35',
+  'Blackmagic URSA Mini Pro', 'Canon C70', 'Canon R5 C', 'Panasonic S1H',
+];
+
+/** Pre-computed lowercase set for case-insensitive camera matching */
+const AVAILABLE_CAMERAS_LOWER = new Set(AVAILABLE_CAMERAS.map(c => c.toLowerCase()));
 
 export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   manuscript,
@@ -395,6 +578,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   dialogueLines,
   acts,
   projectId,
+  storyLogicData,
   onSceneUpdate,
   onSceneDelete,
   onSceneCreate,
@@ -405,6 +589,14 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // 7-Tier Responsive
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
+  
+  // Desktop/4K-specific layout adjustments — used for responsive container sizing
+  const panelMaxWidth = is4K ? 2560 : isDesktop ? 1400 : undefined;
+  const sidebarExpandedWidth = is4K ? 400 : isDesktop ? 320 : 280;
+  const containerStyle = useMemo(() => ({
+    maxWidth: panelMaxWidth,
+    sidebarWidth: sidebarExpandedWidth,
+  }), [panelMaxWidth, sidebarExpandedWidth]);
   
   // Mobile drawer states
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -424,52 +616,50 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [readThroughPlaying, setReadThroughPlaying] = useState(false);
   const [readThroughCurrentLine, setReadThroughCurrentLine] = useState(0);
   const [readThroughStartTime, setReadThroughStartTime] = useState<number | null>(null);
-  const [readThroughNotes, setReadThroughNotes] = useState<Record<string, string>>({});
+  const [readThroughNotes, setReadThroughNotes] = useState<Record<number, string>>({});
+
+  // TTS (Text-to-Speech) state — multilingual voice integration
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [ttsVoice, setTtsVoice] = useState<TTSVoice>('nova');
+  const [ttsLanguage, setTtsLanguage] = useState<TTSLanguage | ''>('');
+  const [ttsSpeed, setTtsSpeed] = useState(1.0);
+  const [ttsCharacterVoices, setTtsCharacterVoices] = useState<Record<string, TTSVoice>>({});
+  const [ttsUseCharacterVoices, setTtsUseCharacterVoices] = useState(true);
+  const ttsPlayingRef = useRef(false);
   const [showTalentPanel, setShowTalentPanel] = useState(false);
   const [sceneCandidates, setSceneCandidates] = useState<Candidate[]>([]);
   const [projectRoles, setProjectRoles] = useState<Role[]>([]);
 
-  // Production notes state - editable notes per scene
-  const [productionNotes, setProductionNotes] = useState<Record<string, { camera: string; director: string }>>({});
-  const [editingProductionNote, setEditingProductionNote] = useState<{ sceneId: string; type: 'camera' | 'director' } | null>(null);
-  const [productionNoteValue, setProductionNoteValue] = useState('');
-  const [showAddNoteDialog, setShowAddNoteDialog] = useState(false);
-  const [newNoteType, setNewNoteType] = useState<'camera' | 'director' | 'sound' | 'vfx'>('camera');
+  // Production notes — normalized 4-type model, per-scene autosave lives in <ProductionNotesPanel>
+  const [productionNotes, setProductionNotes] = useState<ProductionNotes>({});
 
-  // Scene status tracking
-  const [sceneStatuses, setSceneStatuses] = useState<Record<string, 'not-started' | 'in-progress' | 'complete'>>({});
+  // Scene status — derived from shot data (no manual state needed for core status)
+  // Manual overrides stored here only for explicit user overrides
+  const [sceneStatusOverrides, setSceneStatusOverrides] = useState<Record<string, DerivedSceneStatus>>({});
 
-  // Manuscript zoom state
-  const [manuscriptZoom, setManuscriptZoom] = useState(1); // 1 = 100%, 0.75 = 75%, 1.5 = 150%
-  const [isManuscriptFullscreen, setIsManuscriptFullscreen] = useState(false);
+  // Manuscript zoom — persisted to localStorage
+  const [manuscriptZoom, setManuscriptZoom] = useState(loadZoomPreference);
+  const [isManuscriptFullscreen, setIsManuscriptFullscreen] = useState(loadFullscreenPreference);
 
-  // Add Shot Dialog state
-  const [showAddShotDialog, setShowAddShotDialog] = useState(false);
-  const [addShotMode, setAddShotMode] = useState<'upload' | 'reference' | null>(null);
-  const [addShotReferenceQuery, setAddShotReferenceQuery] = useState('');
-  const [addShotReferenceResults, setAddShotReferenceResults] = useState<Array<{
-    id: string;
-    url: string;
-    thumbnailUrl: string;
-    source: string;
-    attribution?: string;
-    film?: string;
-    shotType?: string;
-  }>>([]);
-  const [addShotLoading, setAddShotLoading] = useState(false);
-  const [selectedShotImage, setSelectedShotImage] = useState<string | null>(null);
+  // Add Shot Dialog — FSM via useReducer (all dialog state in one place)
+  const [addShotState, addShotDispatch] = useReducer(addShotReducer, { open: false });
 
-  // Timeline state
-  const [timelinePlayheadPosition, setTimelinePlayheadPosition] = useState(0); // 0-100%
-  const [timelineCurrentTime, setTimelineCurrentTime] = useState(0); // in seconds
+  // Timeline state — timelineCurrentTime is the single source of truth
+  const [timelineCurrentTime, setTimelineCurrentTime] = useState(0); // in seconds (throttled for UI)
   const [timelineIsPlaying, setTimelineIsPlaying] = useState(false);
   const [timelineZoom, setTimelineZoom] = useState(1); // 1 = normal, 2 = 2x zoom
   const [timelineViewMode, setTimelineViewMode] = useState<'timeline' | 'grid' | 'list'>('timeline');
 
-  // Undo/Redo state
-  const [sceneHistory, setSceneHistory] = useState<SceneBreakdown[][]>([scenes]);
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
+  // Playhead perf refs — DOM-direct updates, no re-render per frame
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const playheadRef = useRef<HTMLDivElement | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const lastTsRef = useRef<number | null>(null);
+  const currentTimeRef = useRef(0);
+
+  // Undo/Redo — patch-based command pattern (replaces full-snapshot history)
+  const { pushPatch, undo: undoPatch, redo: redoPatch, canUndo: _canUndo, canRedo: _canRedo, lastPatchLabel: _lastPatchLabel, reset: resetHistory } = useSceneHistory();
+  const [selectedScenes, setSelectedScenes] = useState<SelectedMap>(EMPTY_SELECTION);
   const [batchMode, setBatchMode] = useState(false);
 
   // Drag-and-drop sensors
@@ -480,74 +670,69 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     })
   );
   
-  // Load equipment inventory from project
-  const [equipment, setEquipment] = useState<Array<{ id: string; name: string; category: string }>>([]);
+  // Equipment inventory — cached per project (replaces inline useState + useEffect)
+  const { equipment: _equipment, getByCategory: getEquipmentByCategory } = useEquipmentInventory(projectId);
   
-  // Smart filtering & view modes
-  const [viewMode, setViewMode] = useState<'scenes' | 'shots'>('scenes');
-  const [filterMissingCamera, setFilterMissingCamera] = useState(false);
-  const [filterMissingLight, setFilterMissingLight] = useState(false);
-  const [filterMissingSound, setFilterMissingSound] = useState(false);
-  const [showTags, setShowTags] = useState(true);
+  // Filters — compressed into single object (replaces 5 separate booleans)
+  const [filters, setFilters] = useState<SceneFilters>(DEFAULT_FILTERS);
   
-  // Scene needs tracking (enhanced metadata)
-  const [sceneNeeds, setSceneNeeds] = useState<Record<string, { cam: boolean; light: boolean; sound: boolean }>>(
-    Object.fromEntries(scenes.map((s, i) => [s.id, { cam: i % 3 === 0, light: i % 3 === 1, sound: i % 3 === 2 }]))
-  );
+  // Scene needs tracking (loaded from DB, synced with scenes)
+  const [sceneNeeds, setSceneNeeds] = useState<Record<string, { cam: boolean; light: boolean; sound: boolean }>>({});
 
-  // Scene tagging system
-  const [sceneTags, setSceneTags] = useState<Record<string, string[]>>(
-    Object.fromEntries(scenes.map(s => [s.id, []]))
-  );
+  // Scene tagging system (synced with scenes — auto-adds/removes keys)
+  const [sceneTags, setSceneTags] = useState<Record<string, string[]>>({});
 
   // ============================================
-  // PRODUCTION WORKFLOW STATE
+  // WORKFLOW UI — single FSM reducer (replaces ~15 booleans)
   // ============================================
-  const [showLiveSetMode, setShowLiveSetMode] = useState(false);
-  const [showStripboardPanel, setShowStripboardPanel] = useState(false);
-  const [showShootingDayPlanner, setShowShootingDayPlanner] = useState(false);
-  const [showCallSheetPreview, setShowCallSheetPreview] = useState(false);
-  const [currentCallSheet, setCurrentCallSheet] = useState<CallSheet | null>(null);
-  const [productionWorkflowTab, setProductionWorkflowTab] = useState<'none' | 'stripboard' | 'schedule' | 'live'>('none');
-  
-  // ============================================
-  // WORKFLOW GAP FIXES - NEW STATE
-  // ============================================
-  // 1. Live Set Mode - Dynamic day selector
-  const [selectedShootingDayId, setSelectedShootingDayId] = useState<string>('day-3');
+  const workflowInit = useMemo((): WorkflowUIState => {
+    const saved = loadWorkflowPreference(projectId);
+    if (saved) {
+      return {
+        ...INITIAL_WORKFLOW_STATE,
+        ...saved,
+        modal: { type: 'none' },
+      };
+    }
+    return INITIAL_WORKFLOW_STATE;
+  }, [projectId]);
+
+  const [workflowUI, dispatchWorkflow] = useReducer(workflowReducer, workflowInit);
+
+  // Persist workflow view preference on change
+  useEffect(() => {
+    saveWorkflowPreference(projectId, workflowUI);
+  }, [projectId, workflowUI.view.tab, workflowUI.selectedDayId]);
+
+  // ---- Derived convenience aliases ----
+  const showLiveSetMode = workflowUI.view.tab === 'live' && !('showDaySelector' in workflowUI.view && workflowUI.view.showDaySelector);
+  const showStripboardPanel = workflowUI.view.tab === 'stripboard';
+  const showShootingDayPlanner = workflowUI.view.tab === 'schedule';
+  const showLiveSetDaySelector = workflowUI.view.tab === 'live' && 'showDaySelector' in workflowUI.view && workflowUI.view.showDaySelector;
+  const showCallSheetPreview = workflowUI.modal.type === 'callSheetPreview';
+  const currentCallSheet: CallSheetRef | null = workflowUI.modal.type === 'callSheetPreview' ? workflowUI.modal.callSheet : null;
+  const productionWorkflowTab = workflowUI.view.tab;
+  const selectedShootingDayId = workflowUI.selectedDayId;
+  const showSceneNeedsDialog = workflowUI.modal.type === 'sceneNeeds';
+  const editingSceneNeedsId: string | null = workflowUI.modal.type === 'sceneNeeds' ? workflowUI.modal.sceneId : null;
+  const showScheduleSceneDialog = workflowUI.modal.type === 'scheduleScene';
+  const sceneToScheduleId: string | null = workflowUI.modal.type === 'scheduleScene' ? workflowUI.modal.sceneId : null;
+  const showChecklistDialog = workflowUI.modal.type === 'checklist';
+  const showLineCoverageDialog = workflowUI.modal.type === 'lineCoverage';
+  const showBulkShotDialog = workflowUI.modal.type === 'bulkShot';
+  const bulkShotTemplate: BulkShotTemplate = workflowUI.modal.type === 'bulkShot' ? workflowUI.modal.template : 'standard';
+
+  // ---- Data state (stays as useState — not UI routing) ----
   const [shootingDays, setShootingDays] = useState<ShootingDay[]>([]);
-  const [showLiveSetDaySelector, setShowLiveSetDaySelector] = useState(false);
-  
-  // 2. Scene Needs UI Dialog
-  const [showSceneNeedsDialog, setShowSceneNeedsDialog] = useState(false);
-  const [editingSceneNeedsId, setEditingSceneNeedsId] = useState<string | null>(null);
-  
-  // 3. Schedule Scene to Stripboard Dialog
-  const [showScheduleSceneDialog, setShowScheduleSceneDialog] = useState(false);
-  const [sceneToSchedule, setSceneToSchedule] = useState<SceneBreakdown | null>(null);
-  
-  // 4. Pre-Production Checklist
-  const [sceneChecklists, setSceneChecklists] = useState<Record<string, {
-    locationConfirmed: boolean;
-    castConfirmed: boolean;
-    propsReady: boolean;
-    equipmentAllocated: boolean;
-    permitsObtained: boolean;
-    scriptLocked: boolean;
-  }>>({});
-  const [showChecklistDialog, setShowChecklistDialog] = useState(false);
-  
+  const [sceneChecklists, setSceneChecklists] = useState<Record<string, SceneChecklist>>({});
+
   // 5. Timeline ↔ Live Set Connection
   const [liveSetStatus, setLiveSetStatus] = useState<LiveSetStatus | null>(null);
   const [isLiveSetConnected, setIsLiveSetConnected] = useState(false);
   
-  // 6. Shot Line Coverage Tracking
+  // 6. Shot Line Coverage Tracking (data, not UI)
   const [shotLineCoverage, setShotLineCoverage] = useState<Record<string, { startLine: number; endLine: number; dialogueIds: string[] }>>({});
-  const [showLineCoverageDialog, setShowLineCoverageDialog] = useState(false);
   
-  // 7. Bulk Shot Generation
-  const [showBulkShotDialog, setShowBulkShotDialog] = useState(false);
-  const [bulkShotTemplate, setBulkShotTemplate] = useState<'standard' | 'dialogue' | 'action' | 'custom'>('standard');
   const allTags = useMemo(() => {
     const tags = new Set<string>();
     Object.values(sceneTags).forEach(sceneTags => sceneTags.forEach(t => tags.add(t)));
@@ -580,159 +765,96 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const [showSceneTemplate, setShowSceneTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
-  // Filter scenes based on search query and smart filters
-  const filteredScenes = useMemo(() => {
-    let filtered = scenes;
-    
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(scene => 
-        scene.sceneHeading?.toLowerCase().includes(query) ||
-        scene.locationName?.toLowerCase().includes(query) ||
-        scene.description?.toLowerCase().includes(query) ||
-        scene.characters?.some(char => char.toLowerCase().includes(query)) ||
-        scene.sceneNumber?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Smart filters
-    if (filterMissingCamera) {
-      filtered = filtered.filter(s => sceneNeeds[s.id]?.cam === true);
-    }
-    if (filterMissingLight) {
-      filtered = filtered.filter(s => sceneNeeds[s.id]?.light === true);
-    }
-    if (filterMissingSound) {
-      filtered = filtered.filter(s => sceneNeeds[s.id]?.sound === true);
-    }
-    
-    return filtered;
-  }, [scenes, searchQuery, filterMissingCamera, filterMissingLight, filterMissingSound, sceneNeeds]);
+  // Search query filtering is now integrated into getSortedAndFilteredScenes
   
-  // Shot metadata tracking - detailed per-shot info
-  const [shotMetadata, setShotMetadata] = useState<Record<string, {
-    camera: { lens: string; movement: string; framing: string };
-    lighting: { key: string; temp: string; ratio: string };
-    sound: { mic: string; ambience: string; notes: string };
-    references: string[];
-    durationSec: number;
-    status: 'done' | 'inProgress' | 'missing';
-    thumbnailUrl?: string;
-  }>>({});
+  // Shot metadata tracking — typed per-shot data (source of truth)
+  const [shotMetadata, setShotMetadata] = useState<ShotMetadataMap>({});;
   
   // Right panel state
   const [shotSelectorOpen, setShotSelectorOpen] = useState(false);
   const [shotSelectorAnchor, setShotSelectorAnchor] = useState<HTMLElement | null>(null);
   
-  // Reference search state
-  const [referenceSearchOpen, setReferenceSearchOpen] = useState(false);
-  const [referenceSearchQuery, setReferenceSearchQuery] = useState('');
+  // ============================================
+  // REFERENCE SEARCH UI — single reducer (replaces ~9 useState)
+  // ============================================
+  const [searchUI, dispatchSearch] = useReducer(searchReducer, INITIAL_SEARCH_STATE);
 
-  // Auto-trigger search when reference dialog opens
+  // Auto-trigger search when reference panel opens
   useEffect(() => {
-    if (referenceSearchOpen && selectedScene) {
+    if (searchUI.open && selectedScene) {
       const initialQuery = `${selectedScene.locationName || 'scene'} ${selectedScene.timeOfDay?.toLowerCase() || 'day'} cinematic`;
-      setReferenceSearchQuery(initialQuery);
-      // Trigger search using the existing search function
+      dispatchSearch({ type: 'SET_QUERY', query: initialQuery });
       searchReferenceImages(initialQuery);
     }
-  }, [referenceSearchOpen, selectedScene]);
-  const [referenceSearchResults, setReferenceSearchResults] = useState<Array<{
-    id: string;
-    url: string;
-    thumbnailUrl: string;
-    source: string;
-    attribution?: string;
-  }>>([]);
-  const [referenceSearchLoading, setReferenceSearchLoading] = useState(false);
-  const [uploadedReferences, setUploadedReferences] = useState<string[]>([]);
+  }, [searchUI.open, selectedScene]);
+
+  // ---- Derived convenience aliases (backward-compatible reads) ----
+  const referenceSearchOpen = searchUI.open;
+  const referenceSearchQuery = searchUI.query;
+  const referenceSearchResults = searchUI.imageResults;
+  const referenceSearchLoading = searchUI.loading;
+  const uploadedReferences = searchUI.uploadedRefs;
+  const searchSource = searchUI.source;
+  const shotCafeResults = searchUI.filmResults;
+  const selectedFilm = searchUI.selectedFilm;
+  const centerPanelReference = searchUI.centerReference;
   
-  // Film search state (shot.cafe integration)
-  const [searchSource, setSearchSource] = useState<'all' | 'shotcafe' | 'unsplash'>('all');
-  const [shotCafeResults, setShotCafeResults] = useState<Array<{
-    id: string;
-    title: string;
-    year: string;
-    slug: string;
-    imageCount: number;
-    thumbnail: string;
-    url: string;
-    cinematographer?: string;
-  }>>([]);
-  const [selectedFilm, setSelectedFilm] = useState<{
-    title: string;
-    slug: string;
-    frames: Array<{ id: string; url: string; thumbnailUrl: string }>;
-  } | null>(null);
-  
-  // Senterpanel referansebilde
-  const [centerPanelReference, setCenterPanelReference] = useState<{
-    url: string;
-    source: string;
-    title?: string;
-  } | null>(null);
-  
-  // Editable shot properties - synced with scene metadata
-  const [shotProperties, setShotProperties] = useState({
-    camera: 'ARRI Alexa Mini LF',
-    lens: '50mm Prime',
-    rig: 'Stativ',
-    shotType: 'Close-up',
-    keyLight: 'Mykt sidelys',
-    sideLight: 'Varm tone',
-    gel: 'Gel: Warm 1/4 CTO',
-    mic: 'Boom Mic',
-    atmos: 'Dempet romlyd',
-  });
-  
-  // Expanded sections state
-  const [expandedSections, setExpandedSections] = useState({
-    camera: true,
-    lighting: true,
-    audio: true,
-    references: true,
-  });
-  
-  // Editing state for inline editing
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  // ============================================
+  // INSPECTOR/EDITING UI — single reducer (replaces 4 useState)
+  // ============================================
+  const inspectorInit = useMemo((): typeof INITIAL_INSPECTOR_STATE => ({
+    ...INITIAL_INSPECTOR_STATE,
+    expandedSections: loadExpandedSections(),
+  }), []);
+
+  const [inspectorUI, dispatchInspector] = useReducer(inspectorReducer, inspectorInit);
+
+  // Persist expanded sections preference on change
+  useEffect(() => {
+    saveExpandedSections(inspectorUI.expandedSections);
+  }, [inspectorUI.expandedSections]);
+
+  // ---- Derived convenience aliases ----
+  const shotProperties = inspectorUI.properties;
+  const expandedSections = inspectorUI.expandedSections;
+  const editingField: string | null = inspectorUI.editing?.field ?? null;
+  const editValue: string = inspectorUI.editing?.draft ?? '';
   
   const manuscriptRef = useRef<HTMLDivElement>(null);
   const sceneRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Available cameras
-  const AVAILABLE_CAMERAS = [
-    'Sony FX6', 'Sony FX3', 'Sony A7S III', 'Sony Venice 2',
-    'RED Komodo', 'RED V-Raptor', 'ARRI Alexa Mini LF', 'ARRI Alexa 35',
-    'Blackmagic URSA Mini Pro', 'Canon C70', 'Canon R5 C', 'Panasonic S1H',
-  ];
-
-  // Get shots for a scene - must be defined before useMemo
-  const getShotsForScene = (sceneId: string): CastingShot[] => {
+  // Get shots for a scene — memoized to avoid stale closure bugs
+  const getShotsForScene = useCallback((sceneId: string): CastingShot[] => {
     const shotList = shotLists.find(sl => sl.sceneId === sceneId);
     return shotList?.shots || [];
-  };
+  }, [shotLists]);
 
   // Get selected scene shots with metadata
   const selectedSceneShots = useMemo(() => {
     if (!selectedScene) return [];
     return getShotsForScene(selectedScene.id);
-  }, [selectedScene]);
+  }, [selectedScene, getShotsForScene]);
 
-  // Search shot.cafe for film references (via backend proxy to avoid CORS)
-  const searchShotCafe = async (query: string) => {
+  // ============================================
+  // REFERENCE SEARCH — race-safe, backend-proxied
+  // ============================================
+
+  /** Monotonic counter to detect stale search results */
+  const searchQueryIdRef = useRef(0);
+
+  /** Max uploaded references to prevent memory bloat */
+  const MAX_UPLOADED_REFS = 20;
+
+  // Search shot.cafe for film references (via backend proxy)
+  const searchShotCafe = useCallback(async (query: string): Promise<ShotCafeFilm[]> => {
     try {
-      // Use backend proxy to avoid CORS issues
       const response = await fetch(
         `/api/shotcafe/search?z=nav&q=${encodeURIComponent(query)}`
       );
-      
       if (!response.ok) throw new Error('shot.cafe search failed');
-      
       const data = await response.json();
-      const results = Array.isArray(data) ? data.map((film: any) => ({
+      return Array.isArray(data) ? data.map((film: any) => ({
         id: `shotcafe-${film.project || film.pslug}`,
         title: film.title,
         year: film.year,
@@ -742,16 +864,14 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         url: `https://shot.cafe/movie/${film.pslug}`,
         cinematographer: film.dp,
       })) : [];
-      
-      return results;
     } catch (error) {
       console.error('shot.cafe search error:', error);
       return [];
     }
-  };
+  }, []);
 
   // Search by cinematographer on shot.cafe (via backend proxy)
-  const searchByCinematographer = async (name: string) => {
+  const searchByCinematographer = useCallback(async (name: string) => {
     try {
       const response = await fetch(
         `/api/shotcafe/search?z=cinematographers&q=${encodeURIComponent(name)}`
@@ -763,24 +883,21 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       console.error('Cinematographer search error:', error);
       return [];
     }
-  };
+  }, []);
 
   // Load film frames from shot.cafe (via backend proxy)
-  const loadFilmFrames = async (slug: string, title: string) => {
-    setReferenceSearchLoading(true);
+  const loadFilmFrames = useCallback(async (slug: string, title: string) => {
     try {
-      // Fetch movie data from backend proxy
       const response = await fetch(`/api/shotcafe/movie/${slug}`);
       if (response.ok) {
         const data = await response.json();
-        // Backend returns {slug, frames: [...]} where each frame has proxyUrl
         const frames = data.frames ? data.frames.map((frame: any) => ({
           id: frame.id,
           url: frame.proxyUrl || frame.url,
           thumbnailUrl: frame.proxyUrl || frame.thumbnailUrl,
         })) : [];
         
-        setSelectedFilm({
+        dispatchSearch({ type: 'SELECT_FILM', film: {
           title,
           slug,
           frames: frames.length > 0 ? frames : Array.from({ length: 12 }, (_, i) => ({
@@ -788,133 +905,117 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
             url: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
             thumbnailUrl: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
           })),
-        });
+        }});
       } else {
-        // Fallback to constructing frame URLs
         const frameUrls = Array.from({ length: 12 }, (_, i) => ({
           id: `frame-${slug}-${i + 1}`,
           url: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
           thumbnailUrl: `/api/shotcafe/image-proxy?url=${encodeURIComponent(`https://shot.cafe/images/${slug}/${i + 1}.jpg`)}`,
         }));
-        
-        setSelectedFilm({
-          title,
-          slug,
-          frames: frameUrls,
-        });
+        dispatchSearch({ type: 'SELECT_FILM', film: { title, slug, frames: frameUrls }});
       }
     } catch (error) {
       console.error('Failed to load film frames:', error);
-    } finally {
-      setReferenceSearchLoading(false);
     }
-  };
+  }, []);
 
-  // Combined search function
-  const searchReferenceImages = async (query: string) => {
-    if (!query.trim()) return;
-    setReferenceSearchLoading(true);
-    setSelectedFilm(null);
-    setShotCafeResults([]);
-    setReferenceSearchResults([]);
-    
+  // Search Unsplash/picsum via backend proxy (no API key in frontend)
+  const searchImages = useCallback(async (query: string): Promise<ReferenceImageResult[]> => {
     try {
-      const searches: Promise<any>[] = [];
-      
-      // Search shot.cafe for films
-      if (searchSource === 'all' || searchSource === 'shotcafe') {
-        searches.push(
-          searchShotCafe(query).then(results => {
-            setShotCafeResults(results);
-          })
-        );
-      }
-      
-      // Search Unsplash for mood/lighting references
-      if (searchSource === 'all' || searchSource === 'unsplash') {
-        searches.push(
-          (async () => {
-            try {
-              const response = await fetch(
-                `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query + ' cinematic film')}&per_page=12&orientation=landscape`,
-                {
-                  headers: {
-                    'Authorization': 'Client-ID demo'
-                  }
-                }
-              );
-              
-              if (!response.ok) {
-                // Fallback to picsum
-                const mockResults = Array.from({ length: 6 }, (_, i) => ({
-                  id: `mock-${i}`,
-                  url: `https://picsum.photos/seed/${query}${i}/400/225`,
-                  thumbnailUrl: `https://picsum.photos/seed/${query}${i}/150/100`,
-                  source: 'picsum',
-                  attribution: 'Demo Image',
-                }));
-                setReferenceSearchResults(mockResults);
-                return;
-              }
-              
-              const data = await response.json();
-              const results = data.results?.map((img: any) => ({
-                id: `unsplash-${img.id}`,
-                url: img.urls.regular,
-                thumbnailUrl: img.urls.thumb,
-                source: 'unsplash',
-                attribution: `Photo by ${img.user.name}`,
-              })) || [];
-              setReferenceSearchResults(results);
-            } catch {
-              const mockResults = Array.from({ length: 6 }, (_, i) => ({
-                id: `mock-${i}`,
-                url: `https://picsum.photos/seed/${query}${i}/400/225`,
-                thumbnailUrl: `https://picsum.photos/seed/${query}${i}/150/100`,
-                source: 'picsum',
-                attribution: 'Demo Image',
-              }));
-              setReferenceSearchResults(mockResults);
-            }
-          })()
-        );
-      }
-      
-      await Promise.all(searches);
+      const response = await fetch(
+        `/api/unsplash/search?q=${encodeURIComponent(query)}&per_page=12`
+      );
+      if (!response.ok) throw new Error('Image search failed');
+      const data = await response.json();
+      return Array.isArray(data.results) ? data.results : [];
     } catch (error) {
-      console.error('Reference search error:', error);
-    } finally {
-      setReferenceSearchLoading(false);
+      console.error('Image search error:', error);
+      // Last-resort client-side placeholders
+      return Array.from({ length: 6 }, (_, i) => ({
+        id: `picsum-${i}`,
+        url: `https://picsum.photos/seed/${encodeURIComponent(query)}${i}/400/225`,
+        thumbnailUrl: `https://picsum.photos/seed/${encodeURIComponent(query)}${i}/150/100`,
+        source: 'picsum' as const,
+        attribution: 'Placeholder Image',
+      }));
     }
-  };
+  }, []);
 
-  // Handle file upload for references
-  const handleReferenceUpload = (event: ChangeEvent<HTMLInputElement>) => {
+  // Race-safe combined search — stale results are discarded
+  const searchSourceRef = useRef(searchSource);
+  searchSourceRef.current = searchSource;
+
+  const searchReferenceImages = useCallback(async (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+
+    const queryId = ++searchQueryIdRef.current;
+    dispatchSearch({ type: 'SEARCH_START' });
+
+    const src = searchSourceRef.current;
+
+    const filmPromise = (src === 'all' || src === 'shotcafe')
+      ? searchShotCafe(q).catch(() => [] as ShotCafeFilm[])
+      : Promise.resolve([] as ShotCafeFilm[]);
+
+    const imgPromise = (src === 'all' || src === 'unsplash')
+      ? searchImages(q).catch(() => [] as ReferenceImageResult[])
+      : Promise.resolve([] as ReferenceImageResult[]);
+
+    const [filmResults, imageResults] = await Promise.all([filmPromise, imgPromise]);
+
+    // Stale guard: discard if a newer search was started
+    if (queryId !== searchQueryIdRef.current) return;
+
+    dispatchSearch({ type: 'SEARCH_DONE', imageResults, filmResults });
+  }, [searchShotCafe, searchImages]);
+
+  // Handle file upload for references (ObjectURL + size/type/dedupe guard)
+  const objectUrlsRef = useRef<string[]>([]);
+
+  // Revoke blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  const handleReferenceUpload = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files) {
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setUploadedReferences(prev => [...prev, e.target!.result as string]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-  };
+    if (!files) return;
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+    Array.from(files).forEach(file => {
+      // Validate type
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        console.warn(`Skipped "${file.name}": unsupported type ${file.type}`);
+        return;
+      }
+      // Validate size
+      if (file.size > MAX_FILE_SIZE) {
+        console.warn(`Skipped "${file.name}": exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`);
+        return;
+      }
+      // Limit total uploads
+      if (searchUI.uploadedRefs.length >= MAX_UPLOADED_REFS) {
+        console.warn(`Upload limit (${MAX_UPLOADED_REFS}) reached`);
+        return;
+      }
+      // Use ObjectURL instead of DataURL to avoid huge strings in state
+      const url = URL.createObjectURL(file);
+      objectUrlsRef.current.push(url);
+      dispatchSearch({ type: 'ADD_UPLOADED_REF', url });
+    });
+  }, [searchUI.uploadedRefs.length]);
 
   // Load shot lists
   useEffect(() => {
     const loadShotLists = async () => {
       try {
-        // Ensure mock data is initialized first
-        try {
-          await castingService.initializeMockData();
-        } catch (error) {
-          console.warn('Could not initialize mock data:', error);
-        }
-        
+        // initializeMockData is singleton-safe — multiple callers share one in-flight promise
+        await castingService.initializeMockData();
         const lists = await castingService.getShotLists(projectId);
         setShotLists(Array.isArray(lists) ? lists : []);
       } catch (error) {
@@ -933,19 +1034,19 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       try {
         const days = await productionWorkflowService.getShootingDays(projectId);
         setShootingDays(days);
-        // Auto-select today's shooting day or the first in-progress/planned day
+
+        // Auto-select only if the user hasn't already selected a valid day
+        const alreadySelected = days.some(d => d.id === workflowUI.selectedDayId);
+        if (alreadySelected) return;
+
+        // Pick best default: today > in-progress > planned > first
         const today = new Date().toISOString().split('T')[0];
         const todayDay = days.find(d => d.date === today);
         const inProgressDay = days.find(d => d.status === 'in-progress');
         const plannedDay = days.find(d => d.status === 'planned');
-        if (todayDay) {
-          setSelectedShootingDayId(todayDay.id);
-        } else if (inProgressDay) {
-          setSelectedShootingDayId(inProgressDay.id);
-        } else if (plannedDay) {
-          setSelectedShootingDayId(plannedDay.id);
-        } else if (days.length > 0) {
-          setSelectedShootingDayId(days[0].id);
+        const pick = todayDay || inProgressDay || plannedDay || days[0];
+        if (pick) {
+          dispatchWorkflow({ type: 'SELECT_DAY', dayId: pick.id });
         }
       } catch (error) {
         console.error('Error loading shooting days:', error);
@@ -956,88 +1057,129 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // ============================================
   // WORKFLOW GAP FIX #5: Sync Timeline with Live Set Status
+  // Non-overlapping polling loop — uses refs to avoid dep-churn restarts
   // ============================================
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const selectedSceneRef = useRef(selectedScene);
+  selectedSceneRef.current = selectedScene;
+  const followLiveScene = workflowUI.followLiveScene;
+
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval>;
-    
-    const syncLiveSetStatus = async () => {
-      if (!isLiveSetConnected || !projectId) return;
-      try {
-        const status = await productionWorkflowService.getLiveSetStatus(projectId);
-        setLiveSetStatus(status);
-        
-        // Update timeline position based on live progress
-        if (status.todayProgress) {
-          const progress = (status.todayProgress.completedSetups / Math.max(status.todayProgress.totalSetups, 1)) * 100;
-          setTimelinePlayheadPosition(progress);
-        }
-        
-        // Auto-select current scene from Live Set
-        if (status.currentScene) {
-          const currentScene = scenes.find(s => s.id === status.currentScene);
-          if (currentScene && currentScene.id !== selectedScene?.id) {
-            setSelectedScene(currentScene);
+    if (!isLiveSetConnected || !projectId) return;
+    let cancelled = false;
+
+    const loop = async () => {
+      while (!cancelled) {
+        try {
+          const status = await productionWorkflowService.getLiveSetStatus(projectId);
+          if (cancelled) break;
+          setLiveSetStatus(status);
+
+          // Only auto-follow when the user has opted in
+          if (followLiveScene && status.currentScene) {
+            const cs = scenesRef.current.find(s => s.id === status.currentScene);
+            if (cs && cs.id !== selectedSceneRef.current?.id) {
+              setSelectedScene(cs);
+            }
           }
+        } catch (error) {
+          console.error('Error syncing live set status:', error);
         }
-      } catch (error) {
-        console.error('Error syncing live set status:', error);
+        // Wait before next poll — non-overlapping (next request starts after previous completes)
+        await new Promise(r => setTimeout(r, 5000));
       }
     };
-    
-    if (isLiveSetConnected) {
-      syncLiveSetStatus();
-      intervalId = setInterval(syncLiveSetStatus, 5000); // Poll every 5 seconds
-    }
-    
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [isLiveSetConnected, projectId, scenes]);
+
+    loop();
+    return () => { cancelled = true; };
+  }, [isLiveSetConnected, projectId, followLiveScene]);
 
   // ============================================
-  // WORKFLOW GAP FIX #4: Initialize scene checklists
+  // WORKFLOW GAP FIX #4: Initialize scene checklists — add + prune
   // ============================================
   useEffect(() => {
-    const initialChecklists: Record<string, any> = {};
-    scenes.forEach(scene => {
-      if (!sceneChecklists[scene.id]) {
-        initialChecklists[scene.id] = {
-          locationConfirmed: false,
-          castConfirmed: false,
-          propsReady: false,
-          equipmentAllocated: false,
-          permitsObtained: false,
-          scriptLocked: false,
-        };
+    setSceneChecklists(prev => {
+      const sceneIds = new Set(scenes.map(s => s.id));
+      let changed = false;
+      const next = { ...prev };
+
+      // Add defaults for new scenes
+      for (const scene of scenes) {
+        if (!next[scene.id]) {
+          next[scene.id] = { ...EMPTY_CHECKLIST };
+          changed = true;
+        }
       }
+      // Prune deleted scenes
+      for (const id of Object.keys(next)) {
+        if (!sceneIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
-    if (Object.keys(initialChecklists).length > 0) {
-      setSceneChecklists(prev => ({ ...prev, ...initialChecklists }));
-    }
   }, [scenes]);
 
-  // Load equipment from project
+  // Sync sceneTags with scenes (add new, remove deleted)
   useEffect(() => {
-    const loadEquipment = async () => {
+    setSceneTags(prev => {
+      const sceneIds = new Set(scenes.map(s => s.id));
+      let changed = false;
+      const next = { ...prev };
+      // Add missing scene keys
+      for (const s of scenes) {
+        if (!next[s.id]) {
+          next[s.id] = [];
+          changed = true;
+        }
+      }
+      // Remove keys for deleted scenes
+      for (const id of Object.keys(next)) {
+        if (!sceneIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [scenes]);
+
+  // Sync sceneNeeds with scenes (add defaults for new, remove deleted)
+  useEffect(() => {
+    setSceneNeeds(prev => {
+      const sceneIds = new Set(scenes.map(s => s.id));
+      let changed = false;
+      const next = { ...prev };
+      for (const s of scenes) {
+        if (!next[s.id]) {
+          next[s.id] = { cam: false, light: false, sound: false };
+          changed = true;
+        }
+      }
+      for (const id of Object.keys(next)) {
+        if (!sceneIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [scenes]);
+
+  // Reset undo/redo history when scenes prop changes externally
+  useEffect(() => {
+    resetHistory();
+  }, [scenes.length, resetHistory]);
+
+  // Load equipment-related data (candidates, roles) from project
+  useEffect(() => {
+    const loadProjectData = async () => {
       try {
-        // Ensure mock data is initialized first
-        try {
-          await castingService.initializeMockData();
-        } catch (error) {
-          console.warn('Could not initialize mock data:', error);
-        }
-        
+        // initializeMockData is singleton-safe — multiple callers share one in-flight promise
+        await castingService.initializeMockData();
         const project = await castingService.getProject(projectId);
-        if (project && project.props) {
-          const allEquipment = project.props
-            .filter((prop: any) => ['equipment', 'camera', 'Kamera', 'lens', 'Linse', 'rig', 'Rig', 'stabilizer', 'stativ', 'Stativ', 'tripod', 'optikk', 'Optikk'].includes(prop.category))
-            .map((prop: any) => ({
-              id: prop.id,
-              name: prop.name,
-              category: prop.category.toLowerCase(),
-            }));
-          setEquipment(allEquipment);
-        }
         
         // Load candidates and roles for talent panel
         if (project) {
@@ -1048,29 +1190,26 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
           setProjectRoles(project.roles || []);
         }
       } catch (error) {
-        console.error('Error loading equipment:', error);
-        setEquipment([]);
+        console.error('Error loading project data:', error);
       }
     };
-    if (projectId) loadEquipment();
+    if (projectId) loadProjectData();
   }, [projectId]);
-  
-  // Get equipment by category
-  const getEquipmentByCategory = (category: 'camera' | 'lens' | 'rig') => {
-    const categoryMap: Record<string, string[]> = {
-      camera: ['camera', 'kamera'],
-      lens: ['lens', 'linse', 'optikk'],
-      rig: ['rig', 'stabilizer', 'stativ', 'tripod'],
-    };
-    return equipment.filter(item => categoryMap[category]?.includes(item.category));
-  };
 
-  // Helper to validate camera value - returns first available if invalid
-  const getValidCameraValue = (camera: string): string => {
+  // Helper to validate camera value — memoized, case-insensitive, deduped
+  const getValidCameraValue = useCallback((camera: string): string => {
     const inventoryCameras = getEquipmentByCategory('camera').map(c => c.name);
-    const allCameras = [...inventoryCameras, ...AVAILABLE_CAMERAS];
-    return allCameras.includes(camera) ? camera : AVAILABLE_CAMERAS[0];
-  };
+    // Case-insensitive lookup: check inventory first, then standard list
+    const cameraLower = camera.toLowerCase();
+    const inventoryMatch = inventoryCameras.find(c => c.toLowerCase() === cameraLower);
+    if (inventoryMatch) return inventoryMatch;
+    // Check standard list
+    if (AVAILABLE_CAMERAS_LOWER.has(cameraLower)) {
+      return AVAILABLE_CAMERAS.find(c => c.toLowerCase() === cameraLower) ?? AVAILABLE_CAMERAS[0];
+    }
+    // Fallback: prefer inventory camera if available, otherwise first standard
+    return inventoryCameras[0] ?? AVAILABLE_CAMERAS[0];
+  }, [getEquipmentByCategory]);
   
   // Get unique shot types from all scene shot lists
   const availableShotTypes = useMemo(() => {
@@ -1083,13 +1222,15 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     return Array.from(types);
   }, [shotLists]);
 
-  // Get scene status
-  const getSceneStatus = (scene: SceneBreakdown) => {
+  // Get scene status — derived from shot data, with manual override support
+  const getSceneStatus = useCallback((scene: SceneBreakdown): DerivedSceneStatus => {
+    // Manual override takes priority
+    if (sceneStatusOverrides[scene.id]) return sceneStatusOverrides[scene.id];
+    // Derive from shot completion
     const shots = getShotsForScene(scene.id);
-    if (shots.length === 0) return 'missing';
-    if (shots.every(s => s.cameraMovement && s.focalLength)) return 'complete';
-    return 'partial';
-  };
+    const completedCount = shots.filter(s => s.cameraMovement && s.focalLength).length;
+    return deriveSceneStatus(shots.length, completedCount);
+  }, [sceneStatusOverrides, getShotsForScene]);
 
   // Get dialogue for scene
   const getSceneDialogue = (sceneId: string): DialogueLine[] => {
@@ -1118,12 +1259,17 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [scenes, acts]);
 
   // Navigate to scene
-  const scrollToScene = (scene: SceneBreakdown) => {
+  const scrollToScene = useCallback((scene: SceneBreakdown) => {
     setSelectedScene(scene);
     const shots = getShotsForScene(scene.id);
     if (shots.length > 0) setSelectedShot(shots[0]);
     else setSelectedShot(null);
-  };
+    // Scroll to scene DOM element if ref exists
+    const sceneEl = sceneRefs.current.get(scene.id);
+    if (sceneEl) {
+      sceneEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [getShotsForScene]);
 
   // Get scene metadata
   const getSceneMetadata = (scene: SceneBreakdown) => {
@@ -1137,23 +1283,74 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     };
   };
 
+  // ============================================
+  // PRECOMPUTED allDialogue — scene-ordered, O(n) once via useMemo
+  // All read-through handlers reference this instead of recomputing.
+  // ============================================
+  const allDialogue = useMemo(() => {
+    // Build a scene-id → lines map for O(1) lookup per scene
+    const byScene = new Map<string, typeof dialogueLines>();
+    for (const d of dialogueLines) {
+      const arr = byScene.get(d.sceneId) ?? [];
+      arr.push(d);
+      byScene.set(d.sceneId, arr);
+    }
+    return scenes.flatMap(s => byScene.get(s.id) ?? []);
+  }, [scenes, dialogueLines]);
+
   // Sync right panel with selected scene
   useEffect(() => {
     // Auto-advance to next line during read-through if playing
     if (readThroughMode && readThroughPlaying) {
-      const timer = setTimeout(() => {
-        handleReadThroughNext();
-      }, 3000); // 3 seconds per line
-      return () => clearTimeout(timer);
+      if (ttsEnabled) {
+        // TTS-driven advancement: speak the current line, then advance
+        ttsPlayingRef.current = true;
+        const currentLine = allDialogue[readThroughCurrentLine];
+        if (currentLine) {
+          const characterVoice = ttsUseCharacterVoices
+            ? (ttsCharacterVoices[currentLine.characterName] ?? ttsVoice)
+            : ttsVoice;
+          ttsSpeak(currentLine.dialogueText, {
+            voice: characterVoice,
+            language: ttsLanguage || undefined,
+            speed: ttsSpeed,
+            model: 'tts-1',
+          })
+            .then(() => {
+              if (ttsPlayingRef.current && readThroughCurrentLine < allDialogue.length - 1) {
+                setReadThroughCurrentLine(prev => prev + 1);
+              } else {
+                setReadThroughPlaying(false);
+                ttsPlayingRef.current = false;
+              }
+            })
+            .catch((err) => {
+              console.warn('TTS playback error, falling back to timer:', err);
+              // Fallback to timer-based advance
+              setTimeout(() => {
+                if (ttsPlayingRef.current) {
+                  handleReadThroughNext();
+                }
+              }, 3000);
+            });
+        }
+        return () => {
+          ttsPlayingRef.current = false;
+          stopTTS();
+        };
+      } else {
+        // Timer-based advancement (no TTS)
+        const timer = setTimeout(() => {
+          handleReadThroughNext();
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [readThroughMode, readThroughPlaying, readThroughCurrentLine, dialogueLines]);
+  }, [readThroughMode, readThroughPlaying, readThroughCurrentLine, allDialogue, ttsEnabled, ttsVoice, ttsLanguage, ttsSpeed, ttsUseCharacterVoices, ttsCharacterVoices]);
 
   // Auto-scroll to current dialogue line in read-through
   useEffect(() => {
     if (readThroughMode && manuscriptRef.current) {
-      const allDialogue = scenes.flatMap(s => 
-        dialogueLines.filter(d => d.sceneId === s.id)
-      );
       const currentLine = allDialogue[readThroughCurrentLine];
       
       if (currentLine) {
@@ -1164,151 +1361,173 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         }
       }
     }
-  }, [readThroughCurrentLine, readThroughMode, scenes, dialogueLines]);
+  }, [readThroughCurrentLine, readThroughMode, allDialogue]);
 
   // Update shot properties when scene changes (read-only sync, no save)
   useEffect(() => {
     if (selectedScene) {
       const metadata = getSceneMetadata(selectedScene);
-      setShotProperties(prev => ({
-        ...prev,
-        // Don't overwrite camera - keep user's selection
-        keyLight: metadata.lighting.split(',')[0]?.trim() || prev.keyLight,
-        sideLight: metadata.lighting.split(',')[1]?.trim() || prev.sideLight,
-        atmos: metadata.audio,
-        lens: metadata.lens ? String(metadata.lens) : prev.lens,
-        shotType: metadata.shotType || prev.shotType,
-      }));
+      // Scene-level defaults: only apply when NO shot is selected
+      if (!selectedShot) {
+        dispatchInspector({ type: 'SELECT_SHOT', shotId: null, properties: {
+          ...DEFAULT_SHOT_PROPERTIES,
+          keyLight: metadata.lighting.split(',')[0]?.trim() || DEFAULT_SHOT_PROPERTIES.keyLight,
+          sideLight: metadata.lighting.split(',')[1]?.trim() || DEFAULT_SHOT_PROPERTIES.sideLight,
+          atmos: metadata.audio || DEFAULT_SHOT_PROPERTIES.atmos,
+          lens: metadata.lens ? String(metadata.lens) : DEFAULT_SHOT_PROPERTIES.lens,
+          shotType: metadata.shotType || DEFAULT_SHOT_PROPERTIES.shotType,
+        }});
+      }
     }
-  }, [selectedScene?.id]); // Only run when scene ID changes, not on every selectedScene reference change
+  }, [selectedScene?.id]); // Only run when scene ID changes
 
-  // Note: Shot properties auto-save is handled by the debounced effect below
+  // ============================================
+  // SHOT DRAFT — populate inspector from metadata when shot changes
+  // Uses narrow deps: selectedShotId + individual metadata entry
+  // ============================================
+  const selectedShotId = selectedShot?.id ?? null;
+  const selectedShotMeta = selectedShotId ? shotMetadata[selectedShotId] : undefined;
 
-  // Update shot properties when shot selection changes
   useEffect(() => {
-    if (selectedShot && selectedShot.id) {
-      const metadata = shotMetadata[selectedShot.id];
-      // Guard against undefined or incomplete metadata
-      if (metadata && metadata.camera && metadata.lighting && metadata.sound) {
-        setShotProperties(prev => ({
+    if (!selectedShotId) return;
+    // Always populate draft from metadata (with safe defaults for missing fields)
+    const props = selectedShotMeta
+      ? metaToShotProperties(selectedShotMeta)
+      : DEFAULT_SHOT_PROPERTIES;
+    dispatchInspector({ type: 'SELECT_SHOT', shotId: selectedShotId, properties: props });
+  }, [selectedShotId, selectedShotMeta]);
+
+  // ============================================
+  // SEED METADATA — per-shot (not per-scene), no initializedScenesRef
+  // Seeds only shots that have no metadata yet; works for new shots added later
+  // ============================================
+  useEffect(() => {
+    if (!selectedScene?.id) return;
+    const shots = getShotsForScene(selectedScene.id);
+    if (!shots?.length) return;
+
+    setShotMetadata(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (let i = 0; i < shots.length; i++) {
+        const shot = shots[i];
+        if (next[shot.id]) continue; // already has metadata
+        next[shot.id] = buildDefaultShotMeta(i);
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [selectedScene?.id, getShotsForScene]);
+
+  // ============================================
+  // WRITE DRAFT BACK — flush inspector edits to shotMetadata
+  // Runs when dirty flag is set and shot changes or explicitly saved
+  // ============================================
+  const prevShotIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // When changing shots, save the previous shot's draft back to metadata
+    const prevId = prevShotIdRef.current;
+    prevShotIdRef.current = selectedShotId;
+
+    if (prevId && prevId !== selectedShotId && inspectorUI.dirty) {
+      const prevMeta = shotMetadata[prevId];
+      if (prevMeta) {
+        setShotMetadata(prev => ({
           ...prev,
-          lens: metadata.camera.lens || prev.lens,
-          shotType: metadata.camera.framing || prev.shotType,
-          keyLight: metadata.lighting.key || prev.keyLight,
-          mic: metadata.sound.mic || prev.mic,
-          atmos: metadata.sound.ambience || prev.atmos,
+          [prevId]: shotPropertiesToMeta(shotProperties, prevMeta),
         }));
       }
     }
-  }, [selectedShot, shotMetadata]);
+  }, [selectedShotId]);
 
-  // Track which scenes have had metadata initialized
-  const initializedScenesRef = useRef<Set<string>>(new Set());
-  
-  // Initialize shot metadata with test data (only once per scene)
-  useEffect(() => {
-    if (selectedScene && !initializedScenesRef.current.has(selectedScene.id)) {
-      const sceneShots = getShotsForScene(selectedScene.id);
-      if (sceneShots && sceneShots.length > 0) {
-        initializedScenesRef.current.add(selectedScene.id);
-        
-        const newMetadata: Record<string, any> = {};
-        sceneShots.forEach((shot, idx) => {
-          // Only add if not already exists
-          if (!shotMetadata[shot.id]) {
-            newMetadata[shot.id] = {
-              camera: {
-                lens: ['50mm Prime', '35mm Prime', '85mm Prime', '24-70mm'][idx % 4],
-                movement: ['Static', 'Rolig push-in', 'Dolly', 'Pan'][idx % 4],
-                framing: ['Wide', 'Medium', 'Close-up', 'Extreme Close-up'][idx % 4],
-              },
-              lighting: {
-                key: ['Mykt sidelys', 'Key light 4ft', 'Backlight only', 'Ring light'][idx % 4],
-                temp: ['3200K', '5600K', '4300K', '3200K'][idx % 4],
-                ratio: ['3:1', '2:1', '4:1', '1.5:1'][idx % 4],
-              },
-              sound: {
-                mic: ['Boom Mic', 'Lav Mic', 'Wireless', 'Studio'][idx % 4],
-                ambience: ['Quiet interior', 'Street traffic', 'Forest', 'Empty room'][idx % 4],
-                notes: ['Monitor levels closely', 'Watch for wind', 'AC hum present', 'Clean take'][idx % 4],
-              },
-              references: [],
-              durationSec: 30 + (idx * 5),
-              status: ['done', 'inProgress', 'missing'][idx % 3] as 'done' | 'inProgress' | 'missing',
-            };
-          }
-        });
-        
-        if (Object.keys(newMetadata).length > 0) {
-          setShotMetadata(prev => ({ ...prev, ...newMetadata }));
-        }
-      }
-    }
-  }, [selectedScene?.id]);
 
-  // Debounced values for auto-save
-  const debouncedShotProperties = useDebounce(shotProperties, 1500);
-  const debouncedSceneNeeds = useDebounce(sceneNeeds, 1500);
-  
-  // Track last saved values to prevent unnecessary updates
+  // ============================================
+  // Dirty-state autosave — useDebouncedCallback pattern
+  // No extra state churn, flush on unmount for data safety
+  // ============================================
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const lastSavedPropsRef = useRef<string>('');
   const isInitialMountRef = useRef(true);
-  
-  // Auto-save shot properties to scene (debounced, with change detection)
+
+  // Shot properties autosave (debounced callback, not debounced value)
+  // Also writes draft back to shotMetadata so data stays consistent
+  const { debounced: debouncedSaveShotProps, flush: flushShotProps } = useDebouncedCallback(
+    (props: typeof shotProperties) => {
+      if (!selectedScene || !onSceneUpdate) return;
+      const hash = JSON.stringify(props);
+      if (hash === lastSavedPropsRef.current) return;
+      lastSavedPropsRef.current = hash;
+      setAutosaveStatus('saving');
+
+      // Write draft back to per-shot metadata if a shot is selected
+      const activeId = inspectorUI.activeShotId;
+      if (activeId) {
+        setShotMetadata(prev => {
+          const existing = prev[activeId];
+          if (!existing) return prev;
+          return { ...prev, [activeId]: shotPropertiesToMeta(props, existing) };
+        });
+      }
+
+      const updatedScene: SceneBreakdown = {
+        ...selectedScene,
+        metadata: {
+          ...selectedScene.metadata,
+          camera: props.camera,
+          lens: props.lens,
+          rig: props.rig,
+          shotType: props.shotType,
+          keyLight: props.keyLight,
+          sideLight: props.sideLight,
+          gel: props.gel,
+          mic: props.mic,
+          atmos: props.atmos,
+          references: uploadedReferences,
+        },
+      };
+      onSceneUpdate(updatedScene);
+      setAutosaveStatus('saved');
+      setTimeout(() => setAutosaveStatus('idle'), 1500);
+    },
+    1500
+  );
+
+  // Trigger debounced save whenever shotProperties change
   useEffect(() => {
-    // Skip initial mount
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
-      lastSavedPropsRef.current = JSON.stringify(debouncedShotProperties);
+      lastSavedPropsRef.current = JSON.stringify(shotProperties);
       return;
     }
-    
-    if (!selectedScene || !onSceneUpdate) return;
-    
-    // Check if properties actually changed
-    const currentPropsHash = JSON.stringify(debouncedShotProperties);
-    if (currentPropsHash === lastSavedPropsRef.current) {
-      return; // No change, skip save
-    }
-    
-    lastSavedPropsRef.current = currentPropsHash;
-    
-    // Sync shot properties back to scene metadata
-    const updatedScene: SceneBreakdown = {
-      ...selectedScene,
-      metadata: {
-        ...selectedScene.metadata,
-        camera: debouncedShotProperties.camera,
-        lens: debouncedShotProperties.lens,
-        rig: debouncedShotProperties.rig,
-        shotType: debouncedShotProperties.shotType,
-        keyLight: debouncedShotProperties.keyLight,
-        sideLight: debouncedShotProperties.sideLight,
-        gel: debouncedShotProperties.gel,
-        mic: debouncedShotProperties.mic,
-        atmos: debouncedShotProperties.atmos,
-        references: uploadedReferences,
-      },
-    };
-    onSceneUpdate(updatedScene);
-    console.log('Auto-saved scene properties:', selectedScene.id);
-  }, [debouncedShotProperties, selectedScene?.id, onSceneUpdate]);
-  
-  // Auto-save scene needs to database
-  useEffect(() => {
-    // Save scene needs to database with settings cache fallback
-    const saveNeeds = async () => {
+    debouncedSaveShotProps(shotProperties);
+  }, [shotProperties, debouncedSaveShotProps]);
+
+  // Scene needs autosave (debounced callback)
+  const { debounced: debouncedSaveNeeds, flush: flushSceneNeeds } = useDebouncedCallback(
+    async (needs: typeof sceneNeeds) => {
+      if (Object.keys(needs).length === 0) return;
       try {
-        await sceneNeedsService.saveSceneNeeds(projectId, debouncedSceneNeeds);
+        await sceneNeedsService.saveSceneNeeds(projectId, needs);
       } catch (e) {
         console.error('Could not save scene needs:', e);
       }
+    },
+    1500
+  );
+
+  // Trigger debounced save whenever sceneNeeds change
+  useEffect(() => {
+    debouncedSaveNeeds(sceneNeeds);
+  }, [sceneNeeds, debouncedSaveNeeds]);
+
+  // Flush pending saves on unmount — data safety
+  useEffect(() => {
+    return () => {
+      flushShotProps();
+      flushSceneNeeds();
     };
-    
-    if (Object.keys(debouncedSceneNeeds).length > 0) {
-      saveNeeds();
-    }
-  }, [debouncedSceneNeeds, projectId]);
+  }, [flushShotProps, flushSceneNeeds]);
   
   // Load scene needs from database on mount
   useEffect(() => {
@@ -1326,16 +1545,35 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     loadNeeds();
   }, [projectId]);
 
-  // Handle escape key to exit fullscreen
+  // Keyboard shortcuts: Escape, Ctrl/Cmd +/-, Ctrl/Cmd 0, F
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when typing in input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
       if (e.key === 'Escape' && isManuscriptFullscreen) {
         setIsManuscriptFullscreen(false);
+        saveFullscreenPreference(false);
+        return;
+      }
+      const isMod = e.metaKey || e.ctrlKey;
+      if (isMod && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        handleManuscriptZoomIn();
+      } else if (isMod && e.key === '-') {
+        e.preventDefault();
+        handleManuscriptZoomOut();
+      } else if (isMod && e.key === '0') {
+        e.preventDefault();
+        handleManuscriptZoomReset();
+      } else if (e.key === 'f' && !isMod && !e.altKey) {
+        handleManuscriptFullscreen();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isManuscriptFullscreen]);
+  }, [isManuscriptFullscreen, handleManuscriptZoomIn, handleManuscriptZoomOut, handleManuscriptZoomReset, handleManuscriptFullscreen]);
 
   // Build timeline data
   const timelineData = useMemo(() => {
@@ -1350,7 +1588,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     let totalDuration = 0;
     scenes.forEach(scene => {
       const shots = getShotsForScene(scene.id);
-      shots.forEach((shot, idx) => {
+      shots.forEach((shot) => {
         totalDuration += shot.duration || 10;
       });
       if (shots.length === 0) totalDuration += 60;
@@ -1387,11 +1625,22 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // Scene creation handler
   const handleCreateScene = () => {
+    // Compute next scene number: max existing + 1 (handles gaps from deletion)
+    const nextSceneNumber = String(
+      Math.max(0, ...scenes.map(s => parseInt(s.sceneNumber, 10)).filter(Number.isFinite)) + 1
+    );
+    const validationError = validateSceneNumber(nextSceneNumber);
+    if (validationError) {
+      console.warn('[Scene] Validation warning:', validationError);
+    }
+    const sceneId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? `scene-${crypto.randomUUID()}`
+      : `scene-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const newScene: SceneBreakdown = {
-      id: `scene-${Date.now()}`,
+      id: sceneId,
       manuscriptId: manuscript.id,
       projectId,
-      sceneNumber: String(scenes.length + 1),
+      sceneNumber: nextSceneNumber,
       sceneHeading: 'NY SCENE',
       locationName: 'Lokasjon',
       intExt: 'INT',
@@ -1403,6 +1652,8 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     };
     
     if (onSceneCreate) {
+      // Push undo patch before creating
+      pushPatch({ type: 'createScene', scene: newScene, index: scenes.length });
       onSceneCreate(newScene);
       setSelectedScene(newScene);
     }
@@ -1414,12 +1665,21 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     if (!sceneToDelete) return;
     
     if (onSceneDelete) {
+      const idx = scenes.findIndex(s => s.id === sceneToDelete);
+      const deletedScene = idx >= 0 ? scenes[idx] : null;
+
+      // Push undo patch before deleting
+      if (deletedScene) {
+        pushPatch({ type: 'deleteScene', scene: deletedScene, index: idx });
+      }
+
       onSceneDelete(sceneToDelete);
       
-      // Select next/previous scene
-      const idx = scenes.findIndex(s => s.id === sceneToDelete);
-      const nextScene = scenes[idx + 1] || scenes[idx - 1] || null;
-      setSelectedScene(nextScene);
+      // Select nearest remaining scene (prefer next, then previous)
+      if (idx >= 0) {
+        const nextScene = scenes[idx + 1] || scenes[idx - 1] || null;
+        setSelectedScene(nextScene);
+      }
     }
     
     setShowDeleteConfirm(false);
@@ -1427,6 +1687,8 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   };
 
   // Handle scene reordering via drag-and-drop
+  // Does NOT renumber scenes — sceneNumber is a label, not a position.
+  // Use an explicit "Renumber scenes" action if sequential numbers are needed.
   const handleSceneReorder = (event: DragEndEvent) => {
     const { active, over } = event;
     
@@ -1439,23 +1701,24 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     
     const reorderedScenes = arrayMove(scenes, oldIndex, newIndex);
     
-    // Renumber scenes
-    const renumberedScenes = reorderedScenes.map((scene, index) => ({
-      ...scene,
-      sceneNumber: (index + 1).toString(),
-    }));
-    
-    addToHistory(renumberedScenes);
-    onScenesReorder(renumberedScenes);
+    // Push reorder patch before applying (preserves undo)
+    pushPatch({
+      type: 'reorderScenes',
+      beforeOrder: scenes.map(s => s.id),
+      afterOrder: reorderedScenes.map(s => s.id),
+    });
+    onScenesReorder(reorderedScenes);
   };
 
   // Handle export production data
   const handleExportProduction = () => {
+    const totalShots = shotLists.reduce((acc, list) => acc + list.shots.length, 0);
     const productionData = {
+      exportVersion: 1,
+      exportedAt: new Date().toISOString(),
       manuscript: {
         title: manuscript.title,
         author: manuscript.author,
-        exportDate: new Date().toISOString(),
       },
       scenes: scenes.map(scene => ({
         sceneNumber: scene.sceneNumber,
@@ -1475,7 +1738,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         })),
       })),
       totalScenes: scenes.length,
-      totalShots: shotLists.reduce((acc, list) => acc + list.shots.length, 0),
+      totalShots,
     };
     
     const dataStr = JSON.stringify(productionData, null, 2);
@@ -1485,12 +1748,42 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     link.href = url;
     link.download = `${manuscript.title.replace(/\s+/g, '_')}_production_data.json`;
     link.click();
-    URL.revokeObjectURL(url);
+    // Delay revoking to ensure download completes in all browsers
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     setShowExportDialog(false);
   };
 
-  // Read Through handlers
+  // Read Through handlers (with OpenAI Whisper TTS integration)
   const handleReadThroughToggle = () => {
+    if (readThroughMode) {
+      // Exiting read-through — stop TTS and clean up
+      stopTTS();
+      ttsPlayingRef.current = false;
+      clearTTSCache();
+    } else {
+      // Entering read-through — assign character voices
+      // Compute mapping locally to avoid stale state race (setState is async)
+      const characters = [...new Set(dialogueLines.map(d => d.characterName))];
+      const voices =
+        Object.keys(ttsCharacterVoices).length > 0
+          ? ttsCharacterVoices
+          : assignCharacterVoices(characters);
+
+      if (Object.keys(ttsCharacterVoices).length === 0) {
+        setTtsCharacterVoices(voices);
+      }
+
+      // Preload first few lines for instant playback — use local `voices`
+      const firstLines = dialogueLines.slice(0, 5);
+      if (ttsEnabled && firstLines.length > 0) {
+        preloadTTS(
+          firstLines.map(l => ({
+            text: l.dialogueText,
+            voice: voices[l.characterName] ?? ttsVoice,
+          })),
+        ).catch(() => {});
+      }
+    }
     setReadThroughMode(!readThroughMode);
     setReadThroughPlaying(false);
     setReadThroughCurrentLine(0);
@@ -1498,39 +1791,62 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   };
 
   const handleReadThroughPlay = () => {
-    if (!readThroughPlaying) {
-      setReadThroughStartTime(Date.now());
+    if (readThroughPlaying) {
+      // Pausing
+      if (ttsEnabled) {
+        pauseTTS();
+      }
+      ttsPlayingRef.current = false;
+    } else {
+      // Starting/resuming — use resumeTTS if TTS was paused mid-utterance
+      if (ttsEnabled && isTTSPlaying()) {
+        resumeTTS();
+      }
+      setReadThroughStartTime(prev => prev ?? Date.now());
+      ttsPlayingRef.current = true;
     }
     setReadThroughPlaying(!readThroughPlaying);
   };
 
-  const handleReadThroughNext = () => {
-    const allDialogue = scenes.flatMap(s => 
-      dialogueLines.filter(d => d.sceneId === s.id)
-    );
-    if (readThroughCurrentLine < allDialogue.length - 1) {
-      setReadThroughCurrentLine(readThroughCurrentLine + 1);
-    }
-  };
+  const handleReadThroughNext = useCallback(() => {
+    stopTTS();
+    ttsPlayingRef.current = false;
+    setReadThroughCurrentLine(i => Math.min(i + 1, allDialogue.length - 1));
+  }, [allDialogue.length]);
 
-  const handleReadThroughPrevious = () => {
-    if (readThroughCurrentLine > 0) {
-      setReadThroughCurrentLine(readThroughCurrentLine - 1);
-    }
-  };
+  const handleReadThroughPrevious = useCallback(() => {
+    stopTTS();
+    ttsPlayingRef.current = false;
+    setReadThroughCurrentLine(i => Math.max(i - 1, 0));
+  }, []);
+
+  // ============================================
+  // PERF: GPU-accelerated playhead — DOM-direct via ref
+  // ============================================
+  const updatePlayheadDOM = useCallback((timeSec: number) => {
+    const el = playheadRef.current;
+    const container = timelineRef.current;
+    if (!el || !container) return;
+    const duration = Math.max(timelineData.totalDuration, 0.001);
+    const pct = Math.max(0, Math.min(1, timeSec / duration));
+    const x = pct * container.clientWidth;
+    el.style.transform = `translate3d(${x}px, 0, 0)`;
+  }, [timelineData.totalDuration]);
 
   // Timeline handlers
-  const handleTimelinePlay = () => {
-    setTimelineIsPlaying(!timelineIsPlaying);
-  };
+  const handleTimelinePlay = useCallback(() => {
+    setTimelineIsPlaying(p => !p);
+  }, []);
 
-  const handleTimelineSeek = (event: MouseEvent<HTMLDivElement>) => {
+  const handleTimelineSeek = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
-    const percentage = (clickX / rect.width) * 100;
-    setTimelinePlayheadPosition(Math.max(0, Math.min(100, percentage)));
-    setTimelineCurrentTime((percentage / 100) * timelineData.totalDuration);
-  };
+    const pct = Math.max(0, Math.min(1, clickX / rect.width));
+    const nextTime = pct * timelineData.totalDuration;
+    currentTimeRef.current = nextTime;
+    updatePlayheadDOM(nextTime);
+    setTimelineCurrentTime(nextTime);
+  }, [timelineData.totalDuration, updatePlayheadDOM]);
 
   const handleTimelineZoomIn = () => {
     setTimelineZoom(prev => Math.min(prev + 0.5, 4));
@@ -1563,60 +1879,70 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     return `${hours}:${String(mins).padStart(2, '0')}`;
   };
 
-  // Auto-play timeline
+  // Auto-play timeline — rAF loop, DOM-direct playhead, throttled state for UI text
   useEffect(() => {
     if (!timelineIsPlaying) return;
-    
-    const interval = setInterval(() => {
-      setTimelineCurrentTime(prev => {
-        const next = prev + 0.1;
-        if (next >= timelineData.totalDuration) {
-          setTimelineIsPlaying(false);
-          return 0;
-        }
-        return next;
-      });
-      setTimelinePlayheadPosition(prev => {
-        const next = prev + (0.1 / timelineData.totalDuration) * 100;
-        if (next >= 100) {
-          return 0;
-        }
-        return next;
-      });
-    }, 100);
 
-    return () => clearInterval(interval);
-  }, [timelineIsPlaying, timelineData.totalDuration]);
+    const tick = (ts: number) => {
+      if (lastTsRef.current == null) lastTsRef.current = ts;
+      const dt = (ts - lastTsRef.current) / 1000;
+      lastTsRef.current = ts;
 
-  // Production notes handlers
-  const handleEditProductionNote = (sceneId: string, type: 'camera' | 'director') => {
-    const currentNote = productionNotes[sceneId]?.[type] || '';
-    setEditingProductionNote({ sceneId, type });
-    setProductionNoteValue(currentNote);
-  };
+      const duration = Math.max(timelineData.totalDuration, 0.001);
+      let nextTime = currentTimeRef.current + dt;
 
-  const handleSaveProductionNote = () => {
-    if (!editingProductionNote) return;
-    const { sceneId, type } = editingProductionNote;
+      if (nextTime >= duration) {
+        nextTime = duration;
+        currentTimeRef.current = nextTime;
+        updatePlayheadDOM(nextTime);
+        setTimelineCurrentTime(nextTime);
+        setTimelineIsPlaying(false);
+        return; // stop loop
+      }
+
+      currentTimeRef.current = nextTime;
+      updatePlayheadDOM(nextTime);
+
+      // Throttle React state updates to ~4x/sec for time display
+      const quant = Math.round(nextTime * 4) / 4;
+      setTimelineCurrentTime(prev => (prev === quant ? prev : quant));
+
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+
+    rafIdRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+      lastTsRef.current = null;
+    };
+  }, [timelineIsPlaying, timelineData.totalDuration, updatePlayheadDOM]);
+
+  // Live progress → playhead sync (only when NOT playing) — conflict-free
+  useEffect(() => {
+    if (timelineIsPlaying) return;
+    if (!liveSetStatus?.todayProgress) return;
+    const pct = liveSetStatus.todayProgress.completedSetups / Math.max(liveSetStatus.todayProgress.totalSetups, 1);
+    const nextTime = pct * timelineData.totalDuration;
+    currentTimeRef.current = nextTime;
+    updatePlayheadDOM(nextTime);
+    setTimelineCurrentTime(nextTime);
+  }, [liveSetStatus?.todayProgress, timelineIsPlaying, timelineData.totalDuration, updatePlayheadDOM]);
+
+  // Production notes — save handler for <ProductionNotesPanel>
+  const handleSaveProductionNote = useCallback((sceneId: string, noteType: NoteType, value: string) => {
     setProductionNotes(prev => ({
       ...prev,
       [sceneId]: {
         ...prev[sceneId],
-        [type]: productionNoteValue,
+        [noteType]: value,
       },
     }));
-    setEditingProductionNote(null);
-    setProductionNoteValue('');
-  };
+  }, []);
 
-  const handleCancelProductionNote = () => {
-    setEditingProductionNote(null);
-    setProductionNoteValue('');
-  };
-
-  // Scene status handlers
-  const handleSetSceneStatus = (sceneId: string, status: 'not-started' | 'in-progress' | 'complete') => {
-    setSceneStatuses(prev => ({
+  // Scene status handlers — sets manual override
+  const handleSetSceneStatus = useCallback((sceneId: string, status: DerivedSceneStatus) => {
+    setSceneStatusOverrides(prev => ({
       ...prev,
       [sceneId]: status,
     }));
@@ -1635,67 +1961,114 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         });
       }
     }
-  };
+    // Notify manuscript of status change
+    if (onManuscriptUpdate) {
+      onManuscriptUpdate({
+        ...manuscript,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }, [scenes, onSceneUpdate, onManuscriptUpdate, manuscript]);
 
   // Copy shot settings to next shot
   const handleCopySettingsToNextShot = () => {
     if (!selectedShot || !selectedScene) return;
     const sceneShots = getShotsForScene(selectedScene.id);
     const currentIdx = sceneShots.findIndex(s => s.id === selectedShot.id);
-    if (currentIdx >= 0 && currentIdx < sceneShots.length - 1) {
-      const nextShot = sceneShots[currentIdx + 1];
-      setShotMetadata(prev => ({
-        ...prev,
-        [nextShot.id]: {
-          ...prev[nextShot.id],
-          camera: prev[selectedShot.id]?.camera || { lens: shotProperties.lens, movement: '', framing: shotProperties.shotType },
-          lighting: prev[selectedShot.id]?.lighting || { key: shotProperties.keyLight, temp: '', ratio: '' },
-          sound: prev[selectedShot.id]?.sound || { mic: shotProperties.mic, ambience: shotProperties.atmos, notes: '' },
-        },
-      }));
-      // Select the next shot
-      setSelectedShot(nextShot);
-    }
+    if (currentIdx < 0 || currentIdx >= sceneShots.length - 1) return;
+
+    const nextShot = sceneShots[currentIdx + 1];
+
+    // Source = current shot's metadata. If dirty, flush draft first.
+    // Never fall back to global shotProperties — always per-shot metadata.
+    const currentMeta = shotMetadata[selectedShot.id];
+    const base: _ShotMeta = inspectorUI.dirty && currentMeta
+      ? shotPropertiesToMeta(shotProperties, currentMeta)
+      : currentMeta ?? buildDefaultShotMeta();
+
+    setShotMetadata(prev => ({
+      ...prev,
+      // Flush dirty draft for current shot
+      ...(inspectorUI.dirty && currentMeta ? { [selectedShot.id]: base } : {}),
+      // Copy camera/lighting/sound to next shot (preserve its other fields)
+      [nextShot.id]: {
+        ...(prev[nextShot.id] ?? buildDefaultShotMeta()),
+        camera: { ...base.camera },
+        lighting: { ...base.lighting },
+        sound: { ...base.sound },
+      },
+    }));
+    // Select the next shot (draft will populate from metadata via effect)
+    setSelectedShot(nextShot);
   };
 
-  // Save shot settings as preset
-  const [savedPresets, setSavedPresets] = useState<Record<string, typeof shotProperties>>({});
+  // Save shot settings as preset — ShotPreset model (camera + lighting + sound)
+  const [savedPresets, setSavedPresets] = useState<Record<string, ShotPreset>>({});
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
   const [presetName, setPresetName] = useState('');
 
   const handleSaveAsPreset = () => {
-    if (!presetName.trim()) return;
+    if (!presetName.trim() || !selectedShot?.id) return;
+    // Save from per-shot metadata (flush dirty draft first)
+    const meta = shotMetadata[selectedShot.id];
+    const source: _ShotMeta = inspectorUI.dirty && meta
+      ? shotPropertiesToMeta(shotProperties, meta)
+      : meta ?? buildDefaultShotMeta();
     setSavedPresets(prev => ({
       ...prev,
-      [presetName]: { ...shotProperties },
+      [presetName]: {
+        camera: { ...source.camera },
+        lighting: { ...source.lighting },
+        sound: { ...source.sound },
+      },
     }));
     setShowSavePresetDialog(false);
     setPresetName('');
   };
 
   const handleLoadPreset = (name: string) => {
+    if (!selectedShot?.id) return;
     const preset = savedPresets[name];
-    if (preset) {
-      setShotProperties(preset);
-    }
+    if (!preset) return;
+    // Apply preset directly to per-shot metadata
+    setShotMetadata(prev => ({
+      ...prev,
+      [selectedShot.id]: {
+        ...(prev[selectedShot.id] ?? buildDefaultShotMeta()),
+        camera: { ...preset.camera },
+        lighting: { ...preset.lighting },
+        sound: { ...preset.sound },
+      },
+    }));
+    // The SELECT_SHOT effect will refresh the inspector draft automatically
   };
 
-  // Add new shot to scene - opens dialog
-  const handleAddNewShot = () => {
+  // Add new shot to scene - opens FSM dialog
+  const handleAddNewShot = useCallback(() => {
     if (!selectedScene) return;
-    setShowAddShotDialog(true);
-    setAddShotMode(null);
-    setSelectedShotImage(null);
-    setAddShotReferenceQuery('');
-    setAddShotReferenceResults([]);
-  };
+    addShotDispatch({ type: 'OPEN' });
+  }, [selectedScene]);
 
-  // Actually create the shot with image
-  const handleCreateShot = (imageUrl?: string) => {
+  // Debounced persist queue for shot lists — avoids spamming backend
+  const { debounced: debouncedPersistShotList } = useDebouncedCallback(
+    (pid: string, sceneId: string, lists: ShotList[]) => {
+      const list = lists.find(l => l.sceneId === sceneId);
+      if (list) {
+        castingService.saveShotList(pid, list).catch(err =>
+          console.warn('Could not persist shot list:', err)
+        );
+      }
+    },
+    800
+  );
+
+  // Actually create the shot with image — called from <AddShotDialog>
+  const handleCreateShot = useCallback((imageUrl?: string) => {
     if (!selectedScene) return;
     const now = new Date().toISOString();
+    const shotId = `shot-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
     const newShot: CastingShot = {
-      id: `shot-${Date.now()}`,
+      id: shotId,
       sceneId: selectedScene.id,
       roleId: '',
       shotType: 'Medium',
@@ -1708,18 +2081,19 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       createdAt: now,
       updatedAt: now,
     };
-    // Add to shot lists
+    // Single state update — compute next list in one pass
     setShotLists(prev => {
       const existingList = prev.find(l => l.sceneId === selectedScene.id);
+      let next: typeof prev;
       if (existingList) {
-        return prev.map(l => 
+        next = prev.map(l => 
           l.sceneId === selectedScene.id 
             ? { ...l, shots: [...l.shots, newShot] }
             : l
         );
       } else {
-        return [...prev, {
-          id: `shot-list-${Date.now()}`,
+        next = [...prev, {
+          id: `shot-list-${crypto.randomUUID?.() ?? Date.now()}`,
           projectId,
           sceneId: selectedScene.id,
           shots: [newShot],
@@ -1728,118 +2102,105 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
           updatedAt: now,
         }];
       }
+      // Queue persist (debounced — avoids duplicate calls on rapid shot creation)
+      debouncedPersistShotList(projectId, selectedScene.id, next);
+      return next;
     });
-    // Store the image URL in shot metadata if provided
-    if (imageUrl) {
-      setShotMetadata(prev => ({
-        ...prev,
-        [newShot.id]: {
-          ...prev[newShot.id],
-          thumbnailUrl: imageUrl,
-        },
-      }));
-    }
+    // Seed full metadata structure (not just thumbnailUrl)
+    setShotMetadata(prev => ({
+      ...prev,
+      [shotId]: {
+        ...buildDefaultShotMeta(),
+        ...(imageUrl ? { thumbnailUrl: imageUrl } : {}),
+      },
+    }));
     setSelectedShot(newShot);
-    setShowAddShotDialog(false);
-    setAddShotMode(null);
-    setSelectedShotImage(null);
-  };
+  }, [selectedScene, projectId, debouncedPersistShotList]);
 
-  // Handle file upload for new shot
-  const handleShotImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          setSelectedShotImage(e.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  // Reference shot search — passed to <AddShotDialog>
+  // Race-safe: uses searchQueryIdRef to discard stale results
+  // Results cache avoids redundant network calls for repeated queries
+  const refSearchCacheRef = useRef<Map<string, ShotSearchResult[]>>(new Map());
 
-  // Search for reference shots
-  const handleSearchReferenceShots = async () => {
-    if (!addShotReferenceQuery.trim()) return;
-    setAddShotLoading(true);
-    
+  const handleSearchReferenceShots = useCallback(async (query: string): Promise<ShotSearchResult[]> => {
+    const q = query.trim();
+    if (!q) return [];
+
+    // Cache hit — return immediately
+    const cached = refSearchCacheRef.current.get(q);
+    if (cached) return cached;
+
+    // Race guard
+    const queryId = ++searchQueryIdRef.current;
+
     try {
-      // Search shot.cafe
-      const shotCafeResults = await searchShotCafe(addShotReferenceQuery);
-      
-      // Also get some cinematic images from Unsplash/Picsum as fallback
-      const mockImages = Array.from({ length: 6 }, (_, i) => ({
-        id: `ref-${i}`,
-        url: `https://picsum.photos/seed/${addShotReferenceQuery}${i}/400/225`,
-        thumbnailUrl: `https://picsum.photos/seed/${addShotReferenceQuery}${i}/150/100`,
-        source: 'picsum',
-        attribution: 'Reference Image',
+      const shotCafeResults = await searchShotCafe(q);
+
+      // Stale guard: discard if a newer search was started
+      if (queryId !== searchQueryIdRef.current) return [];
+
+      const results: ShotSearchResult[] = shotCafeResults.map((film: any) => ({
+        id: film.id || `film-${film.slug}`,
+        url: film.thumbnail,
+        thumbnailUrl: film.thumbnail,
+        source: 'shot.cafe',
+        film: film.title,
+        // cinematographer is NOT a shot type — omit to avoid semantic mismatch
+        attribution: film.cinematographer ? `DP: ${film.cinematographer}` : undefined,
       }));
-      
-      // Combine results - shot.cafe films get priority (use film thumbnails)
-      const allResults = [
-        ...shotCafeResults.map(film => ({
-          id: film.id,
-          url: film.thumbnail,
-          thumbnailUrl: film.thumbnail,
-          source: 'shot.cafe',
-          film: film.title,
-          shotType: film.cinematographer,
-        })),
-        ...mockImages,
-      ];
-      
-      setAddShotReferenceResults(allResults);
-    } catch (error) {
-      console.error('Reference search error:', error);
-      // Fallback to mock images
-      const mockImages = Array.from({ length: 8 }, (_, i) => ({
-        id: `ref-${i}`,
-        url: `https://picsum.photos/seed/${addShotReferenceQuery}${i}/400/225`,
-        thumbnailUrl: `https://picsum.photos/seed/${addShotReferenceQuery}${i}/150/100`,
-        source: 'picsum',
-        attribution: 'Reference Image',
-      }));
-      setAddShotReferenceResults(mockImages);
-    } finally {
-      setAddShotLoading(false);
+
+      // Cache results
+      refSearchCacheRef.current.set(q, results);
+      // Cap cache size to avoid memory leak
+      if (refSearchCacheRef.current.size > 50) {
+        const firstKey = refSearchCacheRef.current.keys().next().value;
+        if (firstKey) refSearchCacheRef.current.delete(firstKey);
+      }
+
+      return results;
+    } catch {
+      // No picsum fallback — show empty state with actionable UI
+      return [];
     }
-  };
+  }, [searchShotCafe]);
 
-  // Manuscript zoom handlers
-  const handleManuscriptZoomIn = () => {
-    setManuscriptZoom(prev => Math.min(prev + 0.25, 2)); // Max 200%
-  };
+  // Manuscript zoom handlers — persist to localStorage
+  const handleManuscriptZoomIn = useCallback(() => {
+    setManuscriptZoom(prev => { const v = Math.min(prev + 0.25, 2); saveZoomPreference(v); return v; });
+  }, []);
 
-  const handleManuscriptZoomOut = () => {
-    setManuscriptZoom(prev => Math.max(prev - 0.25, 0.5)); // Min 50%
-  };
+  const handleManuscriptZoomOut = useCallback(() => {
+    setManuscriptZoom(prev => { const v = Math.max(prev - 0.25, 0.5); saveZoomPreference(v); return v; });
+  }, []);
 
-  const handleManuscriptFullscreen = () => {
-    setIsManuscriptFullscreen(prev => !prev);
-  };
+  const handleManuscriptZoomReset = useCallback(() => {
+    setManuscriptZoom(1);
+    saveZoomPreference(1);
+  }, []);
 
-  const handleAddReadThroughNote = (sceneId: string, note: string) => {
+  const handleManuscriptFullscreen = useCallback(() => {
+    setIsManuscriptFullscreen(prev => { const v = !prev; saveFullscreenPreference(v); return v; });
+  }, []);
+
+  const handleAddReadThroughNote = (lineIndex: number, note: string) => {
     setReadThroughNotes(prev => ({
       ...prev,
-      [sceneId]: note,
+      [lineIndex]: note,
     }));
   };
 
   // ============================================
   // WORKFLOW GAP FIX #2: Scene Needs Handlers
   // ============================================
-  const handleUpdateSceneNeeds = (sceneId: string, needs: { cam: boolean; light: boolean; sound: boolean }) => {
+  const handleUpdateSceneNeeds = useCallback((sceneId: string, needs: { cam: boolean; light: boolean; sound: boolean }) => {
     setSceneNeeds(prev => ({
       ...prev,
       [sceneId]: needs,
     }));
-  };
+  }, []);
 
   const handleOpenSceneNeedsDialog = (sceneId: string) => {
-    setEditingSceneNeedsId(sceneId);
-    setShowSceneNeedsDialog(true);
+    dispatchWorkflow({ type: 'OPEN_SCENE_NEEDS', sceneId });
   };
 
   // ============================================
@@ -1856,22 +2217,20 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
           status: 'scheduled',
         });
       }
-      setShowScheduleSceneDialog(false);
-      setSceneToSchedule(null);
+      dispatchWorkflow({ type: 'CLOSE_MODAL' });
     } catch (error) {
       console.error('Failed to schedule scene:', error);
     }
   };
 
   const handleOpenScheduleDialog = (scene: SceneBreakdown) => {
-    setSceneToSchedule(scene);
-    setShowScheduleSceneDialog(true);
+    dispatchWorkflow({ type: 'OPEN_SCHEDULE_SCENE', sceneId: scene.id });
   };
 
   // ============================================
   // WORKFLOW GAP FIX #4: Pre-Production Checklist Handlers
   // ============================================
-  const handleUpdateChecklist = (sceneId: string, field: keyof typeof sceneChecklists[string], value: boolean) => {
+  const handleUpdateChecklist = (sceneId: string, field: ChecklistKey, value: boolean) => {
     setSceneChecklists(prev => ({
       ...prev,
       [sceneId]: {
@@ -1884,9 +2243,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   const getChecklistProgress = (sceneId: string): number => {
     const checklist = sceneChecklists[sceneId];
     if (!checklist) return 0;
-    const total = 6;
-    const completed = Object.values(checklist).filter(Boolean).length;
-    return Math.round((completed / total) * 100);
+    return deriveReadinessScore(checklist).score;
   };
 
   // ============================================
@@ -1902,16 +2259,17 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       
       // Sync with stripboard
       const stripStatus = status === 'completed' ? 'shot' : status === 'scheduled' ? 'scheduled' : 'not-scheduled';
+      console.log(`[Stripboard] Scene ${sceneId} strip status: ${stripStatus}`);
       await productionWorkflowService.assignSceneToDay(
         sceneId, 
         status === 'not-scheduled' ? null : selectedShootingDayId
       );
       
-      // Update scene statuses local tracker
-      const uiStatus = status === 'completed' ? 'complete' : status === 'shot' ? 'in-progress' : 'not-started';
-      setSceneStatuses(prev => ({
+      // Update scene status override
+      const uiStatus: DerivedSceneStatus = status === 'completed' ? 'complete' : status === 'shot' ? 'in-progress' : 'not-started';
+      setSceneStatusOverrides(prev => ({
         ...prev,
-        [sceneId]: uiStatus as 'not-started' | 'in-progress' | 'complete',
+        [sceneId]: uiStatus,
       }));
     } catch (error) {
       console.error('Failed to sync status with stripboard:', error);
@@ -1988,7 +2346,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       }
     });
 
-    setShowBulkShotDialog(false);
+    dispatchWorkflow({ type: 'CLOSE_MODAL' });
   };
 
   // ============================================
@@ -2015,60 +2373,55 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     return sceneDialogue.filter(d => !coveredIds.has(d.id));
   };
 
-  // Undo/Redo handlers
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      if (onScenesReorder) {
-        onScenesReorder(sceneHistory[newIndex]);
-      }
+  // Undo/Redo handlers — patch-based (no full-snapshot copies)
+  const handleUndo = useCallback(() => {
+    const result = undoPatch(scenes);
+    if (result && onScenesReorder) {
+      onScenesReorder(result);
     }
-  };
+  }, [undoPatch, scenes, onScenesReorder]);
 
-  const handleRedo = () => {
-    if (historyIndex < sceneHistory.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      if (onScenesReorder) {
-        onScenesReorder(sceneHistory[newIndex]);
-      }
+  const handleRedo = useCallback(() => {
+    const result = redoPatch(scenes);
+    if (result && onScenesReorder) {
+      onScenesReorder(result);
     }
-  };
+  }, [redoPatch, scenes, onScenesReorder]);
 
-  const addToHistory = (newScenes: SceneBreakdown[]) => {
-    const newHistory = sceneHistory.slice(0, historyIndex + 1);
-    newHistory.push(newScenes);
-    setSceneHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
-  };
-
-  // Batch operations
-  const handleToggleSceneSelection = (sceneId: string) => {
+  // Batch operations — using SelectedMap (Record<string, true>)
+  const handleToggleSceneSelection = useCallback((sceneId: string) => {
     if (!batchMode) {
       setBatchMode(true);
-      setSelectedScenes(new Set([sceneId]));
+      setSelectedScenes({ [sceneId]: true });
     } else {
-      setSelectedScenes(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(sceneId)) newSet.delete(sceneId);
-        else newSet.add(sceneId);
-        return newSet;
-      });
+      setSelectedScenes(prev => selectedMapToggle(prev, sceneId));
     }
-  };
+  }, [batchMode]);
 
-  const handleBatchDelete = () => {
-    if (selectedScenes.size === 0 || !onSceneDelete) return;
-    if (window.confirm(`Delete ${selectedScenes.size} selected scenes?`)) {
-      selectedScenes.forEach(sceneId => onSceneDelete(sceneId));
-      setSelectedScenes(new Set());
+  const handleBatchDelete = useCallback(() => {
+    const size = selectedMapSize(selectedScenes);
+    if (size === 0 || !onSceneDelete) return;
+    const ids = selectedMapIds(selectedScenes);
+    if (window.confirm(`Delete ${size} selected scenes?`)) {
+      // Push a batch patch for undo
+      const deletedScenes = scenes.filter(s => selectedMapHas(selectedScenes, s.id));
+      const batchPatches = deletedScenes.map(s => ({
+        type: 'deleteScene' as const,
+        scene: s,
+        index: scenes.indexOf(s),
+      }));
+      if (batchPatches.length > 0) {
+        pushPatch({ type: 'batch', label: `Delete ${size} scenes`, patches: batchPatches });
+      }
+      ids.forEach(sceneId => onSceneDelete(sceneId));
+      setSelectedScenes(EMPTY_SELECTION);
       setBatchMode(false);
     }
-  };
+  }, [selectedScenes, onSceneDelete, scenes, pushPatch]);
 
-  const handleBatchExport = () => {
-    const selectedScenesList = scenes.filter(s => selectedScenes.has(s.id));
+  const handleBatchExport = useCallback(() => {
+    const ids = selectedMapIds(selectedScenes);
+    const selectedScenesList = scenes.filter(s => selectedMapHas(selectedScenes, s.id));
     const data = {
       scenes: selectedScenesList,
       count: selectedScenesList.length,
@@ -2078,10 +2431,10 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `selected_scenes_${selectedScenes.size}.json`;
+    link.download = `selected_scenes_${ids.length}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  };
+  }, [selectedScenes, scenes]);
 
   const validateSceneNumber = (sceneNumber: string): string | null => {
     const duplicate = scenes.find(s => s.sceneNumber === sceneNumber && s.id !== selectedScene?.id);
@@ -2110,9 +2463,21 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     }));
   };
 
-  // Sorting and filtering
+  // Sorting and filtering — combines search, tag, needs, and sort
   const getSortedAndFilteredScenes = (): SceneBreakdown[] => {
     let result = [...scenes];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(scene =>
+        scene.sceneHeading?.toLowerCase().includes(query) ||
+        scene.locationName?.toLowerCase().includes(query) ||
+        scene.description?.toLowerCase().includes(query) ||
+        scene.characters?.some(char => char.toLowerCase().includes(query)) ||
+        scene.sceneNumber?.toLowerCase().includes(query)
+      );
+    }
 
     // Filter by tags
     if (selectedTags.size > 0) {
@@ -2122,13 +2487,13 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     }
 
     // Filter by scene needs
-    if (filterMissingCamera) {
+    if (filters.missing.cam) {
       result = result.filter(s => sceneNeeds[s.id]?.cam);
     }
-    if (filterMissingLight) {
+    if (filters.missing.light) {
       result = result.filter(s => sceneNeeds[s.id]?.light);
     }
-    if (filterMissingSound) {
+    if (filters.missing.sound) {
       result = result.filter(s => sceneNeeds[s.id]?.sound);
     }
 
@@ -2176,8 +2541,9 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       if (originalShotList) {
         const duplicatedShots = originalShotList.shots.map(shot => ({
           ...shot,
-          id: `shot-${Date.now()}-${Math.random()}`,
+          id: `shot-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`,
         }));
+        setShotLists(prev => [...prev, { ...originalShotList, id: `sl-${crypto.randomUUID?.() ?? Date.now()}`, sceneId: newScene.id, shots: duplicatedShots }]);
       }
     }
   };
@@ -2227,10 +2593,10 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
 
   // PDF Export
   const handlePDFExport = () => {
-    const scriptContent = scenes.map((scene, idx) => {
+    const scriptContent = scenes.map((scene, sceneIndex) => {
       const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
       return `
-SCENE ${scene.sceneNumber}
+[${sceneIndex + 1}] SCENE ${scene.sceneNumber}
 ${scene.sceneHeading}
 ${scene.intExt} - ${scene.locationName} - ${scene.timeOfDay}
 
@@ -2295,6 +2661,31 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       // Ignore if typing in input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+      // ── Read-through mode shortcuts (override defaults when active) ──
+      if (readThroughMode) {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          handleReadThroughPlay();
+          return;
+        }
+        if (e.code === 'ArrowRight') {
+          e.preventDefault();
+          handleReadThroughNext();
+          return;
+        }
+        if (e.code === 'ArrowLeft') {
+          e.preventDefault();
+          handleReadThroughPrevious();
+          return;
+        }
+        // Escape exits read-through mode
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          handleReadThroughToggle();
+          return;
+        }
+      }
+
       // Space: Play/Pause timeline
       if (e.code === 'Space') {
         e.preventDefault();
@@ -2322,7 +2713,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         handleRedo();
       }
       // Delete: Delete selected scene(s)
-      else if (e.code === 'Delete' && (batchMode ? selectedScenes.size > 0 : selectedScene)) {
+      else if (e.code === 'Delete' && (batchMode ? selectedMapSize(selectedScenes) > 0 : selectedScene)) {
         e.preventDefault();
         if (batchMode) {
           handleBatchDelete();
@@ -2335,7 +2726,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
         e.preventDefault();
         setBatchMode(true);
-        setSelectedScenes(new Set(scenes.map(s => s.id)));
+        setSelectedScenes(selectedMapFromIds(scenes.map(s => s.id)));
       }
       // Ctrl/Cmd + D: Duplicate selected scene
       else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && selectedScene) {
@@ -2366,7 +2757,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       else if (e.code === 'Escape') {
         if (batchMode) {
           setBatchMode(false);
-          setSelectedScenes(new Set());
+          setSelectedScenes(EMPTY_SELECTION);
         }
         if (showQuickNotes) {
           setShowQuickNotes(false);
@@ -2380,7 +2771,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedScene, scenes, batchMode, selectedScenes, timelineIsPlaying, showQuickNotes, showSceneTemplate]);
+  }, [selectedScene, scenes, batchMode, selectedScenes, timelineIsPlaying, showQuickNotes, showSceneTemplate, readThroughMode, handleReadThroughNext, handleReadThroughPrevious]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#1a1f2e' }}>
@@ -2583,7 +2974,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {!isMobile && (
             <Tooltip title="Stripboard - Shooting Schedule">
               <IconButton
-                onClick={() => setShowStripboardPanel(true)}
+                onClick={() => dispatchWorkflow({ type: 'OPEN_STRIPBOARD' })}
                 size={responsive.buttonSize}
                 sx={{
                   color: productionWorkflowTab === 'stripboard' ? '#fbbf24' : '#6b7280',
@@ -2601,7 +2992,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {!isMobile && (
             <Tooltip title="Opptaksplan - Day Planner">
               <IconButton
-                onClick={() => setShowShootingDayPlanner(true)}
+                onClick={() => dispatchWorkflow({ type: 'OPEN_SCHEDULE' })}
                 size={responsive.buttonSize}
                 sx={{
                   color: productionWorkflowTab === 'schedule' ? '#34d399' : '#6b7280',
@@ -2618,7 +3009,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {/* Live Set Mode - WORKFLOW GAP FIX #1: Now opens day selector first */}
           <Tooltip title="Live Set Mode - On-Set Tracking">
             <IconButton
-              onClick={() => setShowLiveSetDaySelector(true)}
+              onClick={() => dispatchWorkflow({ type: 'OPEN_LIVE', showDaySelector: true })}
               size={responsive.buttonSize}
               sx={{
                 color: isLiveSetConnected ? '#ef4444' : '#6b7280',
@@ -2670,6 +3061,43 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Tooltip>
           )}
 
+          {/* Follow Live Scene toggle — only visible when connected */}
+          {!isMobile && isLiveSetConnected && (
+            <Tooltip title={followLiveScene ? "Auto-følger live scene — klikk for å stoppe" : "Følg live scene automatisk"}>
+              <Box
+                onClick={() => dispatchWorkflow({ type: 'TOGGLE_FOLLOW_LIVE' })}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  bgcolor: followLiveScene ? 'rgba(239, 68, 68, 0.12)' : 'rgba(107, 114, 128, 0.08)',
+                  border: `1px solid ${followLiveScene ? 'rgba(239, 68, 68, 0.3)' : '#374151'}`,
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: followLiveScene ? 'rgba(239, 68, 68, 0.18)' : 'rgba(107, 114, 128, 0.15)',
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    bgcolor: followLiveScene ? '#ef4444' : '#6b7280',
+                    animation: followLiveScene ? 'pulse 2s infinite' : 'none',
+                  }}
+                />
+                <Typography sx={{ fontSize: 10, color: followLiveScene ? '#ef4444' : '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {followLiveScene ? 'FØLGER LIVE' : 'Følg scene'}
+                </Typography>
+              </Box>
+            </Tooltip>
+          )}
+
           {!isMobile && <Divider orientation="vertical" flexItem sx={{ mx: 1, bgcolor: '#374151' }} />}
 
           {onClose && (
@@ -2687,6 +3115,103 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           )}
         </Stack>
       </Box>
+
+      {/* Story Arc Context Bar — progressive disclosure layer (#5) */}
+      {storyLogicData && (storyLogicData.logline?.fullLogline || storyLogicData.concept?.genre) && (
+        <Box sx={{ borderBottom: '1px solid rgba(139, 92, 246, 0.15)' }}>
+          {/* Toggle strip — always visible */}
+          <Box
+            onClick={() => setFilters(p => ({ ...p, showStoryContext: !p.showStoryContext }))}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              px: responsive.headerPx,
+              py: 0.25,
+              cursor: 'pointer',
+              bgcolor: 'rgba(139, 92, 246, 0.04)',
+              '&:hover': { bgcolor: 'rgba(139, 92, 246, 0.08)' },
+              transition: 'background-color 0.15s',
+            }}
+          >
+            <Typography sx={{ fontSize: 10, color: '#a78bfa', fontWeight: 600, letterSpacing: 0.5 }}>
+              STORY ARC
+            </Typography>
+            {storyLogicData.concept?.genre && (
+              <Chip label={storyLogicData.concept.genre} size="small" sx={{ bgcolor: 'rgba(139,92,246,0.12)', color: '#c4b5fd', fontSize: 9, height: 16, '& .MuiChip-label': { px: 0.8 } }} />
+            )}
+            <Box sx={{ flex: 1 }} />
+            {autosaveStatus !== 'idle' && (
+              <Typography sx={{ fontSize: 9, color: autosaveStatus === 'saving' ? '#fbbf24' : '#4ade80', opacity: 0.8, mr: 0.5 }}>
+                {autosaveStatus === 'saving' ? 'Saving…' : '✓ Saved'}
+              </Typography>
+            )}
+            {filters.showStoryContext ? <ExpandLessIcon sx={{ fontSize: 14, color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ fontSize: 14, color: '#a78bfa' }} />}
+          </Box>
+          {/* Expandable detail panel */}
+          <Collapse in={filters.showStoryContext}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                px: responsive.headerPx,
+                py: 0.5,
+                bgcolor: 'rgba(139, 92, 246, 0.08)',
+                overflow: 'hidden',
+                flexWrap: 'nowrap',
+              }}
+            >
+              {storyLogicData.concept?.genre && (
+                <Chip
+                  label={`${storyLogicData.concept.genre}${storyLogicData.concept.subGenre ? ` / ${storyLogicData.concept.subGenre}` : ''}`}
+                  size="small"
+                  sx={{
+                    bgcolor: 'rgba(139, 92, 246, 0.15)',
+                    color: '#c4b5fd',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    height: 20,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              {storyLogicData.logline?.fullLogline && (
+                <Tooltip title={storyLogicData.logline.fullLogline}>
+                  <Typography
+                    sx={{
+                      fontSize: 11,
+                      color: 'rgba(255,255,255,0.6)',
+                      fontStyle: 'italic',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    {storyLogicData.logline.fullLogline}
+                  </Typography>
+                </Tooltip>
+              )}
+              {storyLogicData.theme?.centralTheme && (
+                <Chip
+                  label={storyLogicData.theme.centralTheme}
+                  size="small"
+                  sx={{
+                    bgcolor: 'rgba(236, 72, 153, 0.15)',
+                    color: '#f9a8d4',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    height: 20,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+            </Box>
+          </Collapse>
+        </Box>
+      )}
 
       {/* Main content area */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -2774,99 +3299,99 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
               <Box
-                onClick={() => setViewMode(viewMode === 'scenes' ? 'shots' : 'scenes')}
+                onClick={() => setFilters(p => ({ ...p, viewMode: p.viewMode === 'scenes' ? 'shots' : 'scenes' }))}
                 sx={{
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: viewMode === 'scenes' ? 'rgba(59,130,246,0.2)' : '#1a2230',
-                  border: viewMode === 'scenes' ? '1px solid #3b82f6' : '1px solid #252d3d',
+                  bgcolor: filters.viewMode === 'scenes' ? 'rgba(59,130,246,0.2)' : '#1a2230',
+                  border: filters.viewMode === 'scenes' ? '1px solid #3b82f6' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: viewMode === 'scenes' ? 'rgba(59,130,246,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.viewMode === 'scenes' ? 'rgba(59,130,246,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  {viewMode === 'scenes' ? <VideoLibraryIcon sx={{ fontSize: 14 }} /> : <MovieIcon sx={{ fontSize: 14 }} />}
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: viewMode === 'scenes' ? '#60a5fa' : '#9ca3af' }}>
-                    {viewMode === 'scenes' ? 'Scener' : 'Shots'}
+                  {filters.viewMode === 'scenes' ? <VideoLibraryIcon sx={{ fontSize: 14 }} /> : <MovieIcon sx={{ fontSize: 14 }} />}
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.viewMode === 'scenes' ? '#60a5fa' : '#9ca3af' }}>
+                    {filters.viewMode === 'scenes' ? 'Scener' : 'Shots'}
                   </Typography>
                 </Stack>
               </Box>
               <Box
-                onClick={() => setFilterMissingCamera(!filterMissingCamera)}
+                onClick={() => setFilters(p => ({ ...p, missing: { ...p.missing, cam: !p.missing.cam } }))}
                 sx={{
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: filterMissingCamera ? 'rgba(249,115,22,0.2)' : '#1a2230',
-                  border: filterMissingCamera ? '1px solid #f97316' : '1px solid #252d3d',
+                  bgcolor: filters.missing.cam ? 'rgba(249,115,22,0.2)' : '#1a2230',
+                  border: filters.missing.cam ? '1px solid #f97316' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: filterMissingCamera ? 'rgba(249,115,22,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.missing.cam ? 'rgba(249,115,22,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <CameraIcon sx={{ fontSize: 14, color: filterMissingCamera ? '#fb923c' : '#9ca3af' }} />
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filterMissingCamera ? '#fb923c' : '#9ca3af' }}>Kamera</Typography>
+                  <CameraIcon sx={{ fontSize: 14, color: filters.missing.cam ? '#fb923c' : '#9ca3af' }} />
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.missing.cam ? '#fb923c' : '#9ca3af' }}>Kamera</Typography>
                 </Stack>
               </Box>
               <Box
-                onClick={() => setFilterMissingLight(!filterMissingLight)}
+                onClick={() => setFilters(p => ({ ...p, missing: { ...p.missing, light: !p.missing.light } }))}
                 sx={{
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: filterMissingLight ? 'rgba(251,191,36,0.2)' : '#1a2230',
-                  border: filterMissingLight ? '1px solid #fbbf24' : '1px solid #252d3d',
+                  bgcolor: filters.missing.light ? 'rgba(251,191,36,0.2)' : '#1a2230',
+                  border: filters.missing.light ? '1px solid #fbbf24' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: filterMissingLight ? 'rgba(251,191,36,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.missing.light ? 'rgba(251,191,36,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <LightIcon sx={{ fontSize: 14, color: filterMissingLight ? '#fcd34d' : '#9ca3af' }} />
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filterMissingLight ? '#fcd34d' : '#9ca3af' }}>
+                  <LightIcon sx={{ fontSize: 14, color: filters.missing.light ? '#fcd34d' : '#9ca3af' }} />
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.missing.light ? '#fcd34d' : '#9ca3af' }}>
                     Lys
                   </Typography>
                 </Stack>
               </Box>
               <Box
-                onClick={() => setFilterMissingSound(!filterMissingSound)}
+                onClick={() => setFilters(p => ({ ...p, missing: { ...p.missing, sound: !p.missing.sound } }))}
                 sx={{
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: filterMissingSound ? 'rgba(6,182,212,0.2)' : '#1a2230',
-                  border: filterMissingSound ? '1px solid #06b6d4' : '1px solid #252d3d',
+                  bgcolor: filters.missing.sound ? 'rgba(6,182,212,0.2)' : '#1a2230',
+                  border: filters.missing.sound ? '1px solid #06b6d4' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: filterMissingSound ? 'rgba(6,182,212,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.missing.sound ? 'rgba(6,182,212,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <MicIcon sx={{ fontSize: 14, color: filterMissingSound ? '#22d3ee' : '#9ca3af' }} />
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filterMissingSound ? '#22d3ee' : '#9ca3af' }}>
+                  <MicIcon sx={{ fontSize: 14, color: filters.missing.sound ? '#22d3ee' : '#9ca3af' }} />
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.missing.sound ? '#22d3ee' : '#9ca3af' }}>
                     Lyd
                   </Typography>
                 </Stack>
               </Box>
               <Box
-                onClick={() => setShowTags(!showTags)}
+                onClick={() => setFilters(p => ({ ...p, showTags: !p.showTags }))}
                 sx={{
                   px: 1.5,
                   py: 0.5,
                   borderRadius: '8px',
-                  bgcolor: showTags ? 'rgba(16,185,129,0.2)' : '#1a2230',
-                  border: showTags ? '1px solid #10b981' : '1px solid #252d3d',
+                  bgcolor: filters.showTags ? 'rgba(16,185,129,0.2)' : '#1a2230',
+                  border: filters.showTags ? '1px solid #10b981' : '1px solid #252d3d',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  '&:hover': { bgcolor: showTags ? 'rgba(16,185,129,0.25)' : '#252d3d' },
+                  '&:hover': { bgcolor: filters.showTags ? 'rgba(16,185,129,0.25)' : '#252d3d' },
                 }}
               >
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <BookmarkIcon sx={{ fontSize: 14, color: showTags ? '#34d399' : '#9ca3af' }} />
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: showTags ? '#34d399' : '#9ca3af' }}>
+                  <BookmarkIcon sx={{ fontSize: 14, color: filters.showTags ? '#34d399' : '#9ca3af' }} />
+                  <Typography sx={{ fontSize: 11, fontWeight: 600, color: filters.showTags ? '#34d399' : '#9ca3af' }}>
                     Tags
                   </Typography>
                 </Stack>
@@ -2976,7 +3501,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               {acts.map(act => {
                 const actScenes = scenesByAct.get(act.id) || [];
                 const isExpanded = expandedActs.has(act.id);
-                const visibleScenes = actScenes.filter(s => filteredScenes.find(fs => fs.id === s.id));
+                const sortedAndFiltered = getSortedAndFilteredScenes();
+                const visibleScenes = actScenes.filter(s => sortedAndFiltered.find(fs => fs.id === s.id));
                 const completedCount = actScenes.filter(s => getSceneStatus(s) === 'complete').length;
                 
                 return (
@@ -3040,11 +3566,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       >
                         {visibleScenes.map(scene => {
                           const isSelected = selectedScene?.id === scene.id;
-                          const isBatchSelected = selectedScenes.has(scene.id);
+                          const isBatchSelected = selectedMapHas(selectedScenes, scene.id);
                           const status = getSceneStatus(scene);
                           const statusColor = STATUS_COLORS[status as keyof typeof STATUS_COLORS];
                           const needs = sceneNeeds[scene.id] || { cam: false, light: false, sound: false };
-                          const shots = getShotsForScene(scene.id);
+                          const shotsCount = getShotsForScene(scene.id).length;
+                          const firstShot = shotsCount > 0 ? getShotsForScene(scene.id)[0] : null;
                           
                           return (
                             <Box
@@ -3094,9 +3621,9 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                 status={status}
                                 statusColor={statusColor}
                                 needs={needs}
-                                shots={shots}
-                                showTags={showTags}
-                                thumbnail={shots[0] ? shotMetadata[shots[0].id]?.thumbnailUrl : undefined}
+                                shotsCount={shotsCount}
+                                showTags={filters.showTags}
+                                thumbnail={firstShot ? shotMetadata[firstShot.id]?.thumbnailUrl : undefined}
                                 onSceneClick={scrollToScene}
                               />
                             </Box>
@@ -3111,7 +3638,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </DndContext>
 
           {/* Batch Operations Bar */}
-          {batchMode && selectedScenes.size > 0 && (
+          {batchMode && selectedMapSize(selectedScenes) > 0 && (
             <Box
               sx={{
                 p: 1.5,
@@ -3122,7 +3649,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             >
               <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                 <Typography sx={{ fontSize: 12, color: '#60a5fa', fontWeight: 600 }}>
-                  {selectedScenes.size} scene{selectedScenes.size !== 1 ? 's' : ''} selected
+                  {selectedMapSize(selectedScenes)} scene{selectedMapSize(selectedScenes) !== 1 ? 's' : ''} selected
                 </Typography>
                 <Stack direction="row" spacing={0.5}>
                   <Tooltip title="Export selected">
@@ -3148,7 +3675,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   <Tooltip title="Clear selection">
                     <IconButton 
                       size="small" 
-                      onClick={() => { setBatchMode(false); setSelectedScenes(new Set()); }}
+                      onClick={() => { setBatchMode(false); setSelectedScenes(EMPTY_SELECTION); }}
                       sx={{ color: '#6b7280' }}
                     >
                       <CloseIcon sx={{ fontSize: 16 }} />
@@ -3190,7 +3717,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 <Typography sx={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>Ny scene</Typography>
               </Box>
             </Tooltip>
-            <Tooltip title="Casting planner">
+            <Tooltip title="The Role Room">
               <IconButton sx={{ 
                 color: '#6b7280', 
                 bgcolor: '#1a2230', 
@@ -3213,6 +3740,48 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 }}
               >
                 <DownloadIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Skriv ut manus">
+              <IconButton
+                onClick={() => window.print()}
+                sx={{
+                  color: '#6b7280',
+                  bgcolor: '#1a2230',
+                  border: '1px solid #252d3d',
+                  borderRadius: '8px',
+                  '&:hover': { bgcolor: '#252d3d', color: '#a78bfa' },
+                }}
+              >
+                <PrintIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Eksporter som fil">
+              <IconButton
+                onClick={handlePDFExport}
+                sx={{
+                  color: '#6b7280',
+                  bgcolor: '#1a2230',
+                  border: '1px solid #252d3d',
+                  borderRadius: '8px',
+                  '&:hover': { bgcolor: '#252d3d', color: '#f97316' },
+                }}
+              >
+                <ExportIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Last ned Call Sheet som PDF">
+              <IconButton
+                onClick={() => downloadCallSheetPDF(manuscript.title || 'call-sheet')}
+                sx={{
+                  color: '#6b7280',
+                  bgcolor: '#1a2230',
+                  border: '1px solid #252d3d',
+                  borderRadius: '8px',
+                  '&:hover': { bgcolor: '#252d3d', color: '#06b6d4' },
+                }}
+              >
+                <CallSheetIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Tooltip>
           </Box>
@@ -3305,6 +3874,127 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       <Typography sx={{ fontSize: responsive.bodyFontSize, color: '#6b7280' }}>
                         {Math.floor((Date.now() - readThroughStartTime) / 60000)}:{String(Math.floor(((Date.now() - readThroughStartTime) % 60000) / 1000)).padStart(2, '0')}
                       </Typography>
+                    </Stack>
+                  )}
+
+                  {/* TTS Voice Controls */}
+                  {!isMobile && (
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: 1 }}>
+                      <Divider orientation="vertical" flexItem sx={{ borderColor: '#374151' }} />
+                      <Tooltip title={ttsEnabled ? 'AI-stemme aktiv (OpenAI)' : 'AI-stemme av'}>
+                        <IconButton
+                          size="small"
+                          onClick={() => setTtsEnabled(!ttsEnabled)}
+                          sx={{
+                            color: ttsEnabled ? '#8b5cf6' : '#4b5563',
+                            bgcolor: ttsEnabled ? 'rgba(139,92,246,0.1)' : 'transparent',
+                            '&:hover': { color: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.15)' },
+                            p: 0.5,
+                          }}
+                        >
+                          <MicIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                        </IconButton>
+                      </Tooltip>
+                      {ttsEnabled && (
+                        <>
+                          <Select
+                            value={ttsLanguage}
+                            onChange={(e) => setTtsLanguage(e.target.value as TTSLanguage)}
+                            size="small"
+                            variant="standard"
+                            disableUnderline
+                            displayEmpty
+                            sx={{
+                              color: ttsLanguage ? '#3b82f6' : '#9ca3af',
+                              fontSize: responsive.bodyFontSize - 2,
+                              minWidth: 52,
+                              '& .MuiSelect-select': { py: 0, px: 0.5 },
+                              '& .MuiSelect-icon': { color: '#6b7280', fontSize: 16 },
+                            }}
+                          >
+                            <MenuItem value="" sx={{ fontSize: 12 }}>
+                              Auto
+                            </MenuItem>
+                            {TTS_LANGUAGES.map((l) => (
+                              <MenuItem key={l.id} value={l.id} sx={{ fontSize: 12 }}>
+                                {l.flag} {l.label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          <Select
+                            value={ttsVoice}
+                            onChange={(e) => setTtsVoice(e.target.value as TTSVoice)}
+                            size="small"
+                            variant="standard"
+                            disableUnderline
+                            sx={{
+                              color: '#9ca3af',
+                              fontSize: responsive.bodyFontSize - 2,
+                              minWidth: 70,
+                              '& .MuiSelect-select': { py: 0, px: 0.5 },
+                              '& .MuiSelect-icon': { color: '#6b7280', fontSize: 16 },
+                            }}
+                          >
+                            {TTS_VOICES.map((v) => (
+                              <MenuItem key={v.id} value={v.id} sx={{ fontSize: 12 }}>
+                                {v.label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          <Tooltip title={`Speed: ${ttsSpeed}x`}>
+                            <IconButton
+                              size="small"
+                              onClick={() => setTtsSpeed(prev => {
+                                const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
+                                const idx = speeds.indexOf(prev);
+                                return speeds[(idx + 1) % speeds.length];
+                              })}
+                              sx={{
+                                color: ttsSpeed !== 1.0 ? '#f59e0b' : '#6b7280',
+                                fontSize: responsive.bodyFontSize - 2,
+                                p: 0.5,
+                                minWidth: 28,
+                              }}
+                            >
+                              <Typography sx={{ fontSize: 10, fontWeight: 700 }}>{ttsSpeed}x</Typography>
+                            </IconButton>
+                          </Tooltip>
+                          {/* Resume TTS button */}
+                          <Tooltip title={isTTSPlaying() ? 'Pause TTS' : 'Resume TTS'}>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                if (isTTSPlaying()) {
+                                  pauseTTS();
+                                } else {
+                                  resumeTTS();
+                                }
+                              }}
+                              sx={{
+                                color: isTTSPlaying() ? '#10b981' : '#6b7280',
+                                p: 0.5,
+                                '&:hover': { color: '#10b981', bgcolor: 'rgba(16,185,129,0.15)' },
+                              }}
+                            >
+                              {isTTSPlaying() ? <PauseIcon sx={{ fontSize: 14 }} /> : <PlayIcon sx={{ fontSize: 14 }} />}
+                            </IconButton>
+                          </Tooltip>
+                          {/* Character voices toggle */}
+                          <Tooltip title={ttsUseCharacterVoices ? 'Slå av karakterstemmer' : 'Bruk karakterstemmer'}>
+                            <IconButton
+                              size="small"
+                              onClick={() => setTtsUseCharacterVoices(prev => !prev)}
+                              sx={{
+                                color: ttsUseCharacterVoices ? '#8b5cf6' : '#4b5563',
+                                p: 0.5,
+                                '&:hover': { color: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.15)' },
+                              }}
+                            >
+                              <TheaterIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
                     </Stack>
                   )}
                 </>
@@ -3514,7 +4204,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <Button
                       size="small"
                       startIcon={<CheckIcon sx={{ fontSize: 14 }} />}
-                      onClick={() => setShowChecklistDialog(true)}
+                      onClick={() => dispatchWorkflow({ type: 'OPEN_CHECKLIST' })}
                       sx={{
                         minWidth: 'auto',
                         px: 1.5,
@@ -3536,7 +4226,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <Button
                       size="small"
                       startIcon={<MovieIcon sx={{ fontSize: 14 }} />}
-                      onClick={() => setShowBulkShotDialog(true)}
+                      onClick={() => dispatchWorkflow({ type: 'OPEN_BULK_SHOT' })}
                       sx={{
                         minWidth: 'auto',
                         px: 1.5,
@@ -3558,7 +4248,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     <Button
                       size="small"
                       startIcon={<NoteIcon sx={{ fontSize: 14 }} />}
-                      onClick={() => setShowLineCoverageDialog(true)}
+                      onClick={() => dispatchWorkflow({ type: 'OPEN_LINE_COVERAGE' })}
                       sx={{
                         minWidth: 'auto',
                         px: 1.5,
@@ -3674,7 +4364,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
                       return (
                         <Box 
-                          key={line.id} 
+                          key={line.id}
+                          data-line-index={lineIdx} 
                           sx={{ 
                             mb: 3, 
                             textAlign: 'center',
@@ -3748,208 +4439,54 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 </Box>
 
                 {/* Production Notes / Read Through Notes */}
-                <Box sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', letterSpacing: 0.5 }}>
-                      {readThroughMode ? 'READ THROUGH NOTES' : 'PRODUCTION NOTES'}
-                    </Typography>
-                    <Tooltip title="Legg til note">
-                      <IconButton 
-                        size="small" 
-                        onClick={() => setShowAddNoteDialog(true)}
-                        sx={{ 
-                          color: '#6b7280',
-                          bgcolor: readThroughMode ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)',
-                          '&:hover': { bgcolor: readThroughMode ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)' },
-                        }}
-                      >
-                        <AddIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                  
-                  {readThroughMode && selectedScene && (
+                {readThroughMode && selectedScene ? (
+                  <Box sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', letterSpacing: 0.5 }}>
+                        READ THROUGH NOTES
+                      </Typography>
+                    </Stack>
                     <Box sx={{ mb: 2 }}>
                       <TextField
                         fullWidth
                         multiline
                         rows={2}
-                        placeholder="Skriv noter fra read-through..."
-                        value={readThroughNotes[selectedScene.id] || ''}
-                        onChange={(e) => handleAddReadThroughNote(selectedScene.id, e.target.value)}
+                        placeholder="Skriv noter for denne linjen..."
+                        value={readThroughNotes[readThroughCurrentLine] || ''}
+                        onChange={(e) => handleAddReadThroughNote(readThroughCurrentLine, e.target.value)}
                         sx={{
-                          '& .MuiInputBase-input': {
-                            color: '#e5e7eb',
-                            fontSize: 12,
-                          },
+                          '& .MuiInputBase-input': { color: '#e5e7eb', fontSize: 12 },
                           '& .MuiOutlinedInput-root': {
-                            borderColor: '#2a3142',
-                            bgcolor: '#0f1318',
+                            borderColor: '#2a3142', bgcolor: '#0f1318',
                             '&:hover': { borderColor: '#374151' },
-                            '&.Mui-focused': { 
-                              borderColor: '#10b981',
-                              '& fieldset': { borderColor: '#10b981' }
-                            },
+                            '&.Mui-focused': { borderColor: '#10b981', '& fieldset': { borderColor: '#10b981' } },
                           },
                         }}
                       />
-                      {readThroughNotes[selectedScene.id] && (
-                        <Box sx={{ 
-                          mt: 1.5,
-                          p: 1.5,
-                          bgcolor: 'rgba(16, 185, 129, 0.08)',
-                          borderRadius: '8px',
-                          border: '1px solid rgba(16, 185, 129, 0.2)',
-                        }}>
+                      {readThroughNotes[readThroughCurrentLine] && (
+                        <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'rgba(16,185,129,0.08)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
                           <Typography sx={{ fontSize: 12, color: '#10b981', whiteSpace: 'pre-wrap' }}>
-                            {readThroughNotes[selectedScene.id]}
+                            {readThroughNotes[readThroughCurrentLine]}
                           </Typography>
                         </Box>
                       )}
                     </Box>
-                  )}
+                  </Box>
+                ) : selectedScene ? (
+                  /* Extracted: per-scene draft/saved autosave with all 4 note types */
+                  <ProductionNotesPanel
+                    sceneId={selectedScene.id}
+                    sceneNumber={selectedScene.sceneNumber}
+                    savedNotes={productionNotes[selectedScene.id] ?? {}}
+                    onSaveNote={handleSaveProductionNote}
+                    readThroughMode={false}
+                  />
+                ) : null}
 
-                  {!readThroughMode && selectedScene && (
+                {/* Scene Status Quick Actions */}
+                {selectedScene && (
+                  <Box sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
                     <Stack spacing={1.5}>
-                      {/* Camera Note - Editable */}
-                      <Box sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 1.5,
-                        p: 2,
-                        bgcolor: 'rgba(59,130,246,0.08)',
-                        borderRadius: '10px',
-                        borderLeft: '3px solid #3b82f6',
-                      }}>
-                        <Box sx={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: '8px',
-                          bgcolor: 'rgba(59,130,246,0.2)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>
-                          <CameraIcon sx={{ fontSize: 14, color: '#60a5fa' }} />
-                        </Box>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography sx={{ fontSize: 10, color: '#60a5fa', fontWeight: 600, mb: 0.5 }}>KAMERA NOTE</Typography>
-                          {editingProductionNote?.sceneId === selectedScene.id && editingProductionNote?.type === 'camera' ? (
-                            <Stack spacing={1}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                multiline
-                                rows={2}
-                                value={productionNoteValue}
-                                onChange={(e) => setProductionNoteValue(e.target.value)}
-                                placeholder="Skriv kamera note..."
-                                autoFocus
-                                sx={{
-                                  '& .MuiInputBase-input': { color: '#e5e7eb', fontSize: 12 },
-                                  '& .MuiOutlinedInput-root': {
-                                    bgcolor: '#0f1318',
-                                    '& fieldset': { borderColor: '#3b82f6' },
-                                  },
-                                }}
-                              />
-                              <Stack direction="row" spacing={1}>
-                                <Button size="small" variant="contained" onClick={handleSaveProductionNote} sx={{ bgcolor: '#3b82f6', fontSize: 10 }}>
-                                  Lagre
-                                </Button>
-                                <Button size="small" onClick={handleCancelProductionNote} sx={{ color: '#6b7280', fontSize: 10 }}>
-                                  Avbryt
-                                </Button>
-                              </Stack>
-                            </Stack>
-                          ) : (
-                            <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>
-                              {productionNotes[selectedScene.id]?.camera || 'Klikk for å legge til kamera note...'}
-                            </Typography>
-                          )}
-                        </Box>
-                        {!(editingProductionNote?.sceneId === selectedScene.id && editingProductionNote?.type === 'camera') && (
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleEditProductionNote(selectedScene.id, 'camera')}
-                            sx={{ color: '#4b5563', '&:hover': { color: '#60a5fa' } }}
-                          >
-                            <EditIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        )}
-                      </Box>
-
-                      {/* Director Note - Editable */}
-                      <Box sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 1.5,
-                        p: 2,
-                        bgcolor: 'rgba(249,115,22,0.08)',
-                        borderRadius: '10px',
-                        borderLeft: '3px solid #f97316',
-                      }}>
-                        <Box sx={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: '50%',
-                          bgcolor: '#f97316',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>
-                          <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>R</Typography>
-                        </Box>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography sx={{ fontSize: 10, color: '#fb923c', fontWeight: 600, mb: 0.5 }}>REGISSØR</Typography>
-                          {editingProductionNote?.sceneId === selectedScene.id && editingProductionNote?.type === 'director' ? (
-                            <Stack spacing={1}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                multiline
-                                rows={2}
-                                value={productionNoteValue}
-                                onChange={(e) => setProductionNoteValue(e.target.value)}
-                                placeholder="Skriv regissør note..."
-                                autoFocus
-                                sx={{
-                                  '& .MuiInputBase-input': { color: '#e5e7eb', fontSize: 12 },
-                                  '& .MuiOutlinedInput-root': {
-                                    bgcolor: '#0f1318',
-                                    '& fieldset': { borderColor: '#f97316' },
-                                  },
-                                }}
-                              />
-                              <Stack direction="row" spacing={1}>
-                                <Button size="small" variant="contained" onClick={handleSaveProductionNote} sx={{ bgcolor: '#f97316', fontSize: 10 }}>
-                                  Lagre
-                                </Button>
-                                <Button size="small" onClick={handleCancelProductionNote} sx={{ color: '#6b7280', fontSize: 10 }}>
-                                  Avbryt
-                                </Button>
-                              </Stack>
-                            </Stack>
-                          ) : (
-                            <Typography sx={{ fontSize: 12, color: '#9ca3af' }}>
-                              {productionNotes[selectedScene.id]?.director || 'Klikk for å legge til regissør note...'}
-                            </Typography>
-                          )}
-                        </Box>
-                        {!(editingProductionNote?.sceneId === selectedScene.id && editingProductionNote?.type === 'director') && (
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleEditProductionNote(selectedScene.id, 'director')}
-                            sx={{ color: '#4b5563', '&:hover': { color: '#fb923c' } }}
-                          >
-                            <EditIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        )}
-                      </Box>
-
-                      {/* Scene Status Quick Actions */}
                       <Box sx={{
                         display: 'flex',
                         alignItems: 'center',
@@ -3960,24 +4497,24 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         border: '1px solid #252d3d',
                       }}>
                         <Typography sx={{ fontSize: 10, color: '#6b7280', fontWeight: 600, mr: 1 }}>STATUS:</Typography>
-                        {[
-                          { value: 'not-started', label: 'Ikke startet', color: '#6b7280' },
-                          { value: 'in-progress', label: 'Pågår', color: '#f59e0b' },
-                          { value: 'complete', label: 'Ferdig', color: '#10b981' },
+                        {(() => { const currentStatus = getSceneStatus(selectedScene); return [
+                          { value: 'not-started' as const, label: 'Ikke startet', color: '#6b7280' },
+                          { value: 'in-progress' as const, label: 'Pågår', color: '#f59e0b' },
+                          { value: 'complete' as const, label: 'Ferdig', color: '#10b981' },
                         ].map((status) => (
                           <Chip
                             key={status.value}
                             label={status.label}
                             size="small"
-                            onClick={() => handleSetSceneStatus(selectedScene.id, status.value as 'not-started' | 'in-progress' | 'complete')}
+                            onClick={() => handleSetSceneStatus(selectedScene.id, status.value)}
                             sx={{
-                              bgcolor: sceneStatuses[selectedScene.id] === status.value 
+                              bgcolor: currentStatus === status.value 
                                 ? `${status.color}30` 
                                 : 'rgba(255,255,255,0.05)',
-                              color: sceneStatuses[selectedScene.id] === status.value 
+                              color: currentStatus === status.value 
                                 ? status.color 
                                 : '#6b7280',
-                              border: sceneStatuses[selectedScene.id] === status.value 
+                              border: currentStatus === status.value 
                                 ? `1px solid ${status.color}` 
                                 : '1px solid transparent',
                               fontSize: 10,
@@ -3989,11 +4526,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               },
                             }}
                           />
-                        ))}
+                        )); })()}
                       </Box>
                     </Stack>
-                  )}
-                </Box>
+                  </Box>
+                )}
 
                 {/* Storyboard Shots - Enhanced */}
                 <Box sx={{ p: 3 }}>
@@ -4554,6 +5091,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Box>
           </Box>
           <Box
+            ref={timelineRef}
             onClick={handleTimelineSeek}
             sx={{
               flex: 1,
@@ -4600,11 +5138,12 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               ))}
             </Box>
             
-            {/* Playhead - Enhanced */}
+            {/* Playhead — GPU-accelerated via transform + ref */}
             <Box
+              ref={playheadRef}
               sx={{
                 position: 'absolute',
-                left: `${timelinePlayheadPosition}%`,
+                left: 0,
                 top: -6,
                 bottom: -6,
                 width: 3,
@@ -4612,8 +5151,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 zIndex: 100,
                 borderRadius: '2px',
                 boxShadow: '0 0 8px rgba(239,68,68,0.5)',
-                transition: timelineIsPlaying ? 'none' : 'left 0.1s',
+                transition: timelineIsPlaying ? 'none' : 'transform 120ms linear',
+                willChange: 'transform',
                 pointerEvents: 'none',
+                transform: 'translate3d(0px, 0, 0)',
               }}
             >
               <Box
@@ -4642,7 +5183,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* RIGHT SIDEBAR - Shot Details */}
       <Box
         sx={{
-          width: 280,
+          width: containerStyle.sidebarWidth || 280,
+          maxWidth: containerStyle.maxWidth ? containerStyle.sidebarWidth : undefined,
           bgcolor: '#1e2536',
           borderLeft: '1px solid #2a3142',
           display: 'flex',
@@ -4665,6 +5207,100 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
             {selectedScene?.sceneNumber || 'SCENE 1'} — {selectedScene?.intExt || 'INT'}. {selectedScene?.locationName?.toUpperCase() || 'LOCATION'} – {selectedScene?.timeOfDay || 'DAY'}
           </Typography>
+          {/* Scene Metadata Summary */}
+          {selectedScene && selectedSceneMetadata && (
+            <Stack spacing={0.5} sx={{ mt: 1 }}>
+              <DetailRow icon="🎬" label={`${selectedSceneMetadata.camera || 'Not set'} • ${selectedSceneMetadata.lens || 'N/A'}`} />
+              <DetailRow icon="💡" label={selectedSceneMetadata.lighting || 'Standard'} />
+              <DetailRow icon="🎙️" label={selectedSceneMetadata.audio || 'Boom'} />
+            </Stack>
+          )}
+          {/* Live Set & Duration indicators */}
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            {liveSetStatus && (
+              <Chip
+                icon={<LiveIcon sx={{ fontSize: 10, color: liveSetStatus.isRecording ? '#ef4444' : '#6b7280' }} />}
+                label={liveSetStatus.isRecording ? 'LIVE' : 'Standby'}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: 10,
+                  bgcolor: liveSetStatus.isRecording ? 'rgba(239,68,68,0.15)' : 'rgba(107,114,128,0.15)',
+                  color: liveSetStatus.isRecording ? '#ef4444' : '#9ca3af',
+                  border: `1px solid ${liveSetStatus.isRecording ? '#ef4444' : '#374151'}`,
+                }}
+              />
+            )}
+            {/* "Jump to live scene" CTA — shown when not auto-following */}
+            {liveSetStatus?.currentScene && !followLiveScene && liveSetStatus.currentScene !== selectedScene?.id && (
+              <Chip
+                label="Hopp til live scene"
+                size="small"
+                onClick={() => {
+                  const cs = scenes.find(s => s.id === liveSetStatus.currentScene);
+                  if (cs) setSelectedScene(cs);
+                }}
+                sx={{
+                  height: 20,
+                  fontSize: 10,
+                  bgcolor: 'rgba(59,130,246,0.15)',
+                  color: '#60a5fa',
+                  border: '1px solid rgba(59,130,246,0.3)',
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: 'rgba(59,130,246,0.25)' },
+                }}
+              />
+            )}
+            {currentCallSheet && (
+              <Chip
+                icon={<CallSheetIcon sx={{ fontSize: 10, color: '#06b6d4' }} />}
+                label={`CS: ${currentCallSheet.shootingDayId}`}
+                size="small"
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(6,182,212,0.15)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)' }}
+              />
+            )}
+            {editingShotDuration && (
+              <Chip
+                icon={<TimerIcon sx={{ fontSize: 10, color: '#fbbf24' }} />}
+                label={`Editing: ${editingShotDuration}`}
+                size="small"
+                onDelete={() => setEditingShotDuration(null)}
+                sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
+              />
+            )}
+          </Stack>
+          {/* Scene Actions */}
+          <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+            <Tooltip title="Scene referansebilde">
+              <IconButton size="small" onClick={() => selectedScene && dispatchSearch({ type: 'OPEN' })} sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#60a5fa' } }}>
+                <ImageIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Kamera oppsett">
+              <IconButton size="small" onClick={() => selectedScene && dispatchWorkflow({ type: 'OPEN_SCENE_NEEDS', sceneId: selectedScene.id })} sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#f97316' } }}>
+                <CameraAltIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Utstyr">
+              <IconButton size="small" onClick={() => selectedScene && setShowEstimateDialog(true)} sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#10b981' } }}>
+                <InventoryIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Søk filmreferanser">
+              <IconButton
+                size="small"
+                onClick={async () => {
+                  if (selectedScene?.locationName) {
+                    const results = await searchByCinematographer(selectedScene.locationName);
+                    if (results.length > 0) dispatchSearch({ type: 'SET_FILM_RESULTS', films: results });
+                  }
+                }}
+                sx={{ color: '#6b7280', p: 0.5, '&:hover': { color: '#a78bfa' } }}
+              >
+                <SearchIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Box>
 
         {/* Shot Selector */}
@@ -4771,6 +5407,34 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 {selectedShot.description || 'Shot Details'}
               </Typography>
               
+              {/* Shot Duration - Editable */}
+              <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px solid #1f3a33' }}>
+                <Typography sx={{ fontSize: 11, color: '#6b7280', mb: 1, fontWeight: 600 }}>VARIGHET</Typography>
+                <Box
+                  onClick={() => setEditingShotDuration(selectedShot.id)}
+                  sx={{ bgcolor: '#1a2f28', p: 1, borderRadius: 0.75, cursor: 'pointer', '&:hover': { bgcolor: '#1f3a33' } }}
+                >
+                  {editingShotDuration === selectedShot.id ? (
+                    <TextField
+                      type="number"
+                      size="small"
+                      value={shotDurationValues[selectedShot.id] || 5}
+                      onChange={(e) => handleUpdateShotDuration(selectedShot.id, parseInt(e.target.value) || 1)}
+                      onBlur={() => setEditingShotDuration(null)}
+                      onKeyDown={(e) => e.key === 'Enter' && setEditingShotDuration(null)}
+                      autoFocus
+                      InputProps={{ endAdornment: <InputAdornment position="end"><Typography sx={{ fontSize: 10, color: '#6b7280' }}>sek</Typography></InputAdornment> }}
+                      sx={{ '& .MuiInputBase-root': { bgcolor: '#0f1318', color: '#fff', fontSize: 12 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: '#10b981' }, width: '100%' }}
+                    />
+                  ) : (
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography sx={{ fontSize: 12, color: '#fff' }}>{shotDurationValues[selectedShot.id] || selectedShot.duration || 5}s</Typography>
+                      <EditIcon sx={{ fontSize: 12, color: '#6b7280' }} />
+                    </Stack>
+                  )}
+                </Box>
+              </Box>
+
               {/* Camera */}
               <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px solid #1f3a33' }}>
                 <Typography sx={{ fontSize: 11, color: '#6b7280', mb: 1, fontWeight: 600 }}>KAMERA</Typography>
@@ -4839,7 +5503,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             background: 'linear-gradient(180deg, rgba(59,130,246,0.03) 0%, transparent 100%)',
           }}>
             <Box
-              onClick={() => setExpandedSections(prev => ({ ...prev, camera: !prev.camera }))}
+              onClick={() => dispatchInspector({ type: 'TOGGLE_SECTION', section: 'camera' })}
                 sx={{
                   px: 2,
                   py: 1.5,
@@ -4915,7 +5579,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       </Stack>
                       <Select
                         value={getValidCameraValue(shotProperties.camera)}
-                        onChange={(e) => setShotProperties(prev => ({ ...prev, camera: e.target.value }))}
+                        onChange={(e) => dispatchInspector({ type: 'UPDATE_PROPERTY', field: 'camera', value: e.target.value })}
                         sx={{
                           bgcolor: '#252d3d',
                           color: '#e5e7eb',
@@ -4981,7 +5645,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       </Stack>
                       <Select
                         value={shotProperties.lens}
-                        onChange={(e) => setShotProperties(prev => ({ ...prev, lens: e.target.value }))}
+                        onChange={(e) => dispatchInspector({ type: 'UPDATE_PROPERTY', field: 'lens', value: e.target.value })}
                         sx={{
                           bgcolor: '#252d3d',
                           color: '#e5e7eb',
@@ -5049,7 +5713,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       </Stack>
                       <Select
                         value={shotProperties.rig}
-                        onChange={(e) => setShotProperties(prev => ({ ...prev, rig: e.target.value }))}
+                        onChange={(e) => dispatchInspector({ type: 'UPDATE_PROPERTY', field: 'rig', value: e.target.value })}
                         sx={{
                           bgcolor: '#252d3d',
                           color: '#e5e7eb',
@@ -5115,7 +5779,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                       </Stack>
                       <Select
                         value={selectedShot?.shotType || shotProperties.shotType}
-                        onChange={(e) => setShotProperties(prev => ({ ...prev, shotType: e.target.value }))}
+                        onChange={(e) => dispatchInspector({ type: 'UPDATE_PROPERTY', field: 'shotType', value: e.target.value })}
                         sx={{
                           bgcolor: '#252d3d',
                           color: '#e5e7eb',
@@ -5214,6 +5878,25 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             </svg>
                           </IconButton>
                         </Tooltip>
+                        {/* Load saved presets */}
+                        {Object.keys(savedPresets).length > 0 && (
+                          <Tooltip title="Last inn preset">
+                            <Select
+                              size="small"
+                              value=""
+                              displayEmpty
+                              onChange={(e) => { if (e.target.value) handleLoadPreset(e.target.value as string); }}
+                              sx={{ height: 24, fontSize: 10, color: '#9ca3af', minWidth: 80, '& .MuiSelect-select': { py: 0.25 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: '#374151' } }}
+                              renderValue={() => 'Presets'}
+                            >
+                              {Object.keys(savedPresets).map(name => (
+                                <MenuItem key={name} value={name} sx={{ fontSize: 11, color: '#fff', bgcolor: '#1e2536', '&:hover': { bgcolor: 'rgba(59,130,246,0.2)' } }}>
+                                  {name}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </Tooltip>
+                        )}
                       </Stack>
                     </Stack>
                   </Box>
@@ -5228,7 +5911,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               background: 'linear-gradient(180deg, rgba(245,158,11,0.03) 0%, transparent 100%)',
             }}>
               <Box
-                onClick={() => setExpandedSections(prev => ({ ...prev, lighting: !prev.lighting }))}
+                onClick={() => dispatchInspector({ type: 'TOGGLE_SECTION', section: 'lighting' })}
                 sx={{
                   px: 2,
                   py: 1.5,
@@ -5278,10 +5961,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     field="keyLight"
                     isEditing={editingField === 'keyLight'}
                     editValue={editValue}
-                    onStartEdit={() => { setEditingField('keyLight'); setEditValue(shotProperties.keyLight); }}
-                    onSave={() => { setShotProperties(prev => ({ ...prev, keyLight: editValue })); setEditingField(null); }}
-                    onCancel={() => setEditingField(null)}
-                    onChange={setEditValue}
+                    onStartEdit={() => dispatchInspector({ type: 'START_EDIT', field: 'keyLight', currentValue: shotProperties.keyLight })}
+                    onSave={() => dispatchInspector({ type: 'SAVE_EDIT' })}
+                    onCancel={() => dispatchInspector({ type: 'CANCEL_EDIT' })}
+                    onChange={(v) => dispatchInspector({ type: 'SET_EDIT_DRAFT', draft: v })}
                     options={['Mykt sidelys', 'Key Light – 1200W', 'Key Light – 600W', 'Softbox', 'LED Panel', 'HMI', 'Natural Light']}
                   />
                   <EditableDetailRow
@@ -5290,10 +5973,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     field="sideLight"
                     isEditing={editingField === 'sideLight'}
                     editValue={editValue}
-                    onStartEdit={() => { setEditingField('sideLight'); setEditValue(shotProperties.sideLight); }}
-                    onSave={() => { setShotProperties(prev => ({ ...prev, sideLight: editValue })); setEditingField(null); }}
-                    onCancel={() => setEditingField(null)}
-                    onChange={setEditValue}
+                    onStartEdit={() => dispatchInspector({ type: 'START_EDIT', field: 'sideLight', currentValue: shotProperties.sideLight })}
+                    onSave={() => dispatchInspector({ type: 'SAVE_EDIT' })}
+                    onCancel={() => dispatchInspector({ type: 'CANCEL_EDIT' })}
+                    onChange={(v) => dispatchInspector({ type: 'SET_EDIT_DRAFT', draft: v })}
                     options={['Varm tone', 'Side Lighting', 'Fill Light', 'Rim Light', 'Back Light', 'Practical', 'Natural']}
                   />
                   <EditableDetailRow
@@ -5302,10 +5985,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     field="gel"
                     isEditing={editingField === 'gel'}
                     editValue={editValue}
-                    onStartEdit={() => { setEditingField('gel'); setEditValue(shotProperties.gel); }}
-                    onSave={() => { setShotProperties(prev => ({ ...prev, gel: editValue })); setEditingField(null); }}
-                    onCancel={() => setEditingField(null)}
-                    onChange={setEditValue}
+                    onStartEdit={() => dispatchInspector({ type: 'START_EDIT', field: 'gel', currentValue: shotProperties.gel })}
+                    onSave={() => dispatchInspector({ type: 'SAVE_EDIT' })}
+                    onCancel={() => dispatchInspector({ type: 'CANCEL_EDIT' })}
+                    onChange={(v) => dispatchInspector({ type: 'SET_EDIT_DRAFT', draft: v })}
                     options={['Gel: Warm 1/4 CTO', 'Gel: Warm 1/2 CTO', 'Gel: Full CTO', 'Gel: 1/4 CTB', 'Gel: 1/2 CTB', 'No Gel']}
                   />
                 </Stack>
@@ -5318,7 +6001,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               background: 'linear-gradient(180deg, rgba(59,130,246,0.03) 0%, transparent 100%)',
             }}>
               <Box
-                onClick={() => setExpandedSections(prev => ({ ...prev, audio: !prev.audio }))}
+                onClick={() => dispatchInspector({ type: 'TOGGLE_SECTION', section: 'audio' })}
                 sx={{
                   px: 2,
                   py: 1.5,
@@ -5369,10 +6052,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     field="mic"
                     isEditing={editingField === 'mic'}
                     editValue={editValue}
-                    onStartEdit={() => { setEditingField('mic'); setEditValue(shotProperties.mic); }}
-                    onSave={() => { setShotProperties(prev => ({ ...prev, mic: editValue })); setEditingField(null); }}
-                    onCancel={() => setEditingField(null)}
-                    onChange={setEditValue}
+                    onStartEdit={() => dispatchInspector({ type: 'START_EDIT', field: 'mic', currentValue: shotProperties.mic })}
+                    onSave={() => dispatchInspector({ type: 'SAVE_EDIT' })}
+                    onCancel={() => dispatchInspector({ type: 'CANCEL_EDIT' })}
+                    onChange={(v) => dispatchInspector({ type: 'SET_EDIT_DRAFT', draft: v })}
                     options={['Boom Mic', 'Lav Mic', 'Shotgun Mic', 'Wireless Lav', 'Plant Mic']}
                   />
                   <EditableDetailRow
@@ -5381,10 +6064,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     field="atmos"
                     isEditing={editingField === 'atmos'}
                     editValue={editValue}
-                    onStartEdit={() => { setEditingField('atmos'); setEditValue(shotProperties.atmos); }}
-                    onSave={() => { setShotProperties(prev => ({ ...prev, atmos: editValue })); setEditingField(null); }}
-                    onCancel={() => setEditingField(null)}
-                    onChange={setEditValue}
+                    onStartEdit={() => dispatchInspector({ type: 'START_EDIT', field: 'atmos', currentValue: shotProperties.atmos })}
+                    onSave={() => dispatchInspector({ type: 'SAVE_EDIT' })}
+                    onCancel={() => dispatchInspector({ type: 'CANCEL_EDIT' })}
+                    onChange={(v) => dispatchInspector({ type: 'SET_EDIT_DRAFT', draft: v })}
                     options={['Dempet romlyd', 'Atmos: Stille', 'Atmos: Naturlig', 'Atmos: Bytrafikk', 'Atmos: Natur', 'Atmos: Interiør']}
                   />
                 </Stack>
@@ -5396,7 +6079,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               background: 'linear-gradient(180deg, rgba(16,185,129,0.03) 0%, transparent 100%)',
             }}>
               <Box
-                onClick={() => setExpandedSections(prev => ({ ...prev, references: !prev.references }))}
+                onClick={() => dispatchInspector({ type: 'TOGGLE_SECTION', section: 'references' })}
                 sx={{
                   px: 2,
                   py: 1.5,
@@ -5472,7 +6155,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               <IconButton
                                 className="delete-btn"
                                 size="small"
-                                onClick={() => setUploadedReferences(prev => prev.filter((_, i) => i !== idx))}
+                                onClick={() => dispatchSearch({ type: 'REMOVE_UPLOADED_REF', index: idx })}
                                 sx={{
                                   position: 'absolute',
                                   top: -6,
@@ -5489,11 +6172,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             {/* Action buttons */}
                             <Stack direction="row" spacing={0.5} sx={{ mt: 0.75 }}>
                               <Box
-                                onClick={() => setCenterPanelReference({
+                                onClick={() => dispatchSearch({ type: 'SET_CENTER_REF', ref: {
                                   url: ref,
                                   source: 'Opplastet',
                                   title: `Referanse ${idx + 1}`,
-                                })}
+                                }})}
                                 sx={{
                                   flex: 1,
                                   p: 0.5,
@@ -5519,9 +6202,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                   {/* Shot References */}
                   <Stack direction="row" spacing={1} sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
                     {(selectedSceneShots.length > 0 
-                      ? selectedSceneShots.slice(0, 3).map((shot: CastingShot, idx: number) => (
+                      ? selectedSceneShots.slice(0, 3).map((shot: CastingShot, shotIdx: number) => (
                           <Box
                             key={shot.id}
+                            title={`Shot ${shotIdx + 1}: ${shot.shotType || 'Unknown'}`}
                             sx={{
                               width: 70,
                               height: 50,
@@ -5599,7 +6283,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
                     {/* Search Button */}
                     <Box
-                      onClick={() => setReferenceSearchOpen(true)}
+                      onClick={() => dispatchSearch({ type: 'OPEN' })}
                       sx={{
                         flex: 1,
                         display: 'flex',
@@ -5639,7 +6323,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
-                      onClick={() => { setReferenceSearchOpen(false); setSelectedFilm(null); }}
+                      onClick={() => dispatchSearch({ type: 'CLOSE' })}
                     >
                       <Box
                         onClick={(e) => e.stopPropagation()}
@@ -5663,7 +6347,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                               </Typography>
                               {selectedFilm && (
                                 <Box
-                                  onClick={() => setSelectedFilm(null)}
+                                  onClick={() => dispatchSearch({ type: 'DESELECT_FILM' })}
                                   sx={{
                                     px: 1.5,
                                     py: 0.5,
@@ -5677,7 +6361,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                 </Box>
                               )}
                             </Stack>
-                            <IconButton size="small" onClick={() => { setReferenceSearchOpen(false); setSelectedFilm(null); }} sx={{ color: '#6b7280' }}>
+                            <IconButton size="small" onClick={() => dispatchSearch({ type: 'CLOSE' })} sx={{ color: '#6b7280' }}>
                               <CloseIcon sx={{ fontSize: 20 }} />
                             </IconButton>
                           </Stack>
@@ -5688,7 +6372,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                 fullWidth
                                 placeholder="Søk film: Blade Runner, Inception, cinematographer: Roger Deakins..."
                                 value={referenceSearchQuery}
-                                onChange={(e) => setReferenceSearchQuery(e.target.value)}
+                                onChange={(e) => dispatchSearch({ type: 'SET_QUERY', query: e.target.value })}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') searchReferenceImages(referenceSearchQuery);
                                 }}
@@ -5741,7 +6425,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                 ].map(source => (
                                   <Box
                                     key={source.id}
-                                    onClick={() => setSearchSource(source.id as 'all' | 'shotcafe' | 'unsplash')}
+                                    onClick={() => dispatchSearch({ type: 'SET_SOURCE', source: source.id as SearchSource })}
                                     sx={{
                                       px: 1.5,
                                       py: 0.5,
@@ -5765,7 +6449,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                   <Box
                                     key={tag}
                                     onClick={() => {
-                                      setReferenceSearchQuery(tag);
+                                      dispatchSearch({ type: 'SET_QUERY', query: tag });
                                       searchReferenceImages(tag);
                                     }}
                                     sx={{
@@ -5860,9 +6544,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                     <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
                                       <Box
                                         onClick={() => {
-                                          setUploadedReferences(prev => [...prev, frame.url]);
-                                          setReferenceSearchOpen(false);
-                                          setSelectedFilm(null);
+                                          dispatchSearch({ type: 'ADD_REF_AND_CLOSE', url: frame.url });
                                         }}
                                         sx={{
                                           flex: 1,
@@ -5881,13 +6563,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                       </Box>
                                       <Box
                                         onClick={() => {
-                                          setCenterPanelReference({
+                                          dispatchSearch({ type: 'SET_CENTER_AND_CLOSE', ref: {
                                             url: frame.url,
                                             source: `${selectedFilm.title} (shot.cafe)`,
                                             title: selectedFilm.title,
-                                          });
-                                          setReferenceSearchOpen(false);
-                                          setSelectedFilm(null);
+                                          }});
                                         }}
                                         sx={{
                                           flex: 1,
@@ -6066,8 +6746,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                         <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
                                           <Box
                                             onClick={() => {
-                                              setUploadedReferences(prev => [...prev, img.url]);
-                                              setReferenceSearchOpen(false);
+                                              dispatchSearch({ type: 'ADD_REF_AND_CLOSE', url: img.url });
                                             }}
                                             sx={{
                                               flex: 1,
@@ -6086,12 +6765,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                                           </Box>
                                           <Box
                                             onClick={() => {
-                                              setCenterPanelReference({
+                                              dispatchSearch({ type: 'SET_CENTER_AND_CLOSE', ref: {
                                                 url: img.url,
                                                 source: img.source,
                                                 title: `${img.source} Referanse`,
-                                              });
-                                              setReferenceSearchOpen(false);
+                                              }});
                                             }}
                                             sx={{
                                               flex: 1,
@@ -6180,7 +6858,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* Stripboard Panel Dialog */}
       <Dialog
         open={showStripboardPanel}
-        onClose={() => setShowStripboardPanel(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })}
         fullScreen
         PaperProps={{
           sx: {
@@ -6205,7 +6883,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Typography sx={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
               <Stack direction="row" spacing={1} alignItems="center"><StripboardIcon sx={{ color: '#60a5fa' }} /> Stripboard - TROLL</Stack>
             </Typography>
-            <IconButton onClick={() => setShowStripboardPanel(false)} sx={{ color: '#9ca3af' }}>
+            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} sx={{ color: '#9ca3af' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -6215,11 +6893,18 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               onSceneSelect={(sceneId) => {
                 const scene = scenes.find(s => s.id === sceneId);
                 if (scene) scrollToScene(scene);
-                setShowStripboardPanel(false);
+                dispatchWorkflow({ type: 'CLOSE_VIEW' });
               }}
               onGenerateCallSheet={(dayId) => {
-                // Open the Call Sheet preview with the new CallSheetGenerator component
-                setShowCallSheetPreview(true);
+                // Generate call sheet HTML for the specific day and store it
+                const html = generateCallSheetHTML(dayId, DEFAULT_CALL_SHEET_OPTIONS);
+                const callSheetRef: CallSheetRef = {
+                  id: `cs-${dayId}-${Date.now()}`,
+                  shootingDayId: dayId,
+                  html,
+                  generatedAt: new Date().toISOString(),
+                };
+                dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
               }}
             />
           </Box>
@@ -6229,7 +6914,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* Shooting Day Planner Dialog */}
       <Dialog
         open={showShootingDayPlanner}
-        onClose={() => setShowShootingDayPlanner(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })}
         fullScreen
         PaperProps={{
           sx: {
@@ -6254,7 +6939,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             <Typography sx={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
               <Stack direction="row" spacing={1} alignItems="center"><CalendarIcon sx={{ color: '#60a5fa' }} /> Opptaksplan - TROLL</Stack>
             </Typography>
-            <IconButton onClick={() => setShowShootingDayPlanner(false)} sx={{ color: '#9ca3af' }}>
+            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} sx={{ color: '#9ca3af' }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -6265,8 +6950,15 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 console.log('Day selected:', dayId);
               }}
               onGenerateCallSheet={(dayId) => {
-                // Open the Call Sheet preview with the new CallSheetGenerator component
-                setShowCallSheetPreview(true);
+                // Generate call sheet for the specific shooting day
+                const html = generateCallSheetHTML(dayId, DEFAULT_CALL_SHEET_OPTIONS);
+                const callSheetRef: CallSheetRef = {
+                  id: `cs-${dayId}-${Date.now()}`,
+                  shootingDayId: dayId,
+                  html,
+                  generatedAt: new Date().toISOString(),
+                };
+                dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
               }}
             />
           </Box>
@@ -6279,7 +6971,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           projectId={projectId}
           shootingDayId={selectedShootingDayId}
           onClose={() => {
-            setShowLiveSetMode(false);
+            dispatchWorkflow({ type: 'CLOSE_VIEW' });
             setIsLiveSetConnected(false);
           }}
         />
@@ -6288,7 +6980,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* Live Set Day Selector Dialog - WORKFLOW GAP FIX #1 */}
       <Dialog
         open={showLiveSetDaySelector}
-        onClose={() => setShowLiveSetDaySelector(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })}
         PaperProps={{
           sx: {
             bgcolor: '#1a1f2e',
@@ -6311,9 +7003,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <Box
                 key={day.id}
                 onClick={() => {
-                  setSelectedShootingDayId(day.id);
-                  setShowLiveSetDaySelector(false);
-                  setShowLiveSetMode(true);
+                  dispatchWorkflow({ type: 'SELECT_DAY_AND_GO_LIVE', dayId: day.id });
                   setIsLiveSetConnected(true);
                 }}
                 sx={{
@@ -6353,7 +7043,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => setShowLiveSetDaySelector(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_VIEW' })} sx={{ color: '#9ca3af' }}>
             Avbryt
           </Button>
         </DialogActions>
@@ -6362,7 +7052,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* Call Sheet Preview Dialog */}
       <Dialog
         open={showCallSheetPreview}
-        onClose={() => setShowCallSheetPreview(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })}
         maxWidth="xl"
         fullWidth
         PaperProps={{
@@ -6387,7 +7077,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               Call Sheet Preview - TROLL
             </Stack>
           </Typography>
-          <IconButton onClick={() => setShowCallSheetPreview(false)} sx={{ color: '#4a4a4a' }}>
+          <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#4a4a4a' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -6685,7 +7375,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 Ingen bekreftet cast ennå
               </Typography>
               <Typography sx={{ fontSize: 12, color: '#4b5563' }}>
-                Gå til Auditions i Casting Planner for å bekrefte kandidater
+                Gå til Auditions i The Role Room for å bekrefte kandidater
               </Typography>
             </Box>
           )}
@@ -6813,8 +7503,8 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
 
       {/* Tag & Filter Controls Dialog */}
       <Dialog
-        open={batchMode && selectedScenes.size > 0}
-        onClose={() => { setBatchMode(false); setSelectedScenes(new Set()); }}
+        open={batchMode && selectedMapSize(selectedScenes) > 0}
+        onClose={() => { setBatchMode(false); setSelectedScenes(EMPTY_SELECTION); }}
         maxWidth="md"
         fullWidth
         PaperProps={{
@@ -6825,7 +7515,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         }}
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142', fontWeight: 600 }}>
-          Scene Tags & Filters ({selectedScenes.size} selected)
+          Scene Tags & Filters ({selectedMapSize(selectedScenes)} selected)
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           <Stack spacing={3}>
@@ -6859,6 +7549,39 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', mb: 1.5, letterSpacing: 0.5 }}>
                 SCENE TAGS
               </Typography>
+              {/* Per-scene tag management for selected scenes */}
+              {selectedMapIds(selectedScenes).slice(0, 3).map(sceneId => {
+                const scene = scenes.find(s => s.id === sceneId);
+                const tags = sceneTags[sceneId] || [];
+                return (
+                  <Box key={sceneId} sx={{ mb: 1.5, p: 1.5, borderRadius: 1, bgcolor: '#0f1318', border: '1px solid #2a3142' }}>
+                    <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', mb: 0.75 }}>
+                      Scene {scene?.sceneNumber || sceneId}
+                    </Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                      {tags.map(tag => (
+                        <Chip
+                          key={tag}
+                          label={tag}
+                          size="small"
+                          onDelete={() => handleRemoveTag(sceneId, tag)}
+                          sx={{ height: 22, fontSize: 10, bgcolor: 'rgba(139,92,246,0.2)', color: '#c4b5fd', '& .MuiChip-deleteIcon': { fontSize: 14, color: '#a78bfa' } }}
+                        />
+                      ))}
+                      <Chip
+                        label="+ Tag"
+                        size="small"
+                        onClick={() => {
+                          const tag = window.prompt('Enter tag name:');
+                          if (tag) handleAddTag(sceneId, tag);
+                        }}
+                        sx={{ height: 22, fontSize: 10, bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', cursor: 'pointer', '&:hover': { bgcolor: 'rgba(59,130,246,0.3)' } }}
+                      />
+                    </Stack>
+                  </Box>
+                );
+              })}
+              {/* Global tag filter chips */}
               <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
                 {allTags.map(tag => (
                   <Chip
@@ -6867,7 +7590,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     onClick={() => {
                       setSelectedTags(prev => {
                         const next = new Set(prev);
-                        next.has(tag) ? next.delete(tag) : next.add(tag);
+                        if (next.has(tag)) {
+                          next.delete(tag);
+                        } else {
+                          next.add(tag);
+                        }
                         return next;
                       });
                     }}
@@ -6891,24 +7618,24 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               <Stack spacing={1}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Checkbox
-                    checked={filterMissingCamera}
-                    onChange={(e) => setFilterMissingCamera(e.target.checked)}
+                    checked={filters.missing.cam}
+                    onChange={(e) => setFilters(p => ({ ...p, missing: { ...p.missing, cam: e.target.checked } }))}
                     sx={{ color: '#3b82f6' }}
                   />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>Missing Camera Equipment</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Checkbox
-                    checked={filterMissingLight}
-                    onChange={(e) => setFilterMissingLight(e.target.checked)}
+                    checked={filters.missing.light}
+                    onChange={(e) => setFilters(p => ({ ...p, missing: { ...p.missing, light: e.target.checked } }))}
                     sx={{ color: '#3b82f6' }}
                   />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>Missing Lighting</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Checkbox
-                    checked={filterMissingSound}
-                    onChange={(e) => setFilterMissingSound(e.target.checked)}
+                    checked={filters.missing.sound}
+                    onChange={(e) => setFilters(p => ({ ...p, missing: { ...p.missing, sound: e.target.checked } }))}
                     sx={{ color: '#3b82f6' }}
                   />
                   <Typography sx={{ fontSize: 13, color: '#e5e7eb' }}>Missing Audio Equipment</Typography>
@@ -6918,7 +7645,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => { setBatchMode(false); setSelectedScenes(new Set()); }} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => { setBatchMode(false); setSelectedScenes(EMPTY_SELECTION); }} sx={{ color: '#9ca3af' }}>
             Close
           </Button>
         </DialogActions>
@@ -7012,461 +7739,14 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
         </DialogActions>
       </Dialog>
 
-      {/* Add Note Dialog */}
-      <Dialog
-        open={showAddNoteDialog}
-        onClose={() => setShowAddNoteDialog(false)}
-        PaperProps={{
-          sx: {
-            bgcolor: '#1a1f2e',
-            border: '1px solid #3b82f6',
-            minWidth: 400,
-          },
-        }}
-      >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142' }}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <AddIcon sx={{ color: '#3b82f6' }} />
-            <span>Legg til produksjonsnotis</span>
-          </Stack>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Typography sx={{ color: '#9ca3af', mb: 2, fontSize: 13 }}>
-            Velg type notis for scene {selectedScene?.sceneNumber}
-          </Typography>
-          <Stack spacing={2}>
-            <Box>
-              <Typography sx={{ fontSize: 12, color: '#6b7280', mb: 1 }}>Type</Typography>
-              <Stack direction="row" spacing={1}>
-                {[
-                  { value: 'camera', label: 'Kamera', icon: CameraIcon, color: '#3b82f6' },
-                  { value: 'director', label: 'Regissør', icon: MovieIcon, color: '#8b5cf6' },
-                  { value: 'sound', label: 'Lyd', icon: MicIcon, color: '#10b981' },
-                  { value: 'vfx', label: 'VFX', icon: SceneIcon, color: '#f59e0b' },
-                ].map(type => (
-                  <Box
-                    key={type.value}
-                    onClick={() => setNewNoteType(type.value as typeof newNoteType)}
-                    sx={{
-                      px: 2,
-                      py: 1,
-                      borderRadius: '8px',
-                      bgcolor: newNoteType === type.value ? `${type.color}22` : 'rgba(0,0,0,0.2)',
-                      border: `1px solid ${newNoteType === type.value ? type.color : '#374151'}`,
-                      cursor: 'pointer',
-                      '&:hover': { borderColor: type.color },
-                    }}
-                  >
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <type.icon sx={{ fontSize: 14, color: type.color }} />
-                      <Typography sx={{ fontSize: 12, color: newNoteType === type.value ? type.color : '#9ca3af' }}>{type.label}</Typography>
-                    </Stack>
-                  </Box>
-                ))}
-              </Stack>
-            </Box>
-            <TextField
-              fullWidth
-              multiline
-              rows={3}
-              placeholder="Skriv notis..."
-              value={productionNoteValue}
-              onChange={(e) => setProductionNoteValue(e.target.value)}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: '#0d1117',
-                  color: '#fff',
-                  '& fieldset': { borderColor: '#374151' },
-                  '&:hover fieldset': { borderColor: '#3b82f6' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                },
-              }}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button 
-            onClick={() => { setShowAddNoteDialog(false); setProductionNoteValue(''); }} 
-            sx={{ color: '#9ca3af' }}
-          >
-            Avbryt
-          </Button>
-          <Button
-            onClick={() => {
-              if (selectedScene && productionNoteValue.trim()) {
-                setProductionNotes(prev => ({
-                  ...prev,
-                  [selectedScene.id]: {
-                    ...prev[selectedScene.id],
-                    [newNoteType]: productionNoteValue,
-                  },
-                }));
-                setShowAddNoteDialog(false);
-                setProductionNoteValue('');
-              }
-            }}
-            variant="contained"
-            disabled={!productionNoteValue.trim()}
-            sx={{
-              bgcolor: '#3b82f6',
-              '&:hover': { bgcolor: '#2563eb' },
-              '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' },
-            }}
-          >
-            Legg til
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Add Shot Dialog - Upload or Reference */}
-      <Dialog
-        open={showAddShotDialog}
-        onClose={() => setShowAddShotDialog(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            bgcolor: '#1a1f2e',
-            border: '1px solid #3b82f6',
-            minHeight: addShotMode ? 500 : 'auto',
-          },
-        }}
-      >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #2a3142' }}>
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-            <Stack direction="row" spacing={1} alignItems="center">
-              <MovieIcon sx={{ color: '#3b82f6' }} />
-              <span>Legg til storyboard shot</span>
-            </Stack>
-            {addShotMode && (
-              <Button
-                size="small"
-                onClick={() => { setAddShotMode(null); setSelectedShotImage(null); setAddShotReferenceResults([]); }}
-                sx={{ color: '#6b7280', fontSize: 11 }}
-              >
-                ← Tilbake
-              </Button>
-            )}
-          </Stack>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          {!addShotMode ? (
-            /* Mode Selection */
-            <Stack spacing={3}>
-              <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-                Velg hvordan du vil legge til et shot til scene {selectedScene?.sceneNumber}
-              </Typography>
-              <Stack direction="row" spacing={2}>
-                {/* Upload Option */}
-                <Box
-                  onClick={() => setAddShotMode('upload')}
-                  sx={{
-                    flex: 1,
-                    p: 4,
-                    borderRadius: '12px',
-                    bgcolor: 'rgba(59,130,246,0.1)',
-                    border: '2px dashed #3b82f6',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      bgcolor: 'rgba(59,130,246,0.2)',
-                      borderStyle: 'solid',
-                    },
-                  }}
-                >
-                  <Box sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '16px',
-                    bgcolor: 'rgba(59,130,246,0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: 2,
-                  }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                  </Box>
-                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>
-                    Last opp eget bilde
-                  </Typography>
-                  <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
-                    Last opp storyboard eller referansebilde fra din maskin
-                  </Typography>
-                </Box>
-
-                {/* Reference Search Option */}
-                <Box
-                  onClick={() => setAddShotMode('reference')}
-                  sx={{
-                    flex: 1,
-                    p: 4,
-                    borderRadius: '12px',
-                    bgcolor: 'rgba(139,92,246,0.1)',
-                    border: '2px dashed #8b5cf6',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      bgcolor: 'rgba(139,92,246,0.2)',
-                      borderStyle: 'solid',
-                    },
-                  }}
-                >
-                  <Box sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '16px',
-                    bgcolor: 'rgba(139,92,246,0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: 2,
-                  }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2">
-                      <circle cx="11" cy="11" r="8"/>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                  </Box>
-                  <Typography sx={{ fontSize: 16, fontWeight: 600, color: '#fff', mb: 1 }}>
-                    Søk referanseshots
-                  </Typography>
-                  <Typography sx={{ fontSize: 12, color: '#6b7280' }}>
-                    Finn inspirasjon fra Shot.cafe, filmer og bildedatabaser
-                  </Typography>
-                </Box>
-              </Stack>
-            </Stack>
-          ) : addShotMode === 'upload' ? (
-            /* Upload Mode */
-            <Stack spacing={3}>
-              <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-                Last opp et bilde for ditt storyboard shot
-              </Typography>
-              
-              {selectedShotImage ? (
-                <Box sx={{ textAlign: 'center' }}>
-                  <Box
-                    component="img"
-                    src={selectedShotImage}
-                    sx={{
-                      maxWidth: '100%',
-                      maxHeight: 300,
-                      borderRadius: '12px',
-                      border: '2px solid #3b82f6',
-                    }}
-                  />
-                  <Button
-                    onClick={() => setSelectedShotImage(null)}
-                    sx={{ mt: 2, color: '#6b7280' }}
-                  >
-                    Velg annet bilde
-                  </Button>
-                </Box>
-              ) : (
-                <Box
-                  component="label"
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    p: 6,
-                    borderRadius: '12px',
-                    bgcolor: 'rgba(0,0,0,0.2)',
-                    border: '2px dashed #374151',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      borderColor: '#3b82f6',
-                      bgcolor: 'rgba(59,130,246,0.1)',
-                    },
-                  }}
-                >
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleShotImageUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <path d="M21 15l-5-5L5 21"/>
-                  </svg>
-                  <Typography sx={{ fontSize: 14, color: '#9ca3af', mt: 2 }}>
-                    Klikk for å velge bilde
-                  </Typography>
-                  <Typography sx={{ fontSize: 11, color: '#6b7280', mt: 0.5 }}>
-                    Støtter JPG, PNG, WebP
-                  </Typography>
-                </Box>
-              )}
-            </Stack>
-          ) : (
-            /* Reference Search Mode */
-            <Stack spacing={3}>
-              <Typography sx={{ color: '#9ca3af', fontSize: 13 }}>
-                Søk etter referansebilder fra Shot.cafe og andre kilder
-              </Typography>
-              
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  fullWidth
-                  placeholder="Søk: Blade Runner, cinematographer: Roger Deakins, noir lighting..."
-                  value={addShotReferenceQuery}
-                  onChange={(e) => setAddShotReferenceQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearchReferenceShots()}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: '#0d1117',
-                      color: '#fff',
-                      '& fieldset': { borderColor: '#374151' },
-                      '&:hover fieldset': { borderColor: '#8b5cf6' },
-                      '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
-                    },
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleSearchReferenceShots}
-                  disabled={addShotLoading || !addShotReferenceQuery.trim()}
-                  sx={{
-                    bgcolor: '#8b5cf6',
-                    px: 3,
-                    '&:hover': { bgcolor: '#7c3aed' },
-                  }}
-                >
-                  {addShotLoading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Søk'}
-                </Button>
-              </Stack>
-              
-              {/* Quick Search Tags */}
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {['Blade Runner', 'Noir', 'Golden Hour', 'Silhouette', 'Close-up', 'Wide Shot'].map(tag => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    size="small"
-                    onClick={() => { setAddShotReferenceQuery(tag); }}
-                    sx={{
-                      bgcolor: 'rgba(139,92,246,0.15)',
-                      color: '#a78bfa',
-                      '&:hover': { bgcolor: 'rgba(139,92,246,0.3)' },
-                    }}
-                  />
-                ))}
-              </Stack>
-              
-              {/* Results Grid */}
-              {addShotReferenceResults.length > 0 && (
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                  gap: 1.5,
-                  maxHeight: 280,
-                  overflow: 'auto',
-                  p: 1,
-                }}>
-                  {addShotReferenceResults.map((result) => (
-                    <Box
-                      key={result.id}
-                      onClick={() => setSelectedShotImage(result.url)}
-                      sx={{
-                        position: 'relative',
-                        aspectRatio: '16/9',
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        cursor: 'pointer',
-                        border: selectedShotImage === result.url ? '3px solid #8b5cf6' : '2px solid transparent',
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          transform: 'scale(1.05)',
-                          boxShadow: '0 4px 20px rgba(139,92,246,0.3)',
-                        },
-                      }}
-                    >
-                      <Box
-                        component="img"
-                        src={result.thumbnailUrl || result.url}
-                        sx={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                        }}
-                      />
-                      {result.film && (
-                        <Box sx={{
-                          position: 'absolute',
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          p: 0.5,
-                          background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-                        }}>
-                          <Typography sx={{ fontSize: 9, color: '#fff', fontWeight: 500 }}>
-                            {result.film}
-                          </Typography>
-                        </Box>
-                      )}
-                      {selectedShotImage === result.url && (
-                        <Box sx={{
-                          position: 'absolute',
-                          top: 4,
-                          right: 4,
-                          width: 20,
-                          height: 20,
-                          borderRadius: '50%',
-                          bgcolor: '#8b5cf6',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                          <CheckIcon sx={{ fontSize: 14, color: '#fff' }} />
-                        </Box>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              )}
-              
-              {addShotLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress sx={{ color: '#8b5cf6' }} />
-                </Box>
-              )}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button 
-            onClick={() => setShowAddShotDialog(false)} 
-            sx={{ color: '#9ca3af' }}
-          >
-            Avbryt
-          </Button>
-          {addShotMode && (
-            <Button
-              onClick={() => handleCreateShot(selectedShotImage || undefined)}
-              variant="contained"
-              disabled={addShotMode === 'upload' && !selectedShotImage}
-              sx={{
-                bgcolor: addShotMode === 'upload' ? '#3b82f6' : '#8b5cf6',
-                '&:hover': { bgcolor: addShotMode === 'upload' ? '#2563eb' : '#7c3aed' },
-                '&.Mui-disabled': { bgcolor: '#374151', color: '#6b7280' },
-              }}
-            >
-              {selectedShotImage ? 'Legg til med bilde' : 'Legg til uten bilde'}
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+      {/* Add Shot Dialog — extracted FSM component */}
+      <AddShotDialog
+        open={addShotState.open}
+        onClose={() => addShotDispatch({ type: 'CLOSE' })}
+        sceneNumber={selectedScene?.sceneNumber}
+        onCreateShot={handleCreateShot}
+        onSearch={handleSearchReferenceShots}
+      />
 
       {/* ============================================ */}
       {/* WORKFLOW GAP FIX #2: Scene Needs Dialog */}
@@ -7474,8 +7754,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       <Dialog
         open={showSceneNeedsDialog}
         onClose={() => {
-          setShowSceneNeedsDialog(false);
-          setEditingSceneNeedsId(null);
+          dispatchWorkflow({ type: 'CLOSE_MODAL' });
         }}
         PaperProps={{
           sx: {
@@ -7589,7 +7868,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => { setShowSceneNeedsDialog(false); setEditingSceneNeedsId(null); }} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
             Lukk
           </Button>
         </DialogActions>
@@ -7600,7 +7879,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* ============================================ */}
       <Dialog
         open={showScheduleSceneDialog}
-        onClose={() => { setShowScheduleSceneDialog(false); setSceneToSchedule(null); }}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })}
         PaperProps={{
           sx: {
             bgcolor: '#1a1f2e',
@@ -7615,7 +7894,10 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           Planlegg Scene til Stripboard
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
-          {sceneToSchedule && (
+          {sceneToScheduleId && (() => {
+            const sceneToSchedule = scenes.find(s => s.id === sceneToScheduleId);
+            if (!sceneToSchedule) return null;
+            return (
             <>
               <Box sx={{ p: 2, mb: 3, bgcolor: '#0f1318', borderRadius: '10px', border: '1px solid #2a3142' }}>
                 <Typography sx={{ fontSize: 12, color: '#6b7280', mb: 1 }}>SCENE</Typography>
@@ -7678,10 +7960,11 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 ))}
               </Stack>
             </>
-          )}
+            );
+          })()}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => { setShowScheduleSceneDialog(false); setSceneToSchedule(null); }} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
             Avbryt
           </Button>
         </DialogActions>
@@ -7692,7 +7975,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* ============================================ */}
       <Dialog
         open={showChecklistDialog}
-        onClose={() => setShowChecklistDialog(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })}
         PaperProps={{
           sx: {
             bgcolor: '#1a1f2e',
@@ -7755,16 +8038,16 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                     key={key}
                     onClick={() => handleUpdateChecklist(
                       selectedScene.id,
-                      key as keyof typeof sceneChecklists[string],
-                      !sceneChecklists[selectedScene.id]?.[key as keyof typeof sceneChecklists[string]]
+                      key as ChecklistKey,
+                      !sceneChecklists[selectedScene.id]?.[key as ChecklistKey]
                     )}
                     sx={{
                       p: 1.5,
                       borderRadius: '10px',
-                      bgcolor: sceneChecklists[selectedScene.id]?.[key as keyof typeof sceneChecklists[string]]
+                      bgcolor: sceneChecklists[selectedScene.id]?.[key as ChecklistKey]
                         ? `${color}15`
                         : 'rgba(255,255,255,0.03)',
-                      border: sceneChecklists[selectedScene.id]?.[key as keyof typeof sceneChecklists[string]]
+                      border: sceneChecklists[selectedScene.id]?.[key as ChecklistKey]
                         ? `1px solid ${color}`
                         : '1px solid #2a3142',
                       cursor: 'pointer',
@@ -7778,14 +8061,14 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                         <Typography sx={{
                           fontSize: 13,
                           fontWeight: 500,
-                          color: sceneChecklists[selectedScene.id]?.[key as keyof typeof sceneChecklists[string]] ? '#fff' : '#9ca3af',
-                          textDecoration: sceneChecklists[selectedScene.id]?.[key as keyof typeof sceneChecklists[string]] ? 'line-through' : 'none',
+                          color: sceneChecklists[selectedScene.id]?.[key as ChecklistKey] ? '#fff' : '#9ca3af',
+                          textDecoration: sceneChecklists[selectedScene.id]?.[key as ChecklistKey] ? 'line-through' : 'none',
                         }}>
                           {label}
                         </Typography>
                       </Stack>
                       <Checkbox
-                        checked={sceneChecklists[selectedScene.id]?.[key as keyof typeof sceneChecklists[string]] || false}
+                        checked={sceneChecklists[selectedScene.id]?.[key as ChecklistKey] || false}
                         sx={{ color, '&.Mui-checked': { color } }}
                       />
                     </Stack>
@@ -7796,7 +8079,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => setShowChecklistDialog(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
             Lukk
           </Button>
         </DialogActions>
@@ -7807,7 +8090,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* ============================================ */}
       <Dialog
         open={showBulkShotDialog}
-        onClose={() => setShowBulkShotDialog(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })}
         PaperProps={{
           sx: {
             bgcolor: '#1a1f2e',
@@ -7855,7 +8138,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             ].map(({ key, title, titleIcon: TitleIcon, description, shots, color }) => (
               <Box
                 key={key}
-                onClick={() => setBulkShotTemplate(key)}
+                onClick={() => dispatchWorkflow({ type: 'SET_BULK_TEMPLATE', template: key })}
                 sx={{
                   p: 2,
                   borderRadius: '10px',
@@ -7900,7 +8183,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => setShowBulkShotDialog(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
             Avbryt
           </Button>
           <Button
@@ -7922,7 +8205,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       {/* ============================================ */}
       <Dialog
         open={showLineCoverageDialog}
-        onClose={() => setShowLineCoverageDialog(false)}
+        onClose={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })}
         maxWidth="md"
         fullWidth
         PaperProps={{
@@ -8043,7 +8326,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: '1px solid #2a3142' }}>
-          <Button onClick={() => setShowLineCoverageDialog(false)} sx={{ color: '#9ca3af' }}>
+          <Button onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#9ca3af' }}>
             Lukk
           </Button>
         </DialogActions>

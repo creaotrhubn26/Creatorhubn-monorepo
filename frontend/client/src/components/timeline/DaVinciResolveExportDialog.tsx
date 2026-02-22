@@ -32,7 +32,7 @@ import {
   Alert,
   Paper,
   Divider,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   ColorLens,
@@ -41,7 +41,7 @@ import {
   CheckCircle,
   Download,
   PlayArrow,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { BeatClip, Track } from '../../services/storyArcDataIntegration';
 import { timelineEngine } from '../../services/timeline-engine';

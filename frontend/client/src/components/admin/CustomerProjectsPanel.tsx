@@ -24,7 +24,7 @@ import {
   InputAdornment,
   Tabs,
   Tab,
-  Button
+  Button,
 } from '@mui/material';
 import {
   Group,
@@ -36,7 +36,7 @@ import {
   Add,
   TrendingUp,
   Assignment,
-  People
+  People,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

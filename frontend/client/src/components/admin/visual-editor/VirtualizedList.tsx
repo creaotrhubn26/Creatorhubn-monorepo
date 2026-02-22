@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useMemo, useRef, useEffect, useState } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -34,7 +34,7 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Checkbox,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -42,7 +42,7 @@ import {
   Stop,
   Refresh,
   Settings,
-  Speed,
+  Speed as Speed,
   Memory,
   Visibility,
   VisibilityOff,
@@ -56,7 +56,7 @@ import {
   Sort,
   ViewList,
   ViewModule,
-  ViewComfy
+  ViewComfy,
 } from '@mui/icons-material';
 import { useVirtualization, UseVirtualizationOptions } from '../../../hooks/useVirtualization';
 import { VirtualItem, VirtualizationConfig } from '../../../utils/virtualizationUtils';

@@ -31,7 +31,7 @@ import {
   Grid,
   Alert,
   LinearProgress,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -51,7 +51,7 @@ import {
   Inbox as InboxIcon,
   Assignment as AssignmentIcon,
   TrendingUp as TrendingUpIcon,
-  PersonAdd as PersonAddIcon
+  PersonAdd as PersonAddIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import SmartEmailComposer from './SmartEmailComposer';

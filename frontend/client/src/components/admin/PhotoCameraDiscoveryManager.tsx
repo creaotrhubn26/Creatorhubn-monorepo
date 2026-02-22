@@ -21,7 +21,7 @@ import {
   FormControlLabel,
   Badge,
   Tooltip,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import {
   Refresh,
@@ -32,7 +32,7 @@ import {
   Error,
   Info,
   Settings,
-  AutoAwesome
+  AutoAwesome,
 } from '@mui/icons-material';
 import { photoCameraDiscovery, CameraDiscoveryResult } from '../../data/photo-camera-discovery';
 import { PhotoCamera } from '../../data/photo-camera-database';

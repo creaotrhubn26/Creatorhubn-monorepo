@@ -41,7 +41,7 @@ import {
   Step,
   StepLabel,
   StepConnector,
-  stepConnectorClasses
+  stepConnectorClasses,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import {
@@ -61,7 +61,7 @@ import {
   Assignment,
   HowToReg,
   Verified,
-  CreditCard
+  CreditCard,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import FikenIntegrationRequestsPanel from './FikenIntegrationRequestsPanel';

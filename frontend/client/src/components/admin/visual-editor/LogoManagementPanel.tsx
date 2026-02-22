@@ -49,7 +49,7 @@ import {
   Description as DocumentIcon,
   Assessment as ReportIcon,
   ViewSidebar as SidebarIcon,
-  ViewDay as NavbarIcon
+  ViewDay as NavbarIcon,
 } from '@mui/icons-material';
 import { useCreatorHubBranding } from '../../../hooks/useCreatorHubBranding';
 

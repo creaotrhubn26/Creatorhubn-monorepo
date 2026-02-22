@@ -5,8 +5,23 @@
  */
 
 import React, { useRef, useEffect, useState } from 'react';
-import { Box, IconButton, Slider, Typography, Tooltip, Paper, Chip } from '@mui/material';
-import { PlayArrow, Pause, VolumeUp, VolumeOff, SkipNext, SkipPrevious } from '@mui/icons-material';
+import {
+  Box,
+  IconButton,
+  Slider,
+  Typography,
+  Tooltip,
+  Paper,
+  Chip,
+} from '@mui/material';
+import {
+  PlayArrow,
+  Pause,
+  VolumeUp,
+  VolumeOff,
+  SkipNext,
+  SkipPrevious,
+} from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 
 interface AudioTrack {

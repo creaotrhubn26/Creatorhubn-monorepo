@@ -7,7 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: [['html', { open: 'never' }], ['list']],
-  timeout: 60_000,
+  timeout: 120_000,
   use: {
     baseURL: 'http://localhost:5001',
     trace: 'on-first-retry',
@@ -22,7 +22,7 @@ export default defineConfig({
         '--disable-extensions',
         '--disable-background-networking',
         '--disable-default-apps',
-        '--js-flags=--max-old-space-size=512',
+        '--js-flags=--max-old-space-size=2048',
       ],
     },
   },

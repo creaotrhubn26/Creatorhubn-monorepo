@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -53,7 +53,7 @@ import {
   Tab,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   People,
@@ -63,7 +63,7 @@ import {
   Edit,
   Visibility,
   Comment,
-  VersionControl,
+  History as VersionControl,
   Security,
   Notifications,
   Sync,
@@ -71,8 +71,8 @@ import {
   CloudOff,
   CloudDone,
   CloudSync,
-  Conflict,
-  Resolve,
+  Warning as Conflict,
+  CheckCircle as Resolve,
   Queue,
   Timeline,
   BarChart,
@@ -91,20 +91,20 @@ import {
   ExpandMore,
   ExpandLess,
   Flag,
-  Globe,
+  Public as Globe,
   Book,
   School,
   Work,
   Home,
   Group,
   PublicOff,
-  PublicOn,
+  Public as PublicOn,
   Settings,
   Refresh,
   CheckCircle,
   Error,
   Info,
-  Warning
+  Warning,
 } from '@mui/icons-material';
 import { useCollaboration, UseCollaborationOptions } from '../../../hooks/useCollaboration';
 import { CollaborationConfig, Collaborator, ConflictResolution } from '../../../utils/collaborationManager';

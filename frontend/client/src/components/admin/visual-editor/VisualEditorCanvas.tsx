@@ -5,7 +5,12 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useRef, useCallback, useState, useEffect } from 'react';
-import { Box, Paper, Typography, TextField } from '@mui/material';
+import {
+  Box,
+  Paper,
+  Typography,
+  TextField,
+} from '@mui/material';
 
 interface EditorElement {
   id: string;

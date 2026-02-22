@@ -39,11 +39,11 @@ import {
   LocationOn,
   People,
   Refresh,
-  CalendarTodayToday,
+  CalendarToday as CalendarTodayToday,
   AccessTime,
   Edit,
   Delete,
-  Videocamcam,
+  Videocam as Videocamcam,
   AccountBalance as SplitSheetIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

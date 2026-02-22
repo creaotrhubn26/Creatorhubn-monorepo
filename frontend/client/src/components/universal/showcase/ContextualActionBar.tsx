@@ -18,7 +18,7 @@ import {
   LinearProgress,
   Typography,
   Divider,
-  Stack
+  Stack,
 } from '@mui/material';
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -40,21 +40,18 @@ import {
   Close,
   Share,
   AttachMoney,
-  // Video icons
   MovieCreation,
   TrendingUp as TimelineIcon,
   Layers,
   VolumeUp,
   Subtitles,
   HighQuality,
-  // Music icons
   GraphicEq,
   Security,
   LibraryAdd,
-  // Vendor icons
   Business,
   ViewModule,
-  Payment
+  Payment,
 } from '@mui/icons-material';
 
 interface ContextualActionBarProps {

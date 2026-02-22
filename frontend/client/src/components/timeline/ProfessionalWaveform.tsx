@@ -4,8 +4,20 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, IconButton, Slider, Typography, Stack, Chip } from '@mui/material';
-import { PlayArrow, Pause, VolumeUp, VolumeOff } from '@mui/icons-material';
+import {
+  Box,
+  IconButton,
+  Slider,
+  Typography,
+  Stack,
+  Chip,
+} from '@mui/material';
+import {
+  PlayArrow,
+  Pause,
+  VolumeUp,
+  VolumeOff,
+} from '@mui/icons-material';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions';
 

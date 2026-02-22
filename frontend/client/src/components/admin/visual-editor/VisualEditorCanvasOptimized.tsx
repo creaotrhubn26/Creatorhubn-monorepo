@@ -12,7 +12,7 @@ import {
   ButtonGroup,
   Tooltip,
   Typography,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   CropFree as SelectIcon,
@@ -22,7 +22,7 @@ import {
   Fullscreen as FullscreenIcon,
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 interface EditorElement {

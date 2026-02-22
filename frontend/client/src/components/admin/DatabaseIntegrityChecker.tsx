@@ -22,7 +22,7 @@ import {
   Divider,
   IconButton,
   Tooltip,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   CheckCircle as CheckIcon,
@@ -37,7 +37,7 @@ import {
   Assessment as ReportIcon,
   AutoMode as AutoSyncIcon,
   Sync as SyncIcon,
-  SyncDisabled as SyncDisabledIcon
+  SyncDisabled as SyncDisabledIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

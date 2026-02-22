@@ -5,7 +5,14 @@
  */
 
 import React from 'react';
-import { Card, CardContent, Typography, Divider, Stack, Box } from '@mui/material';
+import {
+  Card,
+  CardContent,
+  Typography,
+  Divider,
+  Stack,
+  Box,
+} from '@mui/material';
 import {
   Forum,
   Lightbulb,

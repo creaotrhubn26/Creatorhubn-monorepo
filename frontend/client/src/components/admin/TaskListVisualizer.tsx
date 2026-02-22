@@ -41,7 +41,7 @@ import {
 import {
   CheckCircle as CompletedIcon,
   RadioButtonUnchecked as PendingIcon,
-  PlayArrowArrow as RunningIcon,
+  PlayArrow as RunningIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Security as SecurityIcon,

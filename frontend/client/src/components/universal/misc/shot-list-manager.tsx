@@ -1,53 +1,54 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  IconButton, 
-  Chip, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  TextField, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  Grid, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  ListItemSecondaryAction, 
-  Checkbox, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  IconButton,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Grid,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Checkbox,
   Tooltip,
   Divider,
   Alert,
   Badge,
   LinearProgress,
   Paper,
+  Stack,
   useMediaQuery,
   useTheme,
   Collapse,
-  ListItemIcon
+  ListItemIcon,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  Add, 
-  Edit, 
-  Delete, 
-  CheckCircle, 
-  Schedule, 
-  CameraAlt, 
-  VideoLibrary, 
-  PlayArrow, 
+import {
+  Add,
+  Edit,
+  Delete,
+  CheckCircle,
+  Schedule,
+  CameraAlt,
+  VideoLibrary,
+  PlayArrow,
   Pause,
-  MoreVert
+  MoreVert,
 } from '@mui/icons-material';
 
 interface Shot {
@@ -173,7 +174,7 @@ export default function ShotListManager({
     mutationFn: async (data: Shot) =>
       apiRequest('/api/shot-list/update', {
         method: 'PUT',
-        body: data,
+        body: data as unknown as Record<string, unknown>,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/shot-list'] });

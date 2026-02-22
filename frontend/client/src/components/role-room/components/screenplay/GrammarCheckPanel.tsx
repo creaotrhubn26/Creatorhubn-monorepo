@@ -117,7 +117,7 @@ const getSeverityIcon = (severity: GrammarError['severity']) => {
 const getSeverityColor = (severity: GrammarError['severity']): string => {
   switch (severity) {
     case 'error': return '#f44336';
-    case 'warning': return '#ff9800';
+    case 'warning': return '#9333ea';
     case 'suggestion': return '#2196f3';
     default: return '#9e9e9e';
   }
@@ -141,7 +141,7 @@ const getTypeColor = (type: GrammarError['type']): string => {
     spelling: '#f44336',
     punctuation: '#607d8b',
     style: '#00bcd4',
-    agreement: '#ff5722',
+    agreement: '#7c3aed',
     tense: '#4caf50',
   };
   return colors[type] || '#9e9e9e';

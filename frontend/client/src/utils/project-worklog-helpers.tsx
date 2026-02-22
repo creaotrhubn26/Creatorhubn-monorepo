@@ -1,4 +1,9 @@
-import { BusinessCenter, BarChart, MusicNote, Videocam } from '@mui/icons-material';
+import {
+  BusinessCenter,
+  BarChart,
+  MusicNote,
+  Videocam,
+} from '@mui/icons-material';
 /**
  * CreatorHub Norge - Project Worklog Integration Helpers (Client-side)
  * Automatisk worklog-opprettelse ved prosjektopprettelse.

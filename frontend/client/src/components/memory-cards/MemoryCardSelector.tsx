@@ -20,14 +20,14 @@ import {
   DialogContent,
   DialogActions,
   Alert,
-  Card as MuiCard
+  Card as MuiCard,
 } from '@mui/material';
 import {
   CheckCircle,
   RadioButtonUnchecked,
   Warning,
   Error,
-  Storage
+  Storage,
 } from '@mui/icons-material';
 import MemoryCardVisualDesign, { MemoryCardSet } from './MemoryCardVisualDesign';
 

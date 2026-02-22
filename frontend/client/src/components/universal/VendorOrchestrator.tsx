@@ -7,14 +7,14 @@ import { getAllVendorTypes, getEnabledVendorTypes } from '@shared/vendor-type-re
 import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Card as MuiCard, 
-  CardContent, 
-  Chip, 
-  LinearProgress, 
+import {
+  Box,
+  Typography,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  Chip,
+  LinearProgress,
   Button,
   IconButton,
   Dialog,
@@ -34,18 +34,18 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  Store, 
-  Settings, 
-  TrendingUp as TimelineIcon, 
-  People, 
-  Build, 
-  Cloud, 
-  CheckCircle, 
-  Warning, 
+import {
+  Store,
+  Settings,
+  TrendingUp as TimelineIcon,
+  People,
+  Build,
+  Cloud,
+  CheckCircle,
+  Warning,
   Error,
   Info,
   PlayCircle,
@@ -54,7 +54,7 @@ import {
   Visibility,
   VisibilityOff,
   TrendingUp,
-  Speed,
+  Speed as Speed,
   Security,
   Memory,
   Storage,
@@ -65,7 +65,7 @@ import {
   ShoppingCart,
   LocalShipping,
   Payment,
-  Business
+  Business,
 } from '@mui/icons-material';
 
 /**

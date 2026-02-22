@@ -20,11 +20,7 @@ import {
   Alert,
   Fab,
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Settings as SettingsIcon,
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
+import { Add as AddIcon, Settings as SettingsIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import PersonalizedNewsInterface from '../components/news/PersonalizedNewsInterface';
 import { WORLD_CAMERA_DATABASE } from '../../../shared/camera-database.ts';
 

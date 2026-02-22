@@ -169,11 +169,11 @@ export const VfxNotes: React.FC<VfxNotesProps> = ({
     greenscreen: { icon: <GreenScreenIcon />, label: 'Green Screen', color: '#4caf50' },
     tracking: { icon: <TrackingIcon />, label: 'Tracking', color: '#2196f3' },
     composite: { icon: <CompositeIcon />, label: 'Compositing', color: '#9c27b0' },
-    cgi: { icon: <ThreeDIcon />, label: 'CGI/3D', color: '#ff5722' },
+    cgi: { icon: <ThreeDIcon />, label: 'CGI/3D', color: '#7c3aed' },
     cleanup: { icon: <PaintIcon />, label: 'Cleanup', color: '#795548' },
     animation: { icon: <AnimationIcon />, label: 'Animasjon', color: '#e91e63' },
     matte_painting: { icon: <PaintIcon />, label: 'Matte Painting', color: '#607d8b' },
-    particle: { icon: <VfxIcon />, label: 'Partikler', color: '#ff9800' },
+    particle: { icon: <VfxIcon />, label: 'Partikler', color: '#9333ea' },
     other: { icon: <VfxIcon />, label: 'Annet', color: '#9e9e9e' },
   };
 

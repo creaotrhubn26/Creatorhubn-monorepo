@@ -20,7 +20,14 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { Person, Wc, Delete, Refresh, People, Download } from '@mui/icons-material';
+import {
+  Person,
+  Wc,
+  Delete,
+  Refresh,
+  People,
+  Download,
+} from '@mui/icons-material';
 import * as THREE from 'three';
 import { integrationService } from '../../services/integrations';
 import { logger } from '../../core/services/logger';

@@ -72,9 +72,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#e91e63',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Din digitale produksjonsassistent',
-        content: 'Casting Planner er et komplett planleggingsverktøy designet for å hjelpe deg med å organisere, visualisere og gjennomføre produksjoner på en effektiv måte. Fra casting til ferdig shot list - alt på ett sted.',
+        content: 'The Role Room er et komplett planleggingsverktøy designet for å hjelpe deg med å organisere, visualisere og gjennomføre produksjoner på en effektiv måte. Fra casting til ferdig shot list - alt på ett sted.',
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -112,7 +112,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
       {
         title: 'Som regissør får du...',
         subtitle: 'Verktøy skreddersydd for din arbeidsprosess',
-        content: 'Casting Planner gir deg full oversikt over produksjonen din, fra første idé til siste opptak.',
+        content: 'The Role Room gir deg full oversikt over produksjonen din, fra første idé til siste opptak.',
         features: [
           {
             icon: <VideocamIcon sx={{ color: '#e91e63' }} />,
@@ -133,7 +133,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
       },
       {
         title: 'Hvordan finne ting',
-        subtitle: 'Navigasjon i Casting Planner',
+        subtitle: 'Navigasjon i The Role Room',
         content: 'Alt du trenger er organisert i logiske faner øverst i applikasjonen.',
         features: [
           {
@@ -194,9 +194,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#10b981',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Ditt digitale planleggingsverktøy',
-        content: 'Casting Planner hjelper deg å organisere fotoshoots, holde oversikt over modeller og planlegge hver eneste shot før du trykker på utløseren.',
+        content: 'The Role Room hjelper deg å organisere fotoshoots, holde oversikt over modeller og planlegge hver eneste shot før du trykker på utløseren.',
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -311,9 +311,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#f59e0b',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Profesjonell pre-produksjon',
-        content: 'Casting Planner er designet for å hjelpe filmfotografer med å planlegge kamerabevegelser, lyssetting og visuelle stilvalg før innspilling starter.',
+        content: 'The Role Room er designet for å hjelpe filmfotografer med å planlegge kamerabevegelser, lyssetting og visuelle stilvalg før innspilling starter.',
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -423,9 +423,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#8b5cf6',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Produksjonsstyring på ett sted',
-        content: 'Casting Planner gir deg full oversikt over alle aspekter av produksjonen, fra casting til ferdig opptaksplan.',
+        content: 'The Role Room gir deg full oversikt over alle aspekter av produksjonen, fra casting til ferdig opptaksplan.',
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -535,9 +535,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#ec4899',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Visuell planlegging',
-        content: 'Casting Planner hjelper deg å definere og kommunisere den visuelle retningen for produksjonen.',
+        content: 'The Role Room hjelper deg å definere og kommunisere den visuelle retningen for produksjonen.',
         features: [
           {
             icon: <ArtIcon sx={{ color: '#ec4899' }} />,
@@ -597,9 +597,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#06b6d4',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Planlegging for musikkvideoer',
-        content: 'Casting Planner er perfekt for å synkronisere visuelle elementer med musikk og planlegge dynamiske sekvenser.',
+        content: 'The Role Room er perfekt for å synkronisere visuelle elementer med musikk og planlegge dynamiske sekvenser.',
         features: [
           {
             icon: <MusicIcon sx={{ color: '#06b6d4' }} />,
@@ -659,9 +659,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#f97316',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Profesjonell reklameplanlegging',
-        content: 'Casting Planner hjelper deg å planlegge kommersielle produksjoner med fokus på budskap, merkevare og effektivitet.',
+        content: 'The Role Room hjelper deg å planlegge kommersielle produksjoner med fokus på budskap, merkevare og effektivitet.',
         features: [
           {
             icon: <PlayIcon sx={{ color: '#f97316' }} />,
@@ -721,9 +721,9 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     professionColor: '#84cc16',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Planlegging for dokumentar',
-        content: 'Casting Planner hjelper deg å strukturere research, intervjuer og opptak for dokumentarprosjekter.',
+        content: 'The Role Room hjelper deg å strukturere research, intervjuer og opptak for dokumentarprosjekter.',
         features: [
           {
             icon: <MovieIcon sx={{ color: '#84cc16' }} />,
@@ -744,7 +744,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
       },
       {
         title: 'Fleksibel planlegging',
-        content: 'Dokumentar krever fleksibilitet - Casting Planner tilpasser seg.',
+        content: 'Dokumentar krever fleksibilitet - The Role Room tilpasser seg.',
         features: [
           {
             icon: <TaskIcon sx={{ color: '#84cc16' }} />,
@@ -777,15 +777,15 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
     ],
   },
   general: {
-    welcomeTitle: 'Velkommen til Casting Planner!',
+    welcomeTitle: 'Velkommen til The Role Room!',
     welcomeSubtitle: 'Din komplette planleggingsløsning',
     professionIcon: <MovieIcon sx={{ fontSize: 48 }} />,
     professionColor: '#6366f1',
     slides: [
       {
-        title: 'Hva er Casting Planner?',
+        title: 'Hva er The Role Room?',
         subtitle: 'Alt-i-ett produksjonsplanlegging',
-        content: 'Casting Planner er et komplett verktøy for å planlegge, organisere og gjennomføre film-, foto- og videoproduksjoner.',
+        content: 'The Role Room er et komplett verktøy for å planlegge, organisere og gjennomføre film-, foto- og videoproduksjoner.',
         illustration: (
           <Box sx={{ 
             display: 'flex', 
@@ -823,7 +823,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
       {
         title: 'Hovedfunksjoner',
         subtitle: 'Alt du trenger for produksjonen',
-        content: 'Fra første idé til ferdig opptak - Casting Planner følger deg hele veien.',
+        content: 'Fra første idé til ferdig opptak - The Role Room følger deg hele veien.',
         features: [
           {
             icon: <GroupsIcon sx={{ color: '#6366f1' }} />,

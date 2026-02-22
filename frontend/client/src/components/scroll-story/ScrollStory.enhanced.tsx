@@ -16,7 +16,12 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
-import { KeyboardArrowUp, KeyboardArrowDown, PlayArrow, Pause } from '@mui/icons-material';
+import {
+  KeyboardArrowUp,
+  KeyboardArrowDown,
+  PlayArrow,
+  Pause,
+} from '@mui/icons-material';
 import { useScrollStory } from './useScrollStory';
 import type { ScrollStory as ScrollStoryType } from './useScrollStory';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';

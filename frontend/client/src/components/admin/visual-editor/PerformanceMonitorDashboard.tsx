@@ -18,16 +18,16 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon
+  ListItemIcon,
 } from '@mui/material';
 import {
-  Speed,
+  Speed as Speed,
   Memory,
   Warning,
   CheckCircle,
   TrendingUp,
   TrendingDown,
-  Remove as TrendingFlat
+  Remove as TrendingFlat,
 } from '@mui/icons-material';
 import { useAnimationPerformance } from '../../../hooks/useAnimationPerformance';
 import { useTheming } from '../../../utils/theming-helper';

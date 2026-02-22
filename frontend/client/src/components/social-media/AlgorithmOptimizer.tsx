@@ -27,7 +27,7 @@ import {
   Visibility,
   Schedule,
   Psychology,
-  Speed,
+  Speed as Speed,
   Analytics,
   CheckCircle,
   Warning,

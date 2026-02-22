@@ -21,11 +21,11 @@ import {
 } from '@mui/material';
 import {
   PersonAdd,
-  PhotoCameraAlt,
+  PhotoCamera as PhotoCameraAlt,
   Edit,
   CheckCircle,
   CameraAlt,
-  Videocamcam,
+  Videocam as Videocamcam,
   Memory,
   Keyboard,
   Launch,

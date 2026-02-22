@@ -25,11 +25,7 @@ import {
   Tooltip,
   IconButton,
 } from '@mui/material';
-import {
-  ExpandMore as ExpandMoreIcon,
-  Info as InfoIcon,
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
+import { ExpandMore as ExpandMoreIcon, Info as InfoIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { acesService, type ACESConfig, type ACESColorSpace, type ACESLMTPreset } from '../../core/services/acesService';
 
 interface ACESPanelProps {

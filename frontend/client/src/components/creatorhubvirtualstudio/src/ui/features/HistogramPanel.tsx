@@ -1,5 +1,12 @@
 import * as React from 'react';
-import { Box, Button, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
 import { getHistogramCanvas, getActiveCameraId, setOverlayMode } from '@/core/services/viewports';
 import { computeHistogramFromCanvas, Histogram } from '@/core/services/image';
 import { useScene } from '@/state/selectors';

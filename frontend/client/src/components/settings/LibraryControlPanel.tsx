@@ -22,7 +22,7 @@ import {
   IconButton,
   Badge,
   Card,
-  CardContent
+  CardContent,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -35,9 +35,9 @@ import {
   Warning,
   CheckCircle,
   Cancel,
-  Speed,
+  Speed as Speed,
   Storage,
-  CloudDownload
+  CloudDownload,
 } from '@mui/icons-material';
 import {
   LIBRARY_MAPPINGS,

@@ -37,7 +37,7 @@ import {
   CheckCircle,
   Warning,
   Info,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   PriceCheck,
@@ -62,12 +62,12 @@ interface MemoryCardPricingBenefitsProps {
   onClose?: () => void;
 }
 
-const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = (
-  // Theming system
-  const theming = useTheming('photographer');{
+const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
   showAsDialog = false,
   onClose
 }) => {
+  // Theming system
+  const theming = useTheming('photographer');
   const [expandedBenefit, setExpandedBenefit] = useState<string | null>(null);
 
   const pricingBenefits = [
@@ -177,7 +177,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = (
               expanded={expandedBenefit === benefitId}
               onChange={() => setExpandedBenefit(expandedBenefit === benefitId ? null : benefitId)}
             >
-              <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+              <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%'}}>
                   <Box sx={{ fontSize: '1.5rem'}}>{benefit.icon}</Box>
                   <Box sx={{ flex:  1 }}>

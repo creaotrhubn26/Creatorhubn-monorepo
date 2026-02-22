@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -58,7 +58,7 @@ import {
   Step,
   StepLabel,
   StepContent,
-  StepButton
+  StepButton,
 } from '@mui/material';
 import {
   Psychology,
@@ -108,7 +108,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -125,7 +125,7 @@ import {
   Timer,
   Event,
   Timeline,
-  FlowChart,
+  AccountTree as FlowChart,
   AccountTree,
   Hub,
   Share,
@@ -151,13 +151,13 @@ import {
   Assessment,
   DataUsage,
   Functions,
-  Integration,
+  IntegrationInstructions as Integration,
   Extension,
   ExtensionOff,
   ExtensionOutlined,
   ExtensionRounded,
   ExtensionSharp,
-  ExtensionTwoTone
+  ExtensionTwoTone,
 } from '@mui/icons-material';
 import { useAIIntegration, UseAIIntegrationOptions } from '../../../hooks/useAIIntegration';
 import { AIConfig, AIPrompt, AIResponse, AIContext, AILearning, AIOptimization } from '../../../utils/aiIntegrationManager';

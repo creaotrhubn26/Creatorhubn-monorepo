@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Box, Slider, Typography } from'@mui/material';
+import { Box, Slider, Typography } from '@mui/material';
 
 export default function ModelPoseEditor() {
   return (

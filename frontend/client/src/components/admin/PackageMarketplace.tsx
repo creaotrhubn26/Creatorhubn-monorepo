@@ -43,7 +43,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Search,
@@ -71,11 +71,11 @@ import {
   ExpandMore,
   Visibility,
   VerifiedUser,
-  Speed,
+  Speed as Speed,
   BugReport,
   Description,
   Assignment,
-  SmartToy
+  SmartToy,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import InstallationWizard from './InstallationWizard';

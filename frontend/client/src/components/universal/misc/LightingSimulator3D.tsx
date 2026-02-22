@@ -2,7 +2,15 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { Box, Typography, Fab, Dialog, DialogTitle, DialogContent, Button } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Fab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Button,
+} from '@mui/material';
 import { AddCircle as Add, Settings, Lightbulb } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

@@ -1,10 +1,10 @@
 import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { 
-  Button, 
-  Typography, 
-  Box, 
-  Paper, 
+import {
+  Button,
+  Typography,
+  Box,
+  Paper,
   Container,
   Card as MuiCard,
   CardContent,
@@ -28,7 +28,7 @@ import {
   Divider,
   IconButton,
   Menu,
-  MenuList
+  MenuList,
 } from '@mui/material';
 
 // Material UI components for CreatorHub Norge

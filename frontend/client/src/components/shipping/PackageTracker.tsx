@@ -12,7 +12,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   TextField,
   Button,
   Grid,
@@ -34,7 +33,7 @@ import {
   Schedule,
   LocationOn,
   Warning,
-  Info
+  Info,
 } from '@mui/icons-material';
 
 interface TrackingEvent {

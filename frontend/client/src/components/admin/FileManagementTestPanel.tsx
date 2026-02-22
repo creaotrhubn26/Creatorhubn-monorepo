@@ -32,7 +32,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -55,7 +55,7 @@ import {
   CloudDone as CloudDoneIcon,
   CloudOff as CloudOffIcon,
   Sync as SyncIcon,
-  SyncProblem as SyncProblemIcon
+  SyncProblem as SyncProblemIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';

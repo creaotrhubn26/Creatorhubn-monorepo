@@ -1,36 +1,36 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  CardMedia, 
-  Button, 
-  Chip, 
-  IconButton, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Grid, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  CardMedia,
+  Button,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
   Stack,
   Tooltip,
-  Badge
+  Badge,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  PlayArrow, 
-  Download, 
-  Favorite, 
-  Share, 
-  Visibility, 
+import {
+  PlayArrow,
+  Download,
+  Favorite,
+  Share,
+  Visibility,
   Edit,
   Close,
   Star,
-  StarBorder
+  StarBorder,
 } from '@mui/icons-material';
 
 interface Template {

@@ -51,7 +51,7 @@ import {
   SkipNext,
   Repeat,
   RepeatOne,
-  Speed,
+  Speed as Speed,
   Add,
   Delete,
   ExpandMore,

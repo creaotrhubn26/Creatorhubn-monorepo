@@ -23,7 +23,7 @@ import {
   DialogActions,
   Chip,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Sync,
@@ -36,7 +36,7 @@ import {
   Settings,
   PlayArrow,
   Pause,
-  Refresh
+  Refresh,
 } from '@mui/icons-material';
 
 interface GoogleDriveProjectSyncProps {

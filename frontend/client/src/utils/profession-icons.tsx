@@ -24,7 +24,7 @@ import {
   Home,
   Pets,
   SportsBaseball,
-  Code
+  Code,
 } from '@mui/icons-material';
 import {
   DesignServices,

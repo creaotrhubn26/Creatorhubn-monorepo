@@ -15,14 +15,14 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Visibility,
   VisibilityOff,
   Info,
   CheckCircle,
-  Error
+  Error,
 } from '@mui/icons-material';
 import { useDemoMode } from '@/contexts/DemoModeContext';
 

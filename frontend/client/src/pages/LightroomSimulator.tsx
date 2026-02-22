@@ -23,7 +23,7 @@ import {
   Paper,
 } from '@mui/material';
 import { PhotographyIcon } from '../components/shared/CreatorHubIcons';
-import { 
+import {
   PhotoLibrary,
   CloudUpload,
   CheckCircle,
@@ -32,7 +32,7 @@ import {
   Sync,
   Collections,
   Publish,
-  Google, 
+  Google,
 } from '@mui/icons-material';
 import { CREATOR_HUB_BRANDING } from '../constants/CreatorHubBranding';
 

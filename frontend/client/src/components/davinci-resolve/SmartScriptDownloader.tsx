@@ -33,7 +33,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   Download,
@@ -47,7 +47,7 @@ import {
   GetApp,
   FilterList,
   Search,
-  Refresh
+  Refresh,
 } from '@mui/icons-material';
 
 interface CameraConfig {

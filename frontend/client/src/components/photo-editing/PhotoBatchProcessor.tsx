@@ -1,11 +1,11 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Grid, 
-  Button, 
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Button,
   LinearProgress,
   Card,
   CardContent,
@@ -28,14 +28,14 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
 } from '@mui/material';
-import { 
-  Photo, 
-  Speed, 
-  AutoFixHigh, 
-  Download, 
-  Delete, 
+import {
+  Photo,
+  Speed as Speed,
+  AutoFixHigh,
+  Download,
+  Delete,
   Refresh,
   PlayArrow,
   Pause,
@@ -43,7 +43,7 @@ import {
   Settings,
   CheckCircle,
   Error,
-  Warning
+  Warning,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

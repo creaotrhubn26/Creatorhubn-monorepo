@@ -39,7 +39,7 @@ import {
   InputLabel,
   ToggleButtonGroup,
   ToggleButton,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Email,
@@ -54,7 +54,7 @@ import {
   BarChart,
   CompareArrows,
   Visibility,
-  Mouse
+  Mouse,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

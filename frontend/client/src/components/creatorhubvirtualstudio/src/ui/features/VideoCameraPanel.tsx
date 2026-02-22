@@ -1,5 +1,12 @@
 import * as React from 'react';
-import { Box, FormControlLabel, Checkbox, Grid, TextField, Typography } from '@mui/material';
+import {
+  Box,
+  FormControlLabel,
+  Checkbox,
+  Grid,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { useActions, useScene } from '@/state/selectors';
 
 function shutterFromAngle(angle: number, fps: number) {

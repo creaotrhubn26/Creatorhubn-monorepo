@@ -63,6 +63,8 @@ import { castingAuthService } from '../services/castingAuthService';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { rolePoolService, PoolRole } from '../services/rolePoolService';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import castingDirectorPng from './icons/Keep/roleroom_casting_director.png';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -1449,59 +1451,14 @@ function RoleManagementPanelInner({
       {/* Empty state and role list (only in project mode) */}
       {poolMode === 'project' && (
         roles.length === 0 ? (
-        <Box
-          role="status"
-          sx={{
-            textAlign: 'center',
-            py: { xs: 4, sm: 8 },
-            px: 4,
-            bgcolor: 'rgba(0, 212, 255, 0.03)',
-            borderRadius: 3,
-            border: '2px dashed rgba(0, 212, 255, 0.2)',
-          }}
-        >
-          <Box
-            sx={{
-              width: { xs: 60, sm: 80, md: 72, lg: 88, xl: 104 },
-              height: { xs: 60, sm: 80, md: 72, lg: 88, xl: 104 },
-              borderRadius: '50%',
-              bgcolor: 'rgba(0, 212, 255, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto',
-              mb: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 3.5 },
-            }}
-          >
-            <PeopleIcon sx={{ fontSize: { xs: 30, sm: 40, md: 36, lg: 44, xl: 52 }, color: '#00d4ff' }} />
-          </Box>
-          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 }, fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.15rem', lg: '1.35rem', xl: '1.5rem' } }}>
-            Kom i gang med casting
-          </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 3, sm: 4, md: 3.5, lg: 4, xl: 4.5 }, maxWidth: { xs: '100%', sm: 400, md: 380, lg: 420, xl: 480 }, mx: 'auto', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-            Definer rollene du trenger for produksjonen din, og start å legge til kandidater.
-          </Typography>
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<AddIcon />}
-            onClick={onCreateRole}
-            sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              fontWeight: 600,
-              px: 4,
-              py: { xs: 1.25, sm: 1.5, md: 1.375, lg: 1.5, xl: 1.75 },
-              fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-              minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { bgcolor: '#00b8e6', transform: 'translateY(-2px)' },
-              transition: 'all 0.2s',
-              ...focusVisibleStyles,
-            }}
-          >
-            Opprett din første rolle
-          </Button>
-        </Box>
+        <RoleRoomEmptyState
+          iconSrc={castingDirectorPng}
+          title="Kom i gang med casting"
+          subtitle="Definer rollene du trenger for produksjonen din, og start å legge til kandidater."
+          color="#00d4ff"
+          buttonLabel="Opprett din første rolle"
+          onAction={onCreateRole}
+        />
       ) : filteredAndSortedRoles.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: { xs: 4, sm: 6, md: 5, lg: 6, xl: 8 }, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 }, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, opacity: 0.3 }} />

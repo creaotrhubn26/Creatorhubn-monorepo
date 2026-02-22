@@ -55,7 +55,7 @@ import {
   Skeleton,
   Switch,
   FormControlLabel,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -118,7 +118,7 @@ import {
   AutoAwesome,
   AdminPanelSettings,
   Close,
-  VideoLibrary
+  VideoLibrary,
 } from '@mui/icons-material';
 
 // Import profession-specific components
@@ -260,7 +260,7 @@ const localProfessionConfigs: ProfessionConfigs = {
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
-      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event /> },
+      { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
       { id: 'showcase-publisher', label: 'Showcase Publisher', icon: <VideoLibrary /> },
       { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
@@ -296,7 +296,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
       { id: 'academy', label: 'Academy', icon: <School /> },
-      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event /> },
+      { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
       { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
       { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
@@ -332,7 +332,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'overview', label: 'Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Videoer', icon: <Videocam /> },
       { id: 'academy', label: 'Academy', icon: <School /> },
-      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event /> },
+      { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
       { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
       { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
@@ -429,7 +429,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'overview', label: 'Team Oversikt', icon: <Assessment /> },
       { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
       { id: 'academy', label: 'Academy', icon: <School /> },
-      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event /> },
+      { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
       { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
       { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
@@ -468,7 +468,9 @@ interface Project {
   eventDate?: string;
   date?: string;
   location?: string;
-  description?: string
+  description?: string;
+  eventType?: string;
+  projectType?: string;
 }
 
 interface Client {
@@ -3713,7 +3715,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </Grid2>
                   ) : (!upcomingProjects || upcomingProjects.length === 0) ? (
                     <MuiCard sx={{
-                      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
                       backdropFilter: 'blur(10px)',
                       border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                       borderRadius: 3,
@@ -3752,7 +3754,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           <Grid2 size={{ xs: 12, sm: 6 }} key={project.id}>
                             <MuiCard
                               sx={{
-                                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                                background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
                                 backdropFilter: 'blur(10px)',
                                 border: `1px solid ${alpha(urgencyColor, 0.2)}`,
                                 borderRadius: 3,
@@ -4463,7 +4465,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                               <Fade in timeout={300 + index * 100}>
                                 <MuiCard
                                   sx={{
-                                    background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
                                     backdropFilter: 'blur(10px)',
                                     border: `1px solid ${alpha(statusColor, 0.2)}`,
                                     borderRadius: 3,
@@ -4669,7 +4671,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       </Grid2>
                     ) : (
                       <MuiCard sx={{
-                        background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
                         backdropFilter: 'blur(10px)',
                         border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                         borderRadius: 3,
@@ -4761,7 +4763,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </Box>
 
                     <MuiCard sx={{
-                      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
                       backdropFilter: 'blur(10px)',
                       border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                       borderRadius: 3,
@@ -4915,7 +4917,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           {/* Dynamically render tabs based on profession */}
           {profession === 'photographer' ? (
             <>
-              {/* Tab 4: Bryllupstidslinje */}
+              {/* Tab 4: Evendi */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'wedding-timeline')}>
                 <Box sx={{ width: '100%' }}>
                   <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -5022,6 +5024,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab 5: Universal Showcase Viewer */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-viewer')}>
                 <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
+                  <SettingsProvider>
+                  <ThemeProvider>
+                  <RealTimeProvider>
+                  <VisualEditorProvider>
                   <UniversalShowcase
                     profession={profession}
                     userId={userId}
@@ -5045,6 +5051,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       console.log('Item deleted:', item);
                     }}
                   />
+                  </VisualEditorProvider>
+                  </RealTimeProvider>
+                  </ThemeProvider>
+                  </SettingsProvider>
                 </Box>
               </TabPanel>
 
@@ -5357,7 +5367,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         {profession === 'photographer' && (
                           <Tab 
                             icon={<WeddingIcon />}
-                            label="Bryllupstidslinje" 
+                            label="Evendi" 
                             iconPosition="start"
                             sx={{ gap: 1 }}
                           />
@@ -5605,10 +5615,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           <MuiCardContent>
                             <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
                               <WeddingIcon sx={{ color: customBranding.color }} />
-                              Bryllupstidslinje Administrasjon
+                              Evendi Administrasjon
                             </Typography>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                              Administrer bryllupstidslinjer for dine prosjekter med kulturtilpasning og klienttilgang.
+                              Administrer arrangementer for dine prosjekter med kulturtilpasning og klienttilgang via Evendi.
                             </Typography>
                             <WeddingTimelineOverview 
                               photographerId={userId} // Pass the current user's ID
@@ -5798,14 +5808,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             </>
           ) : profession === 'videographer' ? (
             <>
-              {/* Tab 3: Bryllupstidslinje */}
+              {/* Tab 3: Evendi */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'wedding-timeline')}>
                 <Box>
                     <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, color: theming.colors.primary }}>
-                    Bryllupstidslinje
+                    Evendi
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Det fullstendige bryllupstidslinje-systemet er tilgjengelig som en egen modul.
+                    Det fullstendige Evendi tidslinje-systemet er tilgjengelig som en egen modul.
                     Tilgang til detaljert scheduling, milepæler, vendor management, og automatiske påminnelser
                     med Google Drive integrasjon.
                   </Typography>
@@ -5817,7 +5827,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       '&:hover': { bgcolor: customBranding.color + 'dd' }
                     }}
                   >
-                    Åpne Bryllupstidslinje
+                    Åpne Evendi
                   </Button>
                 </Box>
               </TabPanel>
@@ -5830,6 +5840,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {/* Tab 5: Universal Showcase Viewer - For videographers */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-viewer')}>
                 <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
+                  <SettingsProvider>
+                  <ThemeProvider>
+                  <RealTimeProvider>
+                  <VisualEditorProvider>
                   <UniversalShowcase
                     profession={profession}
                     userId={userId}
@@ -5853,6 +5867,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       console.log('Item deleted:', item);
                     }}
                   />
+                  </VisualEditorProvider>
+                  </RealTimeProvider>
+                  </ThemeProvider>
+                  </SettingsProvider>
                 </Box>
               </TabPanel>
 
@@ -6323,11 +6341,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {(profession as string) === 'music_producer' ? (
                 <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-viewer') >= 0 ? availableTabs.findIndex(tab => tab.id === 'showcase-viewer') : 3}>
                   <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
+                    <SettingsProvider>
+                    <ThemeProvider>
+                    <RealTimeProvider>
+                    <VisualEditorProvider>
                     <UniversalShowcase
                       profession={profession as any}
                       userId={userId}
                       maxItems={50}
                     />
+                    </VisualEditorProvider>
+                    </RealTimeProvider>
+                    </ThemeProvider>
+                    </SettingsProvider>
                   </Box>
                 </TabPanel>
               ) : (
@@ -7153,7 +7179,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(2, 5, 5, 255, 255, 0.95) 0%, rgba(2, 5, 5, 255, 255, 0.85) 100%)',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
             backdropFilter: 'blur(15px)',
             border: '1px solid rgba(25, 255, 255, 0.3)',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.1)'
@@ -7355,6 +7381,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           <UniversalChatWidget 
             profession={profession as any}
             userId={userId}
+            isOpen={true}
           />
         </Box>
       )}
@@ -7438,7 +7465,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             right: 0,
             bottom: 0,
             bgcolor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1100}}
+            zIndex: 100}}
         />
       )}
 
@@ -7465,7 +7492,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         PaperProps={{
           sx: {
             borderRadius: 3,
-            background: 'linear-gradient(135deg, rgba(2, 5, 5, 255, 255, 0.95) 0%, rgba(2, 5, 5, 255, 255, 0.85) 100%)',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
             backdropFilter: 'blur(15px)',
             border: '1px solid rgba(25, 255, 255, 0.3)',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.1)'
@@ -7750,7 +7777,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         fullWidth
         PaperProps={{
           sx: {
-            background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,255,255,0.98) 100%)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.98) 100%)',
             backdropFilter: 'blur(10px)',
           }
         }}
@@ -8105,12 +8132,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               TILBAKE TIL DASHBOARD
             </Button>
           </Box>
+          <SettingsProvider>
+          <ThemeProvider>
+          <RealTimeProvider>
+          <VisualEditorProvider>
           <UniversalShowcase 
             profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
             userId={userId}
             isOwner={true}
             adminMode={false}
           />
+          </VisualEditorProvider>
+          </RealTimeProvider>
+          </ThemeProvider>
+          </SettingsProvider>
         </Box>
       )}
 

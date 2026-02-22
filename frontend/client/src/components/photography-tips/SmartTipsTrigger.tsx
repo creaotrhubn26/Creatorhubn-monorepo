@@ -13,13 +13,13 @@ import {
   Slide,
   Fade,
   IconButton,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   TipsAndUpdates as TipsIcon,
   Close as CloseIcon,
   AutoAwesome as MagicIcon,
-  PhotoCamera as CameraIcon
+  PhotoCamera as CameraIcon,
 } from '@mui/icons-material';
 import { TransitionProps } from '@mui/material/transitions';
 import { usePhotographyTips, PhotographyContextDetector } from '../../hooks/usePhotographyTips';
@@ -215,7 +215,7 @@ export const SmartTipsTrigger: React.FC<SmartTipsTriggerProps> = ({
       <Alert
         severity="info"
         sx={{
-          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.95) 0%, rgba(2, 4, 7, 147, 30, 0.95) 100%)',
+          background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.95) 0%, rgba(247, 147, 30, 0.95) 100%)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(25, 255, 255, 0.2)',
           borderRadius:  2,

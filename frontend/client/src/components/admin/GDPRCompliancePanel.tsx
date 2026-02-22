@@ -55,7 +55,7 @@ import {
   History,
   OpenInNew,
   Info,
-  Gavel
+  Gavel,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import {

@@ -4,7 +4,12 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState, useEffect } from 'react';
-import { Card as MuiCard, CardContent, CardHeader, Typography } from '@mui/material';
+import {
+  Card as MuiCard,
+  CardContent,
+  CardHeader,
+  Typography,
+} from '@mui/material';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';

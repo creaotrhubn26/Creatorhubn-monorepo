@@ -20,7 +20,7 @@ import {
   Badge,
   ToggleButtonGroup,
   ToggleButton,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Layers as LayersIcon,
@@ -43,7 +43,7 @@ import {
   GridOn as GridIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
-  Science as ScienceIcon
+  Science as ScienceIcon,
 } from '@mui/icons-material';
 import { getVisualEditorTokens } from './visualEditorTokens';
 

@@ -50,7 +50,7 @@ import {
   ListItemText,
   ListItemButton,
   ListItemIcon,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import {
   Add as AddIcon,

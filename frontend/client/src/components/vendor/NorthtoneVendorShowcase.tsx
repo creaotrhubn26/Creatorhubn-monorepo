@@ -23,10 +23,10 @@ import {
 import {
   CheckCircle,
   OpenWith,
-  Wall,
-  Corner,
-  Ceiling,
-  AcousticPanel,
+  Wallpaper as Wall,
+  CropSquare as Corner,
+  Roofing as Ceiling,
+  Equalizer as AcousticPanel,
 } from '@mui/icons-material';
 
 interface AcousticPanel {

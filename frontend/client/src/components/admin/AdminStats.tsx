@@ -34,7 +34,7 @@ import {
   ListItemText,
   ListItemAvatar,
   IconButton,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Assessment,
@@ -200,6 +200,28 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
     enabled: userEmail === 'user?.email',
     refetchInterval: 5000, // ✅ REAL-TIME: Update every 5 seconds
     staleTime: 0
+  });
+
+  // Fetch Role Room live stats (public endpoint, no auth required)
+  const { data: roleRoomStats } = useQuery({
+    queryKey: ['/api/role-room/admin/stats'],
+    queryFn: async () => {
+      const r = await fetch('/api/role-room/admin/stats');
+      if (!r.ok) throw new Error('role-room stats failed');
+      return r.json() as Promise<{
+        kreative: number;
+        produksjoner: number;
+        rollerBesatt: number;
+        kandidater: number;
+        marketplaceInstalls: number;
+        activeApiKeys: number;
+        recentProjects: { id: string; name: string; status: string; created_at: string }[];
+        professionBreakdown: { role: string; n: number }[];
+      }>;
+    },
+    enabled: userEmail === 'user?.email',
+    refetchInterval: 15000,
+    staleTime: 0,
   });
 
   if (isLoading) {
@@ -398,6 +420,104 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
           </Grid>
         </Grid>
       )}
+
+      {/* ─────────────── THE ROLE ROOM STATS ─────────────── */}
+      <Box sx={{ mb: 4 }}>
+        <MuiCard sx={{ border: '1.5px solid rgba(130,110,255,0.35)', background: 'linear-gradient(135deg, rgba(130,110,255,0.04) 0%, transparent 60%)' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <Avatar
+                src="/role-room-assets/landing_logo.webp"
+                sx={{ width: 40, height: 40, bgcolor: 'rgba(130,110,255,0.15)', border: '1px solid rgba(130,110,255,0.3)' }}
+              />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'rgba(190,175,255,0.95)' }}>
+                  The Role Room
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Live DB-tall • oppdateres hvert 15. sek
+                </Typography>
+              </Box>
+              <Chip label="LIVE" size="small" color="secondary" sx={{ fontWeight: 700 }} />
+            </Box>
+
+            {/* KPI row */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              {[
+                { label: 'Kreative brukere',    value: roleRoomStats?.kreative,            color: '#8a6eff', icon: <Group /> },
+                { label: 'Produksjoner',         value: roleRoomStats?.produksjoner,        color: '#e064e0', icon: <Assessment /> },
+                { label: 'Roller besatt',        value: roleRoomStats?.rollerBesatt,        color: '#50d68a', icon: <TrendingUp /> },
+                { label: 'Kandidater',           value: roleRoomStats?.kandidater,          color: '#60b4ff', icon: <Person /> },
+                { label: 'Marketplace-install.',  value: roleRoomStats?.marketplaceInstalls, color: '#ffb048', icon: <Store /> },
+                { label: 'Aktive API-nøkler',   value: roleRoomStats?.activeApiKeys,       color: '#ff6b6b', icon: <CheckCircle /> },
+              ].map(({ label, value, color, icon }) => (
+                <Grid xs={12} sm={6} md={4} xl={2} key={label}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: `${color}12`,
+                      border: `1px solid ${color}33`,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Box sx={{ color, mb: 0.5, display: 'flex', justifyContent: 'center' }}>{icon}</Box>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color, lineHeight: 1.1 }}>
+                      {value !== undefined ? value.toLocaleString('nb-NO') : <LinearProgress sx={{ mt: 1 }} />}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                      {label}
+                    </Typography>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+
+            {/* Recent projects */}
+            {roleRoomStats?.recentProjects && roleRoomStats.recentProjects.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+                  Siste produksjoner
+                </Typography>
+                <TableContainer component={Paper} sx={{ bgcolor: 'rgba(130,110,255,0.04)', border: '1px solid rgba(130,110,255,0.12)' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.72rem' }}>Navn</TableCell>
+                        <TableCell sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.72rem' }}>Status</TableCell>
+                        <TableCell sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.72rem' }}>Opprettet</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {roleRoomStats.recentProjects.map((p) => (
+                        <TableRow key={p.id} sx={{ '&:hover': { bgcolor: 'rgba(130,110,255,0.06)' } }}>
+                          <TableCell sx={{ fontWeight: 500 }}>{p.name}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={p.status}
+                              size="small"
+                              sx={{
+                                bgcolor: p.status === 'active' ? 'rgba(80,214,138,0.15)' : 'rgba(130,110,255,0.15)',
+                                color:   p.status === 'active' ? '#50d68a' : 'rgba(190,175,255,0.85)',
+                                fontWeight: 600,
+                                fontSize: '0.68rem',
+                                height: 20,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell sx={{ color: 'text.secondary', fontSize: '0.78rem' }}>
+                            {new Date(p.created_at).toLocaleDateString('nb-NO')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+          </CardContent>
+        </MuiCard>
+      </Box>
 
       {/* Google Analytics 4 Dashboard - FULL CONTROL */}
       <Box sx={{ mb: 4 }}>

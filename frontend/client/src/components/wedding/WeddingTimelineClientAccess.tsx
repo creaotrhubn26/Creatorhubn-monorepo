@@ -18,7 +18,7 @@ import {
   Grid,
   Paper,
   InputAdornment,
-  Link
+  Link,
 } from '@mui/material';
 import {
   Key,
@@ -26,7 +26,7 @@ import {
   Event,
   AccessTime,
   Info,
-  CheckCircle
+  CheckCircle,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

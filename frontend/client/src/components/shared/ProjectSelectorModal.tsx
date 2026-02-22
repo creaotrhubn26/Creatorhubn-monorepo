@@ -3,48 +3,33 @@
  * Velg eksisterende prosjekter opprettet gjennom dashboards for showcase
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
   DialogTitle,
   DialogActions,
   Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Box,
   Typography,
   Chip,
   Stack,
-  Card as MuiCard,
-  CardContent,
   Avatar,
-  // Alert removed - Zero Toast Compliance
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   PhotoCamera,
   Videocam,
   LibraryMusic,
   Store,
-  Event,
-  Person,
   Category,
   CalendarToday,
   FolderOpen,
-  CloudDone
+  CloudDone,
 } from '@mui/icons-material';
-import { useLocation } from 'wouter';
+
 
 interface Project {
   id: number;
@@ -76,13 +61,13 @@ const professionConfig = {
   },
   videographer: {
     name: 'Videograf', 
-    color: '#e74c30',
+    color: '#e74c3c',
     icon: Videocam,
     emptyMessage: 'Ingen videoprosjekter funnet. Opprett prosjekter gjennom videograf dashboardet først.'
   },
   music_producer: {
     name: 'Musikkprodusent',
-    color: '#9b59b0', 
+    color: '#9b59b6', 
     icon: LibraryMusic,
     emptyMessage: 'Ingen musikkprosjekter funnet. Opprett prosjekter gjennom musikkprodusent dashboardet først.'
   },
@@ -91,6 +76,12 @@ const professionConfig = {
     color: '#3498db',
     icon: Store,
     emptyMessage: 'Ingen leverandørprosjekter funnet. Opprett prosjekter gjennom leverandør dashboardet først.'
+  },
+  enterprise: {
+    name: 'Enterprise',
+    color: '#ff6b35',
+    icon: PhotoCamera,
+    emptyMessage: 'Ingen enterprise-prosjekter funnet. Opprett prosjekter gjennom enterprise dashboardet først.'
   }
 };
 
@@ -103,13 +94,10 @@ export function ProjectSelectorModal({
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   
-  // Theming system
-  const theming = useTheming('photographer');
-  
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
   
-  const config = professionConfig[profession];
+  const config = professionConfig[profession] || professionConfig.photographer;
   const professionDisplayName = getProfessionDisplayName(profession);
 
   // Fetch projects for this profession
@@ -155,37 +143,46 @@ export function ProjectSelectorModal({
     <Dialog 
       open={open}
       onClose={handleClose}
-      maxWidth="md"
+      maxWidth="sm"
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: 3,
-          bgcolor: 'background.default'
-    }
-    }}
+          borderRadius: '16px',
+          bgcolor: '#1a1f2e',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundImage: 'none',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+        }
+      }}
     >
-      <DialogTitle sx={{ textAlign: 'center', pb:  1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 1 }}>
-          <Avatar sx={{ bgcolor: config.color, width:  40, height: 40}}>
-            <config.icon />
+      <DialogTitle sx={{ textAlign: 'center', pb: 1, pt: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, mb: 1.5 }}>
+          <Avatar sx={{ 
+            bgcolor: `${config.color}20`, 
+            color: config.color,
+            width: 44, 
+            height: 44,
+            border: `2px solid ${config.color}40`,
+          }}>
+            <config.icon sx={{ fontSize: 22 }} />
           </Avatar>
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-            Velg prosjekt for showcase
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.15rem' }}>
+            Velg prosjekt
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary">
-          Velg et eksisterende {professionDisplayName.toLowerCase()}-prosjekt for å vise i showcase området
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>
+          Velg et {professionDisplayName.toLowerCase()}-prosjekt for showcase
         </Typography>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent sx={{ px: 3 }}>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py:  4 }}>
-            <CircularProgress />
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress sx={{ color: config.color }} />
           </Box>
         ) : error ? (
-          <Box sx={{ mb:  2 }}>
-            <Typography variant="body2" sx={{ mb: 2, p: 2, bgcolor: 'error.light', borderRadius: 1, color: 'error.contrastText' }}>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 2, p: 2, bgcolor: 'rgba(244, 67, 54, 0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(244, 67, 54, 0.2)' }}>
               Du har ikke opprettet noen prosjekt enda fra dashbordet ditt.
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -197,11 +194,12 @@ export function ProjectSelectorModal({
                   window.location.href = `/${profession}-dashboard-material`;
                 }}
                 sx={{
-                  ...theming.getThemedButtonSx(),
-                  bgcolor: config.color, '&:hover': {
-                    bgcolor: config.color,
-                    opacity: 0.8
-                  }
+                  bgcolor: config.color,
+                  color: '#fff',
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  '&:hover': { bgcolor: config.color, opacity: 0.9 },
                 }}
               >
                 Gå til {professionDisplayName} Dashboard
@@ -209,108 +207,116 @@ export function ProjectSelectorModal({
             </Box>
           </Box>
         ) : projects.length === 0 ? (
-          <Typography variant="body2" sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1, color: 'info.contrastText'}}>
+          <Typography variant="body2" sx={{ mb: 2, p: 2, bgcolor: 'rgba(33, 150, 243, 0.08)', borderRadius: '10px', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(33, 150, 243, 0.15)' }}>
             {config.emptyMessage}
           </Typography>
         ) : (
-          <Box sx={{ mb:  3 }}>
-            <FormControl fullWidth>
-              <InputLabel>Velg prosjekt</InputLabel>
-              <Select
-                value={selectedProjectId || ', '}
-                onChange={(e) => setSelectedProjectId(Number(e.target.value))}
-                label="Velg prosjekt"
-              >
-                {projects.map((project: Project) => (
-                  <MenuItem key={project.id} value={project.id}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%'}}>
-                      <Box sx={{ flexGrow:  1 }}>
-                        <Typography variant="body1" sx={{ fontWeight: 500}}>
-                          {project.title}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {project.category} • {new Date(project.createdAt).toLocaleDateString('no-NO')}
-                        </Typography>
-                      </Box>
-                      <Chip 
-                        label={project.status}
-                        size="small" 
-                        color={project.status === 'active' ? 'success' : 'default'}
-                      />
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            {/* Project Preview Card */}
-            {selectedProject && (
-              <MuiCard sx={{ mt:  3, bgcolor: 'background.paper', border: `1px solid ${config.color}30` }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
-                    Forhåndsvisning av prosjekt
-                  </Typography>
-                  
-                  <Stack spacing={2}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                      <Event color="action" />
-                      <Typography variant="body2">
-                        <strong>Tittel: </strong> {selectedProject.title}
-                      </Typography>
-                    </Box>
-                    
-                    {selectedProject.description && (
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap:  1 }}>
-                        <Category color="action" />
-                        <Typography variant="body2">
-                          <strong>Beskrivelse: </strong> {selectedProject.description}
-                        </Typography>
-                      </Box>
-                    )}
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                      <Category color="action" />
-                      <Typography variant="body2">
-                        <strong>Kategori: </strong> {selectedProject.category}
-                      </Typography>
-                    </Box>
-                    
-                    {selectedProject.scheduledDate && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                        <CalendarToday color="action" />
-                        <Typography variant="body2">
-                          <strong>Planlagt dato: </strong> {new Date(selectedProject.scheduledDate).toLocaleDateString(', ')}
-                        </Typography>
-                      </Box>
-                    )}
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                      <CloudDone color="action" />
-                      <Typography variant="body2">
-                        <strong>Drive integrasjon: </strong> {selectedProject.driveUrl ? 'Aktivert' : 'Ikke konfigurert'}
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  {selectedProject.driveUrl && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius:  1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                        {theming.getThemedIcon('folderOpen')}
-                        <Typography variant="body2" sx={{ color: 'success.contrastText'}}>
-                          Prosjektet har automatisk Drive-mappestruktur. Innhold vil synkroniseres med showcase.
-                        </Typography>
-                      </Box>
-                    </Box>
+          <Box sx={{ mb: 2 }}>
+            {/* Project Cards List */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {projects.map((project: Project) => (
+                <Box
+                  key={project.id}
+                  onClick={() => setSelectedProjectId(project.id)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    p: 1.5,
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    bgcolor: selectedProjectId === project.id ? `${config.color}15` : 'rgba(255,255,255,0.03)',
+                    border: selectedProjectId === project.id ? `2px solid ${config.color}` : '2px solid transparent',
+                    transition: 'all 0.15s ease',
+                    '&:hover': {
+                      bgcolor: selectedProjectId === project.id ? `${config.color}20` : 'rgba(255,255,255,0.06)',
+                    },
+                  }}
+                >
+                  <Avatar sx={{ 
+                    width: 36, height: 36, 
+                    bgcolor: `${config.color}20`, 
+                    color: config.color,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                  }}>
+                    <FolderOpen sx={{ fontSize: 18 }} />
+                  </Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>
+                      {project.title}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
+                      {project.category} • {new Date(project.createdAt).toLocaleDateString('no-NO')}
+                    </Typography>
+                  </Box>
+                  <Chip 
+                    label={project.status}
+                    size="small" 
+                    sx={{
+                      height: 22,
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      bgcolor: project.status === 'active' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255,255,255,0.06)',
+                      color: project.status === 'active' ? '#4caf50' : 'rgba(255,255,255,0.5)',
+                      border: project.status === 'active' ? '1px solid rgba(76, 175, 80, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  />
+                  {project.driveUrl && (
+                    <CloudDone sx={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }} />
                   )}
-                </CardContent>
-              </MuiCard>
+                </Box>
+              ))}
+            </Box>
+
+            {/* Project Preview */}
+            {selectedProject && (
+              <Box sx={{ mt: 2, p: 2, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <Stack spacing={1.5}>
+                  {selectedProject.description && (
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.82rem' }}>
+                      {selectedProject.description}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Category sx={{ fontSize: 15, color: 'rgba(255,255,255,0.3)' }} />
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{selectedProject.category}</Typography>
+                    </Box>
+                    {selectedProject.scheduledDate && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <CalendarToday sx={{ fontSize: 15, color: 'rgba(255,255,255,0.3)' }} />
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                          {new Date(selectedProject.scheduledDate).toLocaleDateString('no-NO')}
+                        </Typography>
+                      </Box>
+                    )}
+                    {selectedProject.driveUrl && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <CloudDone sx={{ fontSize: 15, color: '#4caf50' }} />
+                        <Typography variant="caption" sx={{ color: '#4caf50' }}>Drive synkronisert</Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Stack>
+              </Box>
             )}
           </Box>
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px:  3, pb:  3 }}>
-        <Button onClick={handleClose} disabled={loading}>
+      <DialogActions sx={{ px: 3, pb: 2.5, pt: 0.5, gap: 1 }}>
+        <Button 
+          onClick={handleClose} 
+          disabled={loading}
+          sx={{ 
+            color: 'rgba(255,255,255,0.5)', 
+            textTransform: 'none',
+            fontSize: '0.85rem',
+            borderRadius: '10px',
+            '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.05)' },
+          }}
+        >
           Avbryt
         </Button>
         <Button
@@ -319,9 +325,17 @@ export function ProjectSelectorModal({
           disabled={!selectedProject || loading || projects.length === 0}
           sx={{
             bgcolor: config.color,
-            '&:hover': { bgcolor: config.color + 'dd' }
+            color: '#fff',
+            borderRadius: '10px',
+            textTransform: 'none',
+            fontWeight: 600,
+            fontSize: '0.85rem',
+            px: 3,
+            boxShadow: `0 4px 16px ${config.color}40`,
+            '&:hover': { bgcolor: config.color, filter: 'brightness(1.1)' },
+            '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)' },
           }}
-          startIcon={loading ? <CircularProgress size={16} /> : theming.getThemedIcon('cloudDone')}
+          startIcon={loading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <CloudDone sx={{ fontSize: 18 }} />}
         >
           {loading ? 'Kobler til...' : 'Koble til showcase'}
         </Button>

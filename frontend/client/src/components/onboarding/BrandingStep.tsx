@@ -27,14 +27,14 @@ import {
   Select,
   MenuItem,
   Chip,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   CloudUpload,
   Business,
   Palette,
   CheckCircle,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { apiRequest } from '@/lib/queryClient';

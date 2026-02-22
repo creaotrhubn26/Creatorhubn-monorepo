@@ -482,7 +482,7 @@ export default function ConsentPortalView({
     }}>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
         <Typography variant="h4" sx={{ color: '#ce93d8', fontWeight: 700 }}>
-          Casting Planner
+          The Role Room
         </Typography>
         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
           Samtykke-portal

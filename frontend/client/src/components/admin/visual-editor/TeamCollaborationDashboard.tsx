@@ -25,7 +25,7 @@ import {
   MenuItem,
   LinearProgress,
   Avatar,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   Group,
@@ -36,7 +36,7 @@ import {
   Edit,
   Delete,
   PersonAdd,
-  Work
+  Work,
 } from '@mui/icons-material';
 import { useTeamCollaboration } from '../../../hooks/useTeamCollaboration';
 

@@ -130,7 +130,7 @@ export const CanvasToolbar: React.FC = () => {
         alignItems: 'center',
         gap: 1,
         p: 1,
-        backgroundColor: 'rgba(2, 5, 5, 255, 255, 0.95)',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(8px)'}}>
       {/* Tools */}
       <ToggleButtonGroup value={activeTool} exclusive onChange={handleToolChange} size="small">

@@ -1,6 +1,24 @@
 import React from 'react';
-import { Box, Typography, TextField, Slider, Stack, Paper, Chip, Accordion, AccordionSummary, AccordionDetails, Divider } from '@mui/material';
-import { ExpandMore, Face, Visibility, Navigation, Psychology } from '@mui/icons-material';
+import {
+  Box,
+  Typography,
+  TextField,
+  Slider,
+  Stack,
+  Paper,
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Divider,
+} from '@mui/material';
+import {
+  ExpandMore,
+  Face,
+  Visibility,
+  Navigation,
+  Psychology,
+} from '@mui/icons-material';
 import { BeatClip } from '../services/storyArcDataIntegration';
 
 interface ClipMeta { 

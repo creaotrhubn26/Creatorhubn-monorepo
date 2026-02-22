@@ -7,14 +7,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  Card as MuiCard, 
-  CardContent, 
-  Chip, 
-  LinearProgress, 
+import {
+  Box,
+  Typography,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  Chip,
+  LinearProgress,
   Button,
   IconButton,
   Dialog,
@@ -42,11 +42,11 @@ import {
   Paper,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 // import ContractGenerator from './contracts/contract-generator'; // Not currently used
-import { 
+import {
   AutoAwesome,
   PersonAdd,
   CameraAlt,
@@ -119,7 +119,7 @@ import {
   WbSunny,
   Map,
   FlightTakeoff,
-  ExpandMore
+  ExpandMore,
 } from '@mui/icons-material';
 
 // Ekte orkestrering - automatiske triggere mellom komponenter

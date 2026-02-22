@@ -28,7 +28,7 @@ import {
   LinearProgress,
   Tooltip,
   Paper,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Feedback,
@@ -38,7 +38,7 @@ import {
   Lightbulb,
   ThumbUp,
   Comment,
-  Screenshot,
+  Screenshot as Screenshot,
   Mic,
   MicOff,
   Star,
@@ -54,7 +54,7 @@ import {
   LocationOn,
   Person,
   CheckCircle,
-  Error
+  Error,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useActionTracker } from '@/hooks/useActionTracker';

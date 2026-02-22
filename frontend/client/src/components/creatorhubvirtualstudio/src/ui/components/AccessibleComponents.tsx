@@ -24,22 +24,15 @@ import React, {
 import {
   Box,
   Button,
-  ButtonProps,
   Slider,
-  SliderProps,
   Tabs,
-  TabsProps,
   Tab,
-  TabProps,
   Dialog,
-  DialogProps,
   DialogTitle,
   DialogContent,
   DialogActions,
   IconButton,
-  IconButtonProps,
   Tooltip,
-  TooltipProps,
   Typography,
   List,
   ListItem,
@@ -47,6 +40,13 @@ import {
   Paper,
   Fade,
 } from '@mui/material';
+import type { ButtonProps } from '@mui/material/Button';
+import type { SliderProps } from '@mui/material/Slider';
+import type { TabsProps } from '@mui/material/Tabs';
+import type { TabProps } from '@mui/material/Tab';
+import type { DialogProps } from '@mui/material/Dialog';
+import type { IconButtonProps } from '@mui/material/IconButton';
+import type { TooltipProps } from '@mui/material/Tooltip';
 import {
   Close as CloseIcon,
   ArrowUpward,

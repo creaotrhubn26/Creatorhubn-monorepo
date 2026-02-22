@@ -1,7 +1,16 @@
 // Global Error Boundary with user-friendly notifications
 import { useTheming } from '../utils/theming-helper';
 import React from 'react';
-import { Alert, Box, Button, Card, CardContent, Typography, Stack, Collapse } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Typography,
+  Stack,
+  Collapse,
+} from '@mui/material';
 import { Error as ErrorIcon, Refresh, BugReport } from '@mui/icons-material';
 
 interface ErrorBoundaryState {

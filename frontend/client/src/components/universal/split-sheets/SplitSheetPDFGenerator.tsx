@@ -26,13 +26,13 @@ import {
   FormLabel,
   Stack,
   Alert,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   PictureAsPdf as PdfIcon,
   Download as DownloadIcon,
   Print as PrintIcon,
-  CloudUpload as CloudUploadIcon
+  CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import type { SplitSheet } from './types';

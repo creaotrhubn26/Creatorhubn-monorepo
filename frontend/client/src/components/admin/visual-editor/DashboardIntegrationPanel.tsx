@@ -29,7 +29,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   Dashboard,
@@ -45,7 +45,7 @@ import {
   Sync,
   Cloud,
   People,
-  Settings
+  Settings,
 } from '@mui/icons-material';
 
 interface DashboardIntegrationPanelProps {

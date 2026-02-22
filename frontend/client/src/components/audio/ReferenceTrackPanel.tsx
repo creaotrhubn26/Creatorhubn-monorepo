@@ -17,14 +17,14 @@ import {
   Paper,
   Chip,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   CompareArrows,
   PlayArrow,
   Pause,
   VolumeUp,
-  Sync
+  Sync,
 } from '@mui/icons-material';
 
 interface ReferenceTrackPanelProps {

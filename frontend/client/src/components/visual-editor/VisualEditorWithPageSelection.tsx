@@ -32,7 +32,7 @@ import {
   Tooltip,
   Alert,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -49,7 +49,7 @@ import {
   Refresh as RefreshIcon,
   Download as DownloadIcon,
   Upload as UploadIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 
 interface PageStructure {

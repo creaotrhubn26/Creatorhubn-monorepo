@@ -59,7 +59,7 @@ import {
   Email as EmailIcon,
   Folder as FolderIcon,
   School as SchoolIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { Edit as EditIcon } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';

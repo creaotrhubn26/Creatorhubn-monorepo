@@ -28,7 +28,7 @@ import {
   ListItemText,
   Paper,
   Typography,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Warning,
@@ -40,7 +40,7 @@ import {
   Add,
   Link,
   PlayArrow,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { useAutosave } from '@/hooks/useAutosave';
 

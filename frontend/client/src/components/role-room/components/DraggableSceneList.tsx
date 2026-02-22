@@ -12,11 +12,7 @@ import {
   Tooltip,
   alpha,
 } from '@mui/material';
-import {
-  DragIndicator as DragIcon,
-  Theaters as TheatersIcon,
-  Warning as WarningIcon,
-} from '@mui/icons-material';
+import { DragIndicator as DragIcon, Theaters as TheatersIcon, Warning as WarningIcon } from '@mui/icons-material';
 import { SceneBreakdown } from '../models/casting';
 
 interface DraggableSceneListProps {

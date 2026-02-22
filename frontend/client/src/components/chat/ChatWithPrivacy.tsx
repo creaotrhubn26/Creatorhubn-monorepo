@@ -15,7 +15,7 @@ import {
   IconButton,
   Snackbar,
   LinearProgress,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -23,7 +23,7 @@ import {
   Cloud as CloudIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
-  Folder as FolderIcon
+  Folder as FolderIcon,
 } from '@mui/icons-material';
 import { ChatPrivacyConsent } from './ChatPrivacyConsent';
 

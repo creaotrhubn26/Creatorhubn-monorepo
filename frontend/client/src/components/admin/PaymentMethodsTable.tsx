@@ -15,13 +15,13 @@ import {
   IconButton,
   Alert,
   CircularProgress,
-  Typography
+  Typography,
 } from '@mui/material';
 import {
   Edit,
   Delete,
   Visibility,
-  CheckCircle
+  CheckCircle,
 } from '@mui/icons-material';
 
 interface PaymentMethod {

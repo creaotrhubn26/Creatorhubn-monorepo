@@ -11,7 +11,13 @@ import {
   IconButton,
   Collapse,
 } from '@mui/material';
-import { ErrorOutline, Refresh, BugReport, ExpandMore, ExpandLess } from '@mui/icons-material';
+import {
+  ErrorOutline,
+  Refresh,
+  BugReport,
+  ExpandMore,
+  ExpandLess,
+} from '@mui/icons-material';
 
 interface Props {
   children: ReactNode;

@@ -40,7 +40,7 @@ import {
   Videocam,
   CheckCircle,
   TrendingUp,
-  Speed,
+  Speed as Speed,
   AttachMoney,
   EmojiObjects,
   Timeline as TimelineIcon,

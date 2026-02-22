@@ -6,24 +6,24 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { 
-  Box, 
-  Typography, 
-  Card, 
+import {
+  Box,
+  Typography,
+  Card,
   CardContent,
   Grid,
   Button,
   Chip,
   Avatar,
-  IconButton
+  IconButton,
 } from '@mui/material';
-import { 
+import {
   PhotoCamera,
   VideoLibrary,
   CloudUpload,
   Business,
   Star,
-  Visibility
+  Visibility,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { UniversalFileUpload } from '../universal/UniversalFileUpload';

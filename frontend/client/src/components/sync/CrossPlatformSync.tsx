@@ -29,7 +29,7 @@ import {
   Tooltip,
   Switch,
   FormControlLabel,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   CloudSync as SyncIcon,
@@ -46,7 +46,7 @@ import {
   Share as ShareIcon,
   Download as DownloadIcon,
   Upload as UploadIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { AnimatedComponent, AnimatedButton, AnimatedMuiCard } from '../animations/MicroAnimations';
 import { useContextualAnimations } from '../../hooks/useContextualAnimations';

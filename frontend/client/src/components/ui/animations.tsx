@@ -15,7 +15,7 @@ import {
   Collapse,
   Backdrop,
   useTheme,
-  alpha
+  alpha,
 } from '@mui/material';
 import { keyframes } from '@emotion/react';
 import { styled } from '@mui/material/styles';

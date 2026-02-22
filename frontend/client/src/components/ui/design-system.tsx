@@ -20,7 +20,7 @@ import {
   Divider,
   useTheme,
   alpha,
-  styled
+  styled,
 } from '@mui/material';
 import {
   Star as StarIcon,
@@ -28,7 +28,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 // Standardized spacing values

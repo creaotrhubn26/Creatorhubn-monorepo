@@ -26,14 +26,14 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Divider,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Link as LinkIcon,
   LinkOff as UnlinkIcon,
   Add as AddIcon,
   MusicNote as MusicIcon,
-  AccountBalance as SplitSheetIcon
+  AccountBalance as SplitSheetIcon,
 } from '@mui/icons-material';
 import type { SplitSheet, SplitSheetSongFlowLink } from './types';
 

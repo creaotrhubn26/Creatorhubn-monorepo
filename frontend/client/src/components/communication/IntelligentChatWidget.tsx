@@ -21,7 +21,7 @@ import {
   Tooltip,
   Fade,
   CircularProgress,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -33,7 +33,7 @@ import {
   Psychology as PsychologyIcon,
   AttachMoney as AttachMoneyIcon,
   Schedule as ScheduleIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

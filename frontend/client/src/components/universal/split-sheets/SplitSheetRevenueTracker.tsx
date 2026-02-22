@@ -33,14 +33,14 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   AttachMoney as MoneyIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 import type { 
   SplitSheetRevenue, 

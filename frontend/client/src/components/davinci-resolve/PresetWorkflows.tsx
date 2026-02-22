@@ -18,7 +18,7 @@ import {
   FlightTakeoff,
   Videocam,
   ColorLens,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 
 const DAVINCI_COLORS = {

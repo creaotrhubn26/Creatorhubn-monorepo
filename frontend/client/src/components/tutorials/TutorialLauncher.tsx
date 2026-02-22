@@ -21,7 +21,7 @@ import {
   Grid,
   Avatar,
   Chip,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   School,
@@ -31,7 +31,7 @@ import {
   PhotoCamera,
   Videocam,
   LibraryMusic,
-  Business
+  Business,
 } from '@mui/icons-material';
 import UniversalTutorialSystem from './UniversalTutorialSystem';
 

@@ -26,7 +26,7 @@ import {
   Chip,
   Alert,
   InputAdornment,
-  Divider
+  Divider,
 } from '@mui/material';
 import Grid2 from '@mui/material/Grid2';
 import {
@@ -34,7 +34,7 @@ import {
   PhotoCamera as PhotoIcon,
   Videocam as VideoIcon,
   Edit as EditIcon,
-  Print as PrintIcon
+  Print as PrintIcon,
 } from '@mui/icons-material';
 
 interface CreatePackageModalProps {

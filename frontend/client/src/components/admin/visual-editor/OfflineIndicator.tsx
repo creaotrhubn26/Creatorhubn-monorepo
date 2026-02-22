@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -31,7 +31,7 @@ import {
   CardContent,
   CardActions,
   Badge,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   WifiOff,
@@ -51,7 +51,7 @@ import {
   Queue,
   Delete,
   Download,
-  Upload
+  Upload,
 } from '@mui/icons-material';
 import { useOffline, UseOfflineOptions } from '../../../hooks/useOffline';
 import { OfflineData, SyncResult } from '../../../utils/offlineManager';

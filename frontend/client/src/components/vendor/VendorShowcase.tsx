@@ -31,7 +31,7 @@ import {
   Tab,
   Tabs,
   useTheme,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   Store,
@@ -54,7 +54,7 @@ import {
   TrendingUp,
   Info,
   CheckCircle,
-  Security
+  Security,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

@@ -15,7 +15,7 @@ import {
   Snackbar,
   Paper,
   Chip,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Close,
@@ -25,7 +25,7 @@ import {
   Error,
   Campaign,
   OpenInNew,
-  NotificationsActive
+  NotificationsActive,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

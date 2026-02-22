@@ -32,13 +32,9 @@ import {
   Button,
   Stack,
   Grid,
-  Alert
+  Alert,
 } from '@mui/material';
-import {
-  Edit as EditIcon,
-  CheckCircle as CheckCircleIcon,
-  Payment as PaymentIcon
-} from '@mui/icons-material';
+import { Edit as EditIcon, CheckCircle as CheckCircleIcon, Payment as PaymentIcon } from '@mui/icons-material';
 import type { 
   SplitSheetPayment, 
   UpdatePaymentRequest,

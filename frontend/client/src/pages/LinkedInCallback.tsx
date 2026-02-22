@@ -5,7 +5,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Box, CircularProgress, Typography, Alert, Button } from '@mui/material';
+import {
+  Box,
+  CircularProgress,
+  Typography,
+  Alert,
+  Button,
+} from '@mui/material';
 import { useLinkedIn } from '@/hooks/useLinkedIn';
 import { linkedInService, type LinkedInProfile } from '@/services/LinkedInService';
 

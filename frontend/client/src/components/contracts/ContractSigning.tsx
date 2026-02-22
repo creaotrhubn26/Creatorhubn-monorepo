@@ -16,7 +16,7 @@ import {
   CardContent,
   Grid,
 } from '@mui/material';
-import { CheckCircle, SignatureOutlined, EmailOutlined } from '@mui/icons-material';
+import { CheckCircle, Draw as SignatureOutlined, EmailOutlined } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface Contract {

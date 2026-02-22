@@ -6,7 +6,7 @@ let cachedAuthToken = { token: "", exp: 0 };
 /**
  * Get authorization header for API requests
  */
-async function getAuthHeader(): Promise<Record<string, string>> {
+export async function getAuthHeader(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 
   try {

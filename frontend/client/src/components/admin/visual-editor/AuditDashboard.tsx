@@ -49,7 +49,7 @@ import {
   Badge,
   Avatar,
   ListItemAvatar,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -76,7 +76,7 @@ import {
   Person as PersonIcon,
   Computer as ComputerIcon,
   Cloud as CloudIcon,
-  Storage as StorageIcon
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import { useAuditLogger } from '@/hooks/useAuditLogger';
 import { AuditEvent, AuditQuery, AuditStats } from '@/utils/auditLogger';

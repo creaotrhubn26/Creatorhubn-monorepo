@@ -492,7 +492,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
     padding: '12px 16px',
-    backgroundColor: 'rgba(2, 5, 5, 170, 0, 0.1)',
+    backgroundColor: 'rgba(255, 170, 0, 0.1)',
     borderBottom: '1px solid #ffaa00',
     fontSize: '13px',
   },

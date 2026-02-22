@@ -10,7 +10,13 @@
  */
 
 import React, { useMemo } from 'react';
-import { Box, Typography, Chip, LinearProgress, Stack } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Chip,
+  LinearProgress,
+  Stack,
+} from '@mui/material';
 import {
   FrameGuide,
   CameraInfoDisplay,

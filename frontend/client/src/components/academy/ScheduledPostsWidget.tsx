@@ -19,8 +19,8 @@ import {
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-	  Pending as PendingIcon,
-	} from '@mui/icons-material';
+  Pending as PendingIcon,
+} from '@mui/icons-material';
 	import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 
 function ScheduledPostsWidget() {

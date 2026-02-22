@@ -24,7 +24,7 @@ import {
   CircularProgress,
   Chip,
   IconButton,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -35,7 +35,7 @@ import {
   FitnessCenter as WeightIcon,
   Battery4Bar as BatteryIcon,
   CheckCircle as CheckIcon,
-  Error as ErrorIcon
+  Error as ErrorIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

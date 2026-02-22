@@ -1,8 +1,8 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
-import { Button } from "@mui/material";
+import { Button } from '@mui/material';
 import { Link } from'wouter';
-import { SettingsOutlined, TrendingUp } from "@mui/icons-material";
+import { SettingsOutlined, TrendingUp } from '@mui/icons-material';
 export function TroubleshootingLink() { return (
   // Theming system
   const theming = useTheming('photographer');

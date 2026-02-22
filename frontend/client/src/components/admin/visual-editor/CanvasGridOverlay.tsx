@@ -1,5 +1,11 @@
 import React from 'react';
-import { Box, IconButton, Tooltip, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@mui/material';
 import { Grid3x3, GridOn, GridOff } from '@mui/icons-material';
 import { getVisualEditorTokens } from './visualEditorTokens';
 
@@ -94,7 +100,7 @@ export const CanvasGridOverlay: React.FC<CanvasGridOverlayProps> = ({
           left: 0,
           width: '100%',
           height: 20,
-          bgcolor: 'rgba(2, 5, 5, 255, 255, 0.9)',
+          bgcolor: 'rgba(255, 255, 255, 0.9)',
           borderBottom: '1px solid #E0E0E0',
           display: 'flex',
           alignItems: 'center'}}>
@@ -119,7 +125,7 @@ export const CanvasGridOverlay: React.FC<CanvasGridOverlayProps> = ({
           left: 0,
           width: 20,
           height: '100%',
-          bgcolor: 'rgba(2, 5, 5, 255, 255, 0.9)',
+          bgcolor: 'rgba(255, 255, 255, 0.9)',
           borderRight: '1px solid #E0E0E0',
           display: 'flex',
           flexDirection: 'column',

@@ -42,7 +42,7 @@ import {
   Tooltip,
   CircularProgress,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Business,
@@ -74,7 +74,7 @@ import {
   Email,
   Language,
   Public,
-  VerifiedUser
+  VerifiedUser,
 } from '@mui/icons-material';
 
 interface BRREGIntegrationProps {

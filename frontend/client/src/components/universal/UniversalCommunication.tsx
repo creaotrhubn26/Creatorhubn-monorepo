@@ -35,10 +35,10 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import {
   Send as SendIcon,
-  AttachDescription as AttachIcon,
+  AttachFile as AttachIcon,
   Search as SearchIcon,
   MoreVert as MoreIcon,
-  VideocamCall as VideoIcon,
+  VideoCall as VideoIcon,
   Phone as PhoneIcon,
   PersonAdd as PersonAddIcon,
   Group as GroupIcon,

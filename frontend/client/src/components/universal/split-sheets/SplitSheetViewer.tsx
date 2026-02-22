@@ -31,7 +31,7 @@ import {
   Avatar,
   Tabs,
   Tab,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   PictureAsPdf as PdfIcon,
@@ -41,7 +41,7 @@ import {
   Close as CloseIcon,
   Print as PrintIcon,
   Download as DownloadIcon,
-  Description as GoogleDocIcon
+  Description as GoogleDocIcon,
 } from '@mui/icons-material';
 import SplitSheetPDFGenerator from './SplitSheetPDFGenerator';
 import SplitSheetExport from './SplitSheetExport';

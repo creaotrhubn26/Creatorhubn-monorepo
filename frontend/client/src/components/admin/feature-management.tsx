@@ -56,7 +56,7 @@ import {
   Category,
   Lock,
   LockOpen,
-  Star
+  Star,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { 

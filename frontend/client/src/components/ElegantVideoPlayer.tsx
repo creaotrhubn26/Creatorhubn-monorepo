@@ -16,7 +16,7 @@ import {
   TextField,
   Avatar,
   InputAdornment,
-  styled
+  styled,
 } from '@mui/material';
 
 // Styled video element to avoid inline styles
@@ -36,7 +36,7 @@ import {
   PictureInPicture,
   Replay10,
   Forward10,
-  ErrorOutline
+  ErrorOutline,
 } from '@mui/icons-material';
 import { HLSStreamingService } from '../services/hls-streaming-service';
 

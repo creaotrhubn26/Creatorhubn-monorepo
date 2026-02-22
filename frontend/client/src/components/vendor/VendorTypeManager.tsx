@@ -25,7 +25,7 @@ import {
   IconButton,
   Divider,
   TextField,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Add,
@@ -38,7 +38,7 @@ import {
   Info,
   Edit,
   Delete,
-  ColorLens
+  ColorLens,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAllVendorTypes, enableVendorType, VendorTypeConfig } from '@shared/vendor-type-registry';

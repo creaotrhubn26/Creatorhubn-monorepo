@@ -22,7 +22,7 @@ import {
   alpha,
   Collapse,
   Alert,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -37,7 +37,7 @@ import {
   Image,
   VideoLibrary,
   MusicNote,
-  Business
+  Business,
 } from '@mui/icons-material';
 
 interface ShowcaseItem {

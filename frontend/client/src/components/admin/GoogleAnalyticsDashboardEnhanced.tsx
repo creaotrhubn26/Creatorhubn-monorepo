@@ -29,7 +29,7 @@ import {
   Alert,
   ToggleButton,
   ToggleButtonGroup,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   Analytics,
@@ -48,7 +48,7 @@ import {
   Language,
   AutoAwesome,
   Psychology,
-  Settings
+  Settings,
 } from '@mui/icons-material';
 import AIAnalyticsInsights from './AIAnalyticsInsights';
 import GA4AutomationDashboard from './GA4AutomationDashboard';

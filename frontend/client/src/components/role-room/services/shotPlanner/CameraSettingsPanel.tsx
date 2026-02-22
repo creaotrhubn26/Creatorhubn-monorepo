@@ -21,8 +21,8 @@ import {
   Divider,
   Chip,
   Stack,
-  SelectChangeEvent,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Videocam as CameraIcon,
   Delete as DeleteIcon,

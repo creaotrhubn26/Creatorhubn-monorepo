@@ -284,7 +284,7 @@ const TEMPLATE_TYPE_CONFIG: Record<string, {
   },
 };
 
-const CASTING_PLANNER_LOGO_URL = '/casting-planner-logo.png';
+const CASTING_PLANNER_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
 
 interface EmailHeaderConfig {
   logoUrl: string;
@@ -408,10 +408,10 @@ const generateEmailHTML = (
       <div class="email-body">${body}</div>
       <div class="email-footer">
         <div class="email-footer-logo">
-          <img src="${CASTING_PLANNER_LOGO_URL}" alt="Casting Planner" style="height: 32px; width: auto;" />
+          <img src="${CASTING_PLANNER_LOGO_URL}" alt="The Role Room" style="height: 32px; width: auto;" />
         </div>
-        <p class="email-footer-brand">Casting Planner</p>
-        <p class="email-footer-text">Sendt via Casting Planner - Din profesjonelle castingpartner</p>
+        <p class="email-footer-brand">The Role Room</p>
+        <p class="email-footer-text">Sendt via The Role Room - Din profesjonelle castingpartner</p>
       </div>
     </div>
   </div>

@@ -67,7 +67,7 @@ import {
   Receipt,
   Lightbulb,
   SdCard,
-  CameraStand,
+  CameraOutdoor as CameraStand,
   LinearScale,
   FlashOn,
 } from '@mui/icons-material';

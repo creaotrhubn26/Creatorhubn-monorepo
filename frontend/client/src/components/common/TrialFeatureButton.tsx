@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import {
   AutoAwesome,
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Upgrade,
   Timer,
   CheckCircle,

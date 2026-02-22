@@ -20,7 +20,12 @@ import {
   Stack,
   Chip,
 } from '@mui/material';
-import { Upload, Download, Clear, Palette } from '@mui/icons-material';
+import {
+  Upload,
+  Download,
+  Clear,
+  Palette,
+} from '@mui/icons-material';
 import { lutService } from '../../core/services/lutService';
 
 export interface LUTPanelProps {

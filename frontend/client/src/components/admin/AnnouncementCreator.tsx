@@ -27,9 +27,9 @@ import {
   Switch,
   FormControlLabel,
   OutlinedInput,
-  SelectChangeEvent,
   Snackbar,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Visibility as PreviewIcon,
   Send as SendIcon,

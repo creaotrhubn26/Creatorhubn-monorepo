@@ -2,7 +2,7 @@
  * ShotListToStoryboardConverter
  * 
  * Service for converting CastingShot objects to StoryboardFrame objects.
- * Enables integration between shot lists in Casting Planner and Storyboard system.
+ * Enables integration between shot lists in The Role Room and Storyboard system.
  */
 
 import type { CastingShot, ShotType, CameraAngle, CameraMovement } from '../models/casting';

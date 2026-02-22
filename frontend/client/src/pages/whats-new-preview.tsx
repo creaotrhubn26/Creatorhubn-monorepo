@@ -4,12 +4,17 @@
  */
 
 import React, { useState } from 'react';
-import { Box, Container, Typography, Button, Card, CardContent, Grid, Chip } from '@mui/material';
 import {
-  Visibility as VisibilityIcon,
-  Code as CodeIcon,
-  Email as EmailIcon,
-} from '@mui/icons-material';
+  Box,
+  Container,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  Chip,
+} from '@mui/material';
+import { Visibility as VisibilityIcon, Code as CodeIcon, Email as EmailIcon } from '@mui/icons-material';
 import WhatsNewModal from '@/components/WhatsNewModal';
 
 // Sample announcement data for preview
@@ -159,7 +164,7 @@ export default function WhatsNewPreview() {
             onClick={() => setShowEmailPreview(!showEmailPreview)}
             sx={{
               borderColor: '#ff8c00',
-              color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: 'rgba(2, 5, 5,140,0,0.1)' },
+              color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: 'rgba(255,140,0,0.1)' },
             }}
           >
             {showEmailPreview ? 'Skjul' : 'Vis'} E-post Forhåndsvisning

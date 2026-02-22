@@ -5,7 +5,12 @@
 
 import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { Box, Tooltip, Chip, Badge } from '@mui/material';
+import {
+  Box,
+  Tooltip,
+  Chip,
+  Badge,
+} from '@mui/material';
 import { useFileManagementStatus } from '../../contexts/FileManagementStatusContext';
 
 interface StatusDotProps {

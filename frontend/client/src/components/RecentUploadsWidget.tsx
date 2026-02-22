@@ -26,15 +26,13 @@ import {
   Divider,
 } from '@mui/material';
 import {
-  InsertDriveDescription as FileIcon,
   Photo as PhotoIcon,
-  VideocamLibrary as VideoIcon,
-  LibraryMusicNote as AudioIcon,
+  VideoLibrary as VideoIcon,
+  LibraryMusic as AudioIcon,
   Description as DocumentIcon,
   FolderOpen as FolderIcon,
   Warning as WarningIcon,
   CheckCircle as CheckIcon,
-  DriveFileOpenWith as MoveIcon,
   Visibility as ViewIcon,
   Schedule as TimeIcon,
   Storage as SizeIcon,
@@ -180,7 +178,7 @@ export default function RecentUploadsWidget({
       <MuiCard
         sx={{
           height: '100%',
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.05) 0%, rgba(2, 5, 5,152,0,0.05) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,193,7,0.05) 0%, rgba(255,152,0,0.05) 100%)',
           border: '1px solid rgba(25,193,7,0.1)'}}
       >
         <CardContent sx={theming.getThemedCardSx()}>

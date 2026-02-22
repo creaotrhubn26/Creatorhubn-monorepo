@@ -5,12 +5,12 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -31,7 +31,7 @@ import {
   FormControlLabel,
   CircularProgress,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Extension,
@@ -39,7 +39,7 @@ import {
   CheckCircle,
   Error,
   Warning,
-  KeyboardArrowDown
+  KeyboardArrowDown,
 } from '@mui/icons-material';
 import { usePlugins, UsePluginsOptions } from '../../../hooks/usePlugins';
 import { PluginConfig, Plugin, PluginHook, PluginComponent, PluginUtility, PluginTheme, PluginIntegration } from '../../../utils/pluginManager';

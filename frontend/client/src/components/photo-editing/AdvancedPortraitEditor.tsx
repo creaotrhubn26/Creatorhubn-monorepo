@@ -30,7 +30,7 @@ import {
   Tab,
   TextField,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Face,
@@ -50,7 +50,7 @@ import {
   Add,
   Delete,
   Edit,
-  Save
+  Save,
 } from '@mui/icons-material';
 
 interface PortraitRetouchingOptions {

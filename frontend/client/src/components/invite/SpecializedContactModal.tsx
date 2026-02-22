@@ -33,7 +33,7 @@ import {
   Paper,
 } from '@mui/material';
 import {
-  DirectionsBusiness,
+  Business as DirectionsBusiness,
   Warning,
   CheckCircle,
   Error,
@@ -456,10 +456,10 @@ export default function SpecializedContactModal({
       PaperProps={{
         sx: {
           borderRadius: showForm ? 0 : { xs: '12px', sm: '24px' },
-          background: 'linear-gradient(145deg, rgba(2, 5, 5,255,255,0.98) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
           backdropFilter: 'blur(30px)',
           border: '1px solid rgba(25,140,0,0.2)',
-          boxShadow: '0 32px 64px rgba(0,0,0,0.15), 0 0 0 1px rgba(2, 5, 5,140,0,0.1), inset 0 1px 0 rgba(2, 5, 5,255,255,0.8)',
+          boxShadow: '0 32px 64px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,140,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8)',
           overflow: 'hidden',
           position: 'relative',
           height: showForm ? '100vh' : 'auto',
@@ -483,7 +483,7 @@ export default function SpecializedContactModal({
       {!showForm && (
         <DialogTitle
           sx={{
-            background: 'linear-gradient(145deg, rgba(2, 5, 5,140,0,0.03) 0%, rgba(2, 5, 5,248,235,0.08) 50%, rgba(2, 5, 1,146,60,0.02) 100%)',
+            background: 'linear-gradient(145deg, rgba(255,140,0,0.03) 0%, rgba(255,248,235,0.08) 50%, rgba(2, 5, 1,146,60,0.02) 100%)',
             color: '#1f2930',
             textAlign: 'center',
             py:  3,
@@ -503,11 +503,11 @@ export default function SpecializedContactModal({
                 width: 30,
                 height: 10,
                 borderRadius: '32px',
-                background: 'linear-gradient(145deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.9) 100%)',
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.9) 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.15), 0 0 0 6px rgba(2, 5, 5,140,0,0.2), inset 0 4px 0 rgba(2, 5, 5,255,255,0.8)',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.15), 0 0 0 6px rgba(255,140,0,0.2), inset 0 4px 0 rgba(255,255,255,0.8)',
                 position: 'relative',
                 border: '3px solid rgba(25,140,0,0.3)',
                 overflow: 'hidden',
@@ -516,7 +516,7 @@ export default function SpecializedContactModal({
                   inset: '-4px',
                   borderRadius: '36px',
                   padding: '4px',
-                  background: 'linear-gradient(145deg, rgba(2, 5, 5,140,0,0.7), rgba(2, 3, 3,124,0,0.5), rgba(2, 5, 5,140,0,0.7))',
+                  background: 'linear-gradient(145deg, rgba(255,140,0,0.7), rgba(2, 3, 3,124,0,0.5), rgba(255,140,0,0.7))',
                   mask: 'linear-gradient(#fff',0 0) content-box, linear-gradient(#fff',0 0)',
                   maskComposite: 'xor',
                   WebkitMaskComposite: 'xor' }}}
@@ -615,7 +615,7 @@ export default function SpecializedContactModal({
               justifyContent: 'space-between',
               p: headerCompact ? 1 : 2,
               borderBottom: '1px solid rgba(25,140,0,0.1)',
-              background: 'linear-gradient(145deg, rgba(2, 5, 5,140,0,0.03) 0%, rgba(2, 5, 5,248,235,0.08) 100%)',
+              background: 'linear-gradient(145deg, rgba(255,140,0,0.03) 0%, rgba(255,248,235,0.08) 100%)',
               flexShrink:  0,
               transition: 'all 0.3s ease',
               height: headerCompact ? '48px' : '64px',
@@ -1575,7 +1575,7 @@ export default function SpecializedContactModal({
                 sx={{
                   justifyContent: 'space-between',
                   p: { xs: 2, sm:  3 },
-                  background: 'linear-gradient(145deg, rgba(2, 5, 5,140,0,0.02) 0%, rgba(2, 5, 5,248,235,0.05) 100%)',
+                  background: 'linear-gradient(145deg, rgba(255,140,0,0.02) 0%, rgba(255,248,235,0.05) 100%)',
                   borderTop: '1px solid rgba(25,140,0,0.08)',
                   flexShrink:  0,
                   flexDirection: { xs: 'column', sm: 'row' },

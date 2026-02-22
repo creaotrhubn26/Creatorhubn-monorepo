@@ -52,7 +52,7 @@ import {
   AttachMoney as MoneyIcon,
   Assignment as AssignmentIcon,
   Person as PersonIcon,
-  Priority as PriorityIcon,
+  PriorityHigh as PriorityIcon,
   Notifications as NotificationsIcon,
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
@@ -70,7 +70,6 @@ import {
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
 import { ClientSubmission, SubmissionFollowUp } from '@shared/schema';
-import { getAuthHeader } from '@/lib/google/impersonation';
 
 interface SubmissionStats {
   total: number;
@@ -217,22 +216,19 @@ export default function SubmissionsOverview({
 
   // Update submission status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ , idstatus, internalNotes, followUpDate }: {
+    mutationFn: async ({ id, status, internalNotes, followUpDate }: {
       id: string;
       status: string;
       internalNotes?: string;
       followUpDate?: string;
 }) => {
-      const response = await const auth = await getAuthHeader();
- fetch(`/api/submissions/${id}/status`, {
-   headers: auth,
-        headers: {
-  },
-        
-        method: 'PU',
-        headers: { 'Content-Type' : 'application/json' },
+      const auth = await getAuthHeader();
+      const response = await fetch(`/api/submissions/${id}/status`, {
+        ...auth,
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, internalNotes, followUpDate }),
-  });
+      });
       return response.json();
 },
     onSuccess: () => {
@@ -244,7 +240,7 @@ export default function SubmissionsOverview({
   // Send email response mutation
   const sendEmailMutation = useMutation({
     mutationFn: async ({ 
-      submissiond, 
+      submissionId, 
       responseType, 
       customMessage, 
       estimatedHours, 
@@ -256,16 +252,13 @@ export default function SubmissionsOverview({
       estimatedHours?: number;
       estimatedPrice?: number;
 }) => {
-      const response = await const auth = await getAuthHeader();
- fetch(`/api/submissions/${submissionId}/send-email`, {
-   headers: auth,
-        headers: {
-  },
-        
-        method: 'POS',
-        headers: { 'Content-Type' : 'application/json' },
+      const auth = await getAuthHeader();
+      const response = await fetch(`/api/submissions/${submissionId}/send-email`, {
+        ...auth,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ responseType, customMessage, estimatedHours, estimatedPrice }),
-  });
+      });
       if (!response.ok) {
         throw new Error('Failed to send email');
   }

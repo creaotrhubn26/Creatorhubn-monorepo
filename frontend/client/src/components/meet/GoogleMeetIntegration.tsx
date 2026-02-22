@@ -35,10 +35,10 @@ import {
   Alert,
   Divider,
   Paper,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
-  VideocamCall as MeetIcon,
+  VideoCall as MeetIcon,
   Schedule as ScheduleIcon,
   Person as PersonIcon,
   Notifications as NotificationIcon,
@@ -46,9 +46,9 @@ import {
   Launch as LaunchIcon,
   AccessTime as TimeIcon,
   Group as GroupIcon,
-  CalendarTodayToday as CalendarIcon,
+  CalendarToday as CalendarIcon,
   Warning as WarningIcon,
-  CheckCircle as CheckIcon
+  CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import { useProfessionSpecificNotifications } from '../../hooks/useProfessionSpecificNotifications';
 import SmartMeetingPreparation from './SmartMeetingPreparation';

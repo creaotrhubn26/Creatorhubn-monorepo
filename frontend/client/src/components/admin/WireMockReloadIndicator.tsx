@@ -10,14 +10,14 @@ import {
   ListItem,
   ListItemText,
   Typography,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
   CloudDone as CloudIcon,
-  CloudOff as CloudOffIcon
+  CloudOff as CloudOffIcon,
 } from '@mui/icons-material';
 import { useWireMockReloadMonitor } from '../../hooks/useWireMockReloadMonitor';
 import { toast } from '../../hooks/use-toast';

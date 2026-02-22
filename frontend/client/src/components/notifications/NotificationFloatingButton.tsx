@@ -11,11 +11,9 @@ import {
   Zoom,
   useTheme,
   useMediaQuery,
-  Box
+  Box,
 } from '@mui/material';
-import {
-  Notifications as NotificationsIcon
-} from '@mui/icons-material';
+import { Notifications as NotificationsIcon } from '@mui/icons-material';
 import NotificationCenter from './NotificationCenter';
 import { useUniversalNotificationContext } from '../universal/UniversalNotificationProvider';
 

@@ -21,7 +21,7 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -32,7 +32,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Drafts as DraftIcon,
-  AccountBalance as SplitSheetIcon
+  AccountBalance as SplitSheetIcon,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import getProfessionIcon from '@/utils/profession-icons';

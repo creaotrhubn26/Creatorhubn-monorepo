@@ -51,13 +51,6 @@ import {
   TableHead,
   TableRow,
   Avatar,
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent
 } from '@mui/material';
 import {
   SystemUpdateAlt,
@@ -79,7 +72,7 @@ import {
   Star,
   NewReleases,
   BugReport,
-  Speed,
+  Speed as Speed,
   Shield,
   Memory,
   Storage,
@@ -88,7 +81,7 @@ import {
   MusicNote,
   Business,
   AutoMode,
-  ManualMode,
+  Tune as ManualMode,
   NotificationImportant,
   VerifiedUser,
   CloudSync,
@@ -97,10 +90,10 @@ import {
   Assessment,
   Lightbulb,
   SdCard,
-  CameraStand,
+  CameraOutdoor as CameraStand,
   LinearScale,
   FlashOn,
-  Lens
+  Lens,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
@@ -282,13 +275,9 @@ export default function FirmwareUpdateManager({
   // Firmware updates query
   const { data: firmwareData, isLoading: isLoadingFirmware } = useQuery({
     queryKey: ['/api/firmware/updates', profession],
-    staleTime: 1000 * 60 *, 5,
-    queryFn: () => apiRequest(['/api/firmware/updates', profession],
-    staleTime: 1000 * 60 *,  5{
-      headers: {
-  }
-  }), // 5 minutes
-});
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    queryFn: () => apiRequest('/api/firmware/updates'),
+  });
 
   const { data: devicesList, isLoading: isLoadingDevices } = useQuery({
     queryKey: ['/api/firmware/devices', profession],

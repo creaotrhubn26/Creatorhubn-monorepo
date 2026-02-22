@@ -26,12 +26,12 @@ import {
   FormControlLabel,
   CircularProgress,
   Tooltip,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Refresh,
   MonitorHeart,
-  Speed,
+  Speed as Speed,
   Memory,
   Storage,
   NetworkCheck,
@@ -42,7 +42,7 @@ import {
   PlayArrow,
   Stop,
   Timeline,
-  SystemUpdate
+  SystemUpdate,
 } from '@mui/icons-material';
 
 // Function to fetch LSP diagnostics for compilation errors

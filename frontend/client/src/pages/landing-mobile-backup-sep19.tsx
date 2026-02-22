@@ -126,7 +126,7 @@ import {
   Grid,
 } from '@mui/material';
 // Import all icons from Material UI since CreatorHubIcons doesn't export these simple names
-import { 
+import {
   Home,
   VideoLibrary,
   LibraryMusic,

@@ -21,7 +21,6 @@ import {
   Switch,
   FormControlLabel,
   Slider,
-  ColorPicker,
 } from '@mui/material';
 import {
   PlayArrow,

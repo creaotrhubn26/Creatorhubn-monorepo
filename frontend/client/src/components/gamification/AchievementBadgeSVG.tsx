@@ -6,7 +6,13 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { SVG, badgeUtils, colorUtils } from '@/utils/svg-render';
-import { Star, EmojiEvents, School, Verified, TrendingUp } from '@mui/icons-material';
+import {
+  Star,
+  EmojiEvents,
+  School,
+  Verified,
+  TrendingUp,
+} from '@mui/icons-material';
 
 export interface AchievementBadgeSVGProps {
   /** Badge level (affects appearance) */

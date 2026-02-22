@@ -11,7 +11,7 @@ import {
   IconButton,
   LinearProgress,
   alpha,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Store,
@@ -26,7 +26,7 @@ import {
   Visibility,
   CheckCircle,
   Schedule,
-  Error as ErrorIcon
+  Error as ErrorIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

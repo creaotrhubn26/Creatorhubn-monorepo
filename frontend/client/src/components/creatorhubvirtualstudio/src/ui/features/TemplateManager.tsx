@@ -1,5 +1,13 @@
 import * as React from 'react';
-import { Box, Button, List, ListItemButton, ListItemText, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  List,
+  ListItemButton,
+  ListItemText,
+  Stack,
+  Typography,
+} from '@mui/material';
 import { listRoomTemplates, saveRoomTemplate, loadRoomTemplate } from'@/core/services/templates';
 
 export default function TemplateManager() {

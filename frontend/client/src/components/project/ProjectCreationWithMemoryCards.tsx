@@ -72,7 +72,7 @@ import {
   ListItemAvatar,
   Avatar,
   Autocomplete,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -99,12 +99,10 @@ import {
   Payment,
   DirectionsCar,
   Notes,
-  // Project type icons
   Favorite,
   Portrait,
   Business,
   MusicNote,
-  // Wedding culture icons
   AccountBalance,
   Star,
   Movie,
@@ -116,7 +114,6 @@ import {
   Home,
   Public,
   Circle,
-  // Draft management icons
   History,
   Compare,
   Restore,
@@ -1190,6 +1187,7 @@ interface ProjectInitialData {
   guestCount?: string;
   location?: string;
   projectType?: string;
+  budget?: string;
 }
 
 export default function ProjectCreationWithMemoryCards({
@@ -3467,7 +3465,7 @@ useEffect(() => {
         <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
-              <Avatar sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', width: 56, height: 56 }}>
+              <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
                 <MovieCreation sx={{ fontSize: 32 }} />
               </Avatar>
               <Box sx={{ flex: 1 }}>
@@ -3502,31 +3500,31 @@ useEffect(() => {
             </Stack>
             
             {/* Feature highlights */}
-            <Stack direction="row" spacing={2} sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(2, 5, 5,255,255,0.2)' }}>
+            <Stack direction="row" spacing={2} sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
               <Chip 
                 label="AI Story Generation" 
                 size="small" 
-                sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
               />
               <Chip 
                 label="15 Transitions" 
                 size="small" 
-                sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
               />
               <Chip 
                 label="Auto-Captions" 
                 size="small" 
-                sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
               />
               <Chip 
                 label="Beat Sync" 
                 size="small" 
-                sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
               />
               <Chip 
                 label="Cultural LUTs" 
                 size="small" 
-                sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }}
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}
               />
             </Stack>
           </CardContent>

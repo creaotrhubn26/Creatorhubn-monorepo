@@ -231,7 +231,7 @@ export function ProjectCreationModal({
       PaperProps={{
         sx: {
           background:
-            'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,248,235,0.95) 100%)',
+            'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(25,140,0,0.2)',
           borderRadius:  3,

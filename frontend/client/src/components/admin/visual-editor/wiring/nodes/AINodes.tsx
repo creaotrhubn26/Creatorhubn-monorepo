@@ -24,7 +24,7 @@ import {
 import {
   Psychology,
   AutoAwesome,
-  Speed,
+  Speed as Speed,
   Lightbulb,
   Code,
   Image,

@@ -38,7 +38,7 @@ import {
   ListItemSecondaryAction,
   Divider,
   Tab,
-  Tabs
+  Tabs,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -51,7 +51,7 @@ import {
   Upload as UploadIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { useBrandingWorkflow, useCreatorHubBranding } from '../../../hooks/useCreatorHubBranding';
 import { ProjectCategoryType } from '../../../constants/CreatorHubBranding';

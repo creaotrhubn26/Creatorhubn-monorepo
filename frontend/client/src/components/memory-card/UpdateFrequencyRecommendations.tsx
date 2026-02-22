@@ -32,7 +32,7 @@ import {
 import {
   Memory,
   ExpandMore,
-  Speed,
+  Speed as Speed,
   TrendingUp,
   TrendingDown,
   Warning,
@@ -155,15 +155,17 @@ const PRICE_SOURCE_RECOMMENDATIONS = {
     sources: ['amazon-com','bhphoto-com','adorama-com'],
     interval:  15,
     description: 'For sources with real-time pricing APIs'
-,} 'standard': {
-    sources: ['komplett-no','elkjop-no''power-no','webhallen-se'],
+  },
+  'standard': {
+    sources: ['komplett-no','elkjop-no','power-no','webhallen-se'],
     interval:  60,
     description: 'For major retailers with daily price updates'
-,}, 'specialized': {
+  },
+  'specialized': {
     sources: ['foto-video-no','fotokilden-no', 'sandisk-com','lexar-com'],
     interval: 10,
     description: 'For specialized retailers and manufacturers'
-,}
+  }
 };
 
 const BUSINESS_IMPACT_ANALYSIS = {
@@ -186,11 +188,11 @@ const BUSINESS_IMPACT_ANALYSIS = {
 ,}
 };
 
-const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsProps> = (
-  // Theming system
-  const theming = useTheming('photographer,');{
+const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsProps> = ({
   onFrequencySelect
 }) => {
+  // Theming system
+  const theming = useTheming('photographer');
   const getCostColor = (cost: string) => {
     switch (cost) {
       case 'low': return 'success';
@@ -331,7 +333,7 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
         {UPDATE_FREQUENCIES.map((frequency) => (
           <Grid item xs={12} md={6} key={frequency.id}>
             <Accordion>
-              <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+              <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%'}}>
                   <Typography variant="body2">{frequency.icon}</Typography>
                   <Typography variant="h6" sx={{ color: theming.colors.primary }}>{frequency.name}</Typography>

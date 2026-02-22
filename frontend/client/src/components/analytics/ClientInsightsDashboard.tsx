@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   People,
@@ -35,7 +35,7 @@ import {
   Refresh,
   Download,
   Notifications,
-  NotificationsActive
+  NotificationsActive,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

@@ -21,13 +21,13 @@ import {
   FormControl,
   InputLabel,
   Chip,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Folder as ProjectIcon,
   Sync as SyncIcon,
-  Notifications as NotificationIcon
+  Notifications as NotificationIcon,
 } from '@mui/icons-material';
 import { 
   triggerUploadNotification,

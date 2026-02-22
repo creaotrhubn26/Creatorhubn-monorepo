@@ -30,14 +30,14 @@ import {
   AccordionSummary,
   AccordionDetails,
   Tooltip,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
   ExpandMore as ExpandMoreIcon,
   Gavel as LegalIcon,
-  Link as LinkIcon
+  Link as LinkIcon,
 } from '@mui/icons-material';
 
 interface SplitSheetLegalReferencesProps {

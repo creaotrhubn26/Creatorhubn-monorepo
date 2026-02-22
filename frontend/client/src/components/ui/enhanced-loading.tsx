@@ -16,13 +16,13 @@ import {
   LinearProgress,
   Card,
   CardContent,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
   ErrorOutline as ErrorIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 interface EnhancedLoadingProps {

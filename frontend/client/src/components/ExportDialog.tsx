@@ -21,7 +21,7 @@ import {
   Chip,
   Divider,
   Card,
-  CardContent
+  CardContent,
 } from '@mui/material';
 import {
   Download,
@@ -29,9 +29,9 @@ import {
   VideoFile,
   AudioFile,
   Palette,
-  Speed,
+  Speed as Speed,
   AspectRatio,
-  Movie
+  Movie,
 } from '@mui/icons-material';
 import { BeatClip, Track, StoryArc } from '../services/storyArcDataIntegration';
 // DaVinci Resolve export functionality

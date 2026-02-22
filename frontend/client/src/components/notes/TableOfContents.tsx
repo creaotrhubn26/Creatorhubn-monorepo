@@ -46,7 +46,7 @@ import {
   Share,
   MoreVert,
   Timeline,
-  Speed,
+  Speed as Speed,
   LocalOffer,
   Category,
   Person,
@@ -238,10 +238,12 @@ export default function TableOfContents({
         <ListItem
           disablePadding
           sx={{
-            pl: depth *, 2'&.Mui-selected': {
+            pl: depth * 2,
+            '&.Mui-selected': {
               backgroundColor: 'primary.main',
               color: 'primary.contrastText',
-          }}}
+            },
+          }}
         >
           <ListItemButton
             onClick={() => handleItemClick(item)}

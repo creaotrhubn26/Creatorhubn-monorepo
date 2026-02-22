@@ -12,11 +12,11 @@
  * Supports database scenes (like Troll project) and content-based parsing.
  */
 
-import { useState, useCallback, useRef, useEffect, useMemo, memo, type FC, type MouseEvent } from 'react';
+import { useState, useReducer, useCallback, useRef, useEffect, useMemo, memo, type FC, type MouseEvent } from 'react';
+import React from 'react';
 import {
   Box,
   Paper,
-  Stack,
   IconButton,
   Tooltip,
   Chip,
@@ -28,24 +28,21 @@ import {
   Badge,
   Typography,
   useMediaQuery,
-  useTheme,
   Drawer,
 } from '@mui/material';
 import {
   Lock as LockIcon,
   LockOpen as UnlockIcon,
+  HelpOutline as HelpIcon,
   Analytics as AnalysisIcon,
   ViewModule as BeatBoardIcon,
   RecordVoiceOver as TableReadIcon,
   Spellcheck as SpellcheckIcon,
   Person as RoleIcon,
-  Warning as WarningIcon,
-  Edit as EditIcon,
   Timeline as TimelineIcon,
   Dashboard as StoryboardIcon,
   Menu as MenuIcon,
   Close as CloseIcon,
-  ChevronLeft as ChevronLeftIcon,
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
 } from '@mui/icons-material';
@@ -60,14 +57,84 @@ import { StoryboardIntegrationView } from './StoryboardIntegrationView';
 import { SceneBreakdown, UserRoleType } from '../models/casting';
 import { analyzeScript, BeatCard } from '../services/scriptAnalysisService';
 import { castingAuthService } from '../services/castingAuthService';
+import { ScreenplayGuide } from './ScreenplayGuide';
+
+// ── toSceneBreakdown util ──────────────────────────────────────────────────────
+/**
+ * Converts a ParsedScene (content-derived) to a minimal SceneBreakdown shape
+ * needed by panels like Storyboard. Pure function — testable and reusable.
+ */
+function toSceneBreakdown(parsedScene: ParsedScene, lineNumber: number, projectId: string): SceneBreakdown {
+  const now = new Date().toISOString();
+  return {
+    id: parsedScene.id || `scene-${lineNumber}`,
+    manuscriptId: '',
+    projectId,
+    sceneNumber: parsedScene.sceneNumber || String(lineNumber),
+    sceneHeading: parsedScene.heading || `Scene ${lineNumber}`,
+    intExt: parsedScene.intExt as 'INT' | 'EXT' | 'INT/EXT' | undefined,
+    locationName: parsedScene.location || 'Unknown',
+    timeOfDay: (parsedScene.timeOfDay || undefined) as
+      | 'DAY' | 'NIGHT' | 'DAWN' | 'DUSK' | 'CONTINUOUS'
+      | 'LATER' | 'MORNING' | 'EVENING' | undefined,
+    description: '',
+    characters: [],
+    status: 'not-scheduled',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+// ── UI state reducer ──────────────────────────────────────────────────────────────
+interface UiState {
+  sidebar:              { collapsed: boolean };
+  drawers:              { left: boolean; right: boolean };
+  rightPanel:           RightPanelType;
+  fullscreen:           boolean;
+}
+
+type UiAction =
+  | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
+  | { type: 'OPEN_LEFT_DRAWER' }
+  | { type: 'CLOSE_LEFT_DRAWER' }
+  | { type: 'OPEN_RIGHT_DRAWER' }
+  | { type: 'CLOSE_RIGHT_DRAWER' }
+  | { type: 'SET_RIGHT_PANEL'; payload: RightPanelType }
+  | { type: 'TOGGLE_FULLSCREEN' }
+  | { type: 'EXIT_FULLSCREEN' };
+
+function uiReducer(state: UiState, action: UiAction): UiState {
+  switch (action.type) {
+    case 'TOGGLE_SIDEBAR':
+      return { ...state, sidebar: { collapsed: !state.sidebar.collapsed } };
+    case 'SET_SIDEBAR_COLLAPSED':
+      return { ...state, sidebar: { collapsed: action.payload } };
+    case 'OPEN_LEFT_DRAWER':
+      return { ...state, drawers: { ...state.drawers, left: true } };
+    case 'CLOSE_LEFT_DRAWER':
+      return { ...state, drawers: { ...state.drawers, left: false } };
+    case 'OPEN_RIGHT_DRAWER':
+      return { ...state, drawers: { ...state.drawers, right: true } };
+    case 'CLOSE_RIGHT_DRAWER':
+      return { ...state, drawers: { ...state.drawers, right: false } };
+    case 'SET_RIGHT_PANEL':
+      return { ...state, rightPanel: action.payload };
+    case 'TOGGLE_FULLSCREEN':
+      return { ...state, fullscreen: !state.fullscreen };
+    case 'EXIT_FULLSCREEN':
+      return { ...state, fullscreen: false };
+    default:
+      return state;
+  }
+}
 
 // 7-Tier Responsive Hook
 type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
 
 const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean } => {
-  const theme = useTheme();
-  const isXs = useMediaQuery('(max-width:599px)');
-  const isSm = useMediaQuery('(min-width:600px) and (max-width:899px)');
+  const _isXs = useMediaQuery('(max-width:599px)');
+  const isSm  = useMediaQuery('(min-width:600px) and (max-width:899px)');
   const isMd = useMediaQuery('(min-width:900px) and (max-width:1199px)');
   const isLg = useMediaQuery('(min-width:1200px) and (max-width:1535px)');
   const isXl = useMediaQuery('(min-width:1536px) and (max-width:1919px)');
@@ -179,7 +246,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   onSceneSelect,
   onCursorChange,
   sidebarDefaultCollapsed = false,
-  sidebarWidth = 280,
+  sidebarWidth: _sidebarWidth = 280,
   lockState = 'unlocked',
   onLockStateChange,
   projectId,
@@ -189,30 +256,31 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   scriptTitle = 'Untitled',
   editorKey,
 }) => {
-  const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
+  const { tier, isMobile, isTablet, isDesktop: _isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
-  
-  // DEBUG: Log renders
-  const renderCountRef = useRef(0);
-  renderCountRef.current++;
-  console.log(`📺 ScreenplayEditorWithNavigator RENDER #${renderCountRef.current}`);
-  
-  // Fullscreen state
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(sidebarDefaultCollapsed || isMobile);
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [mobileRightDrawerOpen, setMobileRightDrawerOpen] = useState(false);
+
+  // ── Consolidated UI state via reducer ─────────────────────────────────────
+  const [ui, dispatchUi] = useReducer(uiReducer, {
+    sidebar:    { collapsed: sidebarDefaultCollapsed || isMobile },
+    drawers:    { left: false, right: false },
+    rightPanel: defaultRightPanel,
+    fullscreen: false,
+  });
+
+  // Convenience aliases to minimise JSX churn
+  const sidebarCollapsed      = ui.sidebar.collapsed;
+  const mobileDrawerOpen      = ui.drawers.left;
+  const mobileRightDrawerOpen = ui.drawers.right;
+  const rightPanel            = ui.rightPanel;
+  const isFullscreen          = ui.fullscreen;
   const [currentLine, setCurrentLine] = useState(1);
-  const [rightPanel, setRightPanel] = useState<RightPanelType>(defaultRightPanel);
-  const [highlightedLine, setHighlightedLine] = useState<number | null>(null);
+  const [_highlightedLine, setHighlightedLine] = useState<number | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'warning' | 'error' }>({
-    open: false,
-    message: '',
-    severity: 'success',
+    open: false, message: '', severity: 'success',
   });
+  const containerRef = useRef<HTMLDivElement>(null);
   
   // Role-based permissions
   const [permissions, setPermissions] = useState({
@@ -222,29 +290,41 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   });
 
   // Check permissions on mount and when role changes
+  // Cancellable: prevents setState on unmounted component if role swaps quickly.
   useEffect(() => {
+    let cancelled = false;
+
     const checkPermissions = async () => {
-      if (!projectId) {
-        // Default permissions based on role
-        const defaultPerms = castingAuthService.getDefaultPermissions(currentUserRole);
-        setPermissions({
-          canEdit: defaultPerms.canEditScript ?? true,
-          canLock: defaultPerms.canLockScript ?? false,
-          canTableRead: defaultPerms.canRunTableRead ?? true,
-        });
-        return;
+      try {
+        if (!projectId) {
+          const defaultPerms = castingAuthService.getDefaultPermissions(currentUserRole);
+          if (!cancelled) {
+            setPermissions({
+              canEdit: defaultPerms.canEditScript ?? true,
+              canLock: defaultPerms.canLockScript ?? false,
+              canTableRead: defaultPerms.canRunTableRead ?? true,
+            });
+          }
+          return;
+        }
+
+        const [canEdit, canLock, canTableRead] = await Promise.all([
+          castingAuthService.canEditScript(projectId),
+          castingAuthService.canLockScript(projectId),
+          castingAuthService.canRunTableRead(projectId),
+        ]);
+
+        if (!cancelled) setPermissions({ canEdit, canLock, canTableRead });
+      } catch (err) {
+        if (!cancelled) {
+          if (process.env.NODE_ENV !== 'production') console.error('Permission check failed:', err);
+          setSnackbar({ open: true, message: 'Kunne ikke hente tillatelser', severity: 'error' });
+        }
       }
-
-      const [canEdit, canLock, canTableRead] = await Promise.all([
-        castingAuthService.canEditScript(projectId),
-        castingAuthService.canLockScript(projectId),
-        castingAuthService.canRunTableRead(projectId),
-      ]);
-
-      setPermissions({ canEdit, canLock, canTableRead });
     };
 
-    checkPermissions();
+    void checkPermissions();
+    return () => { cancelled = true; };
   }, [projectId, currentUserRole]);
 
   // Determine if editor is read-only
@@ -282,27 +362,10 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     if ('id' in scene && 'projectId' in scene) {
       setSelectedScene(scene as SceneBreakdown);
     } else {
-      // Convert ParsedScene to minimal SceneBreakdown for storyboard
-      const parsedScene = scene as ParsedScene;
-      const now = new Date().toISOString();
-      setSelectedScene({
-        id: parsedScene.id || `scene-${lineNumber}`,
-        manuscriptId: '',
-        projectId: projectId || 'default',
-        sceneNumber: parsedScene.sceneNumber || String(lineNumber),
-        sceneHeading: parsedScene.heading || `Scene ${lineNumber}`,
-        intExt: parsedScene.intExt as 'INT' | 'EXT' | 'INT/EXT' | undefined,
-        locationName: parsedScene.location || 'Unknown',
-        timeOfDay: (parsedScene.timeOfDay || undefined) as 'DAY' | 'NIGHT' | 'DAWN' | 'DUSK' | 'CONTINUOUS' | 'LATER' | 'MORNING' | 'EVENING' | undefined,
-        description: '',
-        characters: [],
-        status: 'not-scheduled',
-        createdAt: now,
-        updatedAt: now,
-      });
+      setSelectedScene(toSceneBreakdown(scene as ParsedScene, lineNumber, projectId || 'default'));
     }
     onSceneSelect?.(scene);
-  }, [onSceneSelect, projectId]);
+  }, [onSceneSelect, projectId, /* gotoLine is stable via useCallback below */]);
 
   // Go to a specific line in the editor
   const gotoLine = useCallback((lineNumber: number) => {
@@ -356,7 +419,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     _event: MouseEvent<HTMLElement>,
     newPanel: RightPanelType | null
   ) => {
-    setRightPanel(newPanel || 'none');
+    dispatchUi({ type: 'SET_RIGHT_PANEL', payload: newPanel || 'none' });
   }, []);
 
   // Handle beat card click
@@ -367,33 +430,25 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   // Handle text change with lock check
   const handleChange = useCallback((newValue: string) => {
     if (isReadOnly) {
-      setSnackbar({
-        open: true,
-        message: 'Manuset er låst og kan ikke redigeres',
-        severity: 'warning',
-      });
+      setSnackbar({ open: true, message: 'Manuset er låst og kan ikke redigeres', severity: 'warning' });
       return;
     }
     onChange(newValue);
   }, [isReadOnly, onChange]);
 
-  // Count issues for badge
   const issueCount = analysis.characterConflicts.length + analysis.consistencyIssues.length;
 
-  // Fullscreen toggle handler
   const handleFullscreenToggle = useCallback(() => {
-    setIsFullscreen(prev => !prev);
+    dispatchUi({ type: 'TOGGLE_FULLSCREEN' });
   }, []);
 
   // Escape key handler for fullscreen
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        setIsFullscreen(false);
-      }
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) dispatchUi({ type: 'EXIT_FULLSCREEN' });
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [isFullscreen]);
 
   return (
@@ -434,7 +489,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         {isMobile && (
           <IconButton
             size={responsive.buttonSize}
-            onClick={() => setMobileDrawerOpen(true)}
+            onClick={() => dispatchUi({ type: 'OPEN_LEFT_DRAWER' })}
             sx={{ color: 'text.secondary' }}
           >
             <MenuIcon sx={{ fontSize: responsive.iconSize }} />
@@ -490,6 +545,17 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
 
         <Box sx={{ flex: 1 }} />
 
+        {/* Help Guide */}
+        <Tooltip title="Hjelp — Screenplay Editor Guide">
+          <IconButton
+            onClick={() => setShowGuide(true)}
+            size={responsive.buttonSize}
+            sx={{ color: 'text.secondary' }}
+          >
+            <HelpIcon sx={{ fontSize: responsive.iconSize }} />
+          </IconButton>
+        </Tooltip>
+
         {/* Fullscreen Toggle */}
         <Tooltip title={isFullscreen ? 'Avslutt fullskjerm (Esc)' : 'Fullskjerm'}>
           <IconButton
@@ -512,7 +578,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           // Mobile: Show menu button for right panel
           <IconButton
             size={responsive.buttonSize}
-            onClick={() => setMobileRightDrawerOpen(true)}
+            onClick={() => dispatchUi({ type: 'OPEN_RIGHT_DRAWER' })}
             disabled={rightPanel === 'none'}
             color={rightPanel !== 'none' ? 'primary' : 'default'}
           >
@@ -578,7 +644,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           <Drawer
             anchor="left"
             open={mobileDrawerOpen}
-            onClose={() => setMobileDrawerOpen(false)}
+            onClose={() => dispatchUi({ type: 'CLOSE_LEFT_DRAWER' })}
             sx={{
               '& .MuiDrawer-paper': {
                 width: responsive.sidebarWidth,
@@ -587,7 +653,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             }}
           >
             <Box sx={{ p: 1, display: 'flex', justifyContent: 'flex-end' }}>
-              <IconButton onClick={() => setMobileDrawerOpen(false)} size="small">
+              <IconButton onClick={() => dispatchUi({ type: 'CLOSE_LEFT_DRAWER' })} size="small">
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -597,7 +663,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               currentLine={currentLine}
               onSceneSelect={(scene, lineNumber) => {
                 handleSceneSelect(scene, lineNumber);
-                setMobileDrawerOpen(false);
+                dispatchUi({ type: 'CLOSE_LEFT_DRAWER' });
               }}
               collapsed={false}
               onToggleCollapse={() => {}}
@@ -613,7 +679,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             currentLine={currentLine}
             onSceneSelect={handleSceneSelect}
             collapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            onToggleCollapse={() => dispatchUi({ type: 'TOGGLE_SIDEBAR' })}
             width={responsive.sidebarWidth}
             darkMode={true}
           />
@@ -668,7 +734,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           <Drawer
             anchor="right"
             open={mobileRightDrawerOpen && rightPanel !== 'none'}
-            onClose={() => setMobileRightDrawerOpen(false)}
+            onClose={() => dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' })}
             sx={{
               '& .MuiDrawer-paper': {
                 width: '85vw',
@@ -689,7 +755,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <ToggleButton value="beatboard"><BeatBoardIcon sx={{ fontSize: 18 }} /></ToggleButton>
                 <ToggleButton value="tableread"><TableReadIcon sx={{ fontSize: 18 }} /></ToggleButton>
               </ToggleButtonGroup>
-              <IconButton onClick={() => setMobileRightDrawerOpen(false)} size="small">
+              <IconButton onClick={() => dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' })} size="small">
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -698,7 +764,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <StoryStructurePanel
                   content={value}
                   scriptTitle={scriptTitle}
-                  onGotoLine={(line) => { gotoLine(line); setMobileRightDrawerOpen(false); }}
+                  onGotoLine={(line) => { gotoLine(line); dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' }); }}
                   showSceneNumbers={showLineNumbers}
                   darkMode={true}
                 />
@@ -706,14 +772,14 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               {rightPanel === 'analysis' && (
                 <ScriptAnalysisPanel
                   content={value}
-                  onGotoLine={(line) => { gotoLine(line); setMobileRightDrawerOpen(false); }}
+                  onGotoLine={(line) => { gotoLine(line); dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' }); }}
                   darkMode={true}
                 />
               )}
               {rightPanel === 'beatboard' && (
                 <BeatBoard
                   beats={analysis.beatCards}
-                  onBeatClick={(beat) => { handleBeatClick(beat); setMobileRightDrawerOpen(false); }}
+                  onBeatClick={(beat) => { handleBeatClick(beat); dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' }); }}
                   readOnly={isReadOnly}
                   actsView={true}
                   darkMode={true}
@@ -722,7 +788,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               {rightPanel === 'tableread' && (
                 <TableReadPanel
                   content={value}
-                  onLineHighlight={(line) => { gotoLine(line); setMobileRightDrawerOpen(false); }}
+                  onLineHighlight={(line) => { gotoLine(line); dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' }); }}
                   darkMode={true}
                 />
               )}
@@ -827,6 +893,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Screenplay Editor Guide */}
+      <ScreenplayGuide open={showGuide} onClose={() => setShowGuide(false)} />
     </Box>
   );
 };
@@ -859,19 +928,19 @@ export const ScreenplayEditorWithNavigator = memo(
     if (prevProps.onCharacterAdd !== nextProps.onCharacterAdd) return false;
     if (prevProps.onLocationAdd !== nextProps.onLocationAdd) return false;
     
-    // Array length comparisons (avoid deep equality checks)
-    const prevScenesLen = prevProps.scenes?.length ?? 0;
-    const nextScenesLen = nextProps.scenes?.length ?? 0;
-    if (prevScenesLen !== nextScenesLen) return false;
-    
-    const prevCharsLen = prevProps.characters?.length ?? 0;
-    const nextCharsLen = nextProps.characters?.length ?? 0;
-    if (prevCharsLen !== nextCharsLen) return false;
-    
-    const prevLocsLen = prevProps.locations?.length ?? 0;
-    const nextLocsLen = nextProps.locations?.length ?? 0;
-    if (prevLocsLen !== nextLocsLen) return false;
-    
+    // ── Arrays: fingerprint by length + content identity ──────────────────
+
+    // scenes: compare using "id:updatedAt" fingerprint so content changes
+    // (not just array length changes) trigger a re-render.
+    const scenesFingerprint = (arr?: SceneBreakdown[]) =>
+      arr ? arr.map(s => `${s.id}:${s.updatedAt}`).join('|') : '';
+    if (scenesFingerprint(prevProps.scenes) !== scenesFingerprint(nextProps.scenes)) return false;
+
+    // characters / locations: compare joined string (cheap + covers reorders)
+    const joined = (arr?: string[]) => arr ? arr.join('\x00') : '';
+    if (joined(prevProps.characters) !== joined(nextProps.characters)) return false;
+    if (joined(prevProps.locations)  !== joined(nextProps.locations))  return false;
+
     // All checks passed - props are effectively equal, skip re-render
     return true;
   }

@@ -31,7 +31,7 @@ import {
   Stepper,
   Step,
   StepLabel,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   Folder,
@@ -51,7 +51,7 @@ import {
   Collections,
   Assessment,
   Send,
-  EditNote
+  EditNote,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -59,7 +59,7 @@ import {
   StepLabel,
   StepContent,
   StepButton,
-  Slider
+  Slider,
 } from '@mui/material';
 import {
   CloudSync,
@@ -108,7 +108,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -232,7 +232,8 @@ import {
   PlayArrow as PlayArrowIcon,
   Remove as RemoveIcon,
   Add as AddIcon,
-  CloudSync as CloudSyncIcon4 } from '@mui/icons-material';
+  CloudSync as CloudSyncIcon4,
+} from '@mui/icons-material';
 import { useCloudSync, UseCloudSyncOptions } from '../../../hooks/useCloudSync';
 import type { CloudSyncConfig, CloudProvider, BackupConfig, SyncItem, SyncConflict, SyncSession } from '../../../utils/cloudSyncManager';
 

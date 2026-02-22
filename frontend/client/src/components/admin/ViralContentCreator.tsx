@@ -35,7 +35,7 @@ import {
   TrendingUp,
   YouTube,
   PhotoLibrary,
-  VideocamLibrary,
+  VideoLibrary as VideocamLibrary,
   Analytics,
   Schedule,
   ThumbUp,
@@ -48,7 +48,7 @@ import {
   AutoGraph,
   Psychology,
   Palette,
-  Speed,
+  Speed as Speed,
   Star,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

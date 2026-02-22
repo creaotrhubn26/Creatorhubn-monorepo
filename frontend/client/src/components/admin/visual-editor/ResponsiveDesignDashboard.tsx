@@ -5,12 +5,12 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  Tooltip,
   IconButton,
   Button,
   Dialog,
@@ -24,7 +24,7 @@ import {
   FormControlLabel,
   CircularProgress,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Devices,
@@ -33,11 +33,11 @@ import {
   Error,
   Warning,
   KeyboardArrowDown,
-  CircularProgress as CircularProgressIcon,
+  HourglassEmpty as CircularProgressIcon,
   PhoneAndroid,
   Tablet,
   Laptop,
-  AspectRatio
+  AspectRatio,
 } from '@mui/icons-material';
 import { useResponsiveDesign, UseResponsiveDesignOptions } from '../../../hooks/useResponsiveDesign';
 import { ResponsiveConfig } from '../../../utils/responsiveDesignManager';

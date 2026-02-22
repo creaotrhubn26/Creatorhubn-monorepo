@@ -10,13 +10,13 @@ import {
   Box,
   LinearProgress,
   Alert,
-  Chip
+  Chip,
 } from '@mui/material';
 import {
   Security as SecurityIcon,
   AccessTime as TimeIcon,
   ExitToApp as LogoutIcon,
-  Refresh as RenewIcon
+  Refresh as RenewIcon,
 } from '@mui/icons-material';
 import { useUniversalSession } from '../../contexts/UniversalSessionContext';
 

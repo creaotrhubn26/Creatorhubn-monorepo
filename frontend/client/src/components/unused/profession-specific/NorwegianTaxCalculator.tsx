@@ -50,7 +50,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import {
   Calculate,
@@ -82,7 +82,7 @@ import {
   Business,
   CreditCard,
   MonetizationOn,
-  Savings
+  Savings,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
@@ -221,23 +221,15 @@ export default function NorwegianTaxCalculator({
   // Tax calculation queries
   const { data: taxHistory, isLoading: isLoadingHistory } = useQuery({
     queryKey: ['/api/tax/history', profession],
-    staleTime: 1000 * 60 *, 5,
-    queryFn: () => apiRequest(['/api/tax/history', profession],
-    staleTime: 1000 * 60 *,  5{
-      headers: {
-  }
-  }),
-});
+    staleTime: 1000 * 60 * 5,
+    queryFn: () => apiRequest('/api/tax/history'),
+  });
 
   const { data: currentYearSummary } = useQuery({
     queryKey: ['/api/tax/summary', new Date().getFullYear(), profession],
-    staleTime: 1000 * 60 *, 2,
-    queryFn: () => apiRequest(['/api/tax/summary', new Date().getFullYear(), profession],
-    staleTime: 1000 * 60 *,  2{
-      headers: {
-  }
-  }),
-});
+    staleTime: 1000 * 60 * 2,
+    queryFn: () => apiRequest('/api/tax/summary'),
+  });
 
   const calculateMVA = (belop: number, sats: number): number => {
     return Math.round((belop * sats / (100 + sats)) * 100) / 100;

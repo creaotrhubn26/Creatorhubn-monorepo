@@ -28,14 +28,14 @@ import {
   Chip,
   Alert,
   Divider,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   AttachMoney as PriceIcon,
   Schedule as TimeIcon,
   Today as DayIcon,
   LocalOffer as PackageIcon,
-  Calculate as CalculateIcon
+  Calculate as CalculateIcon,
 } from '@mui/icons-material';
 
 interface CreatePricingModalProps {

@@ -44,7 +44,7 @@ import {
   IconButton,
   Fab,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -56,7 +56,7 @@ import {
   LocalOffer as PriceIcon,
   Group as CustomerIcon,
   Inventory as PackageIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 
 // Import dynamic profession system

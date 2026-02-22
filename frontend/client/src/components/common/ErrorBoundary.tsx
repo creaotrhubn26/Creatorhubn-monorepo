@@ -17,7 +17,14 @@ import {
   IconButton,
   Chip,
 } from '@mui/material';
-import { ErrorOutline, Refresh, ExpandMore, ExpandLess, BugReport, CloudUpload } from '@mui/icons-material';
+import {
+  ErrorOutline,
+  Refresh,
+  ExpandMore,
+  ExpandLess,
+  BugReport,
+  CloudUpload,
+} from '@mui/icons-material';
 import { captureErrorToSentry, addSentryBreadcrumb } from '../../utils/sentry';
 
 interface Props {

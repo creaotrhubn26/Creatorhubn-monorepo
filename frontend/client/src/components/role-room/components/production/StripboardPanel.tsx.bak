@@ -1,0 +1,3293 @@
+/**
+ * StripboardPanel Component
+ * Visual shooting schedule with drag-and-drop scene organization
+ * Features: Day assignment, color coding, cast/location optimization
+ * 
+ * 7-Tier Responsive Design:
+ * - xs: < 600px (Mobile portrait)
+ * - sm: 600-899px (Mobile landscape / Small tablet)
+ * - md: 900-1199px (Tablet)
+ * - lg: 1200-1535px (Small desktop / Laptop)
+ * - xl: 1536-1919px (Desktop)
+ * - xxl: 1920-2559px (Large desktop / 1080p)
+ * - 4k: 2560px+ (4K / Ultra-wide)
+ */
+
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment, type FC, type ReactElement, type ChangeEvent, type MouseEvent, type DragEvent } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  IconButton,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Grid,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  Tooltip,
+  Alert,
+  Tabs,
+  Tab,
+  Menu,
+  Card,
+  CardContent,
+  Badge,
+  Collapse,
+  LinearProgress,
+  useTheme,
+  useMediaQuery,
+  alpha,
+  Stack,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
+  InputAdornment,
+} from '@mui/material';
+import {
+  DragIndicator as DragIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Event as EventIcon,
+  Place as PlaceIcon,
+  Person as PersonIcon,
+  Schedule as ScheduleIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  CalendarMonth as CalendarIcon,
+  SwapVert as SwapVertIcon,
+  FilterList as FilterIcon,
+  Download as DownloadIcon,
+  Upload as UploadIcon,
+  Movie as MovieIcon,
+  WbSunny as DayIcon,
+  NightsStay as NightIcon,
+  WbTwilight as TwilightIcon,
+  Home as IntIcon,
+  Landscape as ExtIcon,
+  Print as PrintIcon,
+  Settings as SettingsIcon,
+  ViewList as ListViewIcon,
+  ViewModule as BoardViewIcon,
+  MoreVert as MoreIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Sort as SortIcon,
+  CompareArrows as CompareArrowsIcon,
+  Speed as SpeedIcon,
+  Groups as GroupsIcon,
+  Category as CategoryIcon,
+  Timeline as TimelineIcon,
+  TrendingUp as TrendingUpIcon,
+  EmojiTransportation as TransportIcon,
+  Savings as SavingsIcon,
+  ZoomOutMap as ZoomOutMapIcon,
+  ZoomInMap as ZoomInMapIcon,
+  Autorenew as AutorenewIcon,
+  PlaylistAddCheck as PlaylistAddCheckIcon,
+  TableChart as TableChartIcon,
+  Theaters as TheatersIcon,
+  Celebration as CelebrationIcon,
+  Notes as NotesIcon,
+  AccessTime as AccessTimeIcon,
+  PhotoCamera as PhotoCameraIcon,
+  EventNote as EventNoteIcon,
+  Pending as PendingIcon,
+  Description as DescriptionIcon,
+} from '@mui/icons-material';
+import {
+  productionWorkflowService,
+  StripboardStrip,
+  ShootingDay,
+  CastMember,
+} from '../../services/productionWorkflowService';
+
+// ============================================
+// TYPES
+// ============================================
+
+interface StripboardPanelProps {
+  projectId: string;
+  projectTitle?: string;
+  onSceneSelect?: (sceneId: string) => void;
+  onGenerateCallSheet?: (dayId: string) => void;
+}
+
+interface StripsByDay {
+  dayId: string | null;
+  dayNumber: number | null;
+  date: string | null;
+  location: string | null;
+  strips: StripboardStrip[];
+  totalPages: number;
+  totalTime: number;
+}
+
+// View modes for different planning perspectives
+type ViewMode = 'board' | 'compact' | 'timeline' | 'location' | 'cast';
+
+// Grouping options for optimization
+type GroupBy = 'day' | 'location' | 'cast' | 'status' | 'intExt';
+
+// Optimization suggestion
+interface OptimizationSuggestion {
+  id: string;
+  type: 'location' | 'cast' | 'transport' | 'time';
+  title: string;
+  description: string;
+  potentialSaving: string;
+  affectedScenes: string[];
+  priority: 'high' | 'medium' | 'low';
+}
+
+// Location group for bird's-eye view
+interface LocationGroup {
+  location: string;
+  strips: StripboardStrip[];
+  totalPages: number;
+  totalTime: number;
+  uniqueCast: string[];
+  dayNumbers: number[];
+}
+
+// ============================================
+// STRIP COLORS - Norwegian Film Standard
+// ============================================
+
+const STRIP_COLORS: Record<string, { bg: string; label: string; icon: ReactElement; textColor: string }> = {
+  INT_DAY: { bg: '#fff9c4', label: 'INT/DAG', icon: <IntIcon />, textColor: '#1a1a1a' }, // 7.8:1 contrast
+  INT_NIGHT: { bg: '#9c27b0', label: 'INT/NATT', icon: <IntIcon />, textColor: '#ffffff' }, // 5.4:1 contrast
+  EXT_DAY: { bg: '#e3f2fd', label: 'EXT/DAG', icon: <ExtIcon />, textColor: '#1a1a1a' }, // 8.5:1 contrast
+  EXT_NIGHT: { bg: '#1a237e', label: 'EXT/NATT', icon: <ExtIcon />, textColor: '#ffffff' }, // 10.2:1 contrast
+  EXT_DAWN: { bg: '#ffccbc', label: 'EXT/GRYNING', icon: <TwilightIcon />, textColor: '#1a1a1a' }, // 6.1:1 contrast
+  EXT_DUSK: { bg: '#bf5530', label: 'EXT/SKUMRING', icon: <TwilightIcon />, textColor: '#ffffff' }, // 6.3:1 contrast (darkened bg)
+};
+
+function getStripColorFromHex(hex: string): keyof typeof STRIP_COLORS {
+  switch (hex) {
+    case '#fff9c4': return 'INT_DAY';
+    case '#4a148c':
+    case '#9c27b0': return 'INT_NIGHT';
+    case '#e3f2fd': return 'EXT_DAY';
+    case '#1a237e': return 'EXT_NIGHT';
+    case '#ffccbc': return 'EXT_DAWN';
+    case '#ff8a65':
+    case '#bf5530': return 'EXT_DUSK';
+    default: return 'INT_DAY';
+  }
+}
+
+const STATUS_CONFIG: Record<string, { color: 'default' | 'primary' | 'success' | 'warning'; label: string; icon: React.ReactElement }> = {
+  'not-scheduled': { color: 'default', label: 'Ikke planlagt', icon: <PendingIcon /> },
+  'scheduled': { color: 'primary', label: 'Planlagt', icon: <EventNoteIcon /> },
+  'shot': { color: 'success', label: 'Skutt', icon: <PhotoCameraIcon /> },
+  'postponed': { color: 'warning', label: 'Utsatt', icon: <AccessTimeIcon /> },
+} as const;
+
+// ============================================
+// FALLBACK DEMO DATA
+// ============================================
+
+const DEMO_SHOOTING_DAYS: ShootingDay[] = [
+  { id: 'day-1', projectId: 'demo', dayNumber: 1, date: '2026-02-01', location: 'DOVRE - TUNNEL', callTime: '06:00', status: 'wrapped', notes: '', scenes: ['scene-1', 'scene-2'], crewCallTimes: {}, castCallTimes: {}, equipmentNeeded: [], meals: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  { id: 'day-2', projectId: 'demo', dayNumber: 2, date: '2026-02-02', location: 'DOVRE - FJELLET', callTime: '05:00', status: 'wrapped', notes: '', scenes: ['scene-3'], crewCallTimes: {}, castCallTimes: {}, equipmentNeeded: [], meals: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  { id: 'day-3', projectId: 'demo', dayNumber: 3, date: '2026-02-03', location: 'OSLO - STUDIO', callTime: '08:00', status: 'planned', notes: '', scenes: ['scene-4'], crewCallTimes: {}, castCallTimes: {}, equipmentNeeded: [], meals: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  { id: 'day-4', projectId: 'demo', dayNumber: 4, date: '2026-02-04', location: 'UiO - KONTOR', callTime: '09:00', status: 'planned', notes: '', scenes: ['scene-5'], crewCallTimes: {}, castCallTimes: {}, equipmentNeeded: [], meals: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  { id: 'day-5', projectId: 'demo', dayNumber: 5, date: '2026-02-05', location: 'DOVRE - RUINER', callTime: '06:00', status: 'planned', notes: '', scenes: ['scene-6'], crewCallTimes: {}, castCallTimes: {}, equipmentNeeded: [], meals: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+];
+
+const DEMO_STRIPS: StripboardStrip[] = [
+  { id: 'strip-1', sceneId: 'scene-1', sceneNumber: '1', shootingDayId: 'day-1', dayNumber: 1, sortOrder: 1, color: '#1a237e', location: 'DOVRE - TUNNEL', pages: 3, cast: ['ARBEIDER 1', 'ARBEIDER 2', 'FORMANN'], status: 'shot', estimatedTime: 180 },
+  { id: 'strip-2', sceneId: 'scene-2', sceneNumber: '2', shootingDayId: 'day-1', dayNumber: 1, sortOrder: 2, color: '#9c27b0', location: 'HULEN - INNE I FJELLET', pages: 2.5, cast: ['ARBEIDER 1', 'ARBEIDER 2'], status: 'shot', estimatedTime: 120 },
+  { id: 'strip-3', sceneId: 'scene-3', sceneNumber: '3', shootingDayId: 'day-2', dayNumber: 2, sortOrder: 1, color: '#1a237e', location: 'DOVRE - FJELLET', pages: 4, cast: ['NORA TIDEMANN', 'ANDREAS'], status: 'shot', estimatedTime: 240 },
+  { id: 'strip-4', sceneId: 'scene-4', sceneNumber: '4', shootingDayId: 'day-3', dayNumber: 3, sortOrder: 1, color: '#fff9c4', location: 'NORAS LEILIGHET', pages: 2, cast: ['NORA TIDEMANN'], status: 'scheduled', estimatedTime: 120 },
+  { id: 'strip-5', sceneId: 'scene-5', sceneNumber: '5', shootingDayId: 'day-4', dayNumber: 4, sortOrder: 1, color: '#fff9c4', location: 'UiO - KONTOR', pages: 4, cast: ['NORA TIDEMANN', 'ANDREAS', 'GENERAL LUND'], status: 'scheduled', estimatedTime: 240 },
+  { id: 'strip-6', sceneId: 'scene-6', sceneNumber: '6', shootingDayId: 'day-5', dayNumber: 5, sortOrder: 1, color: '#e3f2fd', location: 'DOVRE - RUINER', pages: 3, cast: ['NORA TIDEMANN', 'ANDREAS', 'SOLDATER'], status: 'scheduled', estimatedTime: 180, notes: 'Helikopter-koordinering' },
+  { id: 'strip-7', sceneId: 'scene-7', sceneNumber: '7', shootingDayId: undefined, dayNumber: undefined, sortOrder: 7, color: '#ffccbc', location: 'DOVRE - SOLOPPGANG', pages: 2, cast: ['NORA TIDEMANN'], status: 'not-scheduled', estimatedTime: 90 },
+  { id: 'strip-8', sceneId: 'scene-8', sceneNumber: '8', shootingDayId: undefined, dayNumber: undefined, sortOrder: 8, color: '#bf5530', location: 'OSLO - PARK', pages: 1.5, cast: ['ANDREAS', 'NORA TIDEMANN'], status: 'not-scheduled', estimatedTime: 60 },
+];
+
+// ============================================
+// 7-TIER RESPONSIVE BREAKPOINT HOOK
+// ============================================
+
+type ScreenTier = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '4k';
+
+const useScreenTier = (): { tier: ScreenTier; isMobile: boolean; isTablet: boolean; isDesktop: boolean; is4K: boolean } => {
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.down('sm'));
+  const isSm = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const isMd = useMediaQuery(theme.breakpoints.between('md', 'lg'));
+  const isLg = useMediaQuery(theme.breakpoints.between('lg', 'xl'));
+  const isXl = useMediaQuery(theme.breakpoints.between(1536, 1920));
+  const isXxl = useMediaQuery('(min-width: 1920px) and (max-width: 2559px)');
+  const is4K = useMediaQuery('(min-width: 2560px)');
+
+  const tier: ScreenTier = is4K ? '4k' : isXxl ? 'xxl' : isXl ? 'xl' : isLg ? 'lg' : isMd ? 'md' : isSm ? 'sm' : 'xs';
+  
+  return {
+    tier,
+    isMobile: isXs || isSm,
+    isTablet: isMd,
+    isDesktop: isLg || isXl || isXxl || is4K,
+    is4K,
+  };
+};
+
+// ============================================
+// RESPONSIVE SCALE FACTORS
+// ============================================
+
+const getResponsiveValues = (tier: ScreenTier) => {
+  const scales: Record<ScreenTier, {
+    headerPadding: number;
+    contentPadding: number;
+    fontSize: { title: string; subtitle: string; body: string; caption: string; stats: string };
+    chipHeight: number;
+    iconSize: number;
+    spacing: number;
+    cardPadding: { x: number; y: number };
+    maxCastVisible: number;
+    statsColumns: number;
+    showLegendLabels: boolean;
+    showCallSheetButton: boolean;
+    compactMode: boolean;
+  }> = {
+    xs: {
+      headerPadding: 1,
+      contentPadding: 1,
+      fontSize: { title: '0.9rem', subtitle: '0.75rem', body: '0.7rem', caption: '0.6rem', stats: '1.1rem' },
+      chipHeight: 18,
+      iconSize: 16,
+      spacing: 0.5,
+      cardPadding: { x: 1, y: 0.75 },
+      maxCastVisible: 2,
+      statsColumns: 2,
+      showLegendLabels: false,
+      showCallSheetButton: false,
+      compactMode: true,
+    },
+    sm: {
+      headerPadding: 1.5,
+      contentPadding: 1.5,
+      fontSize: { title: '1rem', subtitle: '0.8rem', body: '0.75rem', caption: '0.65rem', stats: '1.2rem' },
+      chipHeight: 20,
+      iconSize: 18,
+      spacing: 1,
+      cardPadding: { x: 1.5, y: 1 },
+      maxCastVisible: 2,
+      statsColumns: 3,
+      showLegendLabels: false,
+      showCallSheetButton: false,
+      compactMode: true,
+    },
+    md: {
+      headerPadding: 2,
+      contentPadding: 2,
+      fontSize: { title: '1.1rem', subtitle: '0.85rem', body: '0.8rem', caption: '0.7rem', stats: '1.4rem' },
+      chipHeight: 22,
+      iconSize: 20,
+      spacing: 1.5,
+      cardPadding: { x: 2, y: 1 },
+      maxCastVisible: 3,
+      statsColumns: 4,
+      showLegendLabels: true,
+      showCallSheetButton: true,
+      compactMode: false,
+    },
+    lg: {
+      headerPadding: 2,
+      contentPadding: 2,
+      fontSize: { title: '1.2rem', subtitle: '0.9rem', body: '0.85rem', caption: '0.75rem', stats: '1.5rem' },
+      chipHeight: 24,
+      iconSize: 22,
+      spacing: 2,
+      cardPadding: { x: 2, y: 1 },
+      maxCastVisible: 4,
+      statsColumns: 5,
+      showLegendLabels: true,
+      showCallSheetButton: true,
+      compactMode: false,
+    },
+    xl: {
+      headerPadding: 2.5,
+      contentPadding: 2.5,
+      fontSize: { title: '1.3rem', subtitle: '0.95rem', body: '0.9rem', caption: '0.8rem', stats: '1.6rem' },
+      chipHeight: 26,
+      iconSize: 24,
+      spacing: 2,
+      cardPadding: { x: 2.5, y: 1.25 },
+      maxCastVisible: 5,
+      statsColumns: 6,
+      showLegendLabels: true,
+      showCallSheetButton: true,
+      compactMode: false,
+    },
+    xxl: {
+      headerPadding: 3,
+      contentPadding: 3,
+      fontSize: { title: '1.4rem', subtitle: '1rem', body: '0.95rem', caption: '0.85rem', stats: '1.8rem' },
+      chipHeight: 28,
+      iconSize: 26,
+      spacing: 2.5,
+      cardPadding: { x: 3, y: 1.5 },
+      maxCastVisible: 6,
+      statsColumns: 6,
+      showLegendLabels: true,
+      showCallSheetButton: true,
+      compactMode: false,
+    },
+    '4k': {
+      headerPadding: 4,
+      contentPadding: 4,
+      fontSize: { title: '1.6rem', subtitle: '1.1rem', body: '1rem', caption: '0.9rem', stats: '2rem' },
+      chipHeight: 32,
+      iconSize: 30,
+      spacing: 3,
+      cardPadding: { x: 4, y: 2 },
+      maxCastVisible: 8,
+      statsColumns: 6,
+      showLegendLabels: true,
+      showCallSheetButton: true,
+      compactMode: false,
+    },
+  };
+  return scales[tier];
+};
+
+// ============================================
+// COMPONENT
+// ============================================
+
+const StripboardPanel: FC<StripboardPanelProps> = ({
+  projectId,
+  projectTitle = 'TROLL',
+  onSceneSelect,
+  onGenerateCallSheet,
+}) => {
+  // Theme and responsive hooks
+  const theme = useTheme();
+  const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
+  const responsive = getResponsiveValues(tier);
+  
+  // Core State
+  const [strips, setStrips] = useState<StripboardStrip[]>([]);
+  const [shootingDays, setShootingDays] = useState<ShootingDay[]>([]);
+  const [cast, setCast] = useState<CastMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedStrip, setSelectedStrip] = useState<StripboardStrip | null>(null);
+  const [selectedStrips, setSelectedStrips] = useState<Set<string>>(new Set());
+  const [expandedDays, setExpandedDays] = useState<Set<string | null>>(new Set([null]));
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+  
+  // Dialog & Menu State
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [showOptimizeDialog, setShowOptimizeDialog] = useState(false);
+  const [assignDayId, setAssignDayId] = useState<string>('');
+  const [mobileMenuAnchor, setMobileMenuAnchor] = useState<null | HTMLElement>(null);
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [draggedStrip, setDraggedStrip] = useState<StripboardStrip | null>(null);
+  
+  // View & Filter State
+  const [viewMode, setViewMode] = useState<ViewMode>('board');
+  const [groupBy, setGroupBy] = useState<GroupBy>('day');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [filterStatus, setFilterStatus] = useState<StripboardStrip['status'] | 'all'>('all');
+  const [filterLocation, setFilterLocation] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [compactView, setCompactView] = useState(false);
+  const [showOptimizationPanel, setShowOptimizationPanel] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+  
+  // Print/Export Dialog State
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [printOptions, setPrintOptions] = useState({
+    header: true,
+    stats: true,
+    legend: true,
+    unassignedScenes: true,
+    scheduledDays: true,
+    castInfo: true,
+    notes: true,
+    pageNumbers: true,
+  });
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedStripCount = selectedStrips.size;
+  const selectedStripList = useMemo(() => strips.filter(s => selectedStrips.has(s.id)), [strips, selectedStrips]);
+
+  const groupByLabel = useMemo(() => {
+    switch (groupBy) {
+      case 'location':
+        return 'Lokasjon';
+      case 'cast':
+        return 'Cast';
+      case 'status':
+        return 'Status';
+      case 'intExt':
+        return 'INT/EXT';
+      case 'day':
+      default:
+        return 'Dag';
+    }
+  }, [groupBy]);
+
+  const toggleStripSelection = useCallback((id: string) => {
+    setSelectedStrips(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleMobileMenuOpen = useCallback((event: MouseEvent<HTMLElement>) => {
+    setMobileMenuAnchor(event.currentTarget);
+  }, []);
+
+  const handleMobileMenuClose = useCallback(() => {
+    setMobileMenuAnchor(null);
+  }, []);
+
+  const handleAddStrip = useCallback(() => {
+    const nextNumber = (Math.max(0, ...strips.map(s => parseInt(s.sceneNumber, 10) || 0)) + 1).toString();
+    const timestamp = Date.now();
+    const newStrip: StripboardStrip = {
+      id: `strip-${timestamp}`,
+      sceneId: `scene-${timestamp}`,
+      sceneNumber: nextNumber,
+      shootingDayId: undefined,
+      dayNumber: undefined,
+      sortOrder: strips.length + 1,
+      color: '#fff9c4',
+      location: 'NY LOKASJON',
+      pages: 1,
+      cast: [],
+      status: 'not-scheduled',
+      estimatedTime: 60,
+    };
+    setStrips(prev => [newStrip, ...prev]);
+    setSelectedStrip(newStrip);
+    setSelectedStrips(new Set([newStrip.id]));
+  }, [strips]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedStrips.size === 0) return;
+    setStrips(prev => prev.filter(s => !selectedStrips.has(s.id)));
+    if (selectedStrip && selectedStrips.has(selectedStrip.id)) {
+      setSelectedStrip(null);
+    }
+    setSelectedStrips(new Set());
+  }, [selectedStrips, selectedStrip]);
+
+  const handleOpenAssignDialog = useCallback(() => {
+    if (selectedStripList.length > 0) {
+      setSelectedStrip(selectedStripList[0]);
+    }
+    setShowAssignDialog(true);
+  }, [selectedStripList]);
+
+  const handleImportJSON = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const raw = JSON.parse(String(reader.result));
+        const importedDays = Array.isArray(raw.shootingDays)
+          ? raw.shootingDays.map(({ strips: _strips, ...day }: any) => day)
+          : [];
+        const importedStrips: StripboardStrip[] = [];
+
+        if (Array.isArray(raw.shootingDays)) {
+          raw.shootingDays.forEach((day: any) => {
+            if (Array.isArray(day.strips)) {
+              day.strips.forEach((strip: StripboardStrip) => {
+                importedStrips.push({
+                  ...strip,
+                  shootingDayId: day.id,
+                  dayNumber: day.dayNumber,
+                });
+              });
+            }
+          });
+        }
+
+        if (Array.isArray(raw.unassignedStrips)) {
+          raw.unassignedStrips.forEach((strip: StripboardStrip) => {
+            importedStrips.push({
+              ...strip,
+              shootingDayId: undefined,
+              dayNumber: undefined,
+            });
+          });
+        }
+
+        if (importedDays.length > 0) {
+          setShootingDays(importedDays);
+        }
+        if (importedStrips.length > 0) {
+          setStrips(importedStrips);
+        }
+        setSelectedStrips(new Set());
+        setSelectedStrip(null);
+      } catch (error) {
+        console.error('Failed to import stripboard JSON:', error);
+        alert('Ugyldig filformat for stripboard-import.');
+      } finally {
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  }, []);
+
+  // Load data
+  const loadStripboardData = useCallback(async () => {
+    setLoading(true);
+    console.log('[Stripboard] Starting data load...');
+    try {
+      const [stripData, dayData, castData] = await Promise.all([
+        productionWorkflowService.getStripboard(projectId),
+        productionWorkflowService.getShootingDays(projectId),
+        productionWorkflowService.getCast(projectId),
+      ]);
+      
+      console.log('[Stripboard] Fetched data:', { 
+        stripData: stripData?.length || 0, 
+        dayData: dayData?.length || 0,
+        castData: castData?.length || 0 
+      });
+      
+      // Use fetched data or fallback to demo data
+      const finalStrips = stripData && stripData.length > 0 ? stripData : DEMO_STRIPS;
+      const finalDays = dayData && dayData.length > 0 ? dayData : DEMO_SHOOTING_DAYS;
+      
+      console.log('[Stripboard] Using:', { 
+        strips: finalStrips.length, 
+        days: finalDays.length,
+        isDemo: stripData?.length === 0
+      });
+      
+      setStrips(finalStrips);
+      setShootingDays(finalDays);
+      setCast(castData || []);
+    } catch (error) {
+      console.error('Failed to load stripboard data, using demo data:', error);
+      // Fallback to demo data on error
+      setStrips(DEMO_STRIPS);
+      setShootingDays(DEMO_SHOOTING_DAYS);
+      setCast([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    loadStripboardData();
+  }, [loadStripboardData]);
+
+  const handleRefreshData = useCallback(() => {
+    loadStripboardData();
+  }, [loadStripboardData]);
+
+  const filteredStripsMemo = useMemo(() => {
+    let base = filterStatus === 'all' ? strips : strips.filter(s => s.status === filterStatus);
+    if (filterLocation !== 'all') {
+      base = base.filter(s => (s.location || 'Ukjent') === filterLocation);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      base = base.filter(s =>
+        s.sceneNumber.toLowerCase().includes(q) ||
+        (s.location || '').toLowerCase().includes(q)
+      );
+    }
+    return base;
+  }, [strips, filterStatus, filterLocation, searchQuery]);
+
+  // Group strips by day
+  const stripsByDay = useMemo((): StripsByDay[] => {
+    const grouped: Map<string | null, StripsByDay> = new Map();
+    
+    // Initialize with all shooting days
+    shootingDays.forEach(day => {
+      grouped.set(day.id, {
+        dayId: day.id,
+        dayNumber: day.dayNumber,
+        date: day.date,
+        location: day.location,
+        strips: [],
+        totalPages: 0,
+        totalTime: 0,
+      });
+    });
+    
+    // Add unassigned group
+    grouped.set(null, {
+      dayId: null,
+      dayNumber: null,
+      date: null,
+      location: null,
+      strips: [],
+      totalPages: 0,
+      totalTime: 0,
+    });
+    
+    // Sort strips into days
+    const filteredStrips = filteredStripsMemo;
+    
+    filteredStrips.forEach(strip => {
+      const dayId = strip.shootingDayId || null;
+      const day = grouped.get(dayId);
+      if (day) {
+        day.strips.push(strip);
+        day.totalPages += strip.pages;
+        day.totalTime += strip.estimatedTime;
+      }
+    });
+    
+    // Sort by day number
+    return Array.from(grouped.values()).sort((a, b) => {
+      if (a.dayNumber === null) return 1;
+      if (b.dayNumber === null) return -1;
+      return a.dayNumber - b.dayNumber;
+    });
+  }, [filteredStripsMemo, shootingDays]);
+
+  // Group strips by location (bird's-eye view)
+  const stripsByLocation = useMemo((): LocationGroup[] => {
+    const grouped: Map<string, LocationGroup> = new Map();
+    
+    const filteredStrips = filteredStripsMemo;
+    
+    filteredStrips.forEach(strip => {
+      const loc = strip.location || 'Ukjent';
+      if (!grouped.has(loc)) {
+        grouped.set(loc, {
+          location: loc,
+          strips: [],
+          totalPages: 0,
+          totalTime: 0,
+          uniqueCast: [],
+          dayNumbers: [],
+        });
+      }
+      const group = grouped.get(loc)!;
+      group.strips.push(strip);
+      group.totalPages += strip.pages;
+      group.totalTime += strip.estimatedTime;
+      
+      // Track unique cast
+      strip.cast?.forEach(castName => {
+        if (!group.uniqueCast.includes(castName)) {
+          group.uniqueCast.push(castName);
+        }
+      });
+      
+      // Track day numbers
+      const day = shootingDays.find(d => d.id === strip.shootingDayId);
+      if (day && !group.dayNumbers.includes(day.dayNumber)) {
+        group.dayNumbers.push(day.dayNumber);
+      }
+    });
+    
+    // Sort by number of scenes (most scenes first for efficiency view)
+    return Array.from(grouped.values()).sort((a, b) => b.strips.length - a.strips.length);
+  }, [filteredStripsMemo, shootingDays]);
+
+  // Unique locations for filter
+  const uniqueLocations = useMemo(() => {
+    const locs = new Set(strips.map(s => s.location).filter(Boolean));
+    return Array.from(locs).sort();
+  }, [strips]);
+
+  
+
+  // Calculate optimization suggestions
+  const optimizationSuggestions = useMemo((): OptimizationSuggestion[] => {
+    const suggestions: OptimizationSuggestion[] = [];
+    
+    // Check for location fragmentation (same location spread across multiple days)
+    const locationDays: Map<string, Set<number>> = new Map();
+    strips.forEach(strip => {
+      const day = shootingDays.find(d => d.id === strip.shootingDayId);
+      if (day && strip.location) {
+        if (!locationDays.has(strip.location)) {
+          locationDays.set(strip.location, new Set());
+        }
+        locationDays.get(strip.location)!.add(day.dayNumber);
+      }
+    });
+    
+    locationDays.forEach((days, location) => {
+      if (days.size > 1) {
+        const daysArray = Array.from(days).sort((a, b) => a - b);
+        suggestions.push({
+          id: `loc-${location}`,
+          type: 'location',
+          title: `Konsolider ${location}`,
+          description: `Scener på "${location}" er spredt over dag ${daysArray.join(', ')}. Vurder å gruppere disse.`,
+          potentialSaving: `${(days.size - 1) * 30} min reisetid`,
+          affectedScenes: strips.filter(s => s.location === location).map(s => s.sceneNumber),
+          priority: days.size > 2 ? 'high' : 'medium',
+        });
+      }
+    });
+    
+    // Check for cast efficiency
+    const castDays: Map<string, Set<number>> = new Map();
+    strips.forEach(strip => {
+      const day = shootingDays.find(d => d.id === strip.shootingDayId);
+      if (day) {
+        strip.cast?.forEach(castName => {
+          if (!castDays.has(castName)) {
+            castDays.set(castName, new Set());
+          }
+          castDays.get(castName)!.add(day.dayNumber);
+        });
+      }
+    });
+    
+    castDays.forEach((days, castName) => {
+      const daysArray = Array.from(days).sort((a, b) => a - b);
+      // Check for gaps in consecutive days
+      for (let i = 1; i < daysArray.length; i++) {
+        const gap = daysArray[i] - daysArray[i - 1];
+        if (gap > 1 && gap < 4) {
+          suggestions.push({
+            id: `cast-${castName}-${i}`,
+            type: 'cast',
+            title: `Optimaliser ${castName}`,
+            description: `${castName} har opptak dag ${daysArray[i - 1]} og ${daysArray[i]}. ${gap - 1} dagers gap kan reduseres.`,
+            potentialSaving: `${(gap - 1)} dager skuespillerhonorar`,
+            affectedScenes: strips.filter(s => s.cast?.includes(castName)).map(s => s.sceneNumber),
+            priority: gap > 2 ? 'high' : 'low',
+          });
+          break;
+        }
+      }
+    });
+    
+    // Sort by priority
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    return suggestions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  }, [strips, shootingDays]);
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    const total = strips.length;
+    const shot = strips.filter(s => s.status === 'shot').length;
+    const scheduled = strips.filter(s => s.status === 'scheduled').length;
+    const notScheduled = strips.filter(s => s.status === 'not-scheduled').length;
+    const totalPages = strips.reduce((sum, s) => sum + s.pages, 0);
+    const pagesShot = strips.filter(s => s.status === 'shot').reduce((sum, s) => sum + s.pages, 0);
+    const totalTime = strips.reduce((sum, s) => sum + s.estimatedTime, 0);
+    const uniqueLocationsCount = new Set(strips.map(s => s.location)).size;
+    const uniqueCastCount = new Set(strips.flatMap(s => s.cast || [])).size;
+    
+    return { 
+      total, shot, scheduled, notScheduled, totalPages, pagesShot, 
+      totalTime, uniqueLocationsCount, uniqueCastCount,
+      optimizationCount: optimizationSuggestions.length,
+    };
+  }, [strips, optimizationSuggestions]);
+
+  const getSortedStrips = useCallback((items: StripboardStrip[]) => {
+    const statusOrder: Record<StripboardStrip['status'], number> = {
+      shot: 0,
+      scheduled: 1,
+      'not-scheduled': 2,
+      postponed: 3,
+    };
+
+    const sorted = [...items];
+    switch (groupBy) {
+      case 'location':
+        sorted.sort((a, b) => (a.location || '').localeCompare(b.location || ''));
+        break;
+      case 'cast':
+        sorted.sort((a, b) => (b.cast?.length || 0) - (a.cast?.length || 0));
+        break;
+      case 'status':
+        sorted.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+        break;
+      case 'intExt':
+        sorted.sort((a, b) => getStripColorFromHex(a.color).localeCompare(getStripColorFromHex(b.color)));
+        break;
+      case 'day':
+      default:
+        sorted.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        break;
+    }
+
+    return sortDirection === 'desc' ? sorted.reverse() : sorted;
+  }, [groupBy, sortDirection]);
+
+  // Handlers
+  const handleToggleDay = useCallback((dayId: string | null) => {
+    setExpandedDays(prev => {
+      const next = new Set(prev);
+      if (next.has(dayId)) {
+        next.delete(dayId);
+      } else {
+        next.add(dayId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDragStart = useCallback((e: DragEvent, strip: StripboardStrip) => {
+    setDraggedStrip(strip);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', strip.id);
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback(async (e: DragEvent, dayId: string | null) => {
+    e.preventDefault();
+    if (!draggedStrip) return;
+    
+    // Update strip assignment
+    const updated = await productionWorkflowService.assignSceneToDay(
+      draggedStrip.sceneId, 
+      dayId
+    );
+    
+    if (updated) {
+      setStrips(prev => prev.map(s => 
+        s.id === updated.id ? updated : s
+      ));
+    }
+    
+    setDraggedStrip(null);
+  }, [draggedStrip]);
+
+  const handleAssignToDay = useCallback(async () => {
+    const targetIds = selectedStrips.size > 0
+      ? Array.from(selectedStrips)
+      : selectedStrip
+        ? [selectedStrip.id]
+        : [];
+
+    if (targetIds.length === 0) return;
+
+    const dayId = assignDayId === 'unassign' ? null : assignDayId || null;
+    const targets = strips.filter(strip => targetIds.includes(strip.id));
+    const updates = await Promise.all(
+      targets.map(strip => productionWorkflowService.assignSceneToDay(strip.sceneId, dayId))
+    );
+
+    setStrips(prev => prev.map(s => {
+      const updated = updates.find(u => u && u.id === s.id);
+      return updated ?? s;
+    }));
+
+    setShowAssignDialog(false);
+    setSelectedStrip(null);
+    setAssignDayId('');
+    setSelectedStrips(new Set());
+  }, [assignDayId, selectedStrip, selectedStrips, strips]);
+
+  const handlePrintStripboard = useCallback(() => {
+    setShowPrintDialog(true);
+  }, []);
+
+  const handleConfirmPrint = useCallback(() => {
+    setShowPrintDialog(false);
+    
+    // Generate PDF in new window
+    setTimeout(() => {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Kunne ikke åpne utskriftsvindu. Vennligst tillat popups.');
+        return;
+      }
+
+      // Group strips by day
+      const groupedStrips = stripsByDay;
+      
+      // Generate strips HTML
+      const generateStripsHTML = (dayStrips: StripboardStrip[]) => {
+        return dayStrips.map(strip => {
+          const colorKey = getStripColorFromHex(strip.color);
+          const colorConfig = STRIP_COLORS[colorKey];
+          return `
+            <div class="strip" style="background: ${strip.color}; color: ${colorConfig.textColor};">
+              <div class="strip-header">
+                <span class="scene-num">Scene ${strip.sceneNumber}</span>
+                <span class="strip-type">${colorConfig.label}</span>
+                <span class="strip-pages">${strip.pages}p</span>
+                <span class="strip-time">${Math.floor(strip.estimatedTime / 60)}t ${strip.estimatedTime % 60}m</span>
+              </div>
+              <div class="strip-location">${strip.location}</div>
+              ${printOptions.castInfo && strip.cast.length > 0 ? `
+                <div class="strip-cast">Cast: ${strip.cast.join(', ')}</div>
+              ` : ''}
+              ${printOptions.notes && strip.notes ? `
+                <div class="strip-notes">📝 ${strip.notes}</div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      };
+
+      // Generate day groups HTML
+      const daysHTML = groupedStrips.map(dayData => {
+        const isUnassigned = dayData.dayId === null;
+        
+        // Skip based on print options
+        if (isUnassigned && !printOptions.unassignedScenes) return '';
+        if (!isUnassigned && !printOptions.scheduledDays) return '';
+        
+        return `
+          <div class="day-group">
+            <div class="day-header" style="background: ${isUnassigned ? '#f3e8ff' : '#7C3AED'}; color: ${isUnassigned ? '#1a1a1a' : '#fff'};">
+              <h3>${isUnassigned ? '📋 Ikke planlagt' : `Dag ${dayData.dayNumber}`}</h3>
+              ${!isUnassigned && dayData.date ? `<span class="day-date">${new Date(dayData.date).toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' })}</span>` : ''}
+              <span class="day-stats">${dayData.strips.length} scener • ${dayData.totalPages}p • ${Math.floor(dayData.totalTime / 60)}t ${dayData.totalTime % 60}m</span>
+            </div>
+            <div class="strips-container">
+              ${generateStripsHTML(dayData.strips)}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Generate legend HTML
+      const legendHTML = printOptions.legend ? `
+        <div class="legend">
+          <h4>Fargeforklaring</h4>
+          <div class="legend-items">
+            ${Object.entries(STRIP_COLORS).map(([key, config]) => `
+              <div class="legend-item">
+                <span class="legend-color" style="background: ${config.bg};"></span>
+                <span class="legend-label">${config.label}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      // Generate stats HTML
+      const statsHTML = printOptions.stats ? `
+        <div class="stats-bar">
+          <div class="stat">
+            <span class="stat-value">${stats.total}</span>
+            <span class="stat-label">Totalt scener</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" style="color: #10b981;">${stats.shot}</span>
+            <span class="stat-label">Skutt</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">${stats.scheduled}</span>
+            <span class="stat-label">Planlagt</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">${stats.totalPages}</span>
+            <span class="stat-label">Sider</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">${Math.floor(stats.totalTime / 60)}t ${stats.totalTime % 60}m</span>
+            <span class="stat-label">Total tid</span>
+          </div>
+        </div>
+      ` : '';
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Stripboard - ${projectTitle}</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { 
+                font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif; 
+                font-size: 11px; 
+                line-height: 1.4; 
+                padding: 20px;
+                color: #1a1a1a;
+                background: #fff;
+              }
+              .header {
+                text-align: center;
+                margin-bottom: 20px;
+                padding-bottom: 15px;
+                border-bottom: 3px solid #7C3AED;
+              }
+              .header-logo {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                margin-bottom: 8px;
+              }
+              .header-logo img {
+                width: 40px;
+                height: 40px;
+                border-radius: 8px;
+              }
+              .header h1 {
+                font-size: 28px;
+                font-weight: 700;
+                color: #1a1a1a;
+              }
+              .header h2 {
+                font-size: 14px;
+                color: #7C3AED;
+                font-weight: 600;
+              }
+              .header .branding {
+                font-size: 10px;
+                color: #666;
+                margin-top: 8px;
+              }
+              .header .branding strong {
+                color: #7C3AED;
+              }
+              .stats-bar {
+                display: flex;
+                justify-content: center;
+                gap: 30px;
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+              }
+              .stat {
+                text-align: center;
+              }
+              .stat-value {
+                font-size: 20px;
+                font-weight: 700;
+                color: #7C3AED;
+                display: block;
+              }
+              .stat-label {
+                font-size: 9px;
+                color: #666;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              .legend {
+                background: #f8f9fa;
+                padding: 12px 15px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+              }
+              .legend h4 {
+                font-size: 11px;
+                color: #666;
+                margin-bottom: 8px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              .legend-items {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+              }
+              .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+              }
+              .legend-color {
+                width: 20px;
+                height: 14px;
+                border-radius: 3px;
+                border: 1px solid rgba(0,0,0,0.1);
+              }
+              .legend-label {
+                font-size: 10px;
+                color: #1a1a1a;
+              }
+              .day-group {
+                margin-bottom: 20px;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                overflow: hidden;
+                page-break-inside: avoid;
+              }
+              .day-header {
+                padding: 12px 16px;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                flex-wrap: wrap;
+              }
+              .day-header h3 {
+                font-size: 16px;
+                font-weight: 700;
+              }
+              .day-date {
+                font-size: 12px;
+                opacity: 0.9;
+              }
+              .day-stats {
+                font-size: 11px;
+                opacity: 0.8;
+                margin-left: auto;
+              }
+              .strips-container {
+                padding: 12px;
+                background: #fafafa;
+              }
+              .strip {
+                padding: 10px 12px;
+                border-radius: 6px;
+                margin-bottom: 8px;
+                border: 1px solid rgba(0,0,0,0.1);
+              }
+              .strip:last-child {
+                margin-bottom: 0;
+              }
+              .strip-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 6px;
+              }
+              .scene-num {
+                font-weight: 700;
+                font-size: 13px;
+              }
+              .strip-type {
+                font-size: 9px;
+                padding: 2px 6px;
+                background: rgba(0,0,0,0.1);
+                border-radius: 3px;
+              }
+              .strip-pages, .strip-time {
+                font-size: 10px;
+                opacity: 0.8;
+              }
+              .strip-location {
+                font-size: 11px;
+                margin-bottom: 4px;
+              }
+              .strip-cast {
+                font-size: 10px;
+                opacity: 0.85;
+                margin-top: 4px;
+              }
+              .strip-notes {
+                font-size: 10px;
+                font-style: italic;
+                opacity: 0.8;
+                margin-top: 4px;
+              }
+              .footer {
+                margin-top: 30px;
+                padding-top: 15px;
+                border-top: 1px solid #e5e7eb;
+                text-align: center;
+                font-size: 9px;
+                color: #7C3AED;
+              }
+              @media print {
+                body { padding: 10px; }
+                .day-group { page-break-inside: avoid; }
+              }
+            </style>
+          </head>
+          <body>
+            ${printOptions.header ? `
+              <div class="header">
+                <div class="header-logo">
+                  <img src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp" alt="The Role Room" onerror="this.style.display='none'" />
+                  <div>
+                    <h1>${projectTitle}</h1>
+                    <h2>Stripboard / Opptaksplan</h2>
+                  </div>
+                </div>
+                <div class="branding">
+                  Generert med <strong>The Role Room</strong> • ${new Date().toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </div>
+              </div>
+            ` : ''}
+            
+            ${statsHTML}
+            ${legendHTML}
+            ${daysHTML}
+            
+            <div class="footer">
+              Generert med The Role Room • theroleroom.no
+            </div>
+          </body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    }, 100);
+  }, [printOptions, stripsByDay, projectTitle, stats]);
+
+  const handleExportPDF = useCallback(() => {
+    setShowPrintDialog(true);
+  }, []);
+
+  const handleExportJSON = useCallback(() => {
+    const exportData = {
+      projectId,
+      projectTitle,
+      exportDate: new Date().toISOString(),
+      shootingDays: shootingDays.map(day => ({
+        ...day,
+        strips: strips.filter(s => s.shootingDayId === day.id),
+      })),
+      unassignedStrips: strips.filter(s => !s.shootingDayId),
+      statistics: stats,
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stripboard-${projectTitle.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [projectId, projectTitle, shootingDays, strips, stats]);
+
+  const handleExportCSV = useCallback(() => {
+    const csvRows = [
+      ['Scene', 'Lokasjon', 'INT/EXT', 'Sider', 'Tid (min)', 'Cast', 'Status', 'Dag', 'Dato', 'Notater'],
+    ];
+    
+    strips.forEach(strip => {
+      const day = shootingDays.find(d => d.id === strip.shootingDayId);
+      const colorKey = getStripColorFromHex(strip.color);
+      csvRows.push([
+        strip.sceneNumber,
+        strip.location,
+        STRIP_COLORS[colorKey]?.label || '',
+        strip.pages.toString(),
+        strip.estimatedTime.toString(),
+        strip.cast.join('; '),
+        strip.status,
+        day?.dayNumber?.toString() || 'Ikke planlagt',
+        day?.date || '',
+        strip.notes || '',
+      ]);
+    });
+    
+    const csvContent = csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stripboard-${projectTitle.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [projectTitle, strips, shootingDays]);
+
+  // Toggle location expansion
+  const handleToggleLocation = useCallback((location: string) => {
+    setExpandedLocations(prev => {
+      const next = new Set(prev);
+      if (next.has(location)) {
+        next.delete(location);
+      } else {
+        next.add(location);
+      }
+      return next;
+    });
+  }, []);
+
+  // Expand/collapse all
+  const handleExpandAll = useCallback(() => {
+    if (viewMode === 'location') {
+      setExpandedLocations(new Set(stripsByLocation.map(g => g.location)));
+    } else {
+      setExpandedDays(new Set(stripsByDay.map(d => d.dayId)));
+    }
+  }, [viewMode, stripsByLocation, stripsByDay]);
+
+  const handleCollapseAll = useCallback(() => {
+    if (viewMode === 'location') {
+      setExpandedLocations(new Set());
+    } else {
+      setExpandedDays(new Set());
+    }
+  }, [viewMode]);
+
+  // Format time
+  const formatTime = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return hours > 0 ? `${hours}t ${mins}m` : `${mins}m`;
+  };
+
+  // Render compact strip (for bird's-eye view)
+  const renderCompactStrip = (strip: StripboardStrip) => {
+    const colorKey = getStripColorFromHex(strip.color);
+    const colorConfig = STRIP_COLORS[colorKey];
+    const isExt = colorKey.startsWith('EXT');
+    
+    return (
+      <Box
+        key={strip.id}
+        draggable={!isMobile}
+        onDragStart={(e) => !isMobile && handleDragStart(e, strip)}
+        onClick={() => setSelectedStrip(strip)}
+        onDoubleClick={() => onSceneSelect?.(strip.sceneId)}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          py: 0.5,
+          px: 1,
+          mb: 0.5, // Added margin between strips
+          bgcolor: strip.color,
+          color: colorConfig.textColor || 'inherit',
+          borderRadius: 0.75,
+          cursor: isMobile ? 'pointer' : 'grab',
+          border: selectedStrip?.id === strip.id ? '2px solid #7C3AED' : '1px solid rgba(0,0,0,0.1)',
+          transition: 'all 0.15s',
+          minHeight: 28, // Smaller height for compact
+          '&:hover': {
+            transform: 'translateX(2px)',
+            boxShadow: 1,
+            bgcolor: alpha(strip.color, 0.9),
+          },
+        }}
+      >
+        <Typography 
+          sx={{ 
+            minWidth: 32, 
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            color: colorConfig.textColor,
+          }}
+        >
+          {strip.sceneNumber}
+        </Typography>
+        <Box
+          sx={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            bgcolor: isExt ? '#3b82f6' : '#6b7280',
+            flexShrink: 0,
+          }}
+        />
+        <Typography 
+          sx={{ 
+            flex: 1, 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis', 
+            whiteSpace: 'nowrap',
+            fontSize: '0.65rem',
+            color: colorConfig.textColor,
+            opacity: 0.9,
+          }}
+        >
+          {strip.location}
+        </Typography>
+        <Typography 
+          sx={{ 
+            fontSize: '0.6rem',
+            fontWeight: 600,
+            color: colorConfig.textColor,
+            opacity: 0.8,
+          }}
+        >
+          {strip.pages}p
+        </Typography>
+      </Box>
+    );
+  };
+
+  // Render strip card - RESPONSIVE
+  const renderStrip = (strip: StripboardStrip, compact = false) => {
+    if (compact || compactView) {
+      return renderCompactStrip(strip);
+    }
+    
+    const colorKey = getStripColorFromHex(strip.color);
+    const colorConfig = STRIP_COLORS[colorKey];
+    
+    return (
+      <Card
+        key={strip.id}
+        draggable={!isMobile}
+        onDragStart={(e) => !isMobile && handleDragStart(e, strip)}
+        sx={{
+          mb: responsive.spacing,
+          cursor: isMobile ? 'pointer' : 'grab',
+          bgcolor: strip.color,
+          color: colorConfig.textColor || 'inherit',
+          border: selectedStrip?.id === strip.id ? '2px solid #7C3AED' : '1px solid transparent',
+          borderRadius: { xs: 1.5, sm: 2, md: 2 },
+          transition: 'all 0.2s',
+          '&:hover': {
+            transform: isMobile ? 'none' : 'translateX(4px)',
+            boxShadow: 4,
+            borderColor: alpha('#7C3AED', 0.5),
+          },
+          '&:active': {
+            cursor: isMobile ? 'pointer' : 'grabbing',
+          },
+        }}
+        onClick={() => setSelectedStrip(strip)}
+        onDoubleClick={() => onSceneSelect?.(strip.sceneId)}
+      >
+        <CardContent sx={{ 
+          py: responsive.cardPadding.y, 
+          px: responsive.cardPadding.x, 
+          '&:last-child': { pb: responsive.cardPadding.y } 
+        }}>
+          {/* Header row */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            flexWrap: { xs: 'wrap', sm: 'nowrap' },
+            gap: { xs: 0.5, sm: 1 },
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1 } }}>
+              <Checkbox
+                size="small"
+                checked={selectedStrips.has(strip.id)}
+                onChange={() => toggleStripSelection(strip.id)}
+                sx={{ color: colorConfig.textColor, '&.Mui-checked': { color: colorConfig.textColor } }}
+              />
+              {!isMobile && <DragIcon sx={{ opacity: 0.5, fontSize: responsive.iconSize }} />}
+              <Typography 
+                variant="subtitle1" 
+                fontWeight="bold"
+                sx={{ fontSize: responsive.fontSize.subtitle }}
+              >
+                {responsive.compactMode ? `S${strip.sceneNumber}` : `Scene ${strip.sceneNumber}`}
+              </Typography>
+              <Chip 
+                label={responsive.compactMode ? STATUS_CONFIG[strip.status].label.charAt(0) : STATUS_CONFIG[strip.status].label}
+                size="small"
+                color={STATUS_CONFIG[strip.status].color}
+                sx={{ 
+                  height: responsive.chipHeight, 
+                  fontSize: responsive.fontSize.caption,
+                  minWidth: responsive.compactMode ? 24 : 'auto',
+                }}
+              />
+            </Box>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: { xs: 0.5, sm: 1 },
+              ml: { xs: 'auto', sm: 0 },
+            }}>
+              <Tooltip title={`${strip.pages} sider`}>
+                <Chip 
+                  label={`${strip.pages}p`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ 
+                    height: responsive.chipHeight,
+                    fontSize: responsive.fontSize.caption,
+                    color: colorConfig.textColor,
+                    borderColor: alpha(colorConfig.textColor, 0.5),
+                    '& .MuiChip-label': { color: colorConfig.textColor },
+                  }}
+                />
+              </Tooltip>
+              {!responsive.compactMode && (
+                <Tooltip title={formatTime(strip.estimatedTime)}>
+                  <Chip 
+                    icon={<ScheduleIcon sx={{ fontSize: responsive.iconSize - 4, color: colorConfig.textColor }} />}
+                    label={formatTime(strip.estimatedTime)}
+                    size="small"
+                    variant="outlined"
+                    sx={{ 
+                      height: responsive.chipHeight,
+                      fontSize: responsive.fontSize.caption,
+                      color: colorConfig.textColor,
+                      borderColor: alpha(colorConfig.textColor, 0.5),
+                      '& .MuiChip-label': { color: colorConfig.textColor },
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
+          </Box>
+          
+          {/* Location & Cast row */}
+          <Box sx={{ 
+            mt: responsive.spacing, 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: { xs: 1, sm: 2 },
+            flexWrap: { xs: 'wrap', md: 'nowrap' },
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+              <PlaceIcon sx={{ opacity: 0.7, fontSize: responsive.iconSize, color: colorConfig.textColor }} />
+              <Typography 
+                variant="body2" 
+                noWrap 
+                sx={{ 
+                  maxWidth: { xs: 120, sm: 150, md: 200, lg: 250, xl: 300 },
+                  fontSize: responsive.fontSize.body,
+                  color: colorConfig.textColor,
+                }}
+              >
+                {strip.location}
+              </Typography>
+            </Box>
+            <Box 
+              className={`cast-chips ${!printOptions.castInfo ? 'hide-in-print' : ''}`}
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 0.5, 
+                flexWrap: 'wrap',
+                flex: { xs: '1 0 100%', sm: 'unset' },
+              }}
+            >
+              <PersonIcon sx={{ opacity: 0.7, fontSize: responsive.iconSize, color: colorConfig.textColor }} />
+              {strip.cast.slice(0, responsive.maxCastVisible).map((char, idx) => (
+                <Chip 
+                  key={idx}
+                  label={char}
+                  size="small"
+                  sx={{ 
+                    height: responsive.chipHeight - 4, 
+                    fontSize: responsive.fontSize.caption,
+                    bgcolor: alpha(colorConfig.textColor, 0.15),
+                    color: colorConfig.textColor,
+                    '& .MuiChip-label': { color: colorConfig.textColor },
+                  }}
+                />
+              ))}
+              {strip.cast.length > responsive.maxCastVisible && (
+                <Chip 
+                  label={`+${strip.cast.length - responsive.maxCastVisible}`}
+                  size="small"
+                  sx={{ 
+                    height: responsive.chipHeight - 4, 
+                    fontSize: responsive.fontSize.caption,
+                    bgcolor: alpha(colorConfig.textColor, 0.15),
+                    color: colorConfig.textColor,
+                    '& .MuiChip-label': { color: colorConfig.textColor },
+                  }}
+                />
+              )}
+            </Box>
+          </Box>
+          
+          {strip.notes && !responsive.compactMode && (
+            <Typography 
+              variant="caption" 
+              className={`notes-text ${!printOptions.notes ? 'hide-in-print' : ''}`}
+              sx={{ 
+                display: 'block', 
+                mt: responsive.spacing, 
+                fontStyle: 'italic',
+                opacity: 0.85,
+                fontSize: responsive.fontSize.caption,
+                color: colorConfig.textColor,
+              }}
+            >
+              <NotesIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle', color: colorConfig.textColor }} /> {strip.notes}
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // Render day group - RESPONSIVE
+  const renderDayGroup = (dayData: StripsByDay) => {
+    const isExpanded = expandedDays.has(dayData.dayId);
+    const isUnassigned = dayData.dayId === null;
+    const sortedStrips = getSortedStrips(dayData.strips);
+    
+    // Determine print classes based on options
+    const printClass = isUnassigned 
+      ? `shooting-day-group print-unassigned ${!printOptions.unassignedScenes ? 'hide-in-print' : ''}`
+      : `shooting-day-group ${!printOptions.scheduledDays ? 'hide-in-print' : ''}`;
+    
+    return (
+      <Paper
+        key={dayData.dayId || 'unassigned'}
+        className={printClass}
+        sx={{ 
+          mb: { xs: 1.5, sm: 2, md: 2 }, 
+          overflow: 'hidden',
+          border: isUnassigned ? '2px dashed rgba(124, 58, 237, 0.3)' : '1px solid',
+          borderColor: isUnassigned ? 'transparent' : 'divider',
+          borderRadius: { xs: 2, sm: 2.5, md: 3 },
+          bgcolor: 'background.paper',
+        }}
+        onDragOver={!isMobile ? handleDragOver : undefined}
+        onDrop={!isMobile ? (e) => handleDrop(e, dayData.dayId) : undefined}
+      >
+        {/* Day Header */}
+        <Box
+          sx={{
+            p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 },
+            bgcolor: isUnassigned ? alpha('#7C3AED', 0.05) : '#7C3AED',
+            color: isUnassigned ? 'text.primary' : '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            flexWrap: { xs: 'wrap', md: 'nowrap' },
+            gap: { xs: 1, sm: 1.5, md: 2 },
+          }}
+          onClick={() => handleToggleDay(dayData.dayId)}
+        >
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: { xs: 1, sm: 1.5, md: 2 },
+            flex: { xs: '1 0 100%', md: 'unset' },
+          }}>
+            {isExpanded ? 
+              <ExpandLessIcon sx={{ fontSize: responsive.iconSize }} /> : 
+              <ExpandMoreIcon sx={{ fontSize: responsive.iconSize }} />
+            }
+            <Typography 
+              variant="h6" 
+              fontWeight="bold"
+              sx={{ fontSize: responsive.fontSize.title }}
+            >
+              {isUnassigned ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <DescriptionIcon sx={{ fontSize: responsive.iconSize }} />
+                  {isMobile ? 'Uplanlagt' : 'Ikke planlagt'}
+                </Box>
+              ) : `Dag ${dayData.dayNumber}`}
+            </Typography>
+            {!isUnassigned && !isMobile && (
+              <>
+                <Chip 
+                  label={new Date(dayData.date!).toLocaleDateString('nb-NO', { 
+                    weekday: tier !== 'xs' ? 'short' : undefined, 
+                    day: 'numeric', 
+                    month: 'short' 
+                  })}
+                  size="small"
+                  sx={{ 
+                    bgcolor: 'rgba(255,255,255,0.2)', 
+                    color: 'inherit',
+                    height: responsive.chipHeight,
+                    fontSize: responsive.fontSize.caption,
+                  }}
+                />
+                <Chip 
+                  icon={<PlaceIcon sx={{ fontSize: responsive.fontSize.caption }} />}
+                  label={isMobile && dayData.location ? (dayData.location.substring(0, 15) + (dayData.location.length > 15 ? '...' : '')) : (dayData.location || '')}
+                  size="small"
+                  sx={{ 
+                    bgcolor: 'rgba(255,255,255,0.2)', 
+                    color: 'inherit',
+                    height: responsive.chipHeight,
+                    fontSize: responsive.fontSize.caption,
+                  }}
+                />
+              </>
+            )}
+          </Box>
+          
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: { xs: 1, sm: 1.5, md: 2 },
+            flex: { xs: '1 0 100%', md: 'unset' },
+            justifyContent: { xs: 'space-between', md: 'flex-end' },
+          }}>
+            <Typography 
+              variant="body2"
+              sx={{ fontSize: responsive.fontSize.body }}
+            >
+              {dayData.strips.length} {!isMobile && 'scener'} | {dayData.totalPages}p | {formatTime(dayData.totalTime)}
+            </Typography>
+            {!isUnassigned && onGenerateCallSheet && responsive.showCallSheetButton && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGenerateCallSheet(dayData.dayId!);
+                }}
+                sx={{ 
+                  color: 'inherit', 
+                  borderColor: 'rgba(255,255,255,0.5)',
+                  fontSize: responsive.fontSize.caption,
+                  py: { xs: 0.5, sm: 0.75, md: 1 },
+                  px: { xs: 1, sm: 1.5, md: 2 },
+                  '&:hover': {
+                    borderColor: 'inherit',
+                    bgcolor: 'rgba(255,255,255,0.1)',
+                  }
+                }}
+              >
+                {isMobile ? <DescriptionIcon sx={{ fontSize: 18 }} /> : 'Call Sheet'}
+              </Button>
+            )}
+          </Box>
+        </Box>
+        
+        {/* Strips */}
+        <Collapse in={isExpanded}>
+          <Box sx={{ 
+            p: compactView ? { xs: 0.75, sm: 1 } : { xs: 1, sm: 1.5, md: 2 }, 
+            bgcolor: alpha(theme.palette.background.default, 0.5), 
+            minHeight: { xs: 40, sm: 50 },
+          }}>
+            {sortedStrips.length > 0 ? (
+              sortedStrips.map(strip => (
+                <Fragment key={`${strip.id}-${compactView ? 'compact' : 'full'}`}>
+                  {renderStrip(strip)}
+                </Fragment>
+              ))
+            ) : (
+              <Typography 
+                variant="body2" 
+                color="text.secondary" 
+                sx={{ 
+                  textAlign: 'center', 
+                  py: { xs: 2, sm: 3 },
+                  fontSize: responsive.fontSize.body,
+                }}
+              >
+                {isUnassigned 
+                  ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                      <CelebrationIcon sx={{ fontSize: 18, color: 'success.main' }} />
+                      {isMobile ? 'Alt planlagt!' : 'Alle scener er planlagt!'}
+                    </Box>
+                  )
+                  : (isMobile ? 'Dra scener hit...' : 'Dra scener hit for å planlegge...')}
+              </Typography>
+            )}
+          </Box>
+        </Collapse>
+      </Paper>
+    );
+  };
+
+  // Render location group (bird's-eye view by location)
+  const renderLocationGroup = (locGroup: LocationGroup) => {
+    const isExpanded = expandedLocations.has(locGroup.location);
+    const sortedStrips = getSortedStrips(locGroup.strips);
+    const intExtBreakdown = {
+      int: locGroup.strips.filter(s => s.color.includes('fff9') || s.color.includes('9c27') || s.color.includes('4a14')).length,
+      ext: locGroup.strips.filter(s => !s.color.includes('fff9') && !s.color.includes('9c27') && !s.color.includes('4a14')).length,
+    };
+    
+    return (
+      <Paper
+        key={locGroup.location}
+        sx={{ 
+          mb: { xs: 1.5, sm: 2 }, 
+          overflow: 'hidden',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: { xs: 2, sm: 2.5, md: 3 },
+          bgcolor: 'background.paper',
+        }}
+      >
+        {/* Location Header */}
+        <Box
+          sx={{
+            p: { xs: 1.5, sm: 2, md: 2.5 },
+            bgcolor: alpha('#10B981', 0.9),
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            flexWrap: { xs: 'wrap', md: 'nowrap' },
+            gap: { xs: 1, sm: 1.5, md: 2 },
+          }}
+          onClick={() => handleToggleLocation(locGroup.location)}
+        >
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: { xs: 1, sm: 1.5, md: 2 },
+            flex: { xs: '1 0 100%', md: 'unset' },
+          }}>
+            {isExpanded ? 
+              <ExpandLessIcon sx={{ fontSize: responsive.iconSize }} /> : 
+              <ExpandMoreIcon sx={{ fontSize: responsive.iconSize }} />
+            }
+            <PlaceIcon sx={{ fontSize: responsive.iconSize }} />
+            <Typography 
+              variant="h6" 
+              fontWeight="bold"
+              sx={{ fontSize: responsive.fontSize.title }}
+            >
+              {locGroup.location}
+            </Typography>
+          </Box>
+          
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: { xs: 0.5, sm: 1, md: 1.5 },
+            flexWrap: 'wrap',
+          }}>
+            <Chip 
+              label={`${locGroup.strips.length} scener`}
+              size="small"
+              sx={{ 
+                bgcolor: 'rgba(255,255,255,0.2)', 
+                color: 'inherit',
+                height: responsive.chipHeight,
+                fontSize: responsive.fontSize.caption,
+              }}
+            />
+            <Chip 
+              label={`${locGroup.totalPages}p`}
+              size="small"
+              sx={{ 
+                bgcolor: 'rgba(255,255,255,0.2)', 
+                color: 'inherit',
+                height: responsive.chipHeight,
+                fontSize: responsive.fontSize.caption,
+              }}
+            />
+            <Chip 
+              label={formatTime(locGroup.totalTime)}
+              size="small"
+              sx={{ 
+                bgcolor: 'rgba(255,255,255,0.2)', 
+                color: 'inherit',
+                height: responsive.chipHeight,
+                fontSize: responsive.fontSize.caption,
+              }}
+            />
+            {!isMobile && (
+              <>
+                <Chip 
+                  icon={<IntIcon sx={{ fontSize: 12, color: 'inherit' }} />}
+                  label={`INT: ${intExtBreakdown.int}`}
+                  size="small"
+                  sx={{ 
+                    bgcolor: 'rgba(255,255,255,0.15)', 
+                    color: 'inherit',
+                    height: responsive.chipHeight,
+                    fontSize: responsive.fontSize.caption,
+                  }}
+                />
+                <Chip 
+                  icon={<ExtIcon sx={{ fontSize: 12, color: 'inherit' }} />}
+                  label={`EXT: ${intExtBreakdown.ext}`}
+                  size="small"
+                  sx={{ 
+                    bgcolor: 'rgba(255,255,255,0.15)', 
+                    color: 'inherit',
+                    height: responsive.chipHeight,
+                    fontSize: responsive.fontSize.caption,
+                  }}
+                />
+              </>
+            )}
+            {locGroup.dayNumbers.length > 0 && (
+              <Chip 
+                icon={<CalendarIcon sx={{ fontSize: 12, color: 'inherit' }} />}
+                label={`Dag ${locGroup.dayNumbers.sort((a, b) => a - b).join(', ')}`}
+                size="small"
+                sx={{ 
+                  bgcolor: 'rgba(255,255,255,0.2)', 
+                  color: 'inherit',
+                  height: responsive.chipHeight,
+                  fontSize: responsive.fontSize.caption,
+                }}
+              />
+            )}
+          </Box>
+        </Box>
+        
+        {/* Cast summary */}
+        {!isMobile && locGroup.uniqueCast.length > 0 && (
+          <Box sx={{ 
+            px: 2, 
+            py: 1, 
+            bgcolor: alpha('#10B981', 0.05),
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            flexWrap: 'wrap',
+          }}>
+            <PersonIcon sx={{ fontSize: 16, opacity: 0.7 }} />
+            <Typography variant="caption" sx={{ opacity: 0.8, mr: 1 }}>
+              Skuespillere:
+            </Typography>
+            {locGroup.uniqueCast.slice(0, 6).map((name, idx) => (
+              <Chip 
+                key={idx}
+                label={name}
+                size="small"
+                sx={{ height: 20, fontSize: '0.65rem' }}
+              />
+            ))}
+            {locGroup.uniqueCast.length > 6 && (
+              <Chip 
+                label={`+${locGroup.uniqueCast.length - 6}`}
+                size="small"
+                sx={{ height: 20, fontSize: '0.65rem' }}
+              />
+            )}
+          </Box>
+        )}
+        
+        {/* Strips */}
+        <Collapse in={isExpanded}>
+          <Box sx={{ 
+            p: compactView ? { xs: 0.75, sm: 1 } : { xs: 1, sm: 1.5, md: 2 }, 
+            bgcolor: alpha(theme.palette.background.default, 0.5), 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.5,
+          }}>
+            {sortedStrips.map(strip => (
+              <Fragment key={`${strip.id}-${compactView ? 'compact' : 'full'}`}>
+                {compactView ? renderCompactStrip(strip) : renderStrip(strip)}
+              </Fragment>
+            ))}
+          </Box>
+        </Collapse>
+      </Paper>
+    );
+  };
+
+  // Render optimization suggestion card
+  const renderOptimizationCard = (suggestion: OptimizationSuggestion) => {
+    const priorityColors = {
+      high: '#EF4444',
+      medium: '#F59E0B',
+      low: '#10B981',
+    };
+    const priorityLabels = {
+      high: 'Høy',
+      medium: 'Middels',
+      low: 'Lav',
+    };
+    const typeIcons = {
+      location: <PlaceIcon />,
+      cast: <PersonIcon />,
+      transport: <TransportIcon />,
+      time: <ScheduleIcon />,
+    };
+    
+    return (
+      <Paper
+        key={suggestion.id}
+        sx={{ 
+          p: 2, 
+          mb: 1.5,
+          borderLeft: 4,
+          borderColor: priorityColors[suggestion.priority],
+          borderRadius: 2,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+          <Box sx={{ 
+            p: 1, 
+            borderRadius: 1, 
+            bgcolor: alpha(priorityColors[suggestion.priority], 0.1),
+            color: priorityColors[suggestion.priority],
+          }}>
+            {typeIcons[suggestion.type]}
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+              <Typography variant="subtitle2" fontWeight="bold">
+                {suggestion.title}
+              </Typography>
+              <Chip 
+                label={priorityLabels[suggestion.priority]}
+                size="small"
+                sx={{ 
+                  height: 20, 
+                  fontSize: '0.65rem',
+                  bgcolor: alpha(priorityColors[suggestion.priority], 0.1),
+                  color: priorityColors[suggestion.priority],
+                }}
+              />
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {suggestion.description}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Chip 
+                icon={<SavingsIcon sx={{ fontSize: 14 }} />}
+                label={suggestion.potentialSaving}
+                size="small"
+                color="success"
+                variant="outlined"
+                sx={{ height: 22, fontSize: '0.7rem' }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Scener: {suggestion.affectedScenes.join(', ')}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </Paper>
+    );
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: responsive.contentPadding }}>
+        <LinearProgress />
+        <Typography sx={{ mt: 2, textAlign: 'center', fontSize: responsive.fontSize.body }}>
+          Laster stripboard...
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box className="stripboard-print" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header - RESPONSIVE with View Modes */}
+      <Box
+        sx={{
+          p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 },
+          borderBottom: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: { xs: 'wrap', md: 'nowrap' },
+          gap: { xs: 1, sm: 1.5, md: 2 },
+          bgcolor: alpha('#7C3AED', 0.02),
+        }}
+      >
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: { xs: 1, sm: 1.5, md: 2 },
+          flex: { xs: '1 0 100%', sm: 'unset' },
+          justifyContent: { xs: 'space-between', sm: 'flex-start' },
+        }}>
+          <Typography 
+            variant="h6"
+            sx={{ 
+              fontSize: responsive.fontSize.title,
+              fontWeight: 700,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TheatersIcon sx={{ fontSize: responsive.iconSize, color: '#7C3AED' }} />
+              {isMobile ? 'Stripboard' : `Stripboard - ${projectTitle}`}
+            </Box>
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <Chip 
+              label={`${stats.shot}/${stats.total}${!isMobile ? ' skutt' : ''}`}
+              color={stats.shot === stats.total ? 'success' : 'default'}
+              size="small"
+              sx={{ 
+                height: responsive.chipHeight,
+                fontSize: responsive.fontSize.caption,
+              }}
+            />
+            <Badge badgeContent={selectedStripCount} color="secondary" overlap="circular">
+              <Chip
+                icon={<PlaylistAddCheckIcon sx={{ fontSize: 14 }} />}
+                label={isMobile ? 'Valgt' : 'Valgte scener'}
+                size="small"
+                sx={{ height: responsive.chipHeight, fontSize: responsive.fontSize.caption }}
+              />
+            </Badge>
+            <Badge badgeContent={cast.length} color="info" overlap="circular">
+              <Chip
+                icon={<GroupsIcon sx={{ fontSize: 14 }} />}
+                label={isMobile ? 'Cast' : 'Skuespillere'}
+                size="small"
+                sx={{ height: responsive.chipHeight, fontSize: responsive.fontSize.caption }}
+              />
+            </Badge>
+            <Chip
+              icon={is4K ? <SpeedIcon sx={{ fontSize: 14 }} /> : isDesktop ? <TimelineIcon sx={{ fontSize: 14 }} /> : isTablet ? <DayIcon sx={{ fontSize: 14 }} /> : <NightIcon sx={{ fontSize: 14 }} />}
+              label={tier.toUpperCase()}
+              size="small"
+              color={is4K ? 'success' : isDesktop ? 'primary' : 'default'}
+              sx={{ height: responsive.chipHeight, fontSize: responsive.fontSize.caption }}
+            />
+            {stats.optimizationCount > 0 && (
+              <Chip 
+                icon={<TrendingUpIcon sx={{ fontSize: 14 }} />}
+                label={`${stats.optimizationCount} tips`}
+                color="warning"
+                size="small"
+                onClick={() => setShowOptimizationPanel(!showOptimizationPanel)}
+                sx={{ 
+                  height: responsive.chipHeight,
+                  fontSize: responsive.fontSize.caption,
+                  cursor: 'pointer',
+                }}
+              />
+            )}
+          </Box>
+        </Box>
+        
+        {/* View Mode Toggles */}
+        <Box sx={{ 
+          display: 'flex', 
+          gap: { xs: 0.5, sm: 1 },
+          alignItems: 'center',
+        }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={{ xs: 1, sm: 1.5 }}
+            alignItems="center"
+            sx={{ flexWrap: 'wrap' }}
+          >
+            {!isMobile && (
+              <Tabs
+                value={activeTab}
+                onChange={(_, v) => {
+                  setActiveTab(v as number);
+                  const next = v === 0 ? 'board' : v === 1 ? 'location' : v === 2 ? 'timeline' : 'cast';
+                  setViewMode(next as ViewMode);
+                }}
+                variant="scrollable"
+                scrollButtons={false}
+              >
+                <Tab icon={<BoardViewIcon />} label="Board" />
+                <Tab icon={<ListViewIcon />} label="Lokasjon" />
+                <Tab icon={<TimelineIcon />} label="Timeline" />
+                <Tab icon={<GroupsIcon />} label="Cast" />
+              </Tabs>
+            )}
+            {!isMobile && (
+              <Box sx={{ 
+                display: 'flex', 
+                bgcolor: alpha('#7C3AED', 0.1),
+                borderRadius: 2,
+                p: 0.5,
+              }}>
+                <Tooltip title="Dag-visning">
+                  <IconButton 
+                    size="small"
+                    onClick={() => setViewMode('board')}
+                    sx={{ 
+                      bgcolor: viewMode === 'board' ? '#7C3AED' : 'transparent',
+                      color: viewMode === 'board' ? '#fff' : 'inherit',
+                      '&:hover': { bgcolor: viewMode === 'board' ? '#6D28D9' : alpha('#7C3AED', 0.2) },
+                    }}
+                  >
+                    <CalendarIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Lokasjons-visning (fugleperspektiv)">
+                  <IconButton 
+                    size="small"
+                    onClick={() => setViewMode('location')}
+                    sx={{ 
+                      bgcolor: viewMode === 'location' ? '#10B981' : 'transparent',
+                      color: viewMode === 'location' ? '#fff' : 'inherit',
+                      '&:hover': { bgcolor: viewMode === 'location' ? '#059669' : alpha('#10B981', 0.2) },
+                    }}
+                  >
+                    <PlaceIcon sx={{ fontSize: responsive.iconSize - 4 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Kompakt oversikt">
+                  <IconButton 
+                    size="small"
+                    onClick={() => setCompactView(!compactView)}
+                    sx={{ 
+                      bgcolor: compactView ? '#F59E0B' : 'transparent',
+                      color: compactView ? '#fff' : 'inherit',
+                      '&:hover': { bgcolor: compactView ? '#D97706' : alpha('#F59E0B', 0.2) },
+                    }}
+                  >
+                    {compactView ? <ZoomInMapIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : <ZoomOutMapIcon sx={{ fontSize: responsive.iconSize - 4 }} />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            )}
+
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: { xs: 110, sm: 140, md: 150 } }}>
+                <InputLabel sx={{ fontSize: responsive.fontSize.caption }}>Filter</InputLabel>
+                <Select
+                  value={filterStatus}
+                  label="Filter"
+                  onChange={(e) => setFilterStatus(e.target.value as StripboardStrip['status'] | 'all')}
+                  sx={{ fontSize: responsive.fontSize.body }}
+                  MenuProps={{ sx: { zIndex: 1400 } }}
+                >
+                  <MenuItem value="all">{isMobile ? 'Alle' : 'Alle scener'}</MenuItem>
+                  <MenuItem value="not-scheduled">{isMobile ? 'Uplanlagt' : 'Ikke planlagt'}</MenuItem>
+                  <MenuItem value="scheduled">Planlagt</MenuItem>
+                  <MenuItem value="shot">Skutt</MenuItem>
+                  <MenuItem value="postponed">Utsatt</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 150, md: 160 } }}>
+                <InputLabel sx={{ fontSize: responsive.fontSize.caption }}>Lokasjon</InputLabel>
+                <Select
+                  value={filterLocation}
+                  label="Lokasjon"
+                  onChange={(e) => setFilterLocation(e.target.value)}
+                  sx={{ fontSize: responsive.fontSize.body }}
+                  MenuProps={{ sx: { zIndex: 1400 } }}
+                >
+                  <MenuItem value="all">Alle lokasjoner</MenuItem>
+                  {uniqueLocations.map(loc => (
+                    <MenuItem key={loc} value={loc}>{loc}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 140 } }}>
+                <InputLabel sx={{ fontSize: responsive.fontSize.caption }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <SortIcon sx={{ fontSize: 14 }} /> Sorter
+                  </Box>
+                </InputLabel>
+                <Select
+                  value={groupBy}
+                  label="Sorter"
+                  onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                  sx={{ fontSize: responsive.fontSize.body }}
+                  MenuProps={{ sx: { zIndex: 1400 } }}
+                >
+                  <MenuItem value="day">Dag</MenuItem>
+                  <MenuItem value="location">Lokasjon</MenuItem>
+                  <MenuItem value="cast">Cast</MenuItem>
+                  <MenuItem value="status">Status</MenuItem>
+                  <MenuItem value="intExt">INT/EXT</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Tooltip title={sortDirection === 'asc' ? 'Sorter A-Å' : 'Sorter Å-A'}>
+                <IconButton size="small" onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                  <SwapVertIcon sx={{ fontSize: responsive.iconSize - 2 }} />
+                </IconButton>
+              </Tooltip>
+
+              {!isMobile && (
+                <Chip
+                  icon={<CompareArrowsIcon sx={{ fontSize: 16 }} />}
+                  label={`Grupper: ${groupByLabel}`}
+                  size="small"
+                  sx={{ height: responsive.chipHeight, fontSize: responsive.fontSize.caption }}
+                />
+              )}
+
+              <TextField
+                size="small"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Sok scene eller lokasjon"
+                sx={{ minWidth: { xs: 160, sm: 200, md: 240 } }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <FilterIcon sx={{ fontSize: 16 }} />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Stack>
+
+            {isMobile ? (
+              <>
+                <IconButton onClick={handleMobileMenuOpen} size="small">
+                  <MoreIcon />
+                </IconButton>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json"
+                  onChange={handleImportJSON}
+                  style={{ display: 'none' }}
+                />
+              </>
+            ) : (
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Tooltip title="Ny scene">
+                  <IconButton onClick={handleAddStrip} size="small">
+                    <AddIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={selectedStripCount > 0 ? 'Flytt valgte scener' : 'Velg en scene for flytting'}>
+                  <span>
+                    <Badge badgeContent={selectedStripCount} color="secondary" overlap="circular">
+                      <IconButton onClick={handleOpenAssignDialog} size="small" disabled={selectedStripCount === 0}>
+                        <EventIcon sx={{ fontSize: responsive.iconSize }} />
+                      </IconButton>
+                    </Badge>
+                  </span>
+                </Tooltip>
+                <Tooltip title={selectedStripCount > 0 ? 'Slett valgte scener' : 'Velg scener for sletting'}>
+                  <span>
+                    <Badge badgeContent={selectedStripCount} color="error" overlap="circular">
+                      <IconButton onClick={handleDeleteSelected} size="small" disabled={selectedStripCount === 0}>
+                        <DeleteIcon sx={{ fontSize: responsive.iconSize }} />
+                      </IconButton>
+                    </Badge>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Eksporter JSON">
+                  <IconButton onClick={handleExportJSON} size="small">
+                    <DownloadIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Importer JSON">
+                  <IconButton onClick={() => importInputRef.current?.click()} size="small">
+                    <UploadIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Oppdater data">
+                  <IconButton onClick={handleRefreshData} size="small">
+                    <AutorenewIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={showOptimizationPanel ? 'Skjul tips' : 'Vis tips'}>
+                  <IconButton
+                    onClick={() => setShowOptimizationPanel(prev => !prev)}
+                    size="small"
+                  >
+                    {showOptimizationPanel ? <VisibilityOffIcon sx={{ fontSize: responsive.iconSize }} /> : <VisibilityIcon sx={{ fontSize: responsive.iconSize }} />}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Utskriftsvalg">
+                  <IconButton onClick={handlePrintStripboard} size="small">
+                    <SettingsIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Skriv ut">
+                  <IconButton onClick={handlePrintStripboard} size="small">
+                    <PrintIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Eksporter PDF">
+                  <IconButton onClick={handleExportPDF} size="small">
+                    <DownloadIcon sx={{ fontSize: responsive.iconSize }} />
+                  </IconButton>
+                </Tooltip>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json"
+                  onChange={handleImportJSON}
+                  style={{ display: 'none' }}
+                />
+              </Stack>
+            )}
+          </Stack>
+        </Box>
+      </Box>
+
+      <Menu
+        anchorEl={mobileMenuAnchor}
+        open={Boolean(mobileMenuAnchor)}
+        onClose={handleMobileMenuClose}
+        PaperProps={{
+          sx: {
+            minWidth: 200,
+            borderRadius: 2,
+          }
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            handleAddStrip();
+            handleMobileMenuClose();
+          }}
+        >
+          <AddIcon sx={{ mr: 1 }} /> Ny scene
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleOpenAssignDialog();
+            handleMobileMenuClose();
+          }}
+          disabled={selectedStripCount === 0}
+        >
+          <EventIcon sx={{ mr: 1 }} /> Flytt valgte
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleDeleteSelected();
+            handleMobileMenuClose();
+          }}
+          disabled={selectedStripCount === 0}
+        >
+          <DeleteIcon sx={{ mr: 1 }} /> Slett valgte
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            handleExportJSON();
+            handleMobileMenuClose();
+          }}
+        >
+          <DownloadIcon sx={{ mr: 1 }} /> Eksporter JSON
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            importInputRef.current?.click();
+            handleMobileMenuClose();
+          }}
+        >
+          <UploadIcon sx={{ mr: 1 }} /> Importer JSON
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handlePrintStripboard();
+            handleMobileMenuClose();
+          }}
+        >
+          <PrintIcon sx={{ mr: 1 }} /> Skriv ut
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleExportPDF();
+            handleMobileMenuClose();
+          }}
+        >
+          <DownloadIcon sx={{ mr: 1 }} /> Eksporter PDF
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setShowOptimizeDialog(true);
+            handleMobileMenuClose();
+          }}
+        >
+          <TrendingUpIcon sx={{ mr: 1 }} /> Optimaliseringsforslag
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleRefreshData();
+            handleMobileMenuClose();
+          }}
+        >
+          <AutorenewIcon sx={{ mr: 1 }} /> Oppdater data
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handlePrintStripboard();
+            handleMobileMenuClose();
+          }}
+        >
+          <SettingsIcon sx={{ mr: 1 }} /> Utskriftsvalg
+        </MenuItem>
+      </Menu>
+
+      {/* Stats Bar - RESPONSIVE */}
+      <Box 
+        className={`print-stats ${!printOptions.stats ? 'hide-in-print' : ''}`}
+        sx={{ 
+          p: { xs: 1, sm: 1.5, md: 2 }, 
+          bgcolor: alpha('#7C3AED', 0.03), 
+          borderBottom: 1, 
+          borderColor: 'divider',
+        }}
+      >
+        <Grid container spacing={{ xs: 1, sm: 1.5, md: 2 }}>
+          <Grid size={{ xs: 3, sm: 3, md: 2 }}>
+            <Box textAlign="center">
+              <Typography 
+                variant="h5" 
+                color="primary.main"
+                sx={{ fontSize: responsive.fontSize.stats, fontWeight: 700 }}
+              >
+                {stats.total}
+              </Typography>
+              <Typography 
+                variant="caption"
+                sx={{ fontSize: responsive.fontSize.caption, display: 'block' }}
+              >
+                {isMobile ? 'Totalt' : 'Totalt scener'}
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid size={{ xs: 3, sm: 3, md: 2 }}>
+            <Box textAlign="center">
+              <Typography 
+                variant="h5" 
+                color="success.main"
+                sx={{ fontSize: responsive.fontSize.stats, fontWeight: 700 }}
+              >
+                {stats.shot}
+              </Typography>
+              <Typography 
+                variant="caption"
+                sx={{ fontSize: responsive.fontSize.caption, display: 'block' }}
+              >
+                Skutt
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid size={{ xs: 3, sm: 3, md: 2 }}>
+            <Box textAlign="center">
+              <Typography 
+                variant="h5" 
+                color="info.main"
+                sx={{ fontSize: responsive.fontSize.stats, fontWeight: 700 }}
+              >
+                {stats.scheduled}
+              </Typography>
+              <Typography 
+                variant="caption"
+                sx={{ fontSize: responsive.fontSize.caption, display: 'block' }}
+              >
+                Planlagt
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid size={{ xs: 3, sm: 3, md: 2 }}>
+            <Box textAlign="center">
+              <Typography 
+                variant="h5" 
+                color="warning.main"
+                sx={{ fontSize: responsive.fontSize.stats, fontWeight: 700 }}
+              >
+                {stats.notScheduled}
+              </Typography>
+              <Typography 
+                variant="caption"
+                sx={{ fontSize: responsive.fontSize.caption, display: 'block' }}
+              >
+                {isMobile ? 'Venter' : 'Ikke planlagt'}
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 12, md: 4 }}>
+            <Box>
+              <Typography 
+                variant="caption"
+                sx={{ fontSize: responsive.fontSize.caption }}
+              >
+                Sider skutt
+              </Typography>
+              <LinearProgress 
+                variant="determinate" 
+                value={(stats.pagesShot / stats.totalPages) * 100}
+                sx={{ 
+                  height: { xs: 6, sm: 7, md: 8 }, 
+                  borderRadius: 4, 
+                  mt: 0.5,
+                  bgcolor: alpha('#7C3AED', 0.1),
+                  '& .MuiLinearProgress-bar': {
+                    bgcolor: '#7C3AED',
+                  },
+                }}
+              />
+              <Typography 
+                variant="caption" 
+                color="text.secondary"
+                sx={{ fontSize: responsive.fontSize.caption }}
+              >
+                {stats.pagesShot.toFixed(1)} / {stats.totalPages} {!isMobile && 'sider'} ({Math.round((stats.pagesShot / stats.totalPages) * 100)}%)
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </Box>
+
+      {/* Color Legend - RESPONSIVE */}
+      <Box 
+        className={`print-legend ${!printOptions.legend ? 'hide-in-print' : ''}`}
+        sx={{ 
+          px: { xs: 1, sm: 1.5, md: 2 }, 
+          py: { xs: 0.75, sm: 1 }, 
+          display: 'flex', 
+          gap: { xs: 0.5, sm: 0.75, md: 1 }, 
+          flexWrap: 'wrap',
+          borderBottom: 1,
+          borderColor: 'divider',
+          justifyContent: { xs: 'center', sm: 'flex-start' },
+          alignItems: 'center',
+        }}
+      >
+        {/* View mode info */}
+        {viewMode === 'location' && (
+          <Chip
+            icon={<PlaceIcon sx={{ fontSize: 14 }} />}
+            label="Lokasjons-gruppering"
+            size="small"
+            color="success"
+            sx={{ mr: 1 }}
+          />
+        )}
+        
+        {Object.entries(STRIP_COLORS).map(([key, config]) => (
+          <Chip
+            key={key}
+            label={responsive.showLegendLabels ? config.label : config.label.split('/')[0]}
+            size="small"
+            sx={{ 
+              bgcolor: config.bg, 
+              color: config.textColor || 'inherit',
+              fontSize: responsive.fontSize.caption,
+              height: responsive.chipHeight - 2,
+            }}
+          />
+        ))}
+        
+        {/* Quick actions */}
+        {!isMobile && (
+          <Box sx={{ ml: 'auto', display: 'flex', gap: 0.5 }}>
+            <Tooltip title="Utvid alle">
+              <IconButton size="small" onClick={handleExpandAll}>
+                <ExpandMoreIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Skjul alle">
+              <IconButton size="small" onClick={handleCollapseAll}>
+                <ExpandLessIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
+      </Box>
+
+      {/* Main Content Area with Optional Optimization Panel */}
+      <Box sx={{ 
+        flex: 1, 
+        display: 'flex',
+        overflow: 'hidden',
+      }}>
+        {/* Optimization Panel (collapsible sidebar) */}
+        {showOptimizationPanel && !isMobile && (
+          <Box sx={{ 
+            width: { md: 320, lg: 360, xl: 400 },
+            borderRight: 1,
+            borderColor: 'divider',
+            overflow: 'auto',
+            bgcolor: alpha('#F59E0B', 0.02),
+          }}>
+            <Box sx={{ 
+              p: 2, 
+              borderBottom: 1, 
+              borderColor: 'divider',
+              bgcolor: alpha('#F59E0B', 0.05),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUpIcon sx={{ color: '#F59E0B' }} />
+                <Typography variant="subtitle1" fontWeight="bold">
+                  Optimaliseringsforslag
+                </Typography>
+              </Box>
+              <IconButton size="small" onClick={() => setShowOptimizationPanel(false)}>
+                <ExpandLessIcon />
+              </IconButton>
+            </Box>
+            <Box sx={{ p: 2 }}>
+              {optimizationSuggestions.length === 0 ? (
+                <Alert severity="success" sx={{ borderRadius: 2 }}>
+                  <Typography variant="body2">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CelebrationIcon sx={{ color: 'success.main' }} />
+                      Ingen optimaliseringer funnet! Planen ser bra ut.
+                    </Box>
+                  </Typography>
+                </Alert>
+              ) : (
+                <>
+                  <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                    <Typography variant="caption">
+                      {optimizationSuggestions.length} forslag kan spare tid og penger ved å gruppere scener bedre.
+                    </Typography>
+                  </Alert>
+                  {optimizationSuggestions.map(suggestion => renderOptimizationCard(suggestion))}
+                </>
+              )}
+            </Box>
+          </Box>
+        )}
+
+        {/* Main Content - RESPONSIVE */}
+        <Box sx={{ 
+          flex: 1, 
+          overflow: 'auto', 
+          p: { xs: 1, sm: 1.5, md: 2 },
+          bgcolor: alpha('#7C3AED', 0.01),
+        }}>
+          {/* Bird's-eye summary when in location mode */}
+          {viewMode === 'location' && !isMobile && (
+            <Paper sx={{ 
+              p: 2, 
+              mb: 2, 
+              bgcolor: alpha('#10B981', 0.03),
+              borderRadius: 3,
+              border: '1px solid',
+              borderColor: alpha('#10B981', 0.2),
+            }}>
+              <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CategoryIcon sx={{ fontSize: 18, color: '#10B981' }} />
+                Fugleperspektiv - Lokasjoner
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box textAlign="center">
+                    <Typography variant="h4" color="#10B981" fontWeight="bold">
+                      {stats.uniqueLocationsCount}
+                    </Typography>
+                    <Typography variant="caption">Lokasjoner</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box textAlign="center">
+                    <Typography variant="h4" color="primary.main" fontWeight="bold">
+                      {stats.total}
+                    </Typography>
+                    <Typography variant="caption">Scener totalt</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box textAlign="center">
+                    <Typography variant="h4" color="info.main" fontWeight="bold">
+                      {stats.uniqueCastCount}
+                    </Typography>
+                    <Typography variant="caption">Skuespillere</Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 6, sm: 3 }}>
+                  <Box textAlign="center">
+                    <Typography variant="h4" color="warning.main" fontWeight="bold">
+                      {formatTime(stats.totalTime)}
+                    </Typography>
+                    <Typography variant="caption">Total spilletid</Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+          
+          {/* Render based on view mode */}
+          {viewMode === 'location' 
+            ? stripsByLocation.map(locGroup => renderLocationGroup(locGroup))
+            : stripsByDay.map(dayData => renderDayGroup(dayData))
+          }
+        </Box>
+      </Box>
+
+      <Dialog
+        open={showOptimizeDialog}
+        onClose={() => setShowOptimizeDialog(false)}
+        fullScreen={isMobile}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{
+          bgcolor: alpha('#F59E0B', 0.08),
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+        }}>
+          <TrendingUpIcon sx={{ color: '#F59E0B' }} /> Optimaliseringsforslag
+        </DialogTitle>
+        <DialogContent sx={{ p: { xs: 2, sm: 3 } }}>
+          {optimizationSuggestions.length === 0 ? (
+            <Alert severity="success" sx={{ borderRadius: 2 }}>
+              <Typography variant="body2">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CelebrationIcon sx={{ color: 'success.main' }} />
+                  Ingen optimaliseringer funnet! Planen ser bra ut.
+                </Box>
+              </Typography>
+            </Alert>
+          ) : (
+            <List>
+              {optimizationSuggestions.map(suggestion => (
+                <ListItem key={suggestion.id} alignItems="flex-start" sx={{ px: 0 }}>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip
+                          size="small"
+                          icon={<SavingsIcon sx={{ fontSize: 14 }} />}
+                          label={suggestion.potentialSaving}
+                          variant="outlined"
+                          color="success"
+                        />
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          {suggestion.title}
+                        </Typography>
+                      </Box>
+                    }
+                    secondary={
+                      <Typography variant="body2" color="text.secondary">
+                        {suggestion.description}
+                      </Typography>
+                    }
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: { xs: 2, sm: 2 } }}>
+          <Button onClick={() => setShowOptimizeDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Print/Export Options Dialog */}
+      <Dialog
+        open={showPrintDialog}
+        onClose={() => setShowPrintDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: { xs: 2, sm: 3 },
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: alpha('#7C3AED', 0.05),
+          borderBottom: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+        }}>
+          <PrintIcon sx={{ color: '#7C3AED' }} />
+          <Box>
+            <Typography variant="h6" fontWeight={600}>
+              Skriv ut / Eksporter
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Velg hva som skal inkluderes i utskriften
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 3 } }}>
+          <FormGroup>
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.header}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, header: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Topptekst med logo</Typography>
+                  <Typography variant="caption" color="text.secondary">Prosjektnavn og The Role Room-branding</Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.stats}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, stats: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Statistikk</Typography>
+                  <Typography variant="caption" color="text.secondary">Totalt antall scener, sider, tid</Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.legend}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, legend: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Fargeforklaring</Typography>
+                  <Typography variant="caption" color="text.secondary">INT/EXT, Dag/Natt fargekoder</Typography>
+                </Box>
+              }
+            />
+            <Divider sx={{ my: 1.5 }} />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.scheduledDays}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, scheduledDays: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Planlagte opptaksdager</Typography>
+                  <Typography variant="caption" color="text.secondary">Dag 1, Dag 2, osv. med scener</Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.unassignedScenes}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, unassignedScenes: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Ikke planlagte scener</Typography>
+                  <Typography variant="caption" color="text.secondary">Scener som ikke er tildelt en dag</Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.castInfo}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, castInfo: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Skuespillere</Typography>
+                  <Typography variant="caption" color="text.secondary">Vis cast på hver scene</Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
+              control={
+                <Checkbox 
+                  checked={printOptions.notes}
+                  onChange={(e) => setPrintOptions(prev => ({ ...prev, notes: e.target.checked }))}
+                  sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#7C3AED' } }}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>Notater</Typography>
+                  <Typography variant="caption" color="text.secondary">Vis notater på scener</Typography>
+                </Box>
+              }
+            />
+          </FormGroup>
+          
+          <Divider sx={{ my: 2 }} />
+          
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Eksporter som fil:
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<TableChartIcon />}
+              onClick={() => {
+                handleExportCSV();
+                setShowPrintDialog(false);
+              }}
+              sx={{ 
+                borderColor: '#10B981', 
+                color: '#10B981',
+                '&:hover': { borderColor: '#059669', bgcolor: alpha('#10B981', 0.05) },
+              }}
+            >
+              CSV (Excel)
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ 
+          p: { xs: 2, sm: 2 },
+          borderTop: 1,
+          borderColor: 'divider',
+          gap: 1,
+        }}>
+          <Button 
+            onClick={() => setShowPrintDialog(false)}
+            sx={{ fontSize: responsive.fontSize.body }}
+          >
+            Avbryt
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleConfirmPrint}
+            startIcon={<PrintIcon />}
+            sx={{ 
+              fontSize: responsive.fontSize.body,
+              bgcolor: '#7C3AED',
+              '&:hover': { bgcolor: '#6D28D9' },
+            }}
+          >
+            Skriv ut PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign to Day Dialog - RESPONSIVE */}
+      <Dialog
+        open={showAssignDialog}
+        onClose={() => setShowAssignDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{
+          sx: {
+            borderRadius: isMobile ? 0 : 3,
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          fontSize: responsive.fontSize.title,
+          bgcolor: alpha('#7C3AED', 0.05),
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}>
+          {isMobile ? 'Flytt scene' : 'Flytt scene til opptaksdag'}
+        </DialogTitle>
+        <DialogContent sx={{ p: { xs: 2, sm: 3 } }}>
+          {selectedStrip && (
+            <Box sx={{ mb: 2 }}>
+              {selectedStripCount > 1 ? (
+                <Typography sx={{ fontSize: responsive.fontSize.body }}>
+                  {selectedStripCount} scener valgt (f.eks. {selectedStripList.slice(0, 3).map(s => s.sceneNumber).join(', ')})
+                </Typography>
+              ) : (
+                <Typography sx={{ fontSize: responsive.fontSize.body }}>
+                  Scene <strong>{selectedStrip.sceneNumber}</strong> - {selectedStrip.location}
+                </Typography>
+              )}
+            </Box>
+          )}
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Velg dag</InputLabel>
+            <Select
+              value={assignDayId}
+              label="Velg dag"
+              onChange={(e) => setAssignDayId(e.target.value)}
+              sx={{ fontSize: responsive.fontSize.body }}
+              MenuProps={{ sx: { zIndex: 1400 } }}
+            >
+              <MenuItem value="unassign">
+                <em>Fjern fra plan</em>
+              </MenuItem>
+              {shootingDays.map(day => (
+                <MenuItem key={day.id} value={day.id}>
+                  Dag {day.dayNumber} - {new Date(day.date).toLocaleDateString('nb-NO')} {!isMobile && `- ${day.location}`}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ 
+          p: { xs: 2, sm: 2 },
+          borderTop: 1,
+          borderColor: 'divider',
+        }}>
+          <Button 
+            onClick={() => setShowAssignDialog(false)}
+            sx={{ fontSize: responsive.fontSize.body }}
+          >
+            Avbryt
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleAssignToDay}
+            sx={{ 
+              fontSize: responsive.fontSize.body,
+              bgcolor: '#7C3AED',
+              '&:hover': { bgcolor: '#6D28D9' },
+            }}
+          >
+            Flytt
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Context Menu - RESPONSIVE */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={() => setMenuAnchor(null)}
+        PaperProps={{
+          sx: {
+            minWidth: { xs: 180, sm: 200 },
+            borderRadius: 2,
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => {
+            setShowAssignDialog(true);
+            setMenuAnchor(null);
+          }}
+          sx={{ fontSize: responsive.fontSize.body }}
+        >
+          <CalendarIcon sx={{ mr: 1, fontSize: responsive.iconSize }} /> Flytt til dag...
+        </MenuItem>
+        <MenuItem 
+          onClick={() => {
+            if (selectedStrip) onSceneSelect?.(selectedStrip.sceneId);
+            setMenuAnchor(null);
+          }}
+          sx={{ fontSize: responsive.fontSize.body }}
+        >
+          <MovieIcon sx={{ mr: 1, fontSize: responsive.iconSize }} /> Gå til scene
+        </MenuItem>
+        <Divider />
+        <MenuItem sx={{ fontSize: responsive.fontSize.body }}>
+          <EditIcon sx={{ mr: 1, fontSize: responsive.iconSize }} /> Rediger estimat
+        </MenuItem>
+      </Menu>
+
+      {/* Print Header - Only visible in print */}
+      <Box 
+        className={`print-header ${!printOptions.header ? 'hide-in-print' : ''}`}
+        sx={{ 
+          display: 'none',
+          '@media print': {
+            display: printOptions.header ? 'flex !important' : 'none !important',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 3,
+            pb: 2,
+            borderBottom: '2px solid #7C3AED',
+          }
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+          <Box
+            component="img"
+            src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+            alt="The Role Room"
+            sx={{ 
+              width: 48, 
+              height: 48, 
+              objectFit: 'contain',
+              borderRadius: 1,
+            }}
+          />
+          <Box sx={{ textAlign: 'left' }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 0.25 }}>
+              {projectTitle}
+            </Typography>
+            <Typography variant="subtitle1" sx={{ color: '#7C3AED', fontWeight: 600 }}>
+              Stripboard / Opptaksplan
+            </Typography>
+          </Box>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+          <Typography variant="caption" sx={{ color: '#666' }}>
+            Generert med
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#7C3AED', fontWeight: 600 }}>
+            The Role Room
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#666' }}>
+            • {new Date().toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 15mm 10mm;
+          }
+          body * {
+            visibility: hidden;
+          }
+          .stripboard-print, .stripboard-print * {
+            visibility: visible !important;
+          }
+          .stripboard-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: auto !important;
+            overflow: visible !important;
+            background: white !important;
+            padding: 0 !important;
+          }
+          .print-header {
+            display: flex !important;
+            page-break-after: avoid;
+          }
+          /* Hide elements based on print options */
+          .hide-in-print {
+            display: none !important;
+          }
+          .MuiCollapse-root {
+            height: auto !important;
+            visibility: visible !important;
+          }
+          .MuiCollapse-wrapper {
+            display: block !important;
+          }
+          .MuiCollapse-wrapperInner {
+            display: block !important;
+          }
+          /* Hide UI elements in print */
+          .no-print, button, .MuiIconButton-root, .MuiTooltip-popper, .MuiDialog-root {
+            display: none !important;
+          }
+          /* Page breaks for shooting days */
+          .shooting-day-group {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          /* Improve strip card printing */
+          .MuiCard-root {
+            box-shadow: none !important;
+            border: 1px solid #ccc !important;
+            margin-bottom: 8px !important;
+            page-break-inside: avoid;
+          }
+          /* Print footer on each page */
+          .stripboard-print::after {
+            content: 'Generert med The Role Room • theroleroom.no';
+            position: fixed;
+            bottom: 5mm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 9px;
+            color: #7C3AED;
+          }
+        }
+      `}</style>
+    </Box>
+  );
+};
+
+export default StripboardPanel;

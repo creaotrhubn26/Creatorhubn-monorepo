@@ -26,7 +26,7 @@ import {
   Switch,
   FormControlLabel,
   Slider,
-  TextField
+  TextField,
 } from '@mui/material';
 
 import {
@@ -37,10 +37,10 @@ import {
   Save,
   Close,
   Palette,
-  Layout,
-  Behavior,
+  ViewQuilt as Layout,
+  Psychology as Behavior,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
 } from '@mui/icons-material';
 
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';

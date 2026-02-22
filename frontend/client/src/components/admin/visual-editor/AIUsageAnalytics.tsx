@@ -34,7 +34,7 @@ import {
   TrendingUp,
   TrendingDown,
   Psychology,
-  Speed,
+  Speed as Speed,
   AttachMoney,
   Timer,
   CheckCircle,
@@ -131,7 +131,7 @@ export default function AIUsageAnalytics({
       // Filter by time range
       const now = Date.now();
       const rangeMs = {
-        '24h': 24 * 60 * 60 * 1000'7d': 7 * 24 * 60 * 60 * 1000'30d': 30 * 24 * 60 * 60 * 1000'90d': 90 * 24 * 60 * 60 * 1000,
+        '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000, '90d': 90 * 24 * 60 * 60 * 1000,
       }[timeRange];
 
       const filtered = records.filter((r) => now - r.timestamp < rangeMs);
@@ -278,7 +278,7 @@ export default function AIUsageAnalytics({
           <Chip
             label={timeRange.toUpperCase()}
             size="small"
-            sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }} />
+            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -286,7 +286,7 @@ export default function AIUsageAnalytics({
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value as string)}
               sx={{
-                color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(2, 5, 5,255,255,0.3)' }}}
+                color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' }}}
             >
               <MenuItem value="24h">Last 24h</MenuItem>
               <MenuItem value="7d">Last 7 Days</MenuItem>
@@ -295,16 +295,16 @@ export default function AIUsageAnalytics({
             </Select>
           </FormControl>
           <Tooltip title="Refresh">
-            <IconButton size="small" onClick={loadUsageData}, sx={{ color: 'white' }}>
+            <IconButton size="small" onClick={loadUsageData} sx={{ color: 'white' }}>
               <Refresh />
             </IconButton>
           </Tooltip>
           <Tooltip title="Export Data">
-            <IconButton size="small" onClick={handleExport}, sx={{ color: 'white' }}>
+            <IconButton size="small" onClick={handleExport} sx={{ color: 'white' }}>
               <Download />
             </IconButton>
           </Tooltip>
-          <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+          <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
             <Close />
           </IconButton>
         </Box>
@@ -354,7 +354,7 @@ export default function AIUsageAnalytics({
                   title="Total Cost"
                   value={`$${stats.totalCost.toFixed(2)}`}
                   color="warning"
-                  subtitle={`~$${(stats.totalCost / Math.max(1, Math.ceil((Date.now() - (recentRequests[recentRequests.length - 1]?.timestamp || Date.now() / (24 * 60 * 60 * 1000)))).toFixed(2)}/day`}
+                  subtitle={`~$${(stats.totalCost / Math.max(1, Math.ceil((Date.now() - (recentRequests[recentRequests.length - 1]?.timestamp || Date.now())) / (24 * 60 * 60 * 1000)))).toFixed(2)}/day`}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -577,7 +577,7 @@ function MetricCard({ icon, title, value, color = 'primary', trend, subtitle }: 
     <Card>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Box sx={{ color: `${color}.main` }>{icon}</Box>
+          <Box sx={{ color: `${color}.main` }}>{icon}</Box>
           {trend &&
             (trend === 'up' ? <TrendingUp color="success" /> : <TrendingDown color="error" />)}
         </Box>
@@ -614,7 +614,7 @@ export function trackAIUsage(record: Omit<UsageRecord, 'id' | 'timestamp'>) {
     const trimmed = records.slice(0, 1000);
     // Mirror to server KV
     fetch('/api/user/kv', {
-      method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'ai_usage_records', value: trimmed })
     }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('ai_usage_records', JSON.stringify(trimmed));
@@ -622,7 +622,7 @@ export function trackAIUsage(record: Omit<UsageRecord, 'id' | 'timestamp'>) {
     // Also send to AI Metrics Dashboard if available
     fetch('/api/ai/learning/track', {
       method: 'POST',
-      headers: { , 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         service: 'code_completion',
         event:'ai_usage',

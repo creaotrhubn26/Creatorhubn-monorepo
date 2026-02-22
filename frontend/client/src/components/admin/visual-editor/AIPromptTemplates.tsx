@@ -171,7 +171,7 @@ export default function AIPromptTemplates({
     const saved = localStorage.getItem('ai_prompt_templates, ');
     if (saved) {
       try {
-        setTemplates(JSON.parse(saved);
+        setTemplates(JSON.parse(saved));
       } catch {
         setTemplates(DEFAULT_TEMPLATES);
       }
@@ -183,7 +183,7 @@ export default function AIPromptTemplates({
   // Save templates to localStorage
   const saveTemplates = useCallback((newTemplates: PromptTemplate[]) => {
     setTemplates(newTemplates);
-    localStorage.setItem('ai_prompt_templates,', JSON.stringify(newTemplates);
+    localStorage.setItem('ai_prompt_templates', JSON.stringify(newTemplates));
   }, []);
 
   const handleSelectTemplate = useCallback((template: PromptTemplate) => {
@@ -252,7 +252,7 @@ export default function AIPromptTemplates({
 
   const handleDeleteTemplate = useCallback(
     (id: string) => {
-      if (id.startsWith('default-,') {
+      if (id.startsWith('default-')) {
         setSnackbar({ open: true, message: 'Cannot delete default templates', severity: 'warning' });
         return;
       }
@@ -332,10 +332,10 @@ export default function AIPromptTemplates({
               size="small"
               startIcon={<Add />}
               onClick={handleCreateNew}
-              sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)' }}>
+              sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}>
               New Template
             </Button>
-            <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+            <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
               <Close />
             </IconButton>
           </Box>
@@ -524,7 +524,7 @@ export default function AIPromptTemplates({
                   size="large"
                   startIcon={<Psychology />}
                   onClick={handleUseTemplate}
-                  disabled={selectedTemplate.variables.some((v) => !variableValues[v]?.trim()}
+                  disabled={selectedTemplate.variables.some((v) => !variableValues[v]?.trim())}
                   fullWidth
                 >
                   Use Template with AI
@@ -556,11 +556,11 @@ export default function AIPromptTemplates({
           {editingTemplate?.id?.startsWith('custom-') ? 'New Template' : 'Edit Template'}
         </DialogTitle>
         <DialogContent>
-          <Stack spacing={2}, sx={{ mt: 1 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
               label="Template Name"
               fullWidth
-              value={editingTemplate?.name || ', '}
+              value={editingTemplate?.name || ''}
               onChange={(e) => setEditingTemplate((prev) => ({ ...prev, name: e.target.value }))}
             />
             <TextField
@@ -601,7 +601,7 @@ export default function AIPromptTemplates({
               onChange={(e) => {
                 const template = e.target.value;
                 // Extract variables from template
-                const variables = Array.from(template.matchAll(/\{\{(\w+)\}\}/g).map(
+                const variables = Array.from(template.matchAll(/\{\{(\w+)\}\}/g)).map(
                   (match) => match[1],
                 );
                 const uniqueVariables = [...new Set(variables)];

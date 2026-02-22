@@ -27,7 +27,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
 } from '@mui/material';
 import {
   Store,
@@ -55,7 +55,7 @@ import {
   Settings,
   Inventory,
   LocalShipping,
-  AutoAwesome
+  AutoAwesome,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

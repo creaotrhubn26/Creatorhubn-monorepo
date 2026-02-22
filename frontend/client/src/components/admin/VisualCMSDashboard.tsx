@@ -54,7 +54,6 @@ import {
   Tabs,
   Tab,
   Box,
-  TreeItem,
   Drawer,
   AppBar,
   Toolbar,
@@ -62,8 +61,8 @@ import {
 } from '@mui/material';
 import {
   Api as ApiIcon,
-  Toggle as ToggleIcon,
-  PlayArrowArrow as TestIcon,
+  ToggleOn as ToggleIcon,
+  PlayArrow as TestIcon,
   Publish as DeployIcon,
   Visibility as ViewIcon,
   Settings as ConfigIcon,
@@ -81,7 +80,7 @@ import {
   DeveloperMode as MockIcon,
   RocketLaunch as LaunchIcon,
   Backup as BackupIcon,
-  MonitorFavorite as MonitorIcon,
+  Monitor as MonitorIcon,
   Code as CodeIcon,
   Palette as PaletteIcon,
   Layers as LayersIcon,
@@ -90,7 +89,7 @@ import {
   Save as SaveIcon,
   Undo as UndoIcon,
   Redo as RedoIcon,
-  DescriptionUpload,
+  CloudUpload as DescriptionUpload,
   Folder as FolderIcon,
   Add as AddIcon,
   Remove as RemoveIcon,
@@ -98,7 +97,7 @@ import {
   Fullscreen as FullscreenIcon,
   ZoomIn,
   ZoomOut,
-  GridOnOn,
+  GridOn as GridOnOn,
   FormatPaint,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

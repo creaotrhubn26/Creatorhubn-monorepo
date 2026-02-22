@@ -16,7 +16,7 @@ import {
   InputLabel,
   LinearProgress,
   Chip,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -25,7 +25,7 @@ import {
   People,
   Assessment,
   Refresh,
-  Download
+  Download,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

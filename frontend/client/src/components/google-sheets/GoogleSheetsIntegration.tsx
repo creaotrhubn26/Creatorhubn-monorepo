@@ -40,7 +40,7 @@ import {
   Paper,
   Switch,
   FormControlLabel,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   TableChart,
@@ -59,7 +59,7 @@ import {
   Error as ErrorIcon,
   CloudDone,
   CloudSync,
-  CloudOff
+  CloudOff,
 } from '@mui/icons-material';
 
 interface GoogleSheet {

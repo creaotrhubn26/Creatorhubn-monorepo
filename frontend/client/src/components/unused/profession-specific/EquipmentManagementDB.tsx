@@ -22,7 +22,13 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Build, LibraryMusic, PhotoCamera, Store, Videocam } from '@mui/icons-material';
+import {
+  Build,
+  LibraryMusic,
+  PhotoCamera,
+  Store,
+  Videocam,
+} from '@mui/icons-material';
 
 interface EquipmentManagementDBProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';

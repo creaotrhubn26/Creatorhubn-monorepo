@@ -25,8 +25,8 @@ import {
   Divider,
 } from '@mui/material';
 import {
-  LibraryMusicNote,
-  PlayArrowArrow,
+  LibraryMusic as LibraryMusicNote,
+  PlayArrow as PlayArrowArrow,
   Pause,
   Search,
   Add,
@@ -38,7 +38,7 @@ import {
   Star,
   InfoOutlined,
   Close,
-  DirectionsBusinessCenter,
+  BusinessCenter as DirectionsBusinessCenter,
   TrendingUp as TimelineIcon,
   LocationOn,
   Schedule,

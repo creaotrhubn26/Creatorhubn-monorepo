@@ -38,7 +38,7 @@ import {
   AccordionDetails,
   Divider,
   Tooltip,
-  Fab
+  Fab,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -51,7 +51,7 @@ import {
   PlayArrow as PlayIcon,
   ExpandMore as ExpandMoreIcon,
   AutoFixHigh as AutoIcon,
-  Insights as AnalysisIcon
+  Insights as AnalysisIcon,
 } from '@mui/icons-material';
 import { UniversalFileUpload } from '../UniversalFileUpload';
 import { getAuthHeader } from '@/lib/google/impersonation';

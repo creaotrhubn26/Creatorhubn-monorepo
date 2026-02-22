@@ -22,9 +22,9 @@ import {
   Divider,
 } from '@mui/material';
 import {
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Pause,
-  VolumeUpUp,
+  VolumeUp as VolumeUpUp,
   VolumeOff,
   Fullscreen,
   FullscreenExit,
@@ -36,7 +36,7 @@ import {
   People,
   Work,
   MonetizationOn,
-  Speed,
+  Speed as Speed,
   Security,
   CloudSync,
 } from '@mui/icons-material';

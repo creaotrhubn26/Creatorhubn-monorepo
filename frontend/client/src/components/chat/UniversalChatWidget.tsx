@@ -45,7 +45,7 @@ import {
   Alert,
   Snackbar,
   Rating,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   Chat,
@@ -89,7 +89,7 @@ import {
   Category,
   Flag,
   Badge as BadgeIcon,
-  Speed,
+  Speed as Speed,
   Reply,
 } from '@mui/icons-material';
 import { apiRequest, queryClient } from '@/lib/queryClient';

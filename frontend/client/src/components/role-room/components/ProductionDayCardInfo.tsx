@@ -6,7 +6,13 @@
  */
 
 import React, { useMemo } from 'react';
-import { Box, Typography, Chip, LinearProgress, Tooltip } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
+} from '@mui/material';
 import { alpha } from '@mui/material';
 import {
   CalendarToday as CalendarIcon,
@@ -146,11 +152,11 @@ export function ProductionDayCardInfo({
         mt: 1.5,
         p: 1.5,
         bgcolor: stats?.isTimePressure 
-          ? alpha('#ff9800', 0.1) 
+          ? alpha('#9333ea', 0.1) 
           : alpha('#4caf50', 0.05),
         border: `1px solid ${
           stats?.isTimePressure 
-            ? alpha('#ff9800', 0.3) 
+            ? alpha('#9333ea', 0.3) 
             : alpha('#4caf50', 0.2)
         }`,
         borderRadius: 1.5,
@@ -207,7 +213,7 @@ export function ProductionDayCardInfo({
                 borderRadius: 3,
                 bgcolor: alpha('#fff', 0.1),
                 '& .MuiLinearProgress-bar': {
-                  bgcolor: stats.isTimePressure ? '#ff9800' : '#4caf50',
+                  bgcolor: stats.isTimePressure ? '#9333ea' : '#4caf50',
                   borderRadius: 3,
                 },
               }}
@@ -239,7 +245,7 @@ export function ProductionDayCardInfo({
                 <Typography 
                   variant="caption" 
                   sx={{ 
-                    color: stats.isTimePressure ? '#ff9800' : '#4caf50', 
+                    color: stats.isTimePressure ? '#9333ea' : '#4caf50', 
                     fontSize: '10px', 
                     fontWeight: 600 
                   }}
@@ -266,7 +272,7 @@ export function ProductionDayCardInfo({
                 <Typography
                   variant="caption"
                   sx={{
-                    color: stats.isTimePressure ? '#ff9800' : '#fff',
+                    color: stats.isTimePressure ? '#9333ea' : '#fff',
                     fontSize: '10px',
                     fontWeight: 600,
                   }}
@@ -286,13 +292,13 @@ export function ProductionDayCardInfo({
                     gap: 0.5,
                     mt: 0.5,
                     p: 0.75,
-                    bgcolor: alpha('#ff9800', 0.15),
+                    bgcolor: alpha('#9333ea', 0.15),
                     borderRadius: 1,
-                    border: `1px solid ${alpha('#ff9800', 0.3)}`,
+                    border: `1px solid ${alpha('#9333ea', 0.3)}`,
                   }}
                 >
-                  <WarningIcon sx={{ fontSize: 14, color: '#ff9800' }} />
-                  <Typography variant="caption" sx={{ color: '#ff9800', fontSize: '10px', fontWeight: 600 }}>
+                  <WarningIcon sx={{ fontSize: 14, color: '#9333ea' }} />
+                  <Typography variant="caption" sx={{ color: '#9333ea', fontSize: '10px', fontWeight: 600 }}>
                     Time pressure: {formatTimeMinutes(Math.abs(stats.availableTime - stats.estimatedTime))} over tid
                   </Typography>
                 </Box>

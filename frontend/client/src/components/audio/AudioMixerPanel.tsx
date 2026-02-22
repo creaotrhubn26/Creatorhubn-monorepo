@@ -16,7 +16,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   VolumeUp,
@@ -27,7 +27,7 @@ import {
   Stop,
   RecordVoiceOver,
   MusicNote,
-  Hearing
+  Hearing,
 } from '@mui/icons-material';
 
 interface EQSettings {

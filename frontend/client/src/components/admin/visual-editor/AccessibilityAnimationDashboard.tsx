@@ -30,7 +30,7 @@ import {
   InputLabel,
   LinearProgress,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Accessibility,
@@ -40,12 +40,12 @@ import {
   Info,
   PlayArrow,
   Pause,
-  Speed,
+  Speed as Speed,
   Visibility,
   VisibilityOff,
   Settings,
   Assessment,
-  CompareArrows
+  CompareArrows,
 } from '@mui/icons-material';
 import { useMotionPreference } from '../../../hooks/useMotionPreference';
 import { useResearchBackedAnimations } from '../../../hooks/useResearchBackedAnimations';

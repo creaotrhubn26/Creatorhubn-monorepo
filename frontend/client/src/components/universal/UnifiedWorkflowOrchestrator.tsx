@@ -1,16 +1,24 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Box, Paper, Typography, Chip, Stack, Alert, LinearProgress } from '@mui/material';
-import { 
-  CheckCircle, 
-  Schedule, 
-  Work, 
-  Person, 
-  FileDownload, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  Stack,
+  Alert,
+  LinearProgress,
+} from '@mui/material';
+import {
+  CheckCircle,
+  Schedule,
+  Work,
+  Person,
+  FileDownload,
   FileUpload,
   Notifications,
-  Timeline
+  Timeline,
 } from '@mui/icons-material';
 
 interface WorkflowEvent {

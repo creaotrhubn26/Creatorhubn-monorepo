@@ -20,7 +20,7 @@ import {
 import {
   AutoAwesome,
   CheckCircle,
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Upgrade,
   Visibility,
   VisibilityOff,
@@ -28,7 +28,7 @@ import {
   Star,
   Timer,
   Security,
-  Speed,
+  Speed as Speed,
   Palette,
 } from '@mui/icons-material';
 import type { TrialFeature, TrialStatus } from '@/services/TrialFeatureManager';

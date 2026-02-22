@@ -8,6 +8,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import * as rr from '../services/roleRoomService';
 import type {
   CastingProject,
@@ -293,4 +294,37 @@ export function useUninstallApp() {
       });
     },
   });
+}
+
+// ── Auto-Bootstrap API Key ───────────────────────────────────
+
+/**
+ * Automatically provisions an API key on first mount if none exists.
+ * Stores the key in localStorage via roleRoomService.setApiKey().
+ * Call this once in the top-level Role Room panel.
+ */
+export function useRoleRoomBootstrap(userId: string) {
+  const bootstrapped = useRef(false);
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (bootstrapped.current) return;
+    const existing = localStorage.getItem('roleRoomApiKey');
+    if (existing) {
+      bootstrapped.current = true;
+      return;
+    }
+
+    bootstrapped.current = true;
+    rr.createApiKey(`auto-${userId}`, userId, ['read', 'write', 'admin'])
+      .then((result) => {
+        rr.setApiKey(result.apiKey);
+        // Invalidate all role-room queries so they refetch with the new key
+        qc.invalidateQueries({ queryKey: ['/api/role-room'] });
+        console.log('[Role Room] API key auto-provisioned');
+      })
+      .catch((err) => {
+        console.warn('[Role Room] Could not auto-provision API key:', err.message);
+      });
+  }, [userId, qc]);
 }

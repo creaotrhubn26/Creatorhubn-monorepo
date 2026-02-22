@@ -33,7 +33,7 @@ import {
   Divider,
   useTheme,
   alpha,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 
 import {
@@ -52,10 +52,10 @@ import {
   Security,
   Timeline,
   Assessment,
-  Speed,
+  Speed as Speed,
   AttachMoney,
   Notifications,
-  Support
+  Support,
 } from '@mui/icons-material';
 
 interface Widget {

@@ -36,10 +36,9 @@ import {
   ListItemIcon,
   IconButton,
   Divider,
-  // Alert removed - Zero Toast Compliance
   CircularProgress,
   Fab,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   Email,
@@ -490,7 +489,7 @@ export default function IntegratedEmailMarketingCenter() {
         {campaigns.map((campaign: any) => (
           <Grid size={{ xs: 12 }} md={6} lg={4} key={campaign.id}>
             <MuiCard sx={{ 
-              background: 'linear-gradient(135deg, rgba(2, 5, 5, 1400.1) 0%, rgba(2, 5, 5, 1070.05) 100%)',
+              background: 'linear-gradient(135deg, rgba(255, 1400.1) 0%, rgba(255, 1070.05) 100%)',
               border: '1px solid rgba(25, 1400.2)',
               borderRadius: 2 }}>
               <CardContent sx={theming.getThemedCardSx()}>

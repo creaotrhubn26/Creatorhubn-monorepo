@@ -30,7 +30,7 @@ import {
   FormControlLabel,
   Snackbar,
   Alert,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Extension,
@@ -47,7 +47,7 @@ import {
   ZoomOut,
   Add,
   Edit,
-  Delete
+  Delete,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

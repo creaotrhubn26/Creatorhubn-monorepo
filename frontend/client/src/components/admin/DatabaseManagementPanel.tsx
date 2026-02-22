@@ -44,7 +44,7 @@ import {
   Select,
   MenuItem,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Storage,
@@ -61,7 +61,7 @@ import {
   PlayArrow,
   Stop,
   Pause,
-  Speed,
+  Speed as Speed,
   TableChart,
   Schema,
   DataObject,
@@ -71,7 +71,7 @@ import {
   Settings,
   Security,
   Backup,
-  Restore
+  Restore,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

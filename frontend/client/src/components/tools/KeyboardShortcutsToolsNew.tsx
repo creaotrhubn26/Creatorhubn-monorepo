@@ -28,7 +28,7 @@ import {
   Stack,
   ToggleButton,
   ToggleButtonGroup,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Keyboard,
@@ -86,7 +86,7 @@ import {
   ExtensionOutlined,
   LibraryBooks,
   ImportExport,
-  MusicNote
+  MusicNote,
 } from '@mui/icons-material';
 
 interface KeyboardShortcut {
@@ -2104,7 +2104,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           mb:  4, 
           p:  4, 
           borderRadius:  3,
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95), rgba(2, 5, 5,255,255,0.85))',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85))',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(25,107,53,0.1)',
           boxShadow: '0 8px 32px rgba(25,107,53,0.1)',
@@ -2146,7 +2146,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     border: `2px solid ${isSelected ? software.color : 'transparent'}`,
                     background: isSelected 
                       ? `linear-gradient(135deg, ${software.color}, ${software.color}dd)` 
-                      : 'rgba(2, 5, 5,255,255,0.9)',
+                      : 'rgba(255,255,255,0.9)',
                     color: isSelected ? 'white' : software.color,
                     transition: 'all 0.4s cubic-bezier(0, .0, 0.2, 1)',
                     transform: isSelected ? 'translateY(-4px) scale(1.02)' : 'translateY(0) scale(1)',
@@ -2216,7 +2216,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           mb:  4, 
           p:  4, 
           borderRadius:  3,
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.98), rgba(2, 5, 5,255,255,0.92))',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(255,255,255,0.92))',
           backdropFilter: 'blur(15px)',
           border: '1px solid rgba(25,107,53,0.1)',
           boxShadow: '0 8px 32px rgba(25,107,53,0.08)',
@@ -2305,7 +2305,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       border: `2px solid ${currentSoftware?.color || '#ff6b30'}`,
                       background: isSelected 
                         ? `linear-gradient(135deg, ${currentSoftware?.color || '#ff6b35'}, ${currentSoftware?.color || '#ff6b35'}dd)` 
-                        : 'rgba(2, 5, 5,255,255,0.8)',
+                        : 'rgba(255,255,255,0.8)',
                       color: isSelected ? 'white' : (currentSoftware?.color || '#ff6b35'),
                       backdropFilter: 'blur(10px)',
                       transition: 'all 0.3s cubic-bezier(0, .0, 0.2, 1)',

@@ -4,10 +4,31 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Chip, Divider, Alert, Grid, Card, CardContent } from '@mui/material';
+import {
+  Box,
+  Button,
+  Typography,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
+  Divider,
+  Alert,
+  Grid,
+  Card,
+  CardContent,
+} from '@mui/material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
-import { CardMembership, QrCode, Business, School, Work, Star } from '@mui/icons-material';
+import {
+  CardMembership,
+  QrCode,
+  Business,
+  School,
+  Work,
+  Star,
+} from '@mui/icons-material';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';

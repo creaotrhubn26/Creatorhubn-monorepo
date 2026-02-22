@@ -35,7 +35,7 @@ import {
   ToggleButtonGroup,
   Dialog,
   DialogTitle,
-  DialogContent
+  DialogContent,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -56,7 +56,7 @@ import {
   Gavel as GavelIcon,
   TheaterComedy as TheaterComedyIcon,
   Movie as MovieIcon,
-  Payments as PaymentsIcon
+  Payments as PaymentsIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationOnIcon } from '../icons/CastingIcons';
 import { useDynamicProfessions } from '../../hooks/useDynamicProfessions';
@@ -1476,17 +1476,17 @@ export default function SplitSheetEditor({
                       boxShadow: percentageError
                         ? '0 2px 8px rgba(244, 67, 54, 0.2)'
                         : percentageWarning
-                        ? '0 2px 8px rgba(255, 152, 0, 0.2)'
+                        ? '0 2px 8px rgba(147, 51, 234, 0.2)'
                         : '0 2px 8px rgba(76, 175, 80, 0.15)',
                       border: percentageError
                         ? '2px solid rgba(244, 67, 54, 0.3)'
                         : percentageWarning
-                        ? '2px solid rgba(255, 152, 0, 0.3)'
+                        ? '2px solid rgba(147, 51, 234, 0.3)'
                         : '2px solid rgba(76, 175, 80, 0.3)',
                       bgcolor: percentageError
                         ? alpha('#f44336', 0.08)
                         : percentageWarning
-                        ? alpha('#ff9800', 0.08)
+                        ? alpha('#9333ea', 0.08)
                         : alpha('#4caf50', 0.08),
                       transition: 'all 0.3s ease',
                     }}
@@ -1509,7 +1509,7 @@ export default function SplitSheetEditor({
                             bgcolor: percentageError
                               ? '#f44336'
                               : percentageWarning
-                              ? '#ff9800'
+                              ? '#9333ea'
                               : '#4caf50',
                             color: '#fff',
                             fontWeight: 700,

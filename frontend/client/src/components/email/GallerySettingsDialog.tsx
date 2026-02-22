@@ -20,7 +20,7 @@ import {
   Chip,
   IconButton,
   Alert,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -29,7 +29,7 @@ import {
   Lock as LockIcon,
   Public as PublicIcon,
   Code as CodeIcon,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';

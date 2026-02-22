@@ -43,7 +43,7 @@ import {
   CheckCircle,
   Warning,
   Info,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   PriceCheck,

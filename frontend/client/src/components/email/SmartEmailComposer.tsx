@@ -25,7 +25,7 @@ import {
   Grid,
   IconButton,
   Tooltip,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -49,7 +49,7 @@ import {
   FormatSize as FontSizeIcon,
   Settings as SettingsIcon,
   PhotoLibrary as GalleryIcon,
-  DesignServices as DesignIcon
+  DesignServices as DesignIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import GallerySettingsDialog from './GallerySettingsDialog';

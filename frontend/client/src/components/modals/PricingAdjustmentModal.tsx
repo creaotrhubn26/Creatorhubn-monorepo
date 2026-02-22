@@ -41,7 +41,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Stack,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -58,7 +58,7 @@ import {
   LocationOn as LocationIcon,
   ExpandMore as ExpandMoreIcon,
   CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon
+  Error as ErrorIcon,
 } from '@mui/icons-material';
 
 interface PricingAdjustmentModalProps {

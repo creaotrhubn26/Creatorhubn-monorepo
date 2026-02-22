@@ -33,10 +33,10 @@ import {
   ExpandMore,
   Launch,
   InfoOutlined,
-  PhotoCameraAlt,
-  Videocamcam,
-  LibraryMusicNote,
-  DirectionsBusiness,
+  PhotoCamera as PhotoCameraAlt,
+  Videocam as Videocamcam,
+  LibraryMusic as LibraryMusicNote,
+  Business as DirectionsBusiness,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';

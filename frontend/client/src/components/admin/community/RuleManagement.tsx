@@ -34,7 +34,13 @@ import {
   Alert,
   Snackbar,
 } from '@mui/material';
-import { Add, Edit, Delete, CheckCircle, Warning } from '@mui/icons-material';
+import {
+  Add,
+  Edit,
+  Delete,
+  CheckCircle,
+  Warning,
+} from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface Rule {

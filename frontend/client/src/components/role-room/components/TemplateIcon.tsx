@@ -18,9 +18,9 @@ import {
   Person as PersonIcon,
   PersonOutline as PersonOutlineIcon,
   School as SchoolIcon,
-  Rocket as RocketIcon,
+  RocketLaunch as RocketIcon,
   Architecture as ArchitectureIcon,
-  Description as DescriptionIcon
+  Description as DescriptionIcon,
 } from '@mui/icons-material';
 
 interface TemplateIconProps {

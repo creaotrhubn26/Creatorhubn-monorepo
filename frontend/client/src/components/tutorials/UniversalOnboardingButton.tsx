@@ -2,7 +2,7 @@ import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { Button, Tooltip, Chip as Badge } from '@mui/material';
-import { SettingsOutlined, ArrowForward, CheckCircle } from "@mui/icons-material";
+import { SettingsOutlined, ArrowForward, CheckCircle } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/api';
 
@@ -53,7 +53,7 @@ export default function UniversalOnboardingButton({ userType }: UniversalOnboard
           gap: '8px',
           padding: '8px 12px',
           transition: 'all 0.3s ease', '&:hover': {
-            backgroundColor: isCompleted ? 'rgba(6, 175, 80, 0.1)' : 'rgba(2, 5, 5, 140, 0, 0.1)',
+            backgroundColor: isCompleted ? 'rgba(6, 175, 80, 0.1)' : 'rgba(255, 140, 0, 0.1)',
             borderColor: isCompleted ? '#4caf50' : '#ff8c00',
             transform: 'translateY(-1px)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}}

@@ -30,7 +30,7 @@ import {
   Tooltip,
   Badge,
   Stack,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import {
   LocalShipping,
@@ -52,7 +52,7 @@ import {
   Close,
   ExpandMore,
   ExpandLess,
-  FileCopy
+  FileCopy,
 } from '@mui/icons-material';
 
 interface VendorDeliveryManagerProps {

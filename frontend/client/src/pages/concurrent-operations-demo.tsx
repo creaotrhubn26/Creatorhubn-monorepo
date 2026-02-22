@@ -26,12 +26,12 @@ import {
   CloudUpload,
   Download,
   Queue,
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Pause,
   CheckCircle,
   Error as ErrorIcon,
   SwapVert,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import backgroundUploadService from '@/services/BackgroundUploadService';
 import { backgroundDownloadService } from '@/services/BackgroundDownloadService';

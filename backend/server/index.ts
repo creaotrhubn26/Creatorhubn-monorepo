@@ -17,6 +17,10 @@ import { Pool } from 'pg';
 import * as schema from '../migrations/schema.js';
 import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { createRoleRoomRouter } from './role-room-routes.js';
+import { createCommunicationRouter } from './communication-routes.js';
+import { createWebSocketServer } from './websocket-chat.js';
+import { createReferenceProxyRouter } from './reference-proxy-routes.js';
+import { createServer } from 'http';
 
 // Database connection
 const pool = new Pool({
@@ -94,6 +98,9 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ── Role Room API (x-api-key enforced, own CORS) ─────────
 app.use('/api/role-room', createRoleRoomRouter(pool));
+
+// ── Reference image proxy (shot.cafe + Unsplash) ──────────
+app.use('/api', createReferenceProxyRouter());
 
 // Ensure UTF-8 charset for all JSON responses (æøå support)
 app.use((req, res, next) => {
@@ -10766,6 +10773,270 @@ app.post('/api/ai/transcribe', audioUpload.single('audio'), async (req, res) => 
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TTS — Text-to-Speech
+// Priority: 1) Free edge-tts local service  2) OpenAI TTS API (paid)
+// Free service runs on EDGE_TTS_URL (default http://localhost:5100)
+// Set USE_FASTER_WHISPER=true to prefer the free local services
+// ─────────────────────────────────────────────────────────────────────────────
+const EDGE_TTS_URL = process.env.EDGE_TTS_URL || 'http://localhost:5100';
+const FASTER_WHISPER_URL = process.env.FASTER_WHISPER_URL || 'http://localhost:5000';
+const USE_FREE_SERVICES = process.env.USE_FASTER_WHISPER === 'true';
+
+app.post('/api/ai/tts', async (req, res) => {
+  try {
+    const { text, voice, model, speed, format, language } = req.body || {};
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Missing or empty "text" field' });
+    }
+    if (text.length > 4096) {
+      return res.status(400).json({ error: 'Text exceeds 4096 character limit' });
+    }
+
+    const ttsVoice = voice || 'nova';
+    const ttsSpeed = typeof speed === 'number' ? Math.max(0.25, Math.min(4.0, speed)) : 1.0;
+    const ttsLanguage = typeof language === 'string' ? language.trim().toLowerCase() : undefined;
+
+    // ── Try free Edge-TTS service first ──
+    if (USE_FREE_SERVICES) {
+      try {
+        const edgePayload: Record<string, unknown> = {
+            input: text.trim(),
+            voice: ttsVoice,
+            speed: ttsSpeed,
+        };
+        if (ttsLanguage) edgePayload.language = ttsLanguage;
+
+        const edgeRes = await fetch(`${EDGE_TTS_URL}/v1/audio/speech`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(edgePayload),
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        if (edgeRes.ok) {
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+          res.setHeader('X-TTS-Provider', 'edge-tts');
+
+          const reader = edgeRes.body;
+          if (reader && typeof (reader as any).pipe === 'function') {
+            (reader as any).pipe(res);
+          } else if (reader) {
+            const nodeStream = await import('stream');
+            const readable = nodeStream.Readable.fromWeb(reader as any);
+            readable.pipe(res);
+          } else {
+            const buffer = Buffer.from(await edgeRes.arrayBuffer());
+            res.send(buffer);
+          }
+          return;
+        }
+        console.warn('Edge-TTS returned', edgeRes.status, '— falling back to OpenAI');
+      } catch (edgeErr: any) {
+        console.warn('Free Edge-TTS service unavailable:', edgeErr?.message || edgeErr, '— falling back to OpenAI');
+      }
+    }
+
+    // ── Fallback: OpenAI TTS API (paid) ──
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({
+        error: 'No TTS provider available',
+        hint: 'Start the free Edge-TTS service (python edge_tts_service.py) or configure OPENAI_API_KEY',
+      });
+    }
+
+    const openaiVoice = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].includes(ttsVoice)
+      ? ttsVoice
+      : 'nova';
+    const ttsModel = model === 'tts-1-hd' ? 'tts-1-hd' : 'tts-1';
+    const ttsFormat = ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'].includes(format) ? format : 'mp3';
+
+    const mimeTypes: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      opus: 'audio/opus',
+      aac: 'audio/aac',
+      flac: 'audio/flac',
+      wav: 'audio/wav',
+      pcm: 'audio/pcm',
+    };
+
+    const openaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: ttsModel,
+        input: text.trim(),
+        voice: openaiVoice,
+        speed: ttsSpeed,
+        response_format: ttsFormat,
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const errBody = await openaiRes.text().catch(() => 'Unknown error');
+      console.error('OpenAI TTS error:', openaiRes.status, errBody);
+      return res.status(openaiRes.status).json({
+        error: 'OpenAI TTS request failed',
+        details: errBody,
+      });
+    }
+
+    res.setHeader('Content-Type', mimeTypes[ttsFormat] || 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('X-TTS-Provider', 'openai');
+
+    const reader = openaiRes.body;
+    if (reader && typeof (reader as any).pipe === 'function') {
+      (reader as any).pipe(res);
+    } else if (reader) {
+      const nodeStream = await import('stream');
+      const readable = nodeStream.Readable.fromWeb(reader as any);
+      readable.pipe(res);
+    } else {
+      const buffer = Buffer.from(await openaiRes.arrayBuffer());
+      res.send(buffer);
+    }
+  } catch (error) {
+    console.error('TTS error:', error);
+    res.status(500).json({ error: 'Failed to generate speech' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Whisper STT — Speech-to-Text Transcription
+// Priority: 1) Free faster-whisper local service  2) OpenAI Whisper API (paid)
+// Free service runs on FASTER_WHISPER_URL (default http://localhost:5000)
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Missing audio file' });
+    }
+
+    const file = req.file;
+    const language = (req.body?.language as string) || 'no';
+    const responseFormat = (req.body?.response_format as string) || 'verbose_json';
+
+    // ── Try free faster-whisper service first ──
+    if (USE_FREE_SERVICES) {
+      try {
+        const whisperForm = new FormData();
+        whisperForm.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+        if (language) whisperForm.append('language', language);
+        whisperForm.append('response_format', responseFormat);
+
+        const whisperRes = await fetch(`${FASTER_WHISPER_URL}/v1/audio/transcriptions`, {
+          method: 'POST',
+          body: whisperForm,
+          signal: AbortSignal.timeout(120_000), // Transcription can take a while
+        });
+
+        if (whisperRes.ok) {
+          const result = await whisperRes.json();
+          return res.json({
+            data: {
+              text: result.text,
+              language: result.language || language,
+              duration: result.duration,
+              segments: result.segments || [],
+              words: result.words || [],
+            },
+            provider: 'faster-whisper',
+          });
+        }
+        console.warn('Faster-Whisper returned', whisperRes.status, '— falling back to OpenAI');
+      } catch (whisperErr: any) {
+        console.warn('Free Whisper service unavailable:', whisperErr?.message || whisperErr, '— falling back to OpenAI');
+      }
+    }
+
+    // ── Fallback: OpenAI Whisper API (paid) ──
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({
+        error: 'No transcription provider available',
+        hint: 'Start the free faster-whisper service (python faster_whisper_service.py) or configure OPENAI_API_KEY',
+      });
+    }
+
+    const formData = new FormData();
+    formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    formData.append('model', 'whisper-1');
+    formData.append('language', language);
+    formData.append('response_format', responseFormat);
+    if (req.body?.timestamp_granularities) {
+      formData.append('timestamp_granularities[]', 'word');
+      formData.append('timestamp_granularities[]', 'segment');
+    }
+
+    const openaiRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    if (!openaiRes.ok) {
+      const errBody = await openaiRes.text().catch(() => 'Unknown error');
+      console.error('Whisper transcription error:', openaiRes.status, errBody);
+      return res.status(openaiRes.status).json({
+        error: 'Whisper transcription failed',
+        details: errBody,
+      });
+    }
+
+    const result = await openaiRes.json();
+    res.json({
+      data: {
+        text: result.text,
+        language: result.language,
+        duration: result.duration,
+        segments: result.segments || [],
+        words: result.words || [],
+      },
+      provider: 'openai',
+    });
+  } catch (error) {
+    console.error('Whisper transcription error:', error);
+    res.status(500).json({ error: 'Failed to transcribe audio' });
+  }
+});
+
+// ── TTS/Whisper provider status endpoint ──
+app.get('/api/ai/tts/status', async (_req, res) => {
+  const status: Record<string, any> = {
+    freeServicesEnabled: USE_FREE_SERVICES,
+    openaiConfigured: !!process.env.OPENAI_API_KEY,
+  };
+
+  // Check Edge-TTS
+  try {
+    const edgeHealth = await fetch(`${EDGE_TTS_URL}/health`, { signal: AbortSignal.timeout(3000) });
+    const edgeData = await edgeHealth.json();
+    status.edgeTts = { available: true, ...edgeData };
+  } catch {
+    status.edgeTts = { available: false };
+  }
+
+  // Check faster-whisper
+  try {
+    const whisperHealth = await fetch(`${FASTER_WHISPER_URL}/health`, { signal: AbortSignal.timeout(3000) });
+    const whisperData = await whisperHealth.json();
+    status.fasterWhisper = { available: true, ...whisperData };
+  } catch {
+    status.fasterWhisper = { available: false };
+  }
+
+  res.json(status);
+});
+
 app.post('/api/audio/mix', async (req, res) => {
   try {
     const tracks = Array.isArray(req.body?.tracks) ? req.body.tracks : [];
@@ -13993,7 +14264,7 @@ app.get('/api/projects/:projectId/worklog', async (req, res) => {
       [projectId]
     );
 
-    if (milestones.rowCount > 0) {
+    if (milestones.rows.length > 0) {
       const mapped = milestones.rows.map((row: any, index: number) => {
         const notes = row.internal_notes && typeof row.internal_notes === 'string'
           ? JSON.parse(row.internal_notes)
@@ -17256,11 +17527,19 @@ app.get('/api/business/intelligence/status', async (_req, res) => {
   }
 });
 
+// Communication / Chat API routes
+const communicationRouter = createCommunicationRouter(db);
+app.use(communicationRouter);
+
 // Catch-all for unhandled API routes
 app.all('/api/*', (req, res) => {
-  res.json({ message: 'Endpoint not implemented', path: req.path });
+  res.status(404).json({ message: 'Endpoint not implemented', path: req.path });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend server running on port ${PORT}`);
+// Create HTTP server for WebSocket support
+const httpServer = createServer(app);
+createWebSocketServer(httpServer, db);
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
 });

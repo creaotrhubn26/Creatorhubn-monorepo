@@ -23,7 +23,7 @@ import {
   Alert,
   Chip,
   Divider,
-  Skeleton
+  Skeleton,
 } from '@mui/material';
 import {
   Event,
@@ -42,7 +42,7 @@ import {
   Cancel as CancelIcon,
   HelpOutline,
   Notifications,
-  NotificationsActive
+  NotificationsActive,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import WeddingTimelineHelp from './WeddingTimelineHelp';

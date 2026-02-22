@@ -11,7 +11,7 @@ import {
   Collapse,
   Chip,
   Typography,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -21,7 +21,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 
 interface SystemMessage {

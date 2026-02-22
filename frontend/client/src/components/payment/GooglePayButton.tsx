@@ -4,7 +4,12 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, CircularProgress, Alert, Typography } from '@mui/material';
+import {
+  Box,
+  CircularProgress,
+  Alert,
+  Typography,
+} from '@mui/material';
 import { googlePayService } from '@/services/GooglePayService';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 

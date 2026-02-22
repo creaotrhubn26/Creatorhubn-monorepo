@@ -34,7 +34,7 @@ import {
   Warning,
   Link,
   Security,
-  Speed,
+  Speed as Speed,
   History,
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';

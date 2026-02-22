@@ -40,7 +40,7 @@ import {
   ButtonGroup,
   Dialog,
   DialogTitle,
-  DialogContent
+  DialogContent,
 } from '@mui/material';
 import {
   PlayArrow,

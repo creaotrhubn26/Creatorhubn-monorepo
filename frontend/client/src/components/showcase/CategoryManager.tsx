@@ -36,7 +36,7 @@ import {
   Snackbar,
   Checkbox,
   FormGroup,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -50,7 +50,7 @@ import {
   Add as AddIcon,
   DragIndicator as DragIndicatorIcon,
   Search as SearchIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
 } from '@mui/icons-material';
 
 // Common file types available for categories

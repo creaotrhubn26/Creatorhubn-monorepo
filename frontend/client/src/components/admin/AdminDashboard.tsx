@@ -80,6 +80,7 @@ import { apiRequest } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
+import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import AdminCommunicationPanel from './AdminCommunicationPanel';
 import FeatureManagement from './feature-management';
 import FeatureCustomizationPanel from './FeatureCustomizationPanel';
@@ -163,6 +164,29 @@ function TabPanel(props: TabPanelProps) {
       {value === index && <Box sx={{ p: 0 }}>{children}</Box>}
     </div>
   );
+}
+
+// Error Boundary to prevent child component crashes from killing the whole dashboard
+class AdminErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any, info: any) {
+    console.warn('[AdminDashboard] Component error caught by boundary:', error?.message, 'Component stack:', info?.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || null;
+    }
+    return this.props.children;
+  }
 }
 
 export default function AdminDashboard({
@@ -885,8 +909,8 @@ export default function AdminDashboard({
     );
   }
 
-  // Check admin privileges - only user?.email has admin access
-  if (!currentUser.isAdmin || currentUser.email !== 'user?.email') {
+  // Check admin privileges
+  if (!currentUser.isAdmin) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Card sx={{ p: 4, textAlign: 'center' }}>
@@ -1093,20 +1117,24 @@ export default function AdminDashboard({
           <TabPanel value={tabValue} index={0}>
             <Grid container spacing={{ xs: 2, sm: 3 }}>
               <Grid item xs={12}>
-                <AdminStats userEmail={currentUser.email} />
+                <AdminErrorBoundary>
+                  <AdminStats userEmail={currentUser.email} />
+                </AdminErrorBoundary>
               </Grid>
 
               {/* Enhanced Activity Feed */}
               <Grid item xs={12}>
-                <EnhancedActivityFeed
-                  maxItems={20}
-                  showFilters={true}
-                  autoRefresh={true}
-                  refreshInterval={30000}
-                  enableTimeline={true}
-                  enableExport={true}
-                  enableNotifications={true}
-                />
+                <AdminErrorBoundary>
+                  <EnhancedActivityFeed
+                    maxItems={20}
+                    showFilters={true}
+                    autoRefresh={true}
+                    refreshInterval={30000}
+                    enableTimeline={true}
+                    enableExport={true}
+                    enableNotifications={true}
+                  />
+                </AdminErrorBoundary>
               </Grid>
             </Grid>
           </TabPanel>
@@ -1807,14 +1835,13 @@ export default function AdminDashboard({
       </Container>
 
       {/* Fullscreen Chat Widget */}
-      <Box sx={{ display: fullscreenChatOpen ? 'block' : 'none' }}>
-        <Typography variant="h5" gutterBottom>
-          Fullscreen Chat Widget
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          This component is temporarily disabled due to syntax errors.
-        </Typography>
-      </Box>
+      <CommunicationStatusProvider>
+        <FullscreenChatWidget
+          open={fullscreenChatOpen}
+          onClose={() => setFullscreenChatOpen(false)}
+          profession="admin"
+        />
+      </CommunicationStatusProvider>
 
       {/* Admin Floating Action Buttons */}
       <Box sx={{ position: 'fixed', bottom: 16, right: 16 }}>

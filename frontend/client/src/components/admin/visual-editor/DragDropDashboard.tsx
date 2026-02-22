@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -58,7 +58,7 @@ import {
   Step,
   StepLabel,
   StepContent,
-  StepButton
+  StepButton,
 } from '@mui/material';
 import {
   DragIndicator,
@@ -107,7 +107,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -124,7 +124,7 @@ import {
   Timer,
   Event,
   Timeline,
-  FlowChart,
+  AccountTree as FlowChart,
   AccountTree,
   Hub,
   Share,
@@ -156,7 +156,7 @@ import {
   CompareArrowsOutlined as CompareArrowsOutlinedIcon,
   CompareArrowsRounded as CompareArrowsRoundedIcon,
   CompareArrowsSharp as CompareArrowsSharpIcon,
-  CompareArrowsTwoTone as CompareArrowsTwoToneIcon
+  CompareArrowsTwoTone as CompareArrowsTwoToneIcon,
 } from '@mui/icons-material';
 import { useDragDrop, UseDragDropOptions } from '../../../hooks/useDragDrop';
 import { DragDropConfig, DragItem, DropZone } from '../../../utils/dragDropManager';

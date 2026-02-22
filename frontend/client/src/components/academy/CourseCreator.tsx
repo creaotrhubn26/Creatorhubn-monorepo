@@ -51,7 +51,6 @@ import {
   CircularProgress,
   Skeleton,
 } from '@mui/material';
-import { TabPanel, TabContext, TabList } from '@mui/lab';
 import { Virtuoso } from 'react-virtuoso';
 import { LazyMotion, domAnimation, m, AnimatePresence } from 'framer-motion';
 import { springVariants, bounceVariants, elasticVariants, hoverLift } from '@/utils/animation-variants';

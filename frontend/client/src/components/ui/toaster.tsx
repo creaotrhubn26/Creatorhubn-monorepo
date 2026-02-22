@@ -1,5 +1,10 @@
 import React from 'react';
-import { Alert, Snackbar, Typography, Box } from '@mui/material';
+import {
+  Alert,
+  Snackbar,
+  Typography,
+  Box,
+} from '@mui/material';
 import { useToast, dismissToast } from '@/hooks/use-toast';
 import type { Toast } from '@/hooks/use-toast';
 

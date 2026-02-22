@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { Box, Checkbox, FormControlLabel, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Checkbox,
+  FormControlLabel,
+  Stack,
+  Typography,
+} from '@mui/material';
 import { useActions, useScene } from '@/state/selectors';
 
 export default function SceneLayers() {

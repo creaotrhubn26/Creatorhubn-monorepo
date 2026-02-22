@@ -32,7 +32,7 @@ import {
   IconButton,
   Tooltip,
   Alert,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -40,7 +40,7 @@ import {
   CheckCircle as ActivateIcon,
   AdminPanelSettings as AdminIcon,
   Person as UserIcon,
-  SupervisorAccount as SuperAdminIcon
+  SupervisorAccount as SuperAdminIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

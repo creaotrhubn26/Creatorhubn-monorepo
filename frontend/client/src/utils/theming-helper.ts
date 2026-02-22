@@ -12,7 +12,7 @@ import {
   LibraryMusic,
   Business,
   Build,
-  Science
+  Science,
 } from '@mui/icons-material';
 
 export interface ThemingConfig {

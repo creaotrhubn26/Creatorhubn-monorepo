@@ -22,11 +22,11 @@ import {
 } from '@mui/material';
 import {
   PhotoLibrary,
-  VideocamLibrary,
-  LibraryMusicNote,
+  VideoLibrary as VideocamLibrary,
+  LibraryMusic as LibraryMusicNote,
   Description,
   Palette,
-  DirectionsBusiness,
+  Business as DirectionsBusiness,
   Event,
 } from '@mui/icons-material';
 

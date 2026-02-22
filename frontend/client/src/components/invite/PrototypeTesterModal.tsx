@@ -36,7 +36,7 @@ import {
   AutoAwesome,
   Download,
   Save,
-  ContentCopy
+  ContentCopy,
 } from '@mui/icons-material';
 const logoCreatorHub = '/creatorhub-logo-amber.svg';
 
@@ -337,17 +337,17 @@ export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterM
       PaperProps={{
         sx: {
           borderRadius: '24px',
-          background: 'linear-gradient(145deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.98) 100%)',
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.98) 100%)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(25,140,0,0.1)',
-          boxShadow: '0 25px 50px -12px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.25), 0 0 0 1px rgba(2, 5, 5,140,0,0.05)',
+          boxShadow: '0 25px 50px -12px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.25), 0 0 0 1px rgba(255,140,0,0.05)',
           maxHeight: '90vh' }}}
     >
       <DialogTitle
         sx={{
           textAlign: 'center',
           pb:  2,
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.03) 0%, rgba(2, 5, 5,248,235,0.05) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,140,0,0.03) 0%, rgba(255,248,235,0.05) 100%)',
           borderBottom: '1px solid rgba(25,140,0,0.1)' }}
       >
         <Box
@@ -362,7 +362,7 @@ export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterM
             sx={{
               p:  2,
               borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.1) 0%, rgba(2, 5, 5,248,235,0.2) 100%)',
+              background: 'linear-gradient(135deg, rgba(255,140,0,0.1) 0%, rgba(255,248,235,0.2) 100%)',
               backdropFilter: 'blur(10px)',
               display: 'flex',
               alignItems: 'center',
@@ -377,7 +377,7 @@ export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterM
                 left:  0,
                 right:  0,
                 bottom:  0,
-                background: 'linear-gradient(45deg, transparent 30%, rgba(2, 5, 5,255,255,0.1) 50%, transparent 70%)',
+                background: 'linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%)',
                 transform: 'translateX(-100%)',
                 transition: 'transform 0.6s ease-in-out' }, '&:hover: :before': {
                 transform: 'translateX(100%, )' }}}
@@ -425,7 +425,7 @@ export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterM
                 sx={{
                   p:  3,
                   borderRadius: '12px',
-                  background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.02) 0%, rgba(2, 5, 5,248,235,0.03) 100%)',
+                  background: 'linear-gradient(135deg, rgba(255,140,0,0.02) 0%, rgba(255,248,235,0.03) 100%)',
                   border: '1px solid rgba(25,140,0,0.1)' }}
               >
                 <Typography variant="h6" sx={{  mb: 2, color: '#1f2937', fontWeight: 'bold'  }}>
@@ -518,7 +518,7 @@ export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterM
                 <Box sx={{ 
                   mb: 2
                  , p: 2, borderRadius: '8px',
-                  background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.05) 0%, rgba(2, 5, 5,248,235,0.1) 100%)',
+                  background: 'linear-gradient(135deg, rgba(255,140,0,0.05) 0%, rgba(255,248,235,0.1) 100%)',
                   border: '1px solid rgba(25,140,0,0.2)' }}>
                   <Typography variant="body2" sx={{ color: '#ff8c00', fontWeight: 600}>
                     ⚡ Fokus på ytelse og brukeropplevelse: Vi søker spesielt etter testere som kan hjelpe oss med å optimalisere systemets ytelse og identifisere forbedringsområder.
@@ -776,7 +776,7 @@ export default function PrototypeTesterModal({ open, onClose }: PrototypeTesterM
         sx={{
           p:  3,
           justifyContent: isSubmitted ? 'center' : 'space-between',
-          background: 'linear-gradient(145deg, rgba(2, 5, 5,140,0,0.02) 0%, rgba(2, 5, 5,248,235,0.03) 100%)',
+          background: 'linear-gradient(145deg, rgba(255,140,0,0.02) 0%, rgba(255,248,235,0.03) 100%)',
           borderTop: '1px solid rgba(25,140,0,0.08)' }}
       >
         {!isSubmitted ? (

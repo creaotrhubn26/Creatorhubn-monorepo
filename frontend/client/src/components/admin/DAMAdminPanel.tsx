@@ -58,7 +58,7 @@ import {
 import {
   CloudUpload as UploadIcon,
   Search as SearchIcon,
-  FilterListList as FilterIcon,
+  FilterList as FilterIcon,
   ViewModule as GridOnIcon,
   ViewList as ListIcon,
   Sort as SortIcon,
@@ -69,7 +69,7 @@ import {
   Share as ShareIcon,
   Info as InfoIcon,
   Image as ImageIcon,
-  VideocamDescription as VideoIcon,
+  Videocam as VideoIcon,
   AudioFile as AudioIcon,
   Description as DocumentIcon,
   Folder as FolderIcon,

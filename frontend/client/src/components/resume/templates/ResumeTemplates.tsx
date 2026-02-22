@@ -8,7 +8,13 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';
-import { Box, Typography, Divider, Grid, Stack } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Divider,
+  Grid,
+  Stack,
+} from '@mui/material';
 
 // ============================================================================
 // TEMPLATE INTERFACES

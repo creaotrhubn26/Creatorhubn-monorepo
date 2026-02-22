@@ -5,12 +5,12 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -39,7 +39,7 @@ import {
   TextField,
   InputAdornment,
   CircularProgress,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Language,
@@ -73,7 +73,7 @@ import {
   SyncProblem,
   CloudOff,
   CloudDone,
-  CloudSync
+  CloudSync,
 } from '@mui/icons-material';
 import { useI18n, UseI18nOptions } from '../../../hooks/useI18n';
 import { I18nConfig, TranslationOptions } from '../../../utils/i18nManager';

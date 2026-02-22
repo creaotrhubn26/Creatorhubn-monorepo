@@ -49,7 +49,7 @@ import {
   StepContent,
 } from '@mui/material';
 import {
-  PlayArrowArrow as PlayIcon,
+  PlayArrow as PlayIcon,
   Stop as StopIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
@@ -60,14 +60,14 @@ import {
   Speed as PerformanceIcon,
   Storage as StorageIcon,
   Api as ApiIcon,
-  Mobile as MobileIcon,
+  PhoneAndroid as MobileIcon,
   Language as LocalizationIcon,
   ExpandMore as ExpandMoreIcon,
   Timeline as TimelineIcon,
   Assessment as ReportIcon,
   CloudUpload as DeployIcon,
   Backup as BackupIcon,
-  MonitorFavorite as MonitorIcon,
+  Monitor as MonitorIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';

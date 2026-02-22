@@ -23,7 +23,7 @@ import {
   Timeline,
   Animation,
   Tune,
-  Speed,
+  Speed as Speed,
   Loop,
   Pause,
 } from '@mui/icons-material';

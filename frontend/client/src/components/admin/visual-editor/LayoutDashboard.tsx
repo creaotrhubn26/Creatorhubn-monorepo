@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -58,7 +58,7 @@ import {
   Step,
   StepLabel,
   StepContent,
-  StepButton
+  StepButton,
 } from '@mui/material';
 import {
   ViewComfy,
@@ -107,7 +107,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -170,7 +170,7 @@ import {
   ViewCompact as ViewCompactIcon,
   ViewCompactAlt as ViewCompactAltIcon,
   ViewInAr as ViewInArIcon,
-  ViewKanban as ViewKanbanIcon
+  ViewKanban as ViewKanbanIcon,
 } from '@mui/icons-material';
 import { useLayout, UseLayoutOptions } from '../../../hooks/useLayout';
 import { LayoutConfig, LayoutElement, LayoutRule } from '../../../utils/layoutManager';

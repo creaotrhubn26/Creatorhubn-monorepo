@@ -95,10 +95,10 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
           'accessible-text': { enabled: true }, // WCAG 2.2 - Success Criterion 2.4.13
 
           // Core accessibility rules
-          'color-contrast': { enabled: true } 'color-contrast-enhanced': { enabled: true }, 'image-alt': { enabled: true },
-          label: { enabled: true }, 'link-name': { enabled: true }, 'button-name': { enabled: true }, 'aria-roles': { enabled: true }, 'aria-required-children': { enabled: true }, 'aria-required-parent': { enabled: true }, 'aria-valid-attr': { enabled: true }, 'aria-valid-attr-value': { enabled: true }'html-has-lang': { enabled: true }'html-lang-valid': { enabled: true }'landmark-one-main': { enabled: true }'page-has-heading-one': { enabled: true },
-          region: { enabled: true }, 'duplicate-id': { enabled: true }'duplicate-id-active': { enabled: true }'duplicate-id-aria': { enabled: true }'form-field-multiple-labels': { enabled: true }'frame-title': { enabled: true }'heading-order': { enabled: true }'input-image-alt': { enabled: true },
-          tabindex: { enabled: true }'meta-viewport': { enabled: true }'scrollable-region-focusable': { enabled: true },
+          'color-contrast': { enabled: true }, 'color-contrast-enhanced': { enabled: true }, 'image-alt': { enabled: true },
+          label: { enabled: true }, 'link-name': { enabled: true }, 'button-name': { enabled: true }, 'aria-roles': { enabled: true }, 'aria-required-children': { enabled: true }, 'aria-required-parent': { enabled: true }, 'aria-valid-attr': { enabled: true }, 'aria-valid-attr-value': { enabled: true }, 'html-has-lang': { enabled: true }, 'html-lang-valid': { enabled: true }, 'landmark-one-main': { enabled: true }, 'page-has-heading-one': { enabled: true },
+          region: { enabled: true }, 'duplicate-id': { enabled: true }, 'duplicate-id-active': { enabled: true }, 'duplicate-id-aria': { enabled: true }, 'form-field-multiple-labels': { enabled: true }, 'frame-title': { enabled: true }, 'heading-order': { enabled: true }, 'input-image-alt': { enabled: true },
+          tabindex: { enabled: true }, 'meta-viewport': { enabled: true }, 'scrollable-region-focusable': { enabled: true },
         },
       });
 
@@ -117,7 +117,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
 
       setIssues(formattedIssues);
       calculateScore(formattedIssues);
-      setLastScan(new Date();
+      setLastScan(new Date());
     } catch (error) {
       console.error('Accessibility scan error: ', error);
     } finally {
@@ -187,7 +187,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
   };
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: 400 } }>
+    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: 400 } }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Header */}
         <Box
@@ -295,7 +295,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
           {issues.length > 0 && (
             <List sx={{ p: 0 }}>
               {issues.map((issue, index) => (
-                <Accordion key={`${issue.id}-${index}`}, sx={{ mb: 1 }}>
+                <Accordion key={`${issue.id}-${index}`} sx={{ mb: 1 }}>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
                       {getImpactIcon(issue.impact)}

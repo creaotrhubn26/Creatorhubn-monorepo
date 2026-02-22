@@ -42,7 +42,7 @@ import {
   Settings,
   TrendingUp,
   Psychology,
-  Speed,
+  Speed as Speed,
   Style,
   Spellcheck,
   Timeline,
@@ -61,12 +61,12 @@ import {
   ThumbDown,
   Visibility,
   VisibilityOff,
-  BoxChart,
+  BarChart as BoxChart,
   Insights,
   School,
   Lightbulb,
   Edit,
-  ContentContentCopy,
+  ContentCopy as ContentContentCopy,
   Share,
 } from '@mui/icons-material';
 import type { 

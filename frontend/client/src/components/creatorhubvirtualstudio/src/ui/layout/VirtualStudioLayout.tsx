@@ -14,7 +14,16 @@ import React, { useState, useCallback, useEffect, ReactNode } from 'react';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('VirtualStudioLayout');
-import { Box, Paper, IconButton, Typography, Stack, Fab, Zoom, Badge } from '@mui/material';
+import {
+  Box,
+  Paper,
+  IconButton,
+  Typography,
+  Stack,
+  Fab,
+  Zoom,
+  Badge,
+} from '@mui/material';
 import {
   Menu as MenuIcon,
   Settings,

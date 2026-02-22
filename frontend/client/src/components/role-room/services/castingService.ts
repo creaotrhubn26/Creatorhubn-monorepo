@@ -4,6 +4,7 @@ import {
   Candidate, 
   Schedule,
   CrewMember,
+  CrewAssignment,
   Location,
   Prop,
   ProductionDay,
@@ -595,6 +596,54 @@ export const castingService = {
   },
 
   // ============================================================================
+  // Crew Assignment Management (DOOD / Shoot-Day scheduling)
+  // Persisted per-project in localStorage via settingsService
+  // ============================================================================
+
+  /**
+   * Get all crew assignments for a project
+   */
+  async getCrewAssignments(projectId: string): Promise<CrewAssignment[]> {
+    try {
+      const key = `crew-assignments-${projectId}`;
+      const userId = getCurrentUserId();
+      const stored = await settingsService.getSetting<CrewAssignment[]>(key, { userId });
+      return Array.isArray(stored) ? stored : [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Save (upsert) a single crew assignment
+   */
+  async saveCrewAssignment(projectId: string, assignment: CrewAssignment): Promise<void> {
+    const key = `crew-assignments-${projectId}`;
+    const userId = getCurrentUserId();
+    const existing = await this.getCrewAssignments(projectId);
+    const updated = [
+      ...existing.filter(
+        a => !(a.crewMemberId === assignment.crewMemberId && a.shootDayId === assignment.shootDayId)
+      ),
+      assignment,
+    ];
+    await settingsService.setSetting(key, updated, { userId });
+  },
+
+  /**
+   * Delete a crew assignment for a specific member + day
+   */
+  async deleteCrewAssignment(projectId: string, crewMemberId: string, dayId: string): Promise<void> {
+    const key = `crew-assignments-${projectId}`;
+    const userId = getCurrentUserId();
+    const existing = await this.getCrewAssignments(projectId);
+    const updated = existing.filter(
+      a => !(a.crewMemberId === crewMemberId && a.shootDayId === dayId)
+    );
+    await settingsService.setSetting(key, updated, { userId });
+  },
+
+  // ============================================================================
   // Location Management
   // ============================================================================
 
@@ -841,6 +890,45 @@ export const castingService = {
     await this.saveProject(project);
   },
 
+  /** Alias: create a new shot list (delegates to saveShotList). */
+  async addShotList(projectId: string, shotList: ShotList): Promise<void> {
+    return this.saveShotList(projectId, shotList);
+  },
+
+  /** Alias: update an existing shot list by merging a partial payload. */
+  async updateShotList(projectId: string, shotListId: string, patch: Partial<ShotList>): Promise<void> {
+    const lists = await this.getShotLists(projectId);
+    const existing = lists.find(l => l.id === shotListId);
+    if (!existing) throw new Error(`Shot list ${shotListId} not found`);
+    const merged: ShotList = { ...existing, ...patch, id: shotListId, updatedAt: new Date().toISOString() };
+    return this.saveShotList(projectId, merged);
+  },
+
+  /**
+   * Persist a new display order for shot lists.
+   * If the API does not support this yet the call is a no-op (gracefully ignored).
+   */
+  async reorderShotLists(projectId: string, orderedIds: string[]): Promise<void> {
+    try {
+      const response = await fetch(`/api/casting/projects/${projectId}/shot-lists/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: orderedIds }),
+      });
+      if (response.ok) return;
+    } catch {
+      // Non-fatal — reorder is best-effort
+    }
+    // Locally reorder the project's shotLists array
+    const project = await this.getProject(projectId);
+    if (!project?.shotLists) return;
+    const map = new Map(project.shotLists.map(l => [l.id, l]));
+    const reordered = orderedIds.map(id => map.get(id)).filter(Boolean) as ShotList[];
+    const rest = project.shotLists.filter(l => !orderedIds.includes(l.id));
+    project.shotLists = [...reordered, ...rest];
+    await this.saveProject(project);
+  },
+
   // ============================================================================
   // User Role Management
   // ============================================================================
@@ -950,8 +1038,18 @@ export const castingService = {
 
   /**
    * Initialize mock data for testing - TROLL (2022) Norwegian Film
+   * Singleton: multiple callers share the same in-flight promise.
    */
+  _initPromise: null as Promise<void> | null,
+
   async initializeMockData(): Promise<void> {
+    if (!this._initPromise) {
+      this._initPromise = this._doInitializeMockData();
+    }
+    return this._initPromise;
+  },
+
+  async _doInitializeMockData(): Promise<void> {
     try {
       const existingProjects = await this.getProjects();
       if (existingProjects.length > 0) {

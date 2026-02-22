@@ -646,6 +646,56 @@ export interface EquipmentConflict {
   status?: string;
 }
 
+// ── Check-in / Check-out ─────────────────────────────────
+export interface EquipmentCheckout {
+  id: string;
+  equipment_id: string;
+  checked_out_to: string;      // crew member id
+  checked_out_by?: string;
+  checked_out_at: string;      // ISO timestamp
+  checked_in_at?: string;
+  quantity: number;
+  purpose?: string;
+  condition_on_return?: Equipment['condition'];
+  notes?: string;
+}
+
+export const equipmentCheckoutApi = {
+  /** Returns all active (not checked-in) checkouts for a project */
+  getActive: async (projectId: string): Promise<EquipmentCheckout[]> => {
+    try {
+      const result = await apiRequest<{ checkouts: EquipmentCheckout[] }>(
+        `/projects/${projectId}/equipment-checkouts?active=true`
+      );
+      return result.checkouts;
+    } catch {
+      return [];
+    }
+  },
+
+  checkOut: async (
+    equipmentId: string,
+    payload: Pick<EquipmentCheckout, 'checked_out_to' | 'quantity' | 'purpose'>
+  ): Promise<EquipmentCheckout> => {
+    const result = await apiRequest<{ checkout: EquipmentCheckout }>(
+      `/equipment/${equipmentId}/checkout`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+    return result.checkout;
+  },
+
+  checkIn: async (
+    checkoutId: string,
+    payload: Pick<EquipmentCheckout, 'condition_on_return' | 'notes'>
+  ): Promise<EquipmentCheckout> => {
+    const result = await apiRequest<{ checkout: EquipmentCheckout }>(
+      `/equipment/checkouts/${checkoutId}/checkin`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+    return result.checkout;
+  },
+};
+
 export const equipmentApi = {
   getAll: async (projectId: string): Promise<Equipment[]> => {
     const result = await apiRequest<{ equipment: Equipment[] }>(`/projects/${projectId}/equipment`);
@@ -1115,6 +1165,7 @@ export const castingApi = {
   equipmentBookings: equipmentBookingsApi,
   equipmentAvailability: equipmentAvailabilityApi,
   equipmentConflicts: equipmentConflictsApi,
+  equipmentCheckouts: equipmentCheckoutApi,
   equipmentTemplates: equipmentTemplatesApi,
   vendorLinks: vendorLinksApi,
   productionDays: productionDaysApi,

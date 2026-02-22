@@ -56,7 +56,7 @@ import {
   Cancel,
   School,
   CameraAlt,
-  Aperture,
+  Camera as Aperture,
   ShutterSpeed,
   Iso,
   GridView,

@@ -1,5 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Typography, Paper, Chip } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Paper,
+  Chip,
+} from '@mui/material';
 import { VolumeUp, Warning } from '@mui/icons-material';
 
 interface LoudnessMeterProps {

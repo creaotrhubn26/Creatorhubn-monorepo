@@ -805,6 +805,10 @@ export function enableVendorType(typeId: string): boolean {
   return vendorRegistry.enableExpandableType(typeId);
 }
 
+export function getEnabledVendorTypes(): VendorTypeConfig[] {
+  return vendorRegistry.getAllVendorTypes();
+}
+
 // Get product categories for a vendor type
 export function getProductCategories(vendorTypeId: string): { id: string; label: string; color: string }[] {
   const config = vendorRegistry.getVendorType(vendorTypeId);

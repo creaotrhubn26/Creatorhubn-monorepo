@@ -1,11 +1,22 @@
 import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { Step, Box } from "@mui/material";
+import { Step, Box } from '@mui/material';
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card as MuiCard, CardContent, Button, Chip as Badge } from '@mui/material';
-import { SearchOutlined, TrendingUp } from "@mui/icons-material";
-import { Visibility, Message, ThumbUp, ArrowForward, Lightbulb } from "@mui/icons-material";
+import {
+  Card as MuiCard,
+  CardContent,
+  Button,
+  Chip as Badge,
+} from '@mui/material';
+import { SearchOutlined, TrendingUp } from '@mui/icons-material';
+import {
+  Visibility,
+  Message,
+  ThumbUp,
+  ArrowForward,
+  Lightbulb,
+} from '@mui/icons-material';
 
 export default function
   // Theming system

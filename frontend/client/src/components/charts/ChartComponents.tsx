@@ -4,7 +4,12 @@
  */
 
 import React, { useMemo } from 'react';
-import { Box, Typography, useTheme, alpha } from '@mui/material';
+import {
+  Box,
+  Typography,
+  useTheme,
+  alpha,
+} from '@mui/material';
 import {
   SVG,
   pathGenerators,

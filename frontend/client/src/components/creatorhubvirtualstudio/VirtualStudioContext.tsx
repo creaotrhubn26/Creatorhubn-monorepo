@@ -11,8 +11,20 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import { Box, Alert, IconButton, Button, LinearProgress } from '@mui/material';
-import { Close, CheckCircle, Error, Warning, Info } from '@mui/icons-material';
+import {
+  Box,
+  Alert,
+  IconButton,
+  Button,
+  LinearProgress,
+} from '@mui/material';
+import {
+  Close,
+  CheckCircle,
+  Error,
+  Warning,
+  Info,
+} from '@mui/icons-material';
 
 // Toast types
 export interface ToastAction {

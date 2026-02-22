@@ -135,7 +135,7 @@ export const ContractSummaryWidget: React.FC<ContractSummaryWidgetProps> = ({
     return (
       <Card
         sx={{
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
           backdropFilter: 'blur(10px)',
           border: `1px solid ${alpha(brandColor, 0.2)}`,
           borderRadius: 3}}
@@ -159,7 +159,7 @@ export const ContractSummaryWidget: React.FC<ContractSummaryWidgetProps> = ({
     return (
       <Card
         sx={{
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
           backdropFilter: 'blur(10px)',
           border: `1px solid ${alpha(brandColor, 0.2)}`,
           borderRadius: 3}}
@@ -176,7 +176,7 @@ export const ContractSummaryWidget: React.FC<ContractSummaryWidgetProps> = ({
     return (
       <Card
         sx={{
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
           backdropFilter: 'blur(10px)',
           border: `1px solid ${alpha(brandColor, 0.2)}`,
           borderRadius: 3}}
@@ -208,7 +208,7 @@ export const ContractSummaryWidget: React.FC<ContractSummaryWidgetProps> = ({
   return (
     <Card
       sx={{
-        background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.95) 100%)',
         backdropFilter: 'blur(10px)',
         border: `1px solid ${alpha(brandColor, 0.2)}`,
         borderRadius: 3}}

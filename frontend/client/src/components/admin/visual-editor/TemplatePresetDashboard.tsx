@@ -39,7 +39,7 @@ import {
   ListItemIcon,
   Divider,
   Badge,
-  Avatar
+  Avatar,
 } from '@mui/material';
 import {
   Dashboard,
@@ -58,7 +58,7 @@ import {
   PlayArrow,
   Refresh,
   ArticleOutlined,
-  Tune
+  Tune,
 } from '@mui/icons-material';
 import { useTemplateManager } from '../../../hooks/useTemplateManager';
 

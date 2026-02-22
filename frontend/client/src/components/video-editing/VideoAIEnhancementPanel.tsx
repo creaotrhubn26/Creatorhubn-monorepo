@@ -43,7 +43,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Badge,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   VideoLibrary,
@@ -51,7 +51,7 @@ import {
   CropFree,
   BlurOn,
   ColorLens,
-  Speed,
+  Speed as Speed,
   Analytics,
   PlayArrow,
   Stop,
@@ -71,7 +71,7 @@ import {
   CheckCircle,
   Error,
   Warning,
-  Info
+  Info,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

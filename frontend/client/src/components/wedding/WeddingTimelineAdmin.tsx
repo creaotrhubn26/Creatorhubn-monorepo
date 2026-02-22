@@ -47,7 +47,7 @@ import {
   Pending,
   Key,
   ContentCopy,
-  HelpOutline
+  HelpOutline,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -366,7 +366,7 @@ export default function EvendiTimelineAdmin({
     settings: 9
   } as const;
   const initialTabIndex = defaultTabIndex[timelineSettings.viewDefaults.defaultTab] ?? 0;
-  const [activeTab, setActiveTab] = useState(initialTabIndex);
+  const [activeTab, setActiveTab] = useState<number>(initialTabIndex);
   const hasUserSetTabRef = React.useRef(false);
   const pendingCalendarEventRef = React.useRef<Partial<TimelineEvent> | null>(null);
   
@@ -455,6 +455,9 @@ export default function EvendiTimelineAdmin({
     }));
   }, [prefill, timelinePrefillSettings]);
 
+  // ======= EVENDI TRADITIONS BRIDGE =======
+  const [evendiCulturalType, setEvendiCulturalType] = React.useState<string | null>(null);
+
   // Seed prefill from props/selection when coming from project creation
   React.useEffect(() => {
     if (prefill) return;
@@ -515,9 +518,6 @@ export default function EvendiTimelineAdmin({
     enabled: !!selectedProjectId
 });
 
-  // ======= EVENDI TRADITIONS BRIDGE =======
-  const [evendiCulturalType, setEvendiCulturalType] = React.useState<string | null>(null);
-  
   React.useEffect(() => {
     if (!evendiCoupleId) return;
     const fetchTraditions = async () => {

@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -45,7 +45,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination
+  TablePagination,
 } from '@mui/material';
 import {
   Save,
@@ -66,8 +66,8 @@ import {
   CloudSync,
   Backup,
   Restore,
-  Conflict,
-  Resolve,
+  Warning as Conflict,
+  CheckCircle as Resolve,
   Queue,
   Timeline,
   BarChart,
@@ -86,7 +86,7 @@ import {
   ExpandMore,
   ExpandLess,
   Flag,
-  Globe,
+  Public as Globe,
   Book,
   School,
   Work,
@@ -94,7 +94,7 @@ import {
   Person,
   Group,
   PublicOff,
-  PublicOn
+  Public as PublicOn,
 } from '@mui/icons-material';
 import { useAutoSave, UseAutoSaveOptions } from '../../../hooks/useAutoSave';
 import { AutoSaveConfig, AutoSaveData } from '../../../utils/autoSaveManager';

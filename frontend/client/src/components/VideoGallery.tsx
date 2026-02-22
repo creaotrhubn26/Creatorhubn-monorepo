@@ -32,7 +32,7 @@ import {
 } from '@mui/material';
 import {
   Search as SearchIcon,
-  PlayArrowArrow as PlayIcon,
+  PlayArrow as PlayIcon,
   Pause as PauseIcon,
   Favorite as FavoriteIcon,
   FavoriteBorder as FavoriteOutlineIcon,
@@ -41,8 +41,8 @@ import {
   Fullscreen as FullscreenIcon,
   ViewModule as GridOnViewIcon,
   ViewList as ListViewIcon,
-  FilterListList as FilterIcon,
-  VideocamLibrary as VideoLibraryIcon,
+  FilterList as FilterIcon,
+  VideoLibrary as VideoLibraryIcon,
   Star as StarIcon,
   AccessTime as TimeIcon,
   Visibility as ViewIcon,
@@ -199,7 +199,7 @@ export default function VideoGallery({ userId, isClientView = false }: Videograp
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.05) 0%, rgba(2, 5, 5,152,0,0.05) 100%)',
+        background: 'linear-gradient(135deg, rgba(255,193,7,0.05) 0%, rgba(255,152,0,0.05) 100%)',
         border: '1px solid rgba(25,193,7,0.1)',
         transition: 'all 0.3s cubic-bezier(0, .0, 0.2, 1)', '&:hover': {
           transform: 'translateY(-4px)',
@@ -351,7 +351,7 @@ export default function VideoGallery({ userId, isClientView = false }: Videograp
         sx={{
           p:  3,
           mb:  3,
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,193,7,0.1) 0%, rgba(2, 5, 5,152,0,0.1) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,193,7,0.1) 0%, rgba(255,152,0,0.1) 100%)',
           border: '1px solid rgba(25,193,7,0.2)'}}
        sx={theming.getThemedCardSx()}>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb:  2 }}>

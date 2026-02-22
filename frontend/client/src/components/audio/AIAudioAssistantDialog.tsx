@@ -11,13 +11,9 @@ import {
   Chip,
   Alert,
   ToggleButtonGroup,
-  ToggleButton
+  ToggleButton,
 } from '@mui/material';
-import {
-  AutoFixHigh,
-  GraphicEq,
-  CheckCircle
-} from '@mui/icons-material';
+import { AutoFixHigh, GraphicEq, CheckCircle } from '@mui/icons-material';
 import AudioMixerPanel from './AudioMixerPanel';
 
 interface AIAudioAssistantDialogProps {

@@ -14,7 +14,7 @@ import {
   LinearProgress,
   Chip,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -24,7 +24,7 @@ import {
   Speed as SpeedIcon,
   Security as SecurityIcon,
   Api as ApiIcon,
-  Storage as StorageIcon
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import type { OverviewUsage, EnvironmentStatus, ServiceHealth } from '@/types/integrations';
 

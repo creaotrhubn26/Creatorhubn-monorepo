@@ -6,7 +6,24 @@
 
 import React from 'react';
 import { useTheming } from '../../../utils/theming-helper';
-import { CheckCircle, Error, Warning, Info, School, PlayArrow, Pause, Download, Bookmark, Note, Star, Person, VideoLibrary, Assignment, Quiz, Verified } from '@mui/icons-material';
+import {
+  CheckCircle,
+  Error,
+  Warning,
+  Info,
+  School,
+  PlayArrow,
+  Pause,
+  Download,
+  Bookmark,
+  Note,
+  Star,
+  Person,
+  VideoLibrary,
+  Assignment,
+  Quiz,
+  Verified,
+} from '@mui/icons-material';
 
 // Icon mapping for academy features and status types
 export const getAcademyIcon = (iconType: string, size: number = 24) => {

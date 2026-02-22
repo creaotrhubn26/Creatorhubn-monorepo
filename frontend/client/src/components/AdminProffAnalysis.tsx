@@ -20,7 +20,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Warning as WarningIcon,
@@ -29,7 +29,7 @@ import {
   Business as BusinessIcon,
   Person as PersonIcon,
   AttachMoney as MoneyIcon,
-  Flag as FlagIcon
+  Flag as FlagIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

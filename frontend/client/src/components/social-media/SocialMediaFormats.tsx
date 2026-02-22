@@ -22,14 +22,14 @@ import {
   Facebook,
   YouTube,
   Twitter,
-  TikTok,
+  MusicVideo as TikTok,
   LinkedIn,
   WhatsApp,
-  Snapchat,
-  PushPinterest,
+  ChatBubble as Snapchat,
+  PushPin as PushPinterest,
   Crop,
   HighQuality,
-  Speed,
+  Speed as Speed,
   Visibility,
 } from '@mui/icons-material';
 

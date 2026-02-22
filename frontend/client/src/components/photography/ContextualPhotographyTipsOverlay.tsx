@@ -31,7 +31,7 @@ import {
   Tooltip,
   Fab,
   Slide,
-  Paper
+  Paper,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -53,7 +53,7 @@ import {
   Help,
   Star,
   BookmarkAdd,
-  Share
+  Share,
 } from '@mui/icons-material';
 
 interface PhotographyTip {

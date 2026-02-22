@@ -24,13 +24,12 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Confetti,
 } from '@mui/material';
 import {
   EmojiEvents as TrophyIcon,
   Star as StarIcon,
   TrendingUp as ScoreIcon,
-  VideocamLibrary as VideoIcon,
+  VideoLibrary as VideoIcon,
   PhotoLibrary as PhotoIcon,
   CheckCircle as SelectedIcon,
   Cancel as NotSelectedIcon,

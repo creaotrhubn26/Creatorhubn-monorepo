@@ -29,7 +29,7 @@ import {
   ListItemIcon,
   Badge,
   Paper,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   VideoCall as MeetIcon,
@@ -41,7 +41,7 @@ import {
   SmartToy as SmartIcon,
   Sync as SyncIcon,
   CheckCircle as CheckIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { useUniversalNotificationContext } from './UniversalNotificationProvider';
 import { getAuthHeader } from '@/lib/google/impersonation';

@@ -7,11 +7,27 @@ import { useQuery } from '@tanstack/react-query';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { Box, Typography, Grid, Card as MuiCard, CardContent, Chip, LinearProgress /* Alert removed - Zero Toast Compliance */ } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  Chip,
+  LinearProgress,
+} from '@mui/material';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { PhotoCamera, Videocam, LibraryMusic, Store, CheckCircle, Warning, Error } from '@mui/icons-material';
+import {
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Store,
+  CheckCircle,
+  Warning,
+  Error,
+} from '@mui/icons-material';
 import { getAuthHeader } from '@/lib/google/impersonation';
 
 // Component registry with all 762 components

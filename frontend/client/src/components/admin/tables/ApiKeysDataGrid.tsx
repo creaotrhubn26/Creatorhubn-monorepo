@@ -26,7 +26,7 @@ import {
   DialogActions,
   Button,
   Typography,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   MoreVert as MoreIcon,
@@ -38,7 +38,7 @@ import {
   ContentCopy as CopyIcon,
   CheckCircle as ActiveIcon,
   Error as ErrorIcon,
-  Schedule as PendingIcon
+  Schedule as PendingIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { nb } from 'date-fns/locale';

@@ -45,7 +45,7 @@ import {
   BottomNavigationAction,
   AppBar,
   Toolbar,
-  SwipeableDrawer
+  SwipeableDrawer,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -103,11 +103,11 @@ import {
   NotificationsActive,
   AutoFixHigh,
   SmartToy,
-  Switch as SwitchIcon,
+  ToggleOn as SwitchIcon,
   MovieCreation,
   Menu,
   Home,
-  Close
+  Close,
 } from '@mui/icons-material';
 
 // Import profession-specific components

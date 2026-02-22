@@ -2,8 +2,23 @@ import React, { useState } from 'react';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('ColorGrading');
-import { Box, Paper, Typography, Button, Slider, Chip, Divider, Alert } from '@mui/material';
-import { ColorLens, Brightness6, Contrast, InvertColors, Palette } from '@mui/icons-material';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Slider,
+  Chip,
+  Divider,
+  Alert,
+} from '@mui/material';
+import {
+  ColorLens,
+  Brightness6,
+  Contrast,
+  InvertColors,
+  Palette,
+} from '@mui/icons-material';
 import { integrationService } from '../../services/integrations';
 
 // Dynamic import for LUTLibrary

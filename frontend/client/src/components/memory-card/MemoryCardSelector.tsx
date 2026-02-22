@@ -30,7 +30,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemButton
+  ListItemButton,
 } from '@mui/material';
 import {
   Memory,
@@ -40,7 +40,7 @@ import {
   Info,
   Storage,
   Check,
-  Search
+  Search,
 } from '@mui/icons-material';
 import { 
   WORLD_CAMERA_DATABASE, 
@@ -70,16 +70,16 @@ interface MemoryCardSelectorProps {
 // Capacity estimates for different cameras
 const CAPACITY_ESTIMATES = {
   'Canon R5': {
-    '128GB': { raw: 260, craw: 5200,} '256GB': { raw: 520, craw: 10400,}, '512GB': { raw: 1040, craw: 20800,}, '1TB': { raw: 2080, craw: 41600,}, '2TB': { raw: 4160, craw: 83200,}
-}, 'Canon R6 Mark II': {
-    '128GB': { raw: 320, craw: 6400,}, '256GB': { raw: 640, craw: 12800,}, '512GB': { raw: 1280, craw: 25600,}, '1TB': { raw: 2560, craw: 51200,}, '2TB': { raw: 5120, craw: 102400,}
-}, 'Sony A7R V': {
-    '128GB': { raw: 210, craw: 4200,}, '256GB': { raw: 420, craw: 8400,}'512GB': { raw: 840, craw: 16800,}'1TB': { raw: 1680, craw: 33600,}'2TB': { raw: 3360, craw: 67200,}
-}, 'Nikon Z9': {
-    '128GB': { raw: 280, craw: 5600,}, '256GB': { raw: 560, craw: 11200,}'512GB': { raw: 1120, craw: 22400,}'1TB': { raw: 2240, craw: 44800,}'2TB': { raw: 4480, craw: 89600,}
-}, 'Sony A7 IV': {
-    '128GB': { raw: 380, craw: 7600,}, '256GB': { raw: 760, craw: 15200,}'512GB': { raw: 1520, craw: 30400,}'1TB': { raw: 3040, craw: 60800,}'2TB': { raw: 6080, craw: 121600,}
-}
+    '128GB': { raw: 260, craw: 5200 }, '256GB': { raw: 520, craw: 10400 }, '512GB': { raw: 1040, craw: 20800 }, '1TB': { raw: 2080, craw: 41600 }, '2TB': { raw: 4160, craw: 83200 }
+  }, 'Canon R6 Mark II': {
+    '128GB': { raw: 320, craw: 6400 }, '256GB': { raw: 640, craw: 12800 }, '512GB': { raw: 1280, craw: 25600 }, '1TB': { raw: 2560, craw: 51200 }, '2TB': { raw: 5120, craw: 102400 }
+  }, 'Sony A7R V': {
+    '128GB': { raw: 210, craw: 4200 }, '256GB': { raw: 420, craw: 8400 }, '512GB': { raw: 840, craw: 16800 }, '1TB': { raw: 1680, craw: 33600 }, '2TB': { raw: 3360, craw: 67200 }
+  }, 'Nikon Z9': {
+    '128GB': { raw: 280, craw: 5600 }, '256GB': { raw: 560, craw: 11200 }, '512GB': { raw: 1120, craw: 22400 }, '1TB': { raw: 2240, craw: 44800 }, '2TB': { raw: 4480, craw: 89600 }
+  }, 'Sony A7 IV': {
+    '128GB': { raw: 380, craw: 7600 }, '256GB': { raw: 760, craw: 15200 }, '512GB': { raw: 1520, craw: 30400 }, '1TB': { raw: 3040, craw: 60800 }, '2TB': { raw: 6080, craw: 121600 }
+  }
 };
 
 export default function MemoryCardSelector({
@@ -104,7 +104,7 @@ export default function MemoryCardSelector({
   const updateCardCount = (capacity: string, delta: number) => {
     setSelectedCards(prev => {
       const existing = prev.find(card => card.capacity === capacity);
-      const newCount = Math.max, ((existing?.count || 0) + delta);
+      const newCount = Math.max((existing?.count || 0) + delta);
       
       if (newCount === 0) {
         const updated = prev.filter(card => card.capacity !== capacity);
@@ -148,7 +148,7 @@ export default function MemoryCardSelector({
       <Alert severity="info" sx={{ mb:  3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
           <PhotoCamera fontSize="small" />
-          <Typography variant="subtitle2" sx={{ fontWeight: 600}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
             Valgt kamera: {selectedCamera}
           </Typography>
           <Button 

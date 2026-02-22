@@ -26,7 +26,7 @@ import {
   Tab,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   Refresh,
@@ -42,7 +42,7 @@ import {
   PhotoCamera,
   ExpandMore,
   TrendingUp,
-  Timeline
+  Timeline,
 } from '@mui/icons-material';
 import { videoCameraDiscovery, VideoCameraDiscoveryResult } from '../../data/video-camera-discovery';
 import { photoCameraDiscovery, CameraDiscoveryResult } from '../../data/photo-camera-discovery';

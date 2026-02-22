@@ -46,7 +46,7 @@ import {
   Collapse,
   Skeleton,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -104,9 +104,9 @@ import {
   NotificationsActive,
   AutoFixHigh,
   SmartToy,
-  Switch as SwitchIcon,
+  ToggleOn as SwitchIcon,
   MovieCreation,
-  Close as CloseIcon
+  Close as CloseIcon,
 } from '@mui/icons-material';
 
 // Import all the same components as the original

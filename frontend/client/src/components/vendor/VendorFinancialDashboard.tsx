@@ -34,7 +34,7 @@ import {
   ListItemText,
   Avatar,
   alpha,
-  TextField
+  TextField,
 } from '@mui/material';
 import {
   AttachMoney,
@@ -43,7 +43,7 @@ import {
   Download,
   Receipt,
   AccountBalance,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

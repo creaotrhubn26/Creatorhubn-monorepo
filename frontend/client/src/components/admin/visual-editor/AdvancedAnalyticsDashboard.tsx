@@ -40,13 +40,13 @@ import {
   ListItemText,
   ListItemIcon,
   Divider,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   Analytics,
   TrendingUp,
   Visibility,
-  MouseIcon,
+  Mouse as MouseIcon,
   Timeline,
   Science,
   Insights,
@@ -60,7 +60,7 @@ import {
   Delete,
   Warning,
   CheckCircle,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { useAdvancedAnalytics } from '../../../hooks/useAdvancedAnalytics';
 

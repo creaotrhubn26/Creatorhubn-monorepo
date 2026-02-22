@@ -26,7 +26,7 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Send as SubmitIcon,
@@ -37,7 +37,7 @@ import {
   Star as QualityIcon,
   VideoLibrary as VideoIcon,
   PhotoLibrary as PhotoIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
 } from '@mui/icons-material';
 
 interface TutorialSubmission {

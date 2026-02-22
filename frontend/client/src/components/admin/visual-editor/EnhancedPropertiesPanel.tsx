@@ -14,8 +14,8 @@ import {
   Button,
   InputAdornment,
   Chip,
-  SelectChangeEvent,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   ExpandMore,
   FormatAlignLeft,

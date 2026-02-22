@@ -12,7 +12,7 @@ import {
   Paper,
   Alert,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -22,7 +22,7 @@ import {
   Warning,
   Error as ErrorIcon,
   Refresh,
-  Info
+  Info,
 } from '@mui/icons-material';
 import VerificationSystemDemo from './VerificationSystemDemo';
 import LiveVerificationDemo from './LiveVerificationDemo';

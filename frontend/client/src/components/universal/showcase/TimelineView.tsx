@@ -20,7 +20,7 @@ import {
   DialogActions,
   TextField,
   Slider,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Close,
@@ -36,7 +36,7 @@ import {
   Layers,
   Timeline as TimelineIcon,
   ViewModule,
-  DragIndicator
+  DragIndicator,
 } from '@mui/icons-material';
 
 interface VideoClip {

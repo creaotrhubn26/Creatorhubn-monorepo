@@ -41,7 +41,7 @@ import {
   Collapse,
 } from '@mui/material';
 import {
-  PlayArrowArrow as PlayIcon,
+  PlayArrow as PlayIcon,
   Stop as StopIcon,
   Visibility as ViewIcon,
   Edit as EditIcon,
@@ -63,7 +63,7 @@ import {
   Payment as PaymentIcon,
   Security as SecurityIcon,
   Instagram as InstagramIcon,
-  MusicNoteNote as MusicIcon,
+  MusicNote as MusicIcon,
 } from '@mui/icons-material';
 import { useWireMock } from '@/hooks/useWireMock';
 

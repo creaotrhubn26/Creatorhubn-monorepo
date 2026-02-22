@@ -28,7 +28,7 @@ import {
   LinearProgress,
   Tooltip,
   Badge,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   EmojiEvents,
@@ -39,7 +39,7 @@ import {
   BugReport,
   Assignment,
   Timer,
-  LocalFireDepartment
+  LocalFireDepartment,
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

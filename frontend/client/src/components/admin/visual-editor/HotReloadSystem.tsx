@@ -6,7 +6,12 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { CircularProgress, Box, Typography, Fade } from '@mui/material';
+import {
+  CircularProgress,
+  Box,
+  Typography,
+  Fade,
+} from '@mui/material';
 
 export interface HotReloadConfig {
   enabled: boolean;

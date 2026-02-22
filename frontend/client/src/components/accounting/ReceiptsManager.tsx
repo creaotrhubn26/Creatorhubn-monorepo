@@ -1,6 +1,18 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Box, Typography, Table, TableHead, TableBody, TableRow, TableCell, Chip, Button, Select, MenuItem } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  Chip,
+  Button,
+  Select,
+  MenuItem,
+} from '@mui/material';
 import ReceiptUploader from './ReceiptUploader';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 

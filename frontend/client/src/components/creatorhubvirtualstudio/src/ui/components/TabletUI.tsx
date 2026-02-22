@@ -24,9 +24,7 @@ import {
   Paper,
   IconButton,
   Button,
-  ButtonProps,
   Slider,
-  SliderProps,
   Drawer,
   SwipeableDrawer,
   Menu,
@@ -41,6 +39,8 @@ import {
   Collapse,
   Portal,
 } from '@mui/material';
+import type { ButtonProps } from '@mui/material/Button';
+import type { SliderProps } from '@mui/material/Slider';
 import {
   DragHandle,
   Close,

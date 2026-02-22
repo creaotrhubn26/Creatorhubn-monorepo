@@ -73,7 +73,7 @@ import {
   Lightbulb,
   ThumbDown,
   Comment,
-  Screenshot,
+  Screenshot as Screenshot,
   Mic,
   MicOff,
   CheckCircle,

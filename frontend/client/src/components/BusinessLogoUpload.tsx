@@ -13,14 +13,14 @@ import {
   CardContent,
   LinearProgress,
   Alert,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
   Business as BusinessIcon,
-  CheckCircle as CheckIcon
+  CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

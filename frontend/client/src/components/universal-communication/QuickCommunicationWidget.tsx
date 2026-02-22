@@ -25,7 +25,7 @@ import {
   SpeedDialAction,
   SpeedDialIcon,
   Zoom,
-  Fade
+  Fade,
 } from '@mui/material';
 import {
   Chat as ChatIcon,
@@ -37,7 +37,7 @@ import {
   Close as CloseIcon,
   Message as MessageIcon,
   Person as PersonIcon,
-  Group as GroupIcon
+  Group as GroupIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

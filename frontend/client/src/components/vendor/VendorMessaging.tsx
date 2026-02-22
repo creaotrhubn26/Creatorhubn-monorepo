@@ -24,13 +24,9 @@ import {
   Paper,
   Divider,
   Button,
-  alpha
+  alpha,
 } from '@mui/material';
-import {
-  Send,
-  ShoppingCart,
-  Person
-} from '@mui/icons-material';
+import { Send, ShoppingCart, Person } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
 import { getVendorTypeConfig } from '@shared/vendor-type-registry';

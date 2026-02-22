@@ -35,7 +35,7 @@ import {
   Select,
   MenuItem,
   Alert,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Psychology,
@@ -50,7 +50,7 @@ import {
   CheckCircle,
   Cancel,
   Warning,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { useMLOptimizer } from '../../../hooks/useMLOptimizer';
 

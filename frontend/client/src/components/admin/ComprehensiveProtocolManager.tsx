@@ -31,7 +31,7 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
 } from '@mui/material';
 import {
   Warning,
@@ -47,7 +47,7 @@ import {
   Lan,
   Api,
   Memory,
-  Speed,
+  Speed as Speed,
   MonitorHeart,
   BugReport,
   ExpandMore,
@@ -61,7 +61,6 @@ import {
   TrendingUp,
   FilterList,
   Search,
-  // ⚠️ AVANSERTE PROTOKOLL IKONER for liste-implementering
   GraphicEq as MediaProtocolIcon,
   SmartToy as AiProtocolIcon,
   ChatBubble as ChatProtocolIcon,
@@ -82,7 +81,7 @@ import {
   AccountTree as GraphQLIcon,
   Memory as GrpcIcon,
   Business as IsoIcon,
-  Description as JsonLdIcon
+  Description as JsonLdIcon,
 } from '@mui/icons-material';
 
 interface SystemEvent {

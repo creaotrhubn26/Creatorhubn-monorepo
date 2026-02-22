@@ -34,7 +34,7 @@ import {
   IconButton,
   Divider,
   Grid,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Refresh,
@@ -44,7 +44,7 @@ import {
   CameraAlt,
   AutoAwesome,
   Warning,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { cameraDiscoveryService } from '../../data/camera-discovery-system';
 

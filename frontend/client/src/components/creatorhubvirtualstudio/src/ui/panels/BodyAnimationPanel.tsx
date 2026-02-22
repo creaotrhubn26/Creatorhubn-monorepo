@@ -38,7 +38,7 @@ import {
   Refresh,
   PlayArrow,
   Pause,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import {
   HEAD_PRESETS,

@@ -19,7 +19,7 @@ import {
   InputAdornment,
   Paper,
   Divider,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   Search,
@@ -70,9 +70,9 @@ import {
   GraphicEq,
   LibraryMusic,
   RecordVoiceOver,
-  Speed,
+  Speed as Speed,
   VolumeDown,
-  VolumeOff
+  VolumeOff,
 } from '@mui/icons-material';
 
 interface Command {
@@ -689,6 +689,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
     });
 
     // Listen for command events
+    if (typeof communication?.subscribe === 'function') {
     communication.subscribe('command:execute', (data) => {
       if (data.commandId) {
         const command = commands.find(cmd => cmd.id === data.commandId);
@@ -703,6 +704,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
         setSearchQuery(data.query);
     }
   });
+    }
 
     return () => {
       componentRegistry.unregisterComponent('CommandPalette');

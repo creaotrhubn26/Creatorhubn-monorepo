@@ -49,7 +49,7 @@ import {
   TableHead,
   TableRow,
   LinearProgress,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Domain,
@@ -66,7 +66,7 @@ import {
   CheckCircle,
   Error,
   Warning,
-  ExpandMore
+  ExpandMore,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';

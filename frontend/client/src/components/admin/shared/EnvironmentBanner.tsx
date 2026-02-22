@@ -13,15 +13,15 @@ import {
   Tooltip,
   Typography,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
-  Development as DevIcon,
+  Code as DevIcon,
   BugReport as TestIcon,
-  Production as ProdIcon,
+  RocketLaunch as ProdIcon,
   Shield as SafeModeIcon,
   Visibility as ShowIcon,
-  VisibilityOff as HideIcon
+  VisibilityOff as HideIcon,
 } from '@mui/icons-material';
 
 interface EnvironmentBannerProps {

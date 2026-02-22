@@ -50,7 +50,6 @@ import {
   LinearProgress,
 } from '@mui/material';
 import {
-  // Layout Icons
   ViewModule as GridOnIcon,
   ViewStream as ListIcon,
   ViewComfy as MasonryIcon,
@@ -60,8 +59,6 @@ import {
   CropFree as PortfolioIcon,
   Splitscreen as SplitScreenIcon,
   Fullscreen as FullWidthIcon,
-
-  // Display Icons
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Settings as SettingsIcon,
@@ -69,8 +66,6 @@ import {
   Animation as AnimationIcon,
   Phone as MobileIcon,
   Computer as DesktopIcon,
-
-  // Action Icons
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -80,40 +75,28 @@ import {
   Download as DownloadIcon,
   ContentCopy as CopyIcon,
   Restore as RestoreIcon,
-
-  // Content Icons
   Photo as PhotoIcon,
   VideoLibrary as VideoIcon,
   LibraryMusic as AudioIcon,
   Description as DocumentIcon,
   YouTube as YouTubeIcon,
   Link as EmbedIcon,
-
-  // Analytics Icons
   Analytics as AnalyticsIcon,
   TrendingUp as TrendingUpIcon,
   Insights as InsightsIcon,
-
-  // Navigation Icons
   ExpandMore as ExpandMoreIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
-
-  // Status Icons
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
-
-  // Organization Icons
   Category as CategoryIcon,
   LocalOffer as LocalOfferIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
   Public as PublicIcon,
   Lock as PrivateIcon,
-
-  // Template Icons
   Dashboard as TemplateIcon,
   GetApp as ImportIcon,
   Publish as ExportIcon,

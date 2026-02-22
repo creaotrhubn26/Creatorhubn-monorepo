@@ -16,6 +16,9 @@ import type {
   RoleRoomHealthResponse,
   OnboardingRoleResult,
   MarketplaceInstallation,
+  AuditionListFilters,
+  AuditionListResponse,
+  AuditionScheduleWrite,
 } from '../../shared/role-room-types';
 
 const BASE = '/api/role-room';
@@ -234,6 +237,126 @@ export async function createSchedule(
   return roleRoomFetch(`/projects/${projectId}/schedules`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+// ── Audition Schedule API (filterable list + full CRUD) ───────
+
+/**
+ * List schedules with server-side filter, sort, pagination and counts.
+ * Uses the upgraded GET /projects/:id/schedules endpoint.
+ */
+export async function listAuditionSchedules(
+  projectId: string,
+  filters: AuditionListFilters = {},
+): Promise<AuditionListResponse> {
+  const qs = new URLSearchParams();
+  if (filters.status && filters.status !== 'all') qs.set('status', filters.status);
+  if (filters.roleId)      qs.set('roleId',      filters.roleId);
+  if (filters.candidateId) qs.set('candidateId', filters.candidateId);
+  if (filters.dateFrom)    qs.set('dateFrom',    filters.dateFrom);
+  if (filters.dateTo)      qs.set('dateTo',      filters.dateTo);
+  if (filters.search)      qs.set('search',      filters.search);
+  if (filters.sort)        qs.set('sort',        filters.sort);
+  if (filters.dir)         qs.set('dir',         filters.dir);
+  if (filters.limit  != null) qs.set('limit',  String(filters.limit));
+  if (filters.offset != null) qs.set('offset', String(filters.offset));
+  if (filters.userId)      qs.set('userId',      filters.userId);
+  const query = qs.toString();
+  return roleRoomFetch(`/projects/${projectId}/schedules${query ? `?${query}` : ''}`);
+}
+
+/** Create a new audition slot */
+export async function createAuditionSchedule(
+  projectId: string,
+  data: AuditionScheduleWrite,
+): Promise<{ id: string }> {
+  return roleRoomFetch(`/projects/${projectId}/schedules`, {
+    method: 'POST',
+    body: JSON.stringify({
+      candidateId: data.candidateId,
+      roleId:      data.roleId,
+      sceneId:     data.sceneId,
+      locationId:  data.locationId,
+      date:        data.date,
+      startTime:   data.startTime,
+      endTime:     data.endTime,
+      type:        data.type,
+      notes:       data.notes,
+      location:    data.location,
+      status:      data.status ?? 'scheduled',
+      ...(data.id ? { id: data.id } : {}),
+    }),
+  });
+}
+
+/** Full replace of an existing slot */
+export async function updateAuditionSchedule(
+  projectId: string,
+  scheduleId: string,
+  data: Partial<AuditionScheduleWrite>,
+): Promise<{ ok: boolean }> {
+  return roleRoomFetch(`/projects/${projectId}/schedules/${scheduleId}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      candidateId: data.candidateId,
+      roleId:      data.roleId,
+      sceneId:     data.sceneId,
+      locationId:  data.locationId,
+      date:        data.date,
+      startTime:   data.startTime,
+      endTime:     data.endTime,
+      type:        data.type,
+      notes:       data.notes,
+      location:    data.location,
+      status:      data.status,
+    }),
+  });
+}
+
+/** Partial update – typically status change */
+export async function patchAuditionSchedule(
+  projectId: string,
+  scheduleId: string,
+  patch: Partial<{ status: string; notes: string; date: string; location: string }>,
+): Promise<{ ok: boolean }> {
+  return roleRoomFetch(`/projects/${projectId}/schedules/${scheduleId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Delete one slot */
+export async function deleteAuditionSchedule(
+  projectId: string,
+  scheduleId: string,
+): Promise<{ ok: boolean }> {
+  return roleRoomFetch(`/projects/${projectId}/schedules/${scheduleId}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Bulk delete */
+export async function bulkDeleteAuditionSchedules(
+  projectId: string,
+  ids: string[],
+): Promise<{ deleted: number }> {
+  return roleRoomFetch(`/projects/${projectId}/schedules`, {
+    method: 'DELETE',
+    body: JSON.stringify({ ids }),
+  });
+}
+
+/** Star / unstar a slot for a specific user */
+export async function toggleAuditionFavorite(
+  projectId: string,
+  scheduleId: string,
+  userId: string,
+  favorite: boolean,
+): Promise<{ ok: boolean }> {
+  return roleRoomFetch(`/projects/${projectId}/schedules/${scheduleId}/favorite`, {
+    method: 'POST',
+    body: JSON.stringify({ userId, favorite }),
   });
 }
 

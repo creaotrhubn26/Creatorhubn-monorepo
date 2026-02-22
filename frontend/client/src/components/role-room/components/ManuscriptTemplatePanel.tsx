@@ -27,7 +27,7 @@ import {
   ListItemText,
   Divider,
   Tooltip,
-  Paper
+  Paper,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -51,8 +51,8 @@ import {
   Person as PersonIcon,
   PersonOutline as PersonOutlineIcon,
   School as SchoolIcon,
-  Rocket as RocketIcon,
-  Architecture as ArchitectureIcon
+  RocketLaunch as RocketIcon,
+  Architecture as ArchitectureIcon,
 } from '@mui/icons-material';
 import { manuscriptTemplateService } from '../services/manuscriptTemplateService';
 import { Template, TemplateLibrary, StructureTemplate } from '../models/manuscriptTemplates';

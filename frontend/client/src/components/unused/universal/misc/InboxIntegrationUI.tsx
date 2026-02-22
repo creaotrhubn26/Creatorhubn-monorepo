@@ -7,11 +7,33 @@ import { useQuery } from '@tanstack/react-query';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { Box, Typography, Card as MuiCard, CardContent, List, ListItem, ListItemText, ListItemIcon, Badge, Chip, IconButton, Divider, Avatar } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Badge,
+  Chip,
+  IconButton,
+  Divider,
+  Avatar,
+} from '@mui/material';
 import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { Inbox, Email, Star, Schedule, Reply, Archive, Delete } from '@mui/icons-material';
+import {
+  Inbox,
+  Email,
+  Star,
+  Schedule,
+  Reply,
+  Archive,
+  Delete,
+} from '@mui/icons-material';
 import { getAuthHeader } from '@/lib/google/impersonation';
 interface InboxIntegrationUIProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';

@@ -39,7 +39,7 @@ import {
   Badge,
   Avatar,
   Stack,
-  Rating
+  Rating,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -59,7 +59,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 // SEO Interfaces

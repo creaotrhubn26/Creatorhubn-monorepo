@@ -207,7 +207,15 @@ export function useScrollStoryI18n() {
 /**
  * Language Selector Component
  */
-import { Select, MenuItem, FormControl, InputLabel, Box, Typography, Divider } from '@mui/material';
+import {
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Box,
+  Typography,
+  Divider,
+} from '@mui/material';
 
 interface LanguageSelectorProps {
   type: 'interface' | 'content' | 'both'; // Which language to control

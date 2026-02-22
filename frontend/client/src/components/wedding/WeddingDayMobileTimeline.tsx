@@ -24,7 +24,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button
+  Button,
 } from '@mui/material';
 import {
   Schedule,
@@ -46,7 +46,7 @@ import {
   Share,
   Notifications,
   NotificationsActive,
-  Settings
+  Settings,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { usePushNotifications } from '../../hooks/usePushNotifications';

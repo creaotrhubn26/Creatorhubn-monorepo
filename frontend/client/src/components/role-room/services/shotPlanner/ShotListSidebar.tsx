@@ -26,9 +26,9 @@ import {
   Select,
   FormControl,
   InputLabel,
-  SelectChangeEvent,
   Stack,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,

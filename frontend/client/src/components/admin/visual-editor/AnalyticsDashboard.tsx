@@ -7,13 +7,13 @@ import { useTheming } from '../../../utils/theming-helper';
 import * as React from 'react';
 import { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import { useVisualEditor } from './VisualEditorContext';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -47,7 +47,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination
+  TablePagination,
 } from '@mui/material';
 import {
   Analytics,
@@ -59,7 +59,7 @@ import {
   Description,
   Error as ErrorIcon,
   Warning,
-  Speed,
+  Speed as Speed,
   Timeline,
   BarChart,
   PieChart,
@@ -92,7 +92,7 @@ import {
   SyncProblem,
   CloudOff,
   CloudDone,
-  CloudSync
+  CloudSync,
 } from '@mui/icons-material';
 import { useAnalytics, UseAnalyticsOptions } from '../../../hooks/useAnalytics';
 import { AnalyticsConfig, AnalyticsEvent } from '../../../utils/analyticsManager';

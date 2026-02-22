@@ -13,7 +13,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   GraphicEq,
@@ -23,7 +23,7 @@ import {
   Transcribe,
   Psychology,
   Person,
-  CheckCircle
+  CheckCircle,
 } from '@mui/icons-material';
 import { AIVisionService, AudioSceneAnalysis } from '@/services/ai-vision-service';
 

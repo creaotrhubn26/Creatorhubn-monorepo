@@ -28,14 +28,14 @@ import {
   Alert,
   Chip,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   Edit,
   Save,
   Close,
   ContactPage,
-  CloudSync
+  CloudSync,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { ProjectCollaborator } from '@/types/project-collaborator';

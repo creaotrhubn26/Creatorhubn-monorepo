@@ -55,7 +55,7 @@ import {
   StepLabel,
   StepContent,
   CircularProgress,
-  Skeleton
+  Skeleton,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -106,7 +106,7 @@ import {
   CheckCircleOutline as CheckCircleOutlineIcon,
   ErrorOutline as ErrorOutlineIcon,
   WarningAmber as WarningAmberIcon,
-  InfoOutlined as InfoOutlinedIcon
+  InfoOutlined as InfoOutlinedIcon,
 } from '@mui/icons-material';
 import { useAutoScaling } from '@/hooks/useAutoScaling';
 import { useBackupRecovery } from '@/hooks/useBackupRecovery';

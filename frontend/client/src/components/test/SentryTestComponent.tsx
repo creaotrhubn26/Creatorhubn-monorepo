@@ -10,11 +10,19 @@
  */
 
 import React from 'react';
-import { Box, Button, Card, CardContent, Typography, Stack, Chip } from '@mui/material';
-import { 
-  BugReport, 
-  Send, 
-  Person, 
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Typography,
+  Stack,
+  Chip,
+} from '@mui/material';
+import {
+  BugReport,
+  Send,
+  Person,
   Label,
   Error as ErrorIcon,
   CheckCircle,

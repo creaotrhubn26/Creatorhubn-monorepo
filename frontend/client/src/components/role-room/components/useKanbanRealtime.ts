@@ -1,0 +1,124 @@
+import { useEffect, useRef, useState, useCallback } from 'react';
+
+interface RealtimeEvent {
+  type: 'candidate_updated' | 'candidate_deleted' | 'reload' | 'pong';
+  projectId?: string;
+  candidateId?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface UseKanbanRealtimeReturn {
+  connected: boolean;
+}
+
+const HEARTBEAT_MS = 25_000;
+const INITIAL_DELAY_MS = 1_000;
+const MAX_DELAY_MS = 30_000;
+
+/**
+ * Opens a WebSocket to `/ws/casting?projectId=<id>` and calls
+ * `onRemoteChange()` whenever a candidate update / reload event arrives.
+ *
+ * The hook handles:
+ *  - Exponential-backoff reconnect on disconnect
+ *  - Heartbeat ping every 25 s to keep the connection alive through load balancers
+ *  - Graceful cleanup on unmount or projectId change
+ *  - Silent fallback when the server has no WS endpoint (connect attempt just
+ *    silently fails and the component continues to work normally)
+ */
+export function useKanbanRealtime(
+  projectId: string | undefined,
+  onRemoteChange: () => void,
+): UseKanbanRealtimeReturn {
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectDelayRef = useRef(INITIAL_DELAY_MS);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
+  // Keep callback stable so the connect closure always calls the latest version
+  const onChangeRef = useRef(onRemoteChange);
+  useEffect(() => { onChangeRef.current = onRemoteChange; }, [onRemoteChange]);
+
+  const clearTimers = useCallback(() => {
+    if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    heartbeatTimerRef.current = null;
+    reconnectTimerRef.current = null;
+  }, []);
+
+  const connect = useCallback(() => {
+    if (!projectId || !mountedRef.current) return;
+
+    // Derive WS URL from current page origin
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${protocol}//${window.location.host}/ws/casting?projectId=${encodeURIComponent(projectId)}`;
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      // WS not supported / blocked — degrade gracefully
+      return;
+    }
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (!mountedRef.current) { ws.close(); return; }
+      setConnected(true);
+      reconnectDelayRef.current = INITIAL_DELAY_MS;
+      heartbeatTimerRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping', projectId }));
+        }
+      }, HEARTBEAT_MS);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg: RealtimeEvent = JSON.parse(event.data as string);
+        if (
+          msg.type === 'candidate_updated' ||
+          msg.type === 'candidate_deleted' ||
+          msg.type === 'reload'
+        ) {
+          onChangeRef.current();
+        }
+      } catch {
+        // Ignore malformed frames
+      }
+    };
+
+    ws.onclose = () => {
+      if (!mountedRef.current) return;
+      setConnected(false);
+      clearTimers();
+      // Exponential-backoff reconnect
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+        reconnectDelayRef.current = Math.min(
+          reconnectDelayRef.current * 2,
+          MAX_DELAY_MS,
+        );
+        connect();
+      }, reconnectDelayRef.current);
+    };
+
+    ws.onerror = () => {
+      // onclose fires right after onerror — reconnect happens there
+      ws.close();
+    };
+  }, [projectId, clearTimers]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    connect();
+    return () => {
+      mountedRef.current = false;
+      clearTimers();
+      wsRef.current?.close();
+    };
+  }, [connect, clearTimers]);
+
+  return { connected };
+}

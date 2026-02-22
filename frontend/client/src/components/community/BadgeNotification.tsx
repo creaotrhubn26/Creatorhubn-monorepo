@@ -5,7 +5,13 @@
  */
 
 import React, { forwardRef } from 'react';
-import { Box, Typography, Chip, IconButton, Paper } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Chip,
+  IconButton,
+  Paper,
+} from '@mui/material';
 import { EmojiEvents, Close } from '@mui/icons-material';
 import { useSnackbar, SnackbarKey, SnackbarContent } from 'notistack';
 

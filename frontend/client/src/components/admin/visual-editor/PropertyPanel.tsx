@@ -23,13 +23,9 @@ import {
   Tab,
   Tabs,
   Grid,
-  Divider
+  Divider,
 } from '@mui/material';
-import {
-  FormatSize,
-  BorderAll,
-  Layers
-} from '@mui/icons-material';
+import { FormatSize, BorderAll, Layers } from '@mui/icons-material';
 
 interface EditorElement {
   id: string;

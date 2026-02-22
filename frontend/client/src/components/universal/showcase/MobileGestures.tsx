@@ -18,7 +18,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   TouchApp,
@@ -32,7 +32,7 @@ import {
   Gesture,
   Close,
   Info,
-  Check
+  Check,
 } from '@mui/icons-material';
 
 interface TouchGesture {

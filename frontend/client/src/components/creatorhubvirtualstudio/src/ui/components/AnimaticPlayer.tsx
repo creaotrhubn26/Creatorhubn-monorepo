@@ -40,7 +40,7 @@ import {
   Fullscreen,
   FullscreenExit,
   Loop,
-  Speed,
+  Speed as Speed,
   Download,
   Close,
   FirstPage,

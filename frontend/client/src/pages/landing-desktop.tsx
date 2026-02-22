@@ -24,7 +24,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-} from "@mui/material";
+} from '@mui/material';
 import {
   VideoLibrary,
   LibraryMusic,
@@ -50,7 +50,7 @@ import {
   People,
   AccountCircle,
   Work,
-} from "@mui/icons-material";
+} from '@mui/icons-material';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import FAQSection from "@/components/landing/FAQSection";

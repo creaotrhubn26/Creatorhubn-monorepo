@@ -12,7 +12,7 @@ import {
   CardContent,
   InputAdornment,
   IconButton,
-  Container
+  Container,
 } from '@mui/material';
 import {
   Visibility,
@@ -20,7 +20,7 @@ import {
   Login as LoginIcon,
   Person,
   Lock,
-  CameraAlt
+  CameraAlt,
 } from '@mui/icons-material';
 
 export default function LoginPageSimple() {

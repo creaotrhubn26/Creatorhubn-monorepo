@@ -16,7 +16,7 @@ import {
   Divider,
   Alert,
   LinearProgress,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
 import {
@@ -25,7 +25,7 @@ import {
   Star,
   Memory,
   Tune,
-  Update
+  Update,
 } from '@mui/icons-material';
 
 interface CameraModel {

@@ -26,7 +26,7 @@ import {
   Divider,
   Paper,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Send,
@@ -39,7 +39,7 @@ import {
   Group,
   Message,
   People,
-  VideoCamera
+  Videocam as VideoCamera,
 } from '@mui/icons-material';
 
 interface Conversation {

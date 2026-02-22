@@ -125,7 +125,7 @@ const statusColumns: { id: ShotStatus; label: string; color: string; icon: React
 
 const priorityConfig: Record<ShotPriority, { label: string; color: string; bgColor: string }> = {
   critical: { label: 'Kritisk', color: '#f44336', bgColor: 'rgba(244,67,54,0.15)' },
-  important: { label: 'Viktig', color: '#ff9800', bgColor: 'rgba(255,152,0,0.15)' },
+  important: { label: 'Viktig', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
   nice_to_have: { label: 'Bonus', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
 };
 
@@ -293,7 +293,7 @@ const KanbanCard: React.FC<KanbanCardProps> = React.memo(({ shot, shotList, crew
           </Typography>
           {shot.reservedBy && (
             <Tooltip title={`Reservert av ${shot.reservedByName}`}>
-              <LockIcon sx={{ fontSize: { xs: 18, sm: 14 }, color: '#ff9800', ml: 1 }} />
+              <LockIcon sx={{ fontSize: { xs: 18, sm: 14 }, color: '#9333ea', ml: 1 }} />
             </Tooltip>
           )}
         </Box>
@@ -319,7 +319,7 @@ const KanbanCard: React.FC<KanbanCardProps> = React.memo(({ shot, shotList, crew
                 borderRadius: '50%',
                 bgcolor: {
                   red: '#f44336',
-                  orange: '#ff9800',
+                  orange: '#9333ea',
                   yellow: '#ffeb3b',
                   green: '#4caf50',
                   blue: '#2196f3',
@@ -352,15 +352,15 @@ const KanbanCard: React.FC<KanbanCardProps> = React.memo(({ shot, shotList, crew
           ) : (
             <Tooltip title="Ikke tilordnet">
               <Chip
-                icon={<PersonIcon sx={{ fontSize: { xs: 16, sm: 14 }, color: '#ff9800 !important' }} />}
+                icon={<PersonIcon sx={{ fontSize: { xs: 16, sm: 14 }, color: '#9333ea !important' }} />}
                 label="Ledig"
                 size="small"
                 sx={{ 
                   height: { xs: 26, sm: 20 },
-                  bgcolor: 'rgba(255,152,0,0.15)',
-                  color: '#ff9800',
+                  bgcolor: 'rgba(147,51,234,0.15)',
+                  color: '#9333ea',
                   fontSize: { xs: '0.7rem', sm: '0.65rem' },
-                  border: '1px dashed rgba(255,152,0,0.4)',
+                  border: '1px dashed rgba(147,51,234,0.4)',
                   '& .MuiChip-label': { px: { xs: 0.75, sm: 0.5 } },
                 }}
               />
@@ -836,7 +836,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
             </Paper>
             <Paper sx={{ 
               p: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 }, 
-              bgcolor: 'rgba(255,152,0,0.1)',
+              bgcolor: 'rgba(147,51,234,0.1)',
               gridColumn: { xs: 'span 2', sm: 'span 1' },
               display: 'flex',
               flexDirection: 'column',
@@ -851,7 +851,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                 textAlign: 'center',
               }}>Ikke tilordnet</Typography>
               <Typography sx={{ 
-                color: '#ff9800', 
+                color: '#9333ea', 
                 fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' }, 
                 fontWeight: 700,
                 lineHeight: 1.2,
@@ -1637,27 +1637,27 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                   <Paper
                     sx={{
                       p: 2,
-                      bgcolor: 'rgba(255,152,0,0.1)',
-                      border: '1px solid rgba(255,152,0,0.3)',
+                      bgcolor: 'rgba(147,51,234,0.1)',
+                      border: '1px solid rgba(147,51,234,0.3)',
                       borderRadius: 2,
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                      <Avatar sx={{ bgcolor: '#ff9800' }}>
+                      <Avatar sx={{ bgcolor: '#9333ea' }}>
                         <PersonIcon />
                       </Avatar>
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                           Ikke tilordnet
                         </Typography>
-                        <Typography variant="caption" sx={{ color: '#ff9800' }}>
+                        <Typography variant="caption" sx={{ color: '#9333ea' }}>
                           Trenger tilordning
                         </Typography>
                       </Box>
                     </Box>
                     <Chip
                       label={`${workloadByMember['unassigned'].assigned} shots`}
-                      sx={{ bgcolor: 'rgba(255,152,0,0.2)', color: '#ff9800', mb: 2 }}
+                      sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#9333ea', mb: 2 }}
                     />
                     
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -1698,8 +1698,8 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                                   color: '#fff', 
                                   fontSize: '0.75rem',
                                   height: 32,
-                                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,152,0,0.4)' },
-                                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9800' },
+                                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(147,51,234,0.4)' },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#9333ea' },
                                 }}
                               >
                                 <MenuItem value="" disabled>Tilordne</MenuItem>
@@ -1961,9 +1961,9 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                                   sx={{ 
                                     height: { xs: 16, sm: 18, md: 17, lg: 20, xl: 26 }, 
                                     fontSize: { xs: '0.5rem', sm: '0.55rem', md: '0.52rem', lg: '0.6rem', xl: '0.75rem' },
-                                    bgcolor: 'rgba(255,152,0,0.15)',
-                                    color: '#ff9800',
-                                    border: '1px dashed rgba(255,152,0,0.4)',
+                                    bgcolor: 'rgba(147,51,234,0.15)',
+                                    color: '#9333ea',
+                                    border: '1px dashed rgba(147,51,234,0.4)',
                                     '& .MuiChip-label': { px: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 } },
                                     fontWeight: { xs: 500, sm: 400 },
                                   }} 
@@ -2041,7 +2041,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                   flexWrap: 'wrap',
                   alignItems: 'center',
                 }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,152,0,0.8)', fontStyle: 'italic' }}>
+                  <Typography variant="caption" sx={{ color: 'rgba(147,51,234,0.8)', fontStyle: 'italic' }}>
                     * Estimert visning basert på status
                   </Typography>
                   <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
@@ -2239,8 +2239,8 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                               sx={{
                                 minWidth: { xs: 100, sm: 120, md: 115, lg: 135, xl: 170 },
                                 height: { xs: 32, sm: 36, md: 34, lg: 40, xl: 52 },
-                                bgcolor: assignee ? 'rgba(233,30,99,0.1)' : 'rgba(255,152,0,0.1)',
-                                color: assignee ? '#e91e63' : '#ff9800',
+                                bgcolor: assignee ? 'rgba(233,30,99,0.1)' : 'rgba(147,51,234,0.1)',
+                                color: assignee ? '#e91e63' : '#9333ea',
                                 fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.82rem', xl: '1rem' },
                                 '& .MuiSelect-select': { 
                                   py: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 }, 
@@ -2253,11 +2253,11 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                                   borderColor: 'transparent',
                                   borderStyle: assignee ? 'solid' : 'dashed',
                                 },
-                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: assignee ? '#e91e63' : '#ff9800' },
-                                '& .MuiSvgIcon-root': { color: assignee ? '#e91e63' : '#ff9800', fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 } },
+                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: assignee ? '#e91e63' : '#9333ea' },
+                                '& .MuiSvgIcon-root': { color: assignee ? '#e91e63' : '#9333ea', fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 } },
                               }}
                               renderValue={(selected) => {
-                                if (!selected) return <span style={{ color: '#ff9800' }}>Ledig</span>;
+                                if (!selected) return <span style={{ color: '#9333ea' }}>Ledig</span>;
                                 const member = crewMembers.find(m => m.id === selected);
                                 return (
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -2270,7 +2270,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                               }}
                             >
                               <MenuItem value="">
-                                <em style={{ color: '#ff9800' }}>Ledig</em>
+                                <em style={{ color: '#9333ea' }}>Ledig</em>
                               </MenuItem>
                               {crewMembers.map(member => (
                                 <MenuItem key={member.id} value={member.id}>

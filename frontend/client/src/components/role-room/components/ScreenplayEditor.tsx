@@ -162,6 +162,88 @@ const PAGE_BREAK_PATTERN = /^={3,}$/;
 const NOTE_PATTERN = /\[\[.*?\]\]/g;
 const BONEYARD_PATTERN = /\/\*[\s\S]*?\*\//g;
 
+// ── Autocomplete data ─────────────────────────────────────────────────────────
+/** INT./EXT. prefix options shown when the user starts a new scene heading line. */
+const SCENE_PREFIXES = ['INT.', 'EXT.', 'INT./EXT.', 'I/E.'] as const;
+
+/** Industry-standard transitions shown when the user types all-caps on a line. */
+const COMMON_TRANSITIONS = [
+  'CUT TO:',
+  'SMASH CUT TO:',
+  'MATCH CUT TO:',
+  'JUMP CUT TO:',
+  'DISSOLVE TO:',
+  'FADE OUT.',
+  'FADE TO BLACK.',
+  'FADE IN:',
+  'WIPE TO:',
+  'IRIS OUT.',
+  'IRIS IN:',
+] as const;
+
+/** Returns true if `partial` (no spaces, trimmed, UPPERCASE) is a leading
+ *  substring of one of the scene-heading prefixes — e.g. "I", "IN", "INT". */
+const isScenePrefixPartial = (partial: string) =>
+  SCENE_PREFIXES.some(p => p.startsWith(partial));
+
+// ── Element-cycle order (TAB forward, SHIFT+TAB backward) ─────────────────
+// The cycle mirrors Final Draft's Tab behaviour in the most common flow:
+//   action → character → parenthetical → dialogue → action
+const TAB_FORWARD: Partial<Record<FountainElement, FountainElement>> = {
+  action:        'character',
+  character:     'parenthetical',
+  parenthetical: 'dialogue',
+  dialogue:      'action',
+  scene_heading: 'action',
+  transition:    'action',
+  centered:      'action',
+  section:       'action',
+  synopsis:      'action',
+};
+const TAB_BACKWARD: Partial<Record<FountainElement, FountainElement>> = {
+  character:     'action',
+  parenthetical: 'character',
+  dialogue:      'parenthetical',
+  action:        'dialogue',
+};
+
+/**
+ * Rewrites a raw line string so it is formatted as `targetType`.
+ * Pure function — no side-effects, fully testable.
+ */
+function convertLineToElement(
+  raw: string,
+  _from: FountainElement,
+  to: FountainElement,
+): string {
+  // Strip any Fountain force-prefixes to get the naked content
+  const content = raw
+    .replace(/^@/, '')       // forced character
+    .replace(/^[.>]/, '')    // forced scene / transition
+    .replace(/^\(|\)$/g, '') // parenthetical parens
+    .trim();
+
+  switch (to) {
+    case 'character':
+      // All-caps; preserve existing extension like (V.O.) if already present in raw
+      return raw.trim().startsWith('@')
+        ? raw.trim()   // already forced — leave as-is
+        : content.toUpperCase();
+    case 'parenthetical':
+      return content ? `(${content.toLowerCase()})` : '()';
+    case 'dialogue':
+      // Remove parens wrapper if coming from parenthetical, keep content as-is otherwise
+      return content;
+    case 'scene_heading':
+      return content
+        ? `INT. ${content.toUpperCase()} - DAY`
+        : 'INT. LOCATION - DAY';
+    case 'action':
+    default:
+      return content;
+  }
+}
+
 export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   value,
   onChange,
@@ -193,10 +275,6 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   // Keep onChange ref updated
   onChangeRef.current = onChange;
   
-  // DEBUG: Log renders
-  const renderCountRef = useRef(0);
-  renderCountRef.current++;
-  console.log(`🎬 ScreenplayEditor RENDER #${renderCountRef.current}`);
   
   // Internal state for smooth typing - this is the source of truth for the UI
   const [internalValue, setInternalValue] = useState(value);
@@ -206,7 +284,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   useEffect(() => {
     // Only sync if this is truly an external update (not echoing back our own change)
     if (value !== lastInternalValueRef.current) {
-      console.log('🔄 ScreenplayEditor SYNCING - value changed from external source');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🔄 ScreenplayEditor SYNCING - value changed from external source');
+      }
       setInternalValue(value);
       lastInternalValueRef.current = value;
       historyRef.current = [value];
@@ -217,7 +297,9 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [currentElement, setCurrentElement] = useState<FountainElement | null>(null);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteType, setAutocompleteType] = useState<'character' | 'location' | null>(null);
+  const [autocompleteType, setAutocompleteType] = useState<
+    'character' | 'location' | 'transition' | 'scene_prefix' | null
+  >(null);
   const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
   const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
@@ -228,210 +310,135 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Parse a single line to determine its type
-  const parseLine = useCallback((line: string, prevLine: string | null, nextLine: string | null): FountainElement => {
-    const trimmed = line.trim();
-    
-    if (!trimmed) return 'action';
-    
-    // Page break
-    if (PAGE_BREAK_PATTERN.test(trimmed)) return 'page_break';
-    
-    // Section
-    if (SECTION_PATTERN.test(trimmed)) return 'section';
-    
-    // Synopsis
-    if (SYNOPSIS_PATTERN.test(trimmed)) return 'synopsis';
-    
-    // Scene heading
-    if (SCENE_HEADING_PATTERN.test(trimmed) || FORCED_SCENE_HEADING_PATTERN.test(trimmed)) {
-      return 'scene_heading';
-    }
-    
-    // Centered
-    if (CENTERED_PATTERN.test(trimmed)) return 'centered';
-    
-    // Transition (forced or ends with :)
-    if (FORCED_TRANSITION_PATTERN.test(trimmed)) return 'transition';
-    if (TRANSITION_PATTERN.test(trimmed) && trimmed === trimmed.toUpperCase()) {
-      return 'transition';
-    }
-    
-    // Parenthetical (must follow character or dialogue)
-    if (PARENTHETICAL_PATTERN.test(trimmed)) {
-      if (prevLine) {
-        const prevType = parseLine(prevLine, null, null);
-        if (prevType === 'character' || prevType === 'dialogue' || prevType === 'parenthetical') {
-          return 'parenthetical';
-        }
-      }
-    }
-    
-    // Character (all caps, possibly with extension like (V.O.))
-    if (FORCED_CHARACTER_PATTERN.test(trimmed)) return 'character';
-    if (CHARACTER_PATTERN.test(trimmed)) {
-      // Character can appear after action/dialogue/parenthetical with proper context
-      if (prevLine && prevLine.trim() !== '') {
-        const prevType = parseLine(prevLine, null, null);
-        // Character should follow these element types
-        if (['action', 'character', 'parenthetical', 'dialogue'].includes(prevType)) {
-          // Must have dialogue or parenthetical following
-          if (nextLine && nextLine.trim()) {
-            const nextTrimmed = nextLine.trim();
-            // Next line should be dialogue/parenthetical, not scene heading/transition/etc
-            const isValidFollowing = !nextTrimmed.match(/^(INT|EXT|INT\.?\/EXT|I\/E)/i) &&
-                                     !nextTrimmed.match(/^[A-Z\s]+:$/) &&
-                                     !nextTrimmed.startsWith('>') &&
-                                     !nextTrimmed.startsWith('#') &&
-                                     !CHARACTER_PATTERN.test(nextTrimmed);
-            if (isValidFollowing) {
-              return 'character';
-            }
-          }
-        }
-      } else if (!prevLine || prevLine.trim() === '') {
-        // Original: Character after blank line
-        if (nextLine && nextLine.trim()) {
-          return 'character';
-        }
-      }
-    }
-    
-    // Dialogue (follows character or parenthetical)
-    if (prevLine) {
-      const prevType = parseLine(prevLine, null, null);
-      if (prevType === 'character' || prevType === 'parenthetical' || prevType === 'dialogue') {
-        if (!CHARACTER_PATTERN.test(trimmed) && !PARENTHETICAL_PATTERN.test(trimmed)) {
-          return 'dialogue';
-        }
-      }
-    }
-    
-    return 'action';
-  }, []);
-
-  // Parse entire document - use internalValue for responsive UI
+  // ── One-pass Fountain parser ────────────────────────────────────────────────
+  // Iterates lines exactly once. Carries forward-state in local variables so we
+  // never need recursive parseLine(prevLine, null, null) calls.
   const parsedLines = useMemo((): ParsedLine[] => {
     const lines = internalValue.split('\n');
     const result: ParsedLine[] = [];
-    
-    for (let i = 0; i < lines.length; i++) {
-      const prevLine = i > 0 ? lines[i - 1] : null;
-      const nextLine = i < lines.length - 1 ? lines[i + 1] : null;
-      const type = parseLine(lines[i], prevLine, nextLine);
-      
-      result.push({
-        type,
-        content: lines[i],
-        lineNumber: i + 1,
-        raw: lines[i],
-      });
-    }
-    
-    return result;
-  }, [internalValue, parseLine]);
 
-  // Get styling for each element type
-  const getElementStyle = (type: FountainElement): React.CSSProperties => {
-    const baseStyle: React.CSSProperties = {
+    // FSM state
+    let lastNonEmptyType: FountainElement = 'action';
+    let inDialogueBlock = false; // true after character / parenthetical / dialogue
+
+    for (let i = 0; i < lines.length; i++) {
+      const raw     = lines[i];
+      const trimmed = raw.trim();
+      const nextTrimmed = i < lines.length - 1 ? lines[i + 1].trim() : '';
+
+      let type: FountainElement = 'action';
+
+      if (!trimmed) {
+        // Blank line breaks the dialogue block
+        inDialogueBlock = false;
+        type = 'action';
+      } else if (PAGE_BREAK_PATTERN.test(trimmed)) {
+        type = 'page_break';
+        inDialogueBlock = false;
+      } else if (SECTION_PATTERN.test(trimmed)) {
+        type = 'section';
+        inDialogueBlock = false;
+      } else if (SYNOPSIS_PATTERN.test(trimmed)) {
+        type = 'synopsis';
+        inDialogueBlock = false;
+      } else if (SCENE_HEADING_PATTERN.test(trimmed) || FORCED_SCENE_HEADING_PATTERN.test(trimmed)) {
+        type = 'scene_heading';
+        inDialogueBlock = false;
+      } else if (CENTERED_PATTERN.test(trimmed)) {
+        type = 'centered';
+        inDialogueBlock = false;
+      } else if (FORCED_TRANSITION_PATTERN.test(trimmed) &&
+                 !(CENTERED_PATTERN.test(trimmed))) { // > ... < is centered, not transition
+        type = 'transition';
+        inDialogueBlock = false;
+      } else if (TRANSITION_PATTERN.test(trimmed) && trimmed === trimmed.toUpperCase()) {
+        type = 'transition';
+        inDialogueBlock = false;
+      } else if (inDialogueBlock && PARENTHETICAL_PATTERN.test(trimmed)) {
+        // Parenthetical inside a dialogue block
+        type = 'parenthetical';
+        // stays inDialogueBlock = true
+      } else if (FORCED_CHARACTER_PATTERN.test(trimmed)) {
+        type = 'character';
+        inDialogueBlock = true;
+      } else if (CHARACTER_PATTERN.test(trimmed)) {
+        // Determine character vs. action using lookahead + preceding context
+        const prevIsBlank   = i === 0 || lines[i - 1].trim() === '';
+        const prevInDialog  = inDialogueBlock; // preceding line was char/paren/dialog
+        const nextIsContent = !!nextTrimmed &&
+          !SCENE_HEADING_PATTERN.test(nextTrimmed) &&
+          !FORCED_SCENE_HEADING_PATTERN.test(nextTrimmed) &&
+          !TRANSITION_PATTERN.test(nextTrimmed) &&
+          !nextTrimmed.startsWith('#') &&
+          !CHARACTER_PATTERN.test(nextTrimmed);
+
+        if ((prevIsBlank || prevInDialog) && nextIsContent) {
+          type = 'character';
+          inDialogueBlock = true;
+        } else {
+          type = 'action';
+          inDialogueBlock = false;
+        }
+      } else if (inDialogueBlock) {
+        // Non-uppercase, non-parenthetical content after character — it's dialogue
+        if (!CHARACTER_PATTERN.test(trimmed) && !PARENTHETICAL_PATTERN.test(trimmed)) {
+          type = 'dialogue';
+          // inDialogueBlock stays true
+        } else {
+          type = 'action';
+          inDialogueBlock = false;
+        }
+      } else {
+        type = 'action';
+        inDialogueBlock = false;
+      }
+
+      if (trimmed) lastNonEmptyType = type;
+
+      result.push({ type, content: raw, lineNumber: i + 1, raw });
+    }
+
+    return result;
+  }, [internalValue]);
+
+  // ── Memoised element-style map ──────────────────────────────────────────────
+  // Rebuilt only when tier changes (not on every keystroke).
+  const elementStyles = useMemo((): Record<FountainElement, React.CSSProperties> => {
+    const mm = isMobile ? 0.5 : isTablet ? 0.75 : 1; // margin multiplier
+    const base: React.CSSProperties = {
       fontFamily: 'Courier Prime, Courier New, monospace',
       fontSize: responsive.fontSize,
       lineHeight: '1.5',
       whiteSpace: 'pre-wrap',
       wordWrap: 'break-word',
     };
-    
-    // Adjust margins for mobile
-    const marginMultiplier = isMobile ? 0.5 : isTablet ? 0.75 : 1;
-    
-    switch (type) {
-      case 'scene_heading':
-        return {
-          ...baseStyle,
-          fontWeight: 700,
-          color: '#fbbf24', // Amber
-          textTransform: 'uppercase',
-          marginTop: `${1.5 * marginMultiplier}em`,
-          marginBottom: `${0.5 * marginMultiplier}em`,
-        };
-      case 'character':
-        return {
-          ...baseStyle,
-          fontWeight: 600,
-          color: '#60a5fa', // Blue
-          textTransform: 'uppercase',
-          marginLeft: isMobile ? '20%' : isTablet ? '30%' : '37%',
-          marginTop: `${1 * marginMultiplier}em`,
-        };
-      case 'dialogue':
-        return {
-          ...baseStyle,
-          color: '#f5f5f5',
-          marginLeft: isMobile ? '5%' : isTablet ? '12%' : '17%',
-          marginRight: isMobile ? '5%' : isTablet ? '12%' : '17%',
-        };
-      case 'parenthetical':
-        return {
-          ...baseStyle,
-          color: '#a78bfa', // Purple
-          fontStyle: 'italic',
-          marginLeft: isMobile ? '10%' : isTablet ? '20%' : '27%',
-          marginRight: isMobile ? '10%' : isTablet ? '20%' : '27%',
-        };
-      case 'transition':
-        return {
-          ...baseStyle,
-          fontWeight: 600,
-          color: '#f472b6', // Pink
-          textTransform: 'uppercase',
-          textAlign: 'right',
-          marginTop: `${1 * marginMultiplier}em`,
-          marginBottom: `${1 * marginMultiplier}em`,
-        };
-      case 'centered':
-        return {
-          ...baseStyle,
-          textAlign: 'center',
-          color: '#34d399', // Green
-        };
-      case 'action':
-        return {
-          ...baseStyle,
-          color: '#e5e5e5',
-        };
-      case 'section':
-        return {
-          ...baseStyle,
-          fontWeight: 700,
-          fontSize: is4K ? '16pt' : isMobile ? '12pt' : '14pt',
-          color: '#f97316', // Orange
-          marginTop: `${2 * marginMultiplier}em`,
-        };
-      case 'synopsis':
-        return {
-          ...baseStyle,
-          fontStyle: 'italic',
-          color: '#6b7280',
-        };
-      case 'page_break':
-        return {
-          ...baseStyle,
-          textAlign: 'center',
-          color: '#4b5563',
-          borderTop: '1px dashed #4b5563',
-          marginTop: `${1 * marginMultiplier}em`,
-          marginBottom: `${1 * marginMultiplier}em`,
-        };
-      case 'note':
-        return {
-          ...baseStyle,
-          color: '#9ca3af',
-          backgroundColor: 'rgba(156, 163, 175, 0.1)',
-        };
-      default:
-        return baseStyle;
-    }
-  };
+    return {
+      scene_heading: { ...base, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase',
+        marginTop: `${1.5 * mm}em`, marginBottom: `${0.5 * mm}em` },
+      character: { ...base, fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase',
+        marginLeft: isMobile ? '20%' : isTablet ? '30%' : '37%', marginTop: `${mm}em` },
+      dialogue: { ...base, color: '#f5f5f5',
+        marginLeft: isMobile ? '5%' : isTablet ? '12%' : '17%',
+        marginRight: isMobile ? '5%' : isTablet ? '12%' : '17%' },
+      parenthetical: { ...base, color: '#a78bfa', fontStyle: 'italic',
+        marginLeft: isMobile ? '10%' : isTablet ? '20%' : '27%',
+        marginRight: isMobile ? '10%' : isTablet ? '20%' : '27%' },
+      transition: { ...base, fontWeight: 600, color: '#f472b6', textTransform: 'uppercase',
+        textAlign: 'right', marginTop: `${mm}em`, marginBottom: `${mm}em` },
+      centered:    { ...base, textAlign: 'center', color: '#34d399' },
+      action:      { ...base, color: '#e5e5e5' },
+      section:     { ...base, fontWeight: 700,
+        fontSize: is4K ? '16pt' : isMobile ? '12pt' : '14pt',
+        color: '#f97316', marginTop: `${2 * mm}em` },
+      synopsis:    { ...base, fontStyle: 'italic', color: '#6b7280' },
+      page_break:  { ...base, textAlign: 'center', color: '#4b5563',
+        borderTop: '1px dashed #4b5563', marginTop: `${mm}em`, marginBottom: `${mm}em` },
+      note:        { ...base, color: '#9ca3af', backgroundColor: 'rgba(156,163,175,0.1)' },
+      title_page:  { ...base, color: '#e5e5e5' },
+      boneyard:    { ...base, color: '#6b7280', fontStyle: 'italic' },
+      dual_dialogue: { ...base, color: '#f5f5f5' },
+    };
+  }, [isMobile, isTablet, is4K, responsive.fontSize]);
 
   // Calculate page count (1 page ≈ 55 lines in standard screenplay format)
   const pageCount = useMemo(() => {
@@ -520,69 +527,136 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     prevExtractedLocsRef.current = new Set(extractedLocations.map(l => l.toUpperCase()));
   }, [extractedLocations, locations, onLocationAdd]);
 
+  // ── Batched history: snapshot only after 400 ms of typing inactivity ───────
+  const HISTORY_MAX = 200;
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHistoryValueRef = useRef<string | null>(null);
+
+  const flushHistory = useCallback(() => {
+    const v = pendingHistoryValueRef.current;
+    if (v === null) return;
+    pendingHistoryValueRef.current = null;
+    const prev = historyRef.current.slice(0, historyIndexRef.current + 1);
+    const next = [...prev, v].slice(-HISTORY_MAX);
+    historyRef.current = next;
+    historyIndexRef.current = next.length - 1;
+  }, []);
+
   // Handle text change - update internal state immediately, notify parent asynchronously
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
-    
-    console.log('⌨️ ScreenplayEditor handleChange, new length:', newValue.length);
-    
+
     // Update internal state immediately for responsive typing
     setInternalValue(newValue);
     lastInternalValueRef.current = newValue; // Track this as our change
-    
+
     // Notify parent asynchronously to avoid blocking the UI
-    // Using requestAnimationFrame for smoother performance
-    requestAnimationFrame(() => {
-      console.log('📤 ScreenplayEditor calling parent onChange');
-      onChangeRef.current(newValue);
-    });
-    
-    // Add to history using refs instead of state to avoid re-renders
-    historyRef.current = [...historyRef.current.slice(0, historyIndexRef.current + 1), newValue];
-    historyIndexRef.current = historyRef.current.length - 1;
-    
+    requestAnimationFrame(() => { onChangeRef.current(newValue); });
+
+    // Batch history: debounce 400 ms so fast typing doesn't explode the stack
+    pendingHistoryValueRef.current = newValue;
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(flushHistory, 400);
+
     // Check for autocomplete trigger
     checkAutocomplete(newValue, e.target.selectionStart);
   };
 
-  // Check if we should show autocomplete
+  // ── Context-aware autocomplete ──────────────────────────────────────────────
+  // Reads the FSM-parsed element type of the current line (parsedLinesRef is
+  // always up-to-date because it's assigned on every render before this cb is
+  // called). Falls back to text-pattern heuristics for early-trigger cases
+  // (e.g. the user has only typed "I" so the FSM still sees 'action').
+
+  /** Open the suggestion popover with a given type + option list. */
+  const openSuggestions = (
+    type: 'character' | 'location' | 'transition' | 'scene_prefix',
+    options: string[],
+  ) => {
+    if (!options.length) { setShowAutocomplete(false); return; }
+    setAutocompleteOptions(options);
+    setAutocompleteType(type);
+    setShowAutocomplete(true);
+    setSelectedAutocompleteIndex(0);
+    updateAutocompletePosition();
+  };
+
   const checkAutocomplete = (text: string, cursorPos: number) => {
-    const lines = text.substring(0, cursorPos).split('\n');
-    const currentLine = lines[lines.length - 1];
-    const prevLine = lines.length > 1 ? lines[lines.length - 2] : '';
-    
-    // Check for character autocomplete (after blank line, typing uppercase)
-    if (prevLine.trim() === '' && /^[A-ZÆØÅ][A-ZÆØÅ]*$/.test(currentLine)) {
-      const matches = allCharacters.filter(c => 
-        c.toUpperCase().startsWith(currentLine.toUpperCase())
+    const lines   = text.substring(0, cursorPos).split('\n');
+    const lineIdx = lines.length - 1;
+    const rawLine = lines[lineIdx];
+    const prevLine = lineIdx > 0 ? lines[lineIdx - 1] : '';
+
+    // FSM-derived type for the current line (real-time via ref).
+    // Cast to the full union so TS control-flow narrowing inside nested ifs
+    // doesn't bleed out and flag valid comparisons below.
+    const etype = (parsedLinesRef.current[lineIdx]?.type ?? 'action') as FountainElement;
+
+    // ── 1. SCENE_HEADING ────────────────────────────────────────────────────
+    // Two sub-modes: before the prefix (prefix completion) vs after (location).
+    const afterPrefixMatch = rawLine.match(
+      /^(?:INT|EXT|EST|INT\.?\/EXT|I\/E)\.?\s+(.*)$/i,
+    );
+    const isSceneHeadingType = etype === 'scene_heading'; // bool var avoids TS narrowing bleed
+
+    if (isSceneHeadingType || afterPrefixMatch) {
+      // Location completion — user has typed the prefix + at least one space
+      const partial = (afterPrefixMatch?.[1] ?? '').toUpperCase();
+      const locMatches = allLocations.filter(l =>
+        l.toUpperCase().startsWith(partial),
       );
-      if (matches.length > 0) {
-        setAutocompleteOptions(matches);
-        setAutocompleteType('character');
-        setShowAutocomplete(true);
-        setSelectedAutocompleteIndex(0);
-        updateAutocompletePosition();
+      openSuggestions('location', locMatches.slice(0, 12));
+      return;
+    }
+
+    // Prefix completion — user hasn't reached the space yet
+    // Heuristic: all-uppercase partial on a line that follows a blank line,
+    // OR when typed text is a leading substring of a known prefix.
+    const trimmedUp = rawLine.trim().toUpperCase();
+    const noSpaceYet = !trimmedUp.includes(' ');
+    const isSceneContext =
+      prevLine.trim() === '' &&
+      noSpaceYet &&
+      isScenePrefixPartial(trimmedUp);
+    if (isSceneContext) {
+      const prefixMatches = SCENE_PREFIXES.filter(p => p.startsWith(trimmedUp));
+      openSuggestions('scene_prefix', [...prefixMatches]);
+      return;
+    }
+
+    // ── 2. CHARACTER ────────────────────────────────────────────────────────
+    const isCharContext =
+      etype === 'character' ||
+      (prevLine.trim() === '' && /^[A-ZÆØÅ][A-ZÆØÅ0-9 ]*$/.test(rawLine.trim()));
+    if (isCharContext && rawLine.trim().length > 0) {
+      const partial = rawLine.replace(/^@/, '').trim().toUpperCase();
+      // Skip if this partial also matches a scene prefix (e.g. "INT")
+      if (!isScenePrefixPartial(partial.split(' ')[0])) {
+        const charMatches = allCharacters.filter(c =>
+          c.toUpperCase().startsWith(partial),
+        );
+        openSuggestions('character', charMatches.slice(0, 10));
         return;
       }
     }
-    
-    // Check for location autocomplete (after INT./EXT.)
-    const locationMatch = currentLine.match(/^(?:INT|EXT|INT\.?\/EXT|I\/E)\.?\s*(.*)$/i);
-    if (locationMatch && locationMatch[1]) {
-      const partial = locationMatch[1].toUpperCase();
-      const matches = allLocations.filter(l => 
-        l.toUpperCase().startsWith(partial)
-      );
-      if (matches.length > 0) {
-        setAutocompleteOptions(matches);
-        setAutocompleteType('location');
-        setShowAutocomplete(true);
-        setSelectedAutocompleteIndex(0);
-        updateAutocompletePosition();
-        return;
-      }
+
+    // ── 3. TRANSITION ───────────────────────────────────────────────────────
+    // Trigger when: FSM already sees 'transition', OR the line is all-uppercase
+    // letters/spaces (no digits, no parens) and at least 2 chars — user is
+    // likely typing a transition before the colon appears.
+    const isTransitionContext =
+      etype === 'transition' ||
+      (/^[A-Z][A-Z ]*$/.test(rawLine.trim()) &&
+        rawLine.trim().length >= 2 &&
+        // Avoid clashing with character context (blank prevLine)
+        prevLine.trim() !== '');
+    if (isTransitionContext) {
+      const partial = rawLine.trim().toUpperCase();
+      const tMatches = COMMON_TRANSITIONS.filter(t => t.startsWith(partial));
+      openSuggestions('transition', [...tMatches]);
+      return;
     }
-    
+
     setShowAutocomplete(false);
   };
 
@@ -621,13 +695,23 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     let newText: string;
     
     if (autocompleteType === 'character') {
-      // Replace entire line with character name
-      lines[lines.length - 1] = selected;
+      // Replace entire line with character name (all-caps)
+      lines[lines.length - 1] = selected.toUpperCase();
       newText = lines.join('\n') + textAfter;
     } else if (autocompleteType === 'location') {
-      // Replace just the location part
-      const prefix = currentLine.match(/^((?:INT|EXT|INT\.?\/EXT|I\/E)\.?\s*)/i)?.[1] || '';
+      // Keep the INT./EXT. prefix, replace only the location part
+      const prefix =
+        currentLine.match(/^((?:INT|EXT|EST|INT\.?\/EXT|I\/E)\.?\s+)/i)?.[1] ??
+        currentLine.match(/^((?:INT|EXT|EST|INT\.?\/EXT|I\/E)\.?\s*)/i)?.[1] ?? '';
       lines[lines.length - 1] = prefix + selected;
+      newText = lines.join('\n') + textAfter;
+    } else if (autocompleteType === 'scene_prefix') {
+      // Replace entire line with the prefix + trailing space (cursor ready for location)
+      lines[lines.length - 1] = selected + ' ';
+      newText = lines.join('\n') + textAfter;
+    } else if (autocompleteType === 'transition') {
+      // Replace entire line with the full transition string
+      lines[lines.length - 1] = selected;
       newText = lines.join('\n') + textAfter;
     } else {
       return;
@@ -711,10 +795,66 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       }
     }
     
-    // Tab for dialogue indent
-    if (e.key === 'Tab' && !e.shiftKey) {
+    // ── Smart Enter ──────────────────────────────────────────────────────
+    // Only intercept when no modifier keys are held (plain Enter).
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      if (!editorRef.current) return;
+      const ta   = editorRef.current;
+      const sel  = ta.selectionStart;
+      const after = internalValue.substring(ta.selectionEnd);
+      const before = internalValue.substring(0, sel);
+      const lines  = before.split('\n');
+      const lineIdx = lines.length - 1;
+      const parsed  = parsedLinesRef.current[lineIdx];
+      const etype   = parsed?.type;
+
+      if (etype === 'scene_heading') {
+        // After a scene heading Enter → blank separator line, cursor on action line
+        // Prevents the next ALL-CAPS word from accidentally being parsed as character.
+        e.preventDefault();
+        commitValue(before + '\n\n' + after, sel + 2);
+        return;
+      }
+
+      if (etype === 'character' && lines[lineIdx].trim() === '') {
+        // Pressing Enter on an empty character line cancels back to action
+        e.preventDefault();
+        commitValue(before + '\n' + after, sel + 1);
+        return;
+      }
+
+      if (etype === 'transition') {
+        // After a transition → blank line so next line is clearly action
+        e.preventDefault();
+        commitValue(before + '\n\n' + after, sel + 2);
+        return;
+      }
+      // All other element types: let the browser insert the newline normally.
+    }
+
+    // ── Smart TAB (element cycling) ──────────────────────────────────────
+    if (e.key === 'Tab') {
       e.preventDefault();
-      insertAtCursor('\t');
+      if (!editorRef.current) return;
+      const ta     = editorRef.current;
+      const sel    = ta.selectionStart;
+      const selEnd = ta.selectionEnd;
+      const before = internalValue.substring(0, sel);
+      const after  = internalValue.substring(selEnd);
+      const lines  = before.split('\n');
+      const lineIdx = lines.length - 1;
+      const rawLine = lines[lineIdx];
+      const parsed  = parsedLinesRef.current[lineIdx];
+      const etype   = parsed?.type ?? 'action';
+
+      const targetType = e.shiftKey
+        ? (TAB_BACKWARD[etype] ?? 'action')
+        : (TAB_FORWARD[etype]  ?? 'character');
+
+      const newLine = convertLineToElement(rawLine, etype, targetType);
+      lines[lineIdx] = newLine;
+      const newBefore = lines.join('\n');
+      commitValue(newBefore + after, newBefore.length);
       return;
     }
   };
@@ -745,6 +885,26 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
       }
     }, 0);
   };
+
+  // ── commitValue: apply a wholesale text replacement + place cursor ──────
+  // Used by smart-key handlers so they share one consistent update path.
+  const commitValue = useCallback((newText: string, newCursorPos: number) => {
+    setInternalValue(newText);
+    lastInternalValueRef.current = newText;
+    // Batch into history (same debounce as normal typing)
+    pendingHistoryValueRef.current = newText;
+    if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(flushHistory, 400);
+    // Propagate to parent
+    requestAnimationFrame(() => { onChangeRef.current(newText); });
+    // Restore cursor after React re-render
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        editorRef.current.focus();
+      }
+    }, 0);
+  }, [flushHistory]);
 
   // Insert screenplay element
   const insertElement = (type: FountainElement) => {
@@ -787,35 +947,31 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
     setInsertMenuAnchor(null);
   };
 
-  // Update cursor position display
-  useEffect(() => {
-    if (!editorRef.current) return;
-    
+  // ── Cursor tracking via stable ref callback (no reattach on every change) ──
+  // parsedLinesRef is kept in sync so the handler reads the latest without
+  // being listed as a dep — keeps the handler referentially stable.
+  const parsedLinesRef = useRef(parsedLines);
+  parsedLinesRef.current = parsedLines;
+  const onCursorChangeRef = useRef(onCursorChange);
+  onCursorChangeRef.current = onCursorChange;
+  const internalValueRef2 = useRef(internalValue);
+  internalValueRef2.current = internalValue;
+
+  const handleCursorUpdate = useCallback(() => {
     const textarea = editorRef.current;
-    const handleSelectionChange = () => {
-      const { selectionStart } = textarea;
-      const textBefore = internalValue.substring(0, selectionStart);
-      const lines = textBefore.split('\n');
-      const line = lines.length;
-      const column = lines[lines.length - 1].length + 1;
-      
-      setCursorPosition({ line, column });
-      
-      // Determine current element type
-      if (parsedLines[line - 1]) {
-        setCurrentElement(parsedLines[line - 1].type);
-        onCursorChange?.(line, column, parsedLines[line - 1].type);
-      }
-    };
-    
-    textarea.addEventListener('click', handleSelectionChange);
-    textarea.addEventListener('keyup', handleSelectionChange);
-    
-    return () => {
-      textarea.removeEventListener('click', handleSelectionChange);
-      textarea.removeEventListener('keyup', handleSelectionChange);
-    };
-  }, [internalValue, parsedLines, onCursorChange]);
+    if (!textarea) return;
+    const { selectionStart } = textarea;
+    const textBefore = internalValueRef2.current.substring(0, selectionStart);
+    const lines = textBefore.split('\n');
+    const line   = lines.length;
+    const column = lines[lines.length - 1].length + 1;
+    setCursorPosition({ line, column });
+    const pl = parsedLinesRef.current;
+    if (pl[line - 1]) {
+      setCurrentElement(pl[line - 1].type);
+      onCursorChangeRef.current?.(line, column, pl[line - 1].type);
+    }
+  }, []); // empty deps — stable for the component lifetime
 
   // Sync scroll between textarea and highlight overlay
   const handleScroll = () => {
@@ -1231,7 +1387,7 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
             <Box
               key={index}
               sx={{
-                ...getElementStyle(line.type),
+                ...elementStyles[line.type],
                 minHeight: '1.5em',
               }}
             >
@@ -1284,6 +1440,8 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
           value={internalValue}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onClick={handleCursorUpdate}
+          onKeyUp={handleCursorUpdate}
           onScroll={handleScroll}
           readOnly={readOnly}
           spellCheck={spellCheck}
@@ -1339,9 +1497,13 @@ export const ScreenplayEditor: React.FC<ScreenplayEditorProps> = React.memo(({
                 >
                   <ListItemIcon sx={{ minWidth: isMobile ? 30 : 40 }}>
                     {autocompleteType === 'character' ? (
-                      <CharacterIcon sx={{ color: '#60a5fa', fontSize: responsive.iconSize }} />
+                      <CharacterIcon  sx={{ color: '#60a5fa', fontSize: responsive.iconSize }} />
+                    ) : autocompleteType === 'location' ? (
+                      <LocationIcon   sx={{ color: '#fbbf24', fontSize: responsive.iconSize }} />
+                    ) : autocompleteType === 'scene_prefix' ? (
+                      <SceneIcon      sx={{ color: '#fbbf24', fontSize: responsive.iconSize }} />
                     ) : (
-                      <LocationIcon sx={{ color: '#fbbf24', fontSize: responsive.iconSize }} />
+                      <TransitionIcon sx={{ color: '#f472b6', fontSize: responsive.iconSize }} />
                     )}
                   </ListItemIcon>
                   <ListItemText primary={option} primaryTypographyProps={{ fontSize: responsive.bodyFontSize }} />

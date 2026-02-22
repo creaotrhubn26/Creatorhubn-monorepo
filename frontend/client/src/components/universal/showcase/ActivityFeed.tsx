@@ -20,7 +20,7 @@ import {
   Badge,
   Tooltip,
   Stack,
-  Button
+  Button,
 } from '@mui/material';
 import {
   Close,
@@ -37,7 +37,7 @@ import {
   Upload,
   Group,
   Schedule,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { formatDistanceToNow } from 'date-fns';
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';

@@ -55,7 +55,7 @@ import {
   Divider,
   Menu,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   Close,
@@ -70,7 +70,7 @@ import {
   Straighten,
   ColorLens,
   BlurOn,
-  Speed,
+  Speed as Speed,
   SmartToy,
   TrendingUp,
   Analytics,
@@ -86,7 +86,7 @@ import {
   Refresh,
   Visibility,
   VisibilityOff,
-  Face
+  Face,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

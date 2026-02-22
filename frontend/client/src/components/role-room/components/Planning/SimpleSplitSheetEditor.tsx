@@ -22,11 +22,7 @@ import {
   Chip,
   Divider,
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Person as PersonIcon,
-} from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Person as PersonIcon } from '@mui/icons-material';
 import type { SplitSheetContributor, ContributorRole } from '../split-sheets/types';
 import { ROLE_DISPLAY_NAMES } from '../split-sheets/types';
 

@@ -15,7 +15,7 @@ import {
   IconButton,
   Card,
   CardMedia,
-  CardContent
+  CardContent,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -23,7 +23,7 @@ import {
   SkipPrevious as SkipPreviousIcon,
   SkipNext as SkipNextIcon,
   CameraAlt as CameraIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 interface VideoThumbnailSelectorProps {

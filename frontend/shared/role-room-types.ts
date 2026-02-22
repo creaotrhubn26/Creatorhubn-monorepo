@@ -149,6 +149,91 @@ export interface Schedule {
   updated_at: string;
 }
 
+// ── Audition Schedule (denormalized list row from new API) ───
+
+/** Status enum – exhaustive, matches server enum */
+export type AuditionStatus =
+  | 'scheduled'
+  | 'completed'
+  | 'cancelled';
+
+/** A single row returned by GET /projects/:id/schedules (new API) */
+export interface AuditionScheduleRow {
+  id: string;
+  project_id: string;
+  candidate_id: string;
+  role_id: string;
+  scene_id?: string;
+  location_id?: string;
+  date?: string;       // YYYY-MM-DD; null = unscheduled pool
+  time?: string;       // start_time aliased to `time`
+  end_time?: string;
+  type?: string;
+  status: AuditionStatus;
+  notes?: string;
+  location?: string;   // free-text column
+  created_at: string;
+  updated_at: string;
+  /** Denormalized – resolved by server JOIN */
+  candidate_name: string;
+  /** Denormalized – resolved by server JOIN */
+  role_name: string;
+  /** True when the requesting userId has starred this row */
+  favorite: boolean;
+}
+
+/** Counts returned alongside every list response */
+export interface ScheduleCounts {
+  total: number;
+  scheduled: number;
+  completed: number;
+  cancelled: number;
+  /** Rows where date IS NULL (unscheduled pool) */
+  pool: number;
+  /** scheduled rows where date = today */
+  today: number;
+  /** rows starred by the requesting user */
+  favorites: number;
+}
+
+/** Shape of GET /projects/:id/schedules response */
+export interface AuditionListResponse {
+  items: AuditionScheduleRow[];
+  totalCount: number;
+  counts: ScheduleCounts;
+}
+
+/** Query params accepted by the list endpoint */
+export interface AuditionListFilters {
+  status?: AuditionStatus | 'pool' | 'all';
+  roleId?: string;
+  candidateId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  sort?: 'date' | 'candidate' | 'role' | 'status';
+  dir?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+  userId?: string;
+}
+
+/** Write payload for create / full-update */
+export interface AuditionScheduleWrite {
+  id?: string;
+  candidateId: string;
+  roleId: string;
+  sceneId?: string;
+  locationId?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  type?: string;
+  notes?: string;
+  location?: string;
+  status?: AuditionStatus;
+}
+
 // ── Location ─────────────────────────────────────────────────
 
 export interface Location {

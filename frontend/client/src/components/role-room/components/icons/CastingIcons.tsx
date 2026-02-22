@@ -1,5 +1,5 @@
 /**
- * Custom SVG Icons for Casting Planner Navigation
+ * Custom SVG Icons for The Role Room Navigation
  * These icons provide a consistent, unique visual language for the application
  */
 
@@ -364,7 +364,7 @@ export const PropsIcon: React.FC<IconProps> = ({ sx, style, ...props }) => {
       <path d="M12 12L20 7" stroke="currentColor" strokeWidth="1.5" />
       <path d="M12 12L4 7" stroke="currentColor" strokeWidth="1.5" />
       {/* Star highlight on item */}
-      <circle cx="12" cy="9" r="2" fill="#ff9800" />
+      <circle cx="12" cy="9" r="2" fill="#9333ea" />
     </svg>
   );
 };

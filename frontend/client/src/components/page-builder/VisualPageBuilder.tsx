@@ -731,7 +731,7 @@ function BlockRenderer({
             size="small"
             sx={{
               color: 'white',
-              backgroundColor: 'rgba(2, 5, 5,255,255,0.2)',
+              backgroundColor: 'rgba(255,255,255,0.2)',
               fontSize: '11px',
               height: 24}} />
 

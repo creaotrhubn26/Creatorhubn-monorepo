@@ -23,7 +23,7 @@ import {
   Step,
   StepLabel,
   StepContent,
-  Alert
+  Alert,
 } from '@mui/material';
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -44,7 +44,7 @@ import {
   AutoFixHigh,
   Share,
   Download,
-  Favorite
+  Favorite,
 } from '@mui/icons-material';
 
 interface WorkflowStep {

@@ -11,7 +11,7 @@ import {
   Card,
   CardContent,
   Grid,
-  Chip
+  Chip,
 } from '@mui/material';
 import { PhotoCamera, CheckCircle } from '@mui/icons-material';
 

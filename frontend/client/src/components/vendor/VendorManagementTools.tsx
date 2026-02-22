@@ -14,7 +14,6 @@ import {
   ListItemIcon,
   ListItemText,
   Chip,
-  // Alert removed - Zero Toast Compliance
   Table,
   TableBody,
   TableCell,
@@ -33,7 +32,7 @@ import {
   DialogContent,
   DialogActions,
   LinearProgress,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Store,
@@ -49,7 +48,7 @@ import {
   FilterList,
   GetApp,
   Notifications,
-  AttachMoney
+  AttachMoney,
 } from '@mui/icons-material';
 
 interface InventoryItem {

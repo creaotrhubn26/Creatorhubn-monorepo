@@ -64,7 +64,7 @@ import {
   Animation,
   TextFields,
   Timeline,
-  Speed,
+  Speed as Speed,
   Opacity,
   BlurOn,
   Gradient,

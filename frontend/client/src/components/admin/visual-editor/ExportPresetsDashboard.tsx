@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -59,7 +59,7 @@ import {
   StepLabel,
   StepContent,
   StepButton,
-  Slider
+  Slider,
 } from '@mui/material';
 import {
   GetApp,
@@ -108,7 +108,7 @@ import {
   PieChart,
   ShowChart,
   Memory,
-  Speed,
+  Speed as Speed,
   Storage,
   Security,
   Lock,
@@ -149,7 +149,7 @@ import {
   ZoomIn,
   ZoomOut,
   CenterFocusStrong,
-  CenterFocusWeak
+  CenterFocusWeak,
 } from '@mui/icons-material';
 import { useExportPresets, UseExportPresetsOptions } from '../../../hooks/useExportPresets';
 import { ExportPresetConfig, ExportPreset, ExportPlatform, ExportFormat } from '../../../utils/exportPresetsManager';

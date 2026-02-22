@@ -12,7 +12,7 @@ import {
   Tooltip,
   Typography,
   Box,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Download,
@@ -23,7 +23,7 @@ import {
   AudioFile,
   InsertDriveFile,
   Archive,
-  CloudDownload
+  CloudDownload,
 } from '@mui/icons-material';
 import { backgroundDownloadService } from '@/services/BackgroundDownloadService';
 import { usePhotoEnhancementWebSocket } from '@/hooks/usePhotoEnhancementWebSocket';

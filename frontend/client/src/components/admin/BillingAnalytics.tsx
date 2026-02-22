@@ -30,7 +30,7 @@ import {
   Cancel,
   FileDownload,
   FilterList,
-  Refresh
+  Refresh,
 } from '@mui/icons-material';
 
 interface BillingAnalyticsProps {

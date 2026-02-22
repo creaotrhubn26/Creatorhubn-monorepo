@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🎬 Asset Converter UI",
+      "detail": "Opens the visual asset converter at http://localhost:4444",
+      "type": "shell",
+      "command": "node scripts/asset-converter-server.cjs",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend/client"
+      },
+      "isBackground": true,
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Asset Converter",
+          "endsPattern": "localhost:"
+        }
+      },
+      "runOptions": {
+        "runOn": "default"
+      }
+    },
+    {
+      "label": "Convert Role Room Assets",
+      "detail": "PNG/JPG → WebP  |  MP4/MOV → H.264 MP4  (skips existing)",
+      "type": "shell",
+      "command": "bash scripts/convert-role-assets.sh",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend/client"
+      },
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Convert Role Room Assets (force overwrite)",
+      "detail": "Re-converts ALL files in Keep, even if output already exists",
+      "type": "shell",
+      "command": "bash scripts/convert-role-assets.sh --force",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend/client"
+      },
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

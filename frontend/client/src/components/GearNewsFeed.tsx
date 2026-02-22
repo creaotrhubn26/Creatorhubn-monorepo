@@ -23,7 +23,7 @@ import {
   Divider,
   Tab,
   Tabs,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -33,7 +33,7 @@ import {
   Business as BusinessIcon,
   TrendingUp as TrendingIcon,
   Schedule as ClockIcon,
-  OpenInNew as ExternalIcon
+  OpenInNew as ExternalIcon,
 } from '@mui/icons-material';
 
 interface NewsItem {

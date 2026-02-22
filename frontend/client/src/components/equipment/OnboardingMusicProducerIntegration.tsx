@@ -16,7 +16,7 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   LibraryMusic,
@@ -27,7 +27,7 @@ import {
   Upload,
   Build,
   Update,
-  Security
+  Security,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
 

@@ -19,7 +19,7 @@ import {
   Alert,
   Divider,
   alpha,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -38,7 +38,7 @@ import {
   Business,
   Category,
   Inventory,
-  LocalShipping
+  LocalShipping,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

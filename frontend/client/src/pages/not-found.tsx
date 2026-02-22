@@ -1,6 +1,11 @@
 import { useTheming } from '../utils/theming-helper';
 import React from 'react';
-import { Box, Typography, Button, Container } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Button,
+  Container,
+} from '@mui/material';
 import { useLocation } from 'wouter';
 
 const NotFound: React.FC = () => {

@@ -13,7 +13,7 @@ const DEFAULT_PROJECT_TYPES: ProjectType[] = [
   { id: 'wedding', name: 'Bryllup', icon: 'favorite', color: '#e91e63', description: 'Bryllupsfotografering', isCustom: false },
   { id: 'portrait', name: 'Portrett', icon: 'portrait', color: '#9c27b0', description: 'Portrettfotografering', isCustom: false },
   { id: 'event', name: 'Event', icon: 'event', color: '#2196f3', description: 'Eventfotografering', isCustom: false },
-  { id: 'commercial', name: 'Kommersiell', icon: 'business', color: '#ff9800', description: 'Kommersiell fotografering', isCustom: false },
+  { id: 'commercial', name: 'Kommersiell', icon: 'business', color: '#9333ea', description: 'Kommersiell fotografering', isCustom: false },
   { id: 'video', name: 'Video', icon: 'movie', color: '#f44336', description: 'Videoproduksjon', isCustom: false },
   { id: 'casting', name: 'Casting', icon: 'groups', color: '#10b981', description: 'Casting og rollebesetning', isCustom: false },
 ];

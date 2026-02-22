@@ -5,7 +5,8 @@
  */
 
 import React from 'react';
-import { Box, Typography, BoxProps } from '@mui/material';
+import { Box, Typography } from '@mui/material';
+import type { BoxProps } from '@mui/material/Box';
 import { colors, spacing, borderRadius, shadows } from '../../styles/designTokens';
 
 export interface PanelProps extends BoxProps {

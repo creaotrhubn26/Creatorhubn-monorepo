@@ -29,7 +29,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import {
-  VideocamCall as MeetIcon,
+  VideoCall as MeetIcon,
   Assignment as ProjectIcon,
   Notifications as NotificationIcon,
   TrendingUp as TimelineIcon,

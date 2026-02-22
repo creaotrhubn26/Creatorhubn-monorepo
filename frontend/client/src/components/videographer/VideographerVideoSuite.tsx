@@ -29,7 +29,7 @@ import {
   Switch,
   LinearProgress,
   Chip,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Close,
@@ -48,8 +48,8 @@ import {
   Mic,
   MusicNote,
   Tune,
-  Speed,
-  AutoFixHigh
+  Speed as Speed,
+  AutoFixHigh,
 } from '@mui/icons-material';
 
 interface TabPanelProps {

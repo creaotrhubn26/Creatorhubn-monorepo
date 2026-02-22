@@ -32,7 +32,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar
+  ListItemAvatar,
 } from '@mui/material';
 import {
   Article as NewsIcon,
@@ -44,7 +44,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Launch as LaunchIcon,
   Schedule as ScheduleIcon,
-  Star as StarIcon
+  Star as StarIcon,
 } from '@mui/icons-material';
 
 // Interfaces

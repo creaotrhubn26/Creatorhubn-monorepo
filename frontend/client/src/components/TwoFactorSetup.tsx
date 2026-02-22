@@ -3,23 +3,28 @@ import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Card as MuiCard, 
-  CardContent, 
-  Typography, 
-  TextField, 
-  Button, 
-  Alert, 
-  Stepper, 
-  Step, 
+import {
+  Box,
+  Card as MuiCard,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Alert,
+  Stepper,
+  Step,
   StepLabel,
   Paper,
   Divider,
   Chip,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
-import { Security, PhoneAndroid, CheckCircle, VpnKey } from '@mui/icons-material';
+import {
+  Security,
+  PhoneAndroid,
+  CheckCircle,
+  VpnKey,
+} from '@mui/icons-material';
 
 interface TwoFactorSetupProps {
   userEmail?: string;

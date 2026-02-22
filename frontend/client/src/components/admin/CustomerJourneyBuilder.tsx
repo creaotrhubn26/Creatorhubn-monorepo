@@ -53,7 +53,7 @@ import {
   StepContent,
   Tooltip,
   Avatar,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   Add,
@@ -87,7 +87,7 @@ import {
   ViewColumn,
   DonutLarge,
   Timeline as TimelineIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';

@@ -22,13 +22,13 @@ import {
   TextField,
   Alert,
   Grid,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   CheckCircle as ConnectedIcon,
   Link as LinkIcon,
-  AccountBalance as PROIcon
+  AccountBalance as PROIcon,
 } from '@mui/icons-material';
 
 interface PROConnection {

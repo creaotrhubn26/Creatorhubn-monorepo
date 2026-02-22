@@ -3,7 +3,12 @@ import React from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Card as ViewModule, CardContent } from '@mui/material';
 import { Button } from "@/components/material-ui";
-import { Security, Lock, Email, CheckCircle } from "@mui/icons-material";
+import {
+  Security,
+  Lock,
+  Email,
+  CheckCircle,
+} from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 

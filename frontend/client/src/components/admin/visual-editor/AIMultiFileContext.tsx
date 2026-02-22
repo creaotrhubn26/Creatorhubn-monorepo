@@ -77,11 +77,11 @@ export default function AIMultiFileContext({
   onContextUpdated,
   currentFile,
 }: AIMultiFileContextProps) {
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set();
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [fileTree, setFileTree] = useState<Record<string, unknown>[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([projectRoot]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([projectRoot]));
   const [searchQuery, setSearchQuery] = useState('');
   const [autoInclude, setAutoInclude] = useState({
     imports: true,
@@ -101,7 +101,7 @@ export default function AIMultiFileContext({
     try {
       // Scan project files
       const files = await discoverProjectFiles(projectRoot);
-      setFileTree(buildFileTree(files);
+      setFileTree(buildFileTree(files));
 
       // Auto-select current file and its dependencies
       if (currentFile) {
@@ -110,7 +110,7 @@ export default function AIMultiFileContext({
       }
 
       // Build project context
-      await updateProjectContext(Array.from(selectedFiles);
+      await updateProjectContext(Array.from(selectedFiles));
     } catch (error) {
       console.error('Project scan failed: ', error);
     } finally {
@@ -166,7 +166,7 @@ export default function AIMultiFileContext({
     (filePath: string) => {
       setSelectedFiles((prev) => {
         const next = new Set(prev);
-        if (next.has(filePath) {
+        if (next.has(filePath)) {
           next.delete(filePath);
         } else {
           next.add(filePath);
@@ -186,7 +186,7 @@ export default function AIMultiFileContext({
   const handleFolderToggle = useCallback((folderPath: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(folderPath) {
+      if (next.has(folderPath)) {
         next.delete(folderPath);
       } else {
         next.add(folderPath);
@@ -201,11 +201,11 @@ export default function AIMultiFileContext({
   }, [fileTree]);
 
   const handleClearAll = useCallback(() => {
-    setSelectedFiles(new Set();
+    setSelectedFiles(new Set());
   }, []);
 
   const handleApplyContext = useCallback(() => {
-    updateProjectContext(Array.from(selectedFiles);
+    updateProjectContext(Array.from(selectedFiles));
     onClose();
   }, [selectedFiles, updateProjectContext, onClose]);
 
@@ -245,7 +245,7 @@ export default function AIMultiFileContext({
             <InsertDriveFile />
           </Badge>
         </Box>
-        <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+        <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
           <Close />
         </IconButton>
       </Box>
@@ -277,9 +277,9 @@ export default function AIMultiFileContext({
 
       {/* Context Stats */}
       {projectContext && (
-        <Alert severity="info" sx={{ m: 2, mb: 0 } icon={<Memory />}>
+        <Alert severity="info" sx={{ m: 2, mb: 0 }} icon={<Memory />}>
           <Typography variant="caption" display="block">
-            <strong>{projectContext.totalFiles} files</strong> •{', '}
+            <strong>{projectContext.totalFiles} files</strong> •{' '}
             {formatBytes(projectContext.totalSize)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -292,7 +292,7 @@ export default function AIMultiFileContext({
       <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
         {isScanning ? (
           <Box sx={{ py: 4, textAlign: 'center' }}>
-            <CircularProgress size={40}, sx={{ mb: 2 }} />
+            <CircularProgress size={40} sx={{ mb: 2 }} />
             <Typography variant="body2" color="text.secondary">
               Scanning project files...
             </Typography>
@@ -326,7 +326,7 @@ export default function AIMultiFileContext({
         const isExpanded = expandedFolders.has(node.path);
         return (
           <React.Fragment key={node.path}>
-            <ListItem button onClick={() => handleFolderToggle(node.path)}, sx={{ pl: depth * 2 }}>
+            <ListItem button onClick={() => handleFolderToggle(node.path)} sx={{ pl: depth * 2 }}>
               <ListItemIcon sx={{ minWidth: 36 }}>
                 {isExpanded ? <ExpandLess /> : <ExpandMore />}
               </ListItemIcon>
@@ -360,7 +360,7 @@ export default function AIMultiFileContext({
             <ListItemText
               primary={node.name}
               secondary={isCurrent ? 'Current file': undefined}
-              primaryTypographyProps={{ variant: 'body2' }
+              primaryTypographyProps={{ variant: 'body2' }}
               secondaryTypographyProps={{ variant: 'caption' }} />
             <Chip label={node.language} size="small" variant="outlined" />
           </ListItem>
@@ -435,13 +435,13 @@ function analyzeFile(
   dependencies: string[];
 } {
   // Simple regex-based analysis
-  const imports = Array.from(content.matchAll(/import .+ from [', "](.+)['"]/g).map((m) => m[1]);
+  const imports = Array.from(content.matchAll(/import .+ from [', "](.+)['"]/g)).map((m) => m[1]);
 
   const exports = Array.from(
     content.matchAll(/export (default |const |function |class )(\w+)/g),
   ).map((m) => m[2]);
 
-  const dependencies = imports.filter((imp) => !imp.startsWith('.');
+  const dependencies = imports.filter((imp) => !imp.startsWith('.'));
 
   return { imports, exports, dependencies };
 }
@@ -472,7 +472,7 @@ function getAllFiles(tree: unknown[]): unknown[] {
     if (node.type === 'file') {
       files.push(node);
     } else if (node.children) {
-      files.push(...getAllFiles(node.children);
+      files.push(...getAllFiles(node.children));
     }
   });
   return files;
@@ -494,6 +494,6 @@ function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B','KB','MB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k);
-  return Math.round((bytes / Math.pow(k, i) * 100) / 100 + '' + sizes[i];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + '' + sizes[i];
 }

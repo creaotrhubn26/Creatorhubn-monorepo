@@ -160,7 +160,7 @@ async function seed() {
         { tabId: 'overview',          label: 'Team Oversikt',       icon: 'Assessment',        order: 0,  enabled: true, isDefault: true },
         { tabId: 'projects',          label: 'Prosjekter',          icon: 'Folder',            order: 1,  enabled: true, isDefault: false },
         { tabId: 'academy',           label: 'Academy',             icon: 'School',            order: 2,  enabled: true, isDefault: false },
-        { tabId: 'wedding-timeline',  label: 'Bryllupstidslinje',   icon: 'Event',             order: 3,  enabled: true, isDefault: false },
+        { tabId: 'wedding-timeline',  label: 'Evendi',              icon: 'Event',             order: 3,  enabled: true, isDefault: false },
         { tabId: 'showcase-admin',    label: 'Showcase Admin',      icon: 'Collections',       order: 4,  enabled: true, isDefault: false },
         { tabId: 'showcase-viewer',   label: 'Showcase Viewer',     icon: 'Visibility',        order: 5,  enabled: true, isDefault: false },
         { tabId: 'downloads',         label: 'Downloads',           icon: 'GetApp',            order: 6,  enabled: true, isDefault: false },

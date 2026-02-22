@@ -2,12 +2,33 @@
 // This file is in the unused directory and may have outdated imports
 import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
-import { Box, Typography, Card as MuiCard, CardContent as MuiCardContent, Grid, Button, List, ListItem, ListItemText, ListItemIcon, Chip } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent as MuiCardContent,
+  Grid,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Chip,
+} from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 // Import dynamic profession system
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
-import { PhotoCamera, Videocam, LibraryMusic, Store, AddCircle as Add, Event, Person, Business } from '@mui/icons-material';
+import {
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Store,
+  AddCircle as Add,
+  Event,
+  Person,
+  Business,
+} from '@mui/icons-material';
 
 interface ProjectManagementSystemProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';

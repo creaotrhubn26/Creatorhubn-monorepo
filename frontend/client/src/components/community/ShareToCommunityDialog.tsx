@@ -59,6 +59,9 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 
 // ============================================
 // INTERFACES
@@ -152,7 +155,7 @@ export default function ShareToCommunityDialog({
   const { communication } = useEnhancedMasterIntegration();
   
   // Profession system hooks
-  const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
+  const { professionConfigs, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const currentProfession = professionAdapter.profession || profession || 'photographer';

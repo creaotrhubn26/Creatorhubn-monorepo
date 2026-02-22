@@ -18,7 +18,7 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   Security as SecurityIcon,
@@ -26,7 +26,7 @@ import {
   Visibility as VisibilityIcon,
   AccessTime as AccessTimeIcon,
   Delete as DeleteIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 interface ChatPrivacyConsentProps {

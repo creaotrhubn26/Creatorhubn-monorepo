@@ -11,10 +11,7 @@ import {
   Alert,
   Grid,
 } from '@mui/material';
-import {
-  LocalOffer as PriceIcon,
-  Receipt as QuoteIcon,
-} from '@mui/icons-material';
+import { LocalOffer as PriceIcon, Receipt as QuoteIcon } from '@mui/icons-material';
 import { useTheming } from '../../../utils/theming-helper';
 import { useClientServicePricing } from '../../../services/ClientServicePricingService';
 

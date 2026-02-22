@@ -54,7 +54,7 @@ import {
   TableRow,
   TableCell,
   TableBody,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   CameraAlt as CameraIcon,
@@ -78,7 +78,7 @@ import {
   Close as CloseIcon,
   Save as SaveIcon,
   LibraryMusic as MusicIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 // Import dynamic profession system  

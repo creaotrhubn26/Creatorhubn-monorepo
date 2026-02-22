@@ -46,7 +46,7 @@ import {
   Grid2,
   Switch,
   FormControlLabel,
-  Snackbar
+  Snackbar,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -70,7 +70,7 @@ import {
   Phone as PhoneIcon,
   Close as CloseIcon,
   ContentCopy as CopyIcon,
-  CheckCircle as CheckIcon
+  CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 

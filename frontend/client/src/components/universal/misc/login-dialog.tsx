@@ -1,31 +1,31 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  TextField, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  Alert,
   CircularProgress,
   Card,
   CardContent,
   Divider,
   IconButton,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
-import { 
-  Visibility, 
-  VisibilityOff, 
-  Login, 
-  Person, 
+import {
+  Visibility,
+  VisibilityOff,
+  Login,
+  Person,
   Lock,
-  Close
+  Close,
 } from '@mui/icons-material';
 
 interface LoginDialogProps {

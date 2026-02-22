@@ -17,7 +17,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider
+  Divider,
 } from '@mui/material';
 import { useEnhancedMasterIntegration } from './EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';

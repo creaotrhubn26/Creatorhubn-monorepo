@@ -2,25 +2,25 @@ import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
+import {
+  Box,
+  Typography,
+  Card,
   CardContent,
   CardMedia,
   Button,
   Chip,
   IconButton,
-  Grid
+  Grid,
 } from '@mui/material';
-import { 
-  Favorite, 
-  Share, 
+import {
+  Favorite,
+  Share,
   PlayArrow,
   YouTube,
   LibraryMusic,
   AccessTime,
-  Album
+  Album,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

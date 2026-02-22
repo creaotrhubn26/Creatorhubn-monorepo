@@ -27,14 +27,14 @@ import {
   Stepper,
   Step,
   StepLabel,
-} from "@mui/material";
+} from '@mui/material';
 import {
   Business as BusinessIcon,
   Search as SearchIcon,
   Close as CloseIcon,
   People as PeopleIcon,
   CheckCircle as CheckCircleIcon,
-} from "@mui/icons-material";
+} from '@mui/icons-material';
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 // import { debounce } from "lodash"; // Removed to avoid type errors

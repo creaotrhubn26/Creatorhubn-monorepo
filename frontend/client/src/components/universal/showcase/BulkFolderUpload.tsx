@@ -36,7 +36,7 @@ import {
   Divider,
   alpha,
   Collapse,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -55,7 +55,7 @@ import {
   ExpandMore,
   ExpandLess,
   CreateNewFolder,
-  Info
+  Info,
 } from '@mui/icons-material';
 
 interface FolderUploadItem {

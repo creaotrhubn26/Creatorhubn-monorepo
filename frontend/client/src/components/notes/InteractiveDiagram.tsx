@@ -33,7 +33,6 @@ import {
   Slider,
   Switch,
   FormControlLabel,
-  ColorPicker,
 } from '@mui/material';
 import {
   AccountTree,

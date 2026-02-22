@@ -33,7 +33,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Science,
@@ -45,7 +45,7 @@ import {
   Timer,
   Category,
   Refresh,
-  Edit
+  Edit,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

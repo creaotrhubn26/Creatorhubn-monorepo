@@ -16,7 +16,7 @@ import {
   Avatar,
   Tab,
   Tabs,
-  useTheme
+  useTheme,
 } from '@mui/material';
 import {
   Lightbulb,
@@ -28,7 +28,7 @@ import {
   Close,
   PlayArrow,
   Settings,
-  Info
+  Info,
 } from '@mui/icons-material';
 import LightingSimulator3D from './LightingSimulator3D';
 import ScenePreviewSimulator from './scene-preview-simulator';

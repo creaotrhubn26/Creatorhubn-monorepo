@@ -2,40 +2,40 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  Grid, 
-  Chip, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  TextField, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   Alert,
   CircularProgress,
   Stack,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  Description, 
-  Download, 
-  Edit, 
-  Preview, 
-  Add, 
+import {
+  Description,
+  Download,
+  Edit,
+  Preview,
+  Add,
   Delete,
   Close,
   FileCopy,
-  CheckCircle
+  CheckCircle,
 } from '@mui/icons-material';
 
 interface ContractTemplate {

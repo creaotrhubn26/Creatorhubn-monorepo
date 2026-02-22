@@ -23,7 +23,7 @@ import {
   Tooltip,
   Divider,
   Button,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   Close,
@@ -38,7 +38,7 @@ import {
   ArrowForward,
   Download,
   Favorite,
-  FavoriteBorder
+  FavoriteBorder,
 } from '@mui/icons-material';
 
 interface ShowcaseItem {

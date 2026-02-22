@@ -28,7 +28,7 @@ import {
   Divider,
   Alert,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Analytics,
@@ -42,7 +42,7 @@ import {
   Share,
   OpenInNew,
   Refresh,
-  DateRange
+  DateRange,
 } from '@mui/icons-material';
 import {
   LineChart,

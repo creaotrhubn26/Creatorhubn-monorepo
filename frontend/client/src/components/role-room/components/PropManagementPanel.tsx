@@ -66,7 +66,6 @@ import {
   VisibilityOff as VisibilityOffIcon,
   Category as CategoryIcon,
 } from '@mui/icons-material';
-import settingsService from '../services/settingsService';
 import { 
   LocationsIcon as LocationIcon, 
   StatsIcon, 
@@ -80,7 +79,14 @@ import {
 import { Prop } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
-import { GLB3DPreview } from './GLB3DPreview';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import equipPng from './icons/Keep/roleroom_equip.png';
+// GLB3DPreview stub — renders inline 3D preview placeholder
+const GLB3DPreview = ({ src, width, height }: { src?: string; width?: number; height?: number }) => (
+  <Box sx={{ width: width || 200, height: height || 200, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
+    <Typography variant="caption" color="text.secondary">3D Preview</Typography>
+  </Box>
+);
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -88,7 +94,7 @@ const TOUCH_TARGET_SIZE = 44;
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #ff9800',
+    outline: '3px solid #9333ea',
     outlineOffset: 2,
   },
 };
@@ -168,11 +174,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   // Favorites with database sync
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   
-  const FAVORITES_NAMESPACE = 'virtualStudio_propFavorites';
-
-  // Load favorites from database (with settings cache fallback)
+  // Load favorites from database
   useEffect(() => {
     const loadFavorites = async () => {
       try {
@@ -180,39 +183,32 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         const dbFavorites = await favoritesApi.get(projectId, 'prop');
         if (dbFavorites.length > 0) {
           setFavorites(new Set(dbFavorites));
-          await settingsService.setSetting(FAVORITES_NAMESPACE, dbFavorites, { projectId });
-          setFavoritesLoaded(true);
           return;
         }
       } catch (error) {
-        console.warn('Database unavailable, using settings cache:', error);
+        console.warn('Database unavailable, using localStorage:', error);
       }
-      const cached = await settingsService.getSetting<string[]>(FAVORITES_NAMESPACE, { projectId });
-      if (cached && cached.length > 0) {
-        setFavorites(new Set(cached));
-        setFavoritesLoaded(true);
-        return;
-      }
-      setFavoritesLoaded(true);
+      const saved = localStorage.getItem(`prop-favorites-${projectId}`);
+      if (saved) setFavorites(new Set(JSON.parse(saved)));
     };
     loadFavorites();
   }, [projectId]);
   
-  // Save favorites to database and settings cache
+  // Save favorites to database
   useEffect(() => {
     const saveFavorites = async () => {
-      const values = [...favorites];
-      await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
+      localStorage.setItem(`prop-favorites-${projectId}`, JSON.stringify([...favorites]));
       try {
         const { favoritesApi } = await import('@/services/castingApiService');
-        await favoritesApi.set(projectId, 'prop', values);
+        await favoritesApi.set(projectId, 'prop', [...favorites]);
       } catch (error) {
         console.warn('Database save failed:', error);
       }
     };
-    if (!favoritesLoaded) return;
-    saveFavorites();
-  }, [favorites, projectId, favoritesLoaded]);
+    if (favorites.size > 0 || localStorage.getItem(`prop-favorites-${projectId}`)) {
+      saveFavorites();
+    }
+  }, [favorites, projectId]);
 
   // Undo delete state
   const [deletedProp, setDeletedProp] = useState<Prop | null>(null);
@@ -239,12 +235,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           fontSize: { xs: '0.875rem', sm: '0.9375rem' },
           minHeight: TOUCH_TARGET_SIZE,
           '&:hover': {
-            bgcolor: 'rgba(255, 152, 0, 0.15)',
+            bgcolor: 'rgba(147, 51, 234, 0.15)',
           },
           '&.Mui-selected': {
-            bgcolor: 'rgba(255, 152, 0, 0.25)',
+            bgcolor: 'rgba(147, 51, 234, 0.25)',
             '&:hover': {
-              bgcolor: 'rgba(255, 152, 0, 0.35)',
+              bgcolor: 'rgba(147, 51, 234, 0.35)',
             },
           },
         },
@@ -283,12 +279,15 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       equipment: '#2196f3',
       vehicle: '#607d8b',
       food: '#4caf50',
-      other: '#ff9800',
+      other: '#9333ea',
     };
-    return colors[category] || '#ff9800';
+    return colors[category] || '#9333ea';
   };
 
-  // Favorites are cached in settingsService
+  // Save favorites to localStorage
+  useEffect(() => {
+    localStorage.setItem(`prop-favorites-${projectId}`, JSON.stringify([...favorites]));
+  }, [favorites, projectId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -644,7 +643,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     const totalProps = props.length;
     const propsWithScenes = props.filter(p => p.assignedScenes.length > 0).length;
 
-    const propIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const propIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/>
       <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
       <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
@@ -661,16 +660,16 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
     .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #ff9800; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #ff9800; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #9333ea; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #9333ea; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
     .title svg { flex-shrink: 0; }
     .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #ff9800; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #ff9800; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #9333ea; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #9333ea; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
     .summary-title svg { flex-shrink: 0; }
     .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
     .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #ff9800; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #9333ea; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
@@ -680,7 +679,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #9333ea 0%, #6d28d9 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -826,22 +825,22 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               width: { xs: 48, sm: 56, md: 64 },
               height: { xs: 48, sm: 56, md: 64 },
               borderRadius: { xs: 2, sm: 3 },
-              background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.25) 0%, rgba(255, 152, 0, 0.15) 100%)',
-              border: '2px solid rgba(255, 152, 0, 0.4)',
+              background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.25) 0%, rgba(147, 51, 234, 0.15) 100%)',
+              border: '2px solid rgba(147, 51, 234, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(255, 152, 0, 0.2)',
+              boxShadow: '0 4px 12px rgba(147, 51, 234, 0.2)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(255, 152, 0, 0.3)',
+                boxShadow: '0 6px 16px rgba(147, 51, 234, 0.3)',
               },
             }}
           >
             <Inventory2Icon
               sx={{
-                color: '#ffb74d',
+                color: '#c084fc',
                 fontSize: { xs: 26, sm: 32, md: 36 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
               }}
@@ -859,7 +858,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #ffb74d 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #c084fc 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -920,8 +919,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: showStats ? '#ff9800' : 'rgba(255,255,255,0.7)',
-                borderColor: showStats ? '#ff9800' : 'rgba(255,255,255,0.2)',
+                color: showStats ? '#9333ea' : 'rgba(255,255,255,0.7)',
+                borderColor: showStats ? '#9333ea' : 'rgba(255,255,255,0.2)',
                 px: { xs: 1, sm: 2 },
                 ...focusVisibleStyles,
               }}
@@ -936,13 +935,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               onClick={() => handleOpenDialog()}
               aria-label="Legg til ny rekvisitt"
               sx={{
-                bgcolor: '#ff9800',
+                bgcolor: '#9333ea',
                 color: '#000',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
                 flex: { xs: 1, sm: 'none' },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: '#f57c00' },
+                '&:hover': { bgcolor: '#6d28d9' },
               }}
             >
               <AddIcon />
@@ -969,9 +968,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         >
           <Box sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <PropsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ff9800' }} />
+              <PropsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9333ea' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+            <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.total}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Unike</Typography>
@@ -1035,7 +1034,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               color: '#fff',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-              '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+              '&.Mui-focused fieldset': { borderColor: '#9333ea' },
             },
           }}
         />
@@ -1049,9 +1048,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: showFilters ? 'rgba(255,152,0,0.2)' : 'transparent',
-                color: showFilters ? '#ff9800' : 'rgba(255,255,255,0.7)',
-                borderColor: showFilters ? '#ff9800' : 'rgba(255,255,255,0.2)',
+                bgcolor: showFilters ? 'rgba(147,51,234,0.2)' : 'transparent',
+                color: showFilters ? '#9333ea' : 'rgba(255,255,255,0.7)',
+                borderColor: showFilters ? '#9333ea' : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -1067,9 +1066,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'grid' ? 'rgba(255,152,0,0.2)' : 'transparent',
-                color: viewMode === 'grid' ? '#ff9800' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'grid' ? '#ff9800' : 'rgba(255,255,255,0.2)',
+                bgcolor: viewMode === 'grid' ? 'rgba(147,51,234,0.2)' : 'transparent',
+                color: viewMode === 'grid' ? '#9333ea' : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'grid' ? '#9333ea' : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -1085,9 +1084,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'table' ? 'rgba(255,152,0,0.2)' : 'transparent',
-                color: viewMode === 'table' ? '#ff9800' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'table' ? '#ff9800' : 'rgba(255,255,255,0.2)',
+                bgcolor: viewMode === 'table' ? 'rgba(147,51,234,0.2)' : 'transparent',
+                color: viewMode === 'table' ? '#9333ea' : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'table' ? '#9333ea' : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -1157,7 +1156,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 setFilterCategory('all');
                 setSearchQuery('');
               }}
-              sx={{ color: '#ff9800', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
+              sx={{ color: '#9333ea', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
             >
               Nullstill
             </Button>
@@ -1171,9 +1170,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           severity="info"
           sx={{
             mb: 2,
-            bgcolor: 'rgba(255,152,0,0.1)',
+            bgcolor: 'rgba(147,51,234,0.1)',
             color: '#fff',
-            '& .MuiAlert-icon': { color: '#ff9800' },
+            '& .MuiAlert-icon': { color: '#9333ea' },
           }}
         >
           Viser {filteredAndSortedProps.length} av {props.length} utstyr
@@ -1182,16 +1181,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
       {/* Empty state */}
       {props.length === 0 ? (
-        <Box
-          role="status"
-          sx={{ textAlign: 'center', py: { xs: 4, sm: 8 }, color: 'rgba(255,255,255,0.87)' }}
-        >
-          <BuildIcon sx={{ fontSize: { xs: 48, sm: 64 }, mb: 2, opacity: 0.3 }} />
-          <Typography variant="body1">Ingen utstyr ennå</Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Legg til utstyr for å organisere produksjonselementer
-          </Typography>
-        </Box>
+        <RoleRoomEmptyState
+          iconSrc={equipPng}
+          title="Ingen utstyr ennå"
+          subtitle="Legg til utstyr for å organisere produksjonselementer"
+          color="#9333ea"
+        />
       ) : filteredAndSortedProps.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
@@ -1218,7 +1213,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedProps.length}
                     onChange={handleSelectAll}
                     aria-label="Velg alle rekvisitter"
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#ff9800' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9333ea' } }}
                   />
                 </TableCell>
                 <TableCell>
@@ -1226,7 +1221,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', '&:hover': { color: '#ff9800' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -1236,7 +1231,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     active={sortField === 'category'}
                     direction={sortField === 'category' ? sortDirection : 'asc'}
                     onClick={() => handleSort('category')}
-                    sx={{ color: '#fff', '&:hover': { color: '#ff9800' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
                   >
                     Kategori
                   </TableSortLabel>
@@ -1246,7 +1241,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     active={sortField === 'quantity'}
                     direction={sortField === 'quantity' ? sortDirection : 'asc'}
                     onClick={() => handleSort('quantity')}
-                    sx={{ color: '#fff', '&:hover': { color: '#ff9800' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
                   >
                     Antall
                   </TableSortLabel>
@@ -1257,7 +1252,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     active={sortField === 'scenes'}
                     direction={sortField === 'scenes' ? sortDirection : 'asc'}
                     onClick={() => handleSort('scenes')}
-                    sx={{ color: '#fff', '&:hover': { color: '#ff9800' } }}
+                    sx={{ color: '#fff', '&:hover': { color: '#9333ea' } }}
                   >
                     Scener
                   </TableSortLabel>
@@ -1270,7 +1265,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 <TableRow
                   key={prop.id}
                   sx={{
-                    bgcolor: selectedIds.has(prop.id) ? 'rgba(255,152,0,0.1)' : 'transparent',
+                    bgcolor: selectedIds.has(prop.id) ? 'rgba(147,51,234,0.1)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
@@ -1278,7 +1273,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     <Checkbox
                       checked={selectedIds.has(prop.id)}
                       onChange={() => handleToggleSelect(prop.id)}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#ff9800' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#9333ea' } }}
                     />
                   </TableCell>
                   <TableCell>
@@ -1325,7 +1320,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => handleOpenDialog(prop)} sx={{ color: '#ff9800' }}>
+                        <IconButton onClick={() => handleOpenDialog(prop)} sx={{ color: '#9333ea' }}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -1355,15 +1350,15 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  bgcolor: selectedIds.has(prop.id) ? 'rgba(255,152,0,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: selectedIds.has(prop.id) ? '2px solid #ff9800' : '2px solid rgba(255,152,0,0.2)',
+                  bgcolor: selectedIds.has(prop.id) ? 'rgba(147,51,234,0.08)' : 'rgba(255,255,255,0.03)',
+                  border: selectedIds.has(prop.id) ? '2px solid #9333ea' : '2px solid rgba(147,51,234,0.2)',
                   borderRadius: 3,
                   overflow: 'hidden',
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   ...focusVisibleStyles,
                   '&:hover': {
-                    borderColor: 'rgba(255,152,0,0.6)',
-                    boxShadow: '0 8px 24px rgba(255,152,0,0.25)',
+                    borderColor: 'rgba(147,51,234,0.6)',
+                    boxShadow: '0 8px 24px rgba(147,51,234,0.25)',
                     transform: 'translateY(-2px)',
                   },
                 }}
@@ -1405,7 +1400,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       sx={{
                         width: '100%',
                         height: { xs: 160, sm: 180, md: 200 },
-                        background: 'linear-gradient(135deg, rgba(255,152,0,0.25) 0%, rgba(255,152,0,0.15) 100%)',
+                        background: 'linear-gradient(135deg, rgba(147,51,234,0.25) 0%, rgba(147,51,234,0.15) 100%)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1416,15 +1411,15 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           width: { xs: 70, sm: 80, md: 90 },
                           height: { xs: 70, sm: 80, md: 90 },
                           borderRadius: 3,
-                          bgcolor: 'rgba(255,152,0,0.30)',
-                          border: '3px solid rgba(255,152,0,0.50)',
+                          bgcolor: 'rgba(147,51,234,0.30)',
+                          border: '3px solid rgba(147,51,234,0.50)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          boxShadow: '0 8px 24px rgba(255,152,0,0.30)',
+                          boxShadow: '0 8px 24px rgba(147,51,234,0.30)',
                         }}
                       >
-                        <Inventory2Icon sx={{ fontSize: { xs: 36, sm: 42, md: 48 }, color: '#ff9800' }} />
+                        <Inventory2Icon sx={{ fontSize: { xs: 36, sm: 42, md: 48 }, color: '#9333ea' }} />
                       </Box>
                     </Box>
                   )}
@@ -1450,7 +1445,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         sx={{
                           p: 0.5,
                           color: 'rgba(255,255,255,0.87)',
-                          '&.Mui-checked': { color: '#ff9800' },
+                          '&.Mui-checked': { color: '#9333ea' },
                         }}
                       />
                       <Chip
@@ -1609,8 +1604,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         p: 1,
                         mb: 1.5,
                         borderRadius: 1.5,
-                        bgcolor: 'rgba(255,152,0,0.1)',
-                        border: '1px solid rgba(255,152,0,0.3)',
+                        bgcolor: 'rgba(147,51,234,0.1)',
+                        border: '1px solid rgba(147,51,234,0.3)',
                       }}
                     >
                       <Box
@@ -1618,7 +1613,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           width: 28,
                           height: 28,
                           borderRadius: 1,
-                          bgcolor: 'rgba(255,152,0,0.25)',
+                          bgcolor: 'rgba(147,51,234,0.25)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1626,7 +1621,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       >
                         <Typography sx={{ fontSize: 14 }}>🎬</Typography>
                       </Box>
-                      <Typography sx={{ color: '#ffb74d', fontSize: '0.8rem', fontWeight: 600 }}>
+                      <Typography sx={{ color: '#c084fc', fontSize: '0.8rem', fontWeight: 600 }}>
                         {prop.assignedScenes.length} scene{prop.assignedScenes.length !== 1 ? 'r' : ''} tildelt
                       </Typography>
                     </Box>
@@ -1634,7 +1629,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
                   {/* Expandable section */}
                   <Collapse in={expandedCards.has(prop.id)}>
-                    <Box sx={{ mt: 1, pt: 2, borderTop: '2px solid rgba(255,152,0,0.2)' }}>
+                    <Box sx={{ mt: 1, pt: 2, borderTop: '2px solid rgba(147,51,234,0.2)' }}>
                       {prop.notes && (
                         <Box
                           sx={{
@@ -1672,11 +1667,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                                   height: { xs: 56, sm: 64 },
                                   objectFit: 'cover',
                                   borderRadius: 1.5,
-                                  border: '2px solid rgba(255,152,0,0.3)',
+                                  border: '2px solid rgba(147,51,234,0.3)',
                                   transition: 'all 0.2s ease',
                                   '&:hover': {
                                     transform: 'scale(1.05)',
-                                    borderColor: '#ff9800',
+                                    borderColor: '#9333ea',
                                   },
                                 }}
                               />
@@ -1689,12 +1684,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  bgcolor: 'rgba(255,152,0,0.15)',
+                                  bgcolor: 'rgba(147,51,234,0.15)',
                                   borderRadius: 1.5,
-                                  border: '2px solid rgba(255,152,0,0.3)',
+                                  border: '2px solid rgba(147,51,234,0.3)',
                                 }}
                               >
-                                <Typography sx={{ color: '#ffb74d', fontWeight: 700, fontSize: '0.9rem' }}>
+                                <Typography sx={{ color: '#c084fc', fontWeight: 700, fontSize: '0.9rem' }}>
                                   +{prop.images.length - 5}
                                 </Typography>
                               </Box>
@@ -1713,7 +1708,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       alignItems: 'center',
                       pt: { xs: 2, sm: 2.5 },
                       mt: 'auto',
-                      borderTop: '2px solid rgba(255,152,0,0.2)',
+                      borderTop: '2px solid rgba(147,51,234,0.2)',
                     }}
                   >
                     <Button
@@ -1724,22 +1719,22 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       aria-expanded={expandedCards.has(prop.id)}
                       aria-label={expandedCards.has(prop.id) ? 'Skjul detaljer' : 'Vis mer'}
                       sx={{
-                        bgcolor: expandedCards.has(prop.id) ? 'rgba(255,152,0,0.25)' : 'rgba(255,152,0,0.15)',
-                        color: expandedCards.has(prop.id) ? '#ffb74d' : '#fff',
+                        bgcolor: expandedCards.has(prop.id) ? 'rgba(147,51,234,0.25)' : 'rgba(147,51,234,0.15)',
+                        color: expandedCards.has(prop.id) ? '#c084fc' : '#fff',
                         fontSize: { xs: '0.8rem', sm: '0.875rem' },
                         fontWeight: 600,
                         minHeight: TOUCH_TARGET_SIZE,
                         px: { xs: 2, sm: 2.5 },
-                        border: expandedCards.has(prop.id) ? '2px solid rgba(255,152,0,0.5)' : '2px solid rgba(255,152,0,0.3)',
+                        border: expandedCards.has(prop.id) ? '2px solid rgba(147,51,234,0.5)' : '2px solid rgba(147,51,234,0.3)',
                         borderRadius: 2,
                         textTransform: 'none',
-                        boxShadow: expandedCards.has(prop.id) ? '0 4px 12px rgba(255,152,0,0.3)' : '0 2px 8px rgba(255,152,0,0.2)',
+                        boxShadow: expandedCards.has(prop.id) ? '0 4px 12px rgba(147,51,234,0.3)' : '0 2px 8px rgba(147,51,234,0.2)',
                         transition: 'all 0.2s ease',
                         '&:hover': {
-                          bgcolor: 'rgba(255,152,0,0.35)',
-                          borderColor: 'rgba(255,152,0,0.6)',
+                          bgcolor: 'rgba(147,51,234,0.35)',
+                          borderColor: 'rgba(147,51,234,0.6)',
                           transform: 'translateY(-1px)',
-                          boxShadow: '0 6px 16px rgba(255,152,0,0.4)',
+                          boxShadow: '0 6px 16px rgba(147,51,234,0.4)',
                         },
                         ...focusVisibleStyles,
                       }}
@@ -1769,8 +1764,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
-                            color: '#ffb74d',
-                            '&:hover': { bgcolor: 'rgba(255,152,0,0.1)' },
+                            color: '#c084fc',
+                            '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
                             ...focusVisibleStyles,
                           }}
                         >
@@ -1809,7 +1804,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         onClose={() => setUndoSnackbarOpen(false)}
         message={`"${deletedProp?.name}" slettet`}
         action={
-          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#ff9800' }}>
+          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#9333ea' }}>
             Angre
           </Button>
         }
@@ -1903,10 +1898,10 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9800' },
+                  '&.Mui-focused fieldset': { borderColor: '#9333ea' },
                 },
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#ff9800' },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#9333ea' },
               }}
             />
 
@@ -1957,8 +1952,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             {/* Image Upload Section */}
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                <ImageIcon sx={{ color: '#ff9800', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
-                <Typography variant="subtitle2" sx={{ color: '#ff9800', fontWeight: 600 }}>
+                <ImageIcon sx={{ color: '#9333ea', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+                <Typography variant="subtitle2" sx={{ color: '#9333ea', fontWeight: 600 }}>
                   Bilder
                 </Typography>
               </Box>
@@ -2025,13 +2020,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   startIcon={<CloudUploadIcon />}
                   fullWidth
                   sx={{
-                    borderColor: 'rgba(255,152,0,0.5)',
-                    color: '#ff9800',
+                    borderColor: 'rgba(147,51,234,0.5)',
+                    color: '#9333ea',
                     py: 1.5,
                     minHeight: TOUCH_TARGET_SIZE,
                     '&:hover': {
-                      borderColor: '#ff9800',
-                      bgcolor: 'rgba(255,152,0,0.1)',
+                      borderColor: '#9333ea',
+                      bgcolor: 'rgba(147,51,234,0.1)',
                     },
                   }}
                 >
@@ -2135,12 +2130,12 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             startIcon={<SaveIcon />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#ff9800',
+              bgcolor: '#9333ea',
               color: '#000',
               fontWeight: 600,
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: '#f57c00' },
+              '&:hover': { bgcolor: '#6d28d9' },
             }}
           >
             Lagre

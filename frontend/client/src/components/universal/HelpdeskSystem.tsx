@@ -35,7 +35,7 @@ import {
   Badge,
   Fab,
   Tooltip,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
 import {
@@ -55,7 +55,7 @@ import {
   Message as MessageIcon,
   Analytics as AnalyticsIcon,
   Warning as WarningIcon,
-  Chat as ChatIcon
+  Chat as ChatIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/hooks/useAuth';
 

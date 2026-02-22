@@ -17,7 +17,13 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { ContentCopy, Download, Palette, Image as ImageIcon, Code } from '@mui/icons-material';
+import {
+  ContentCopy,
+  Download,
+  Palette,
+  Image as ImageIcon,
+  Code,
+} from '@mui/icons-material';
 import { brandKit, brandColors, brandTypography, featureIcons } from '../../assets/brandkit';
 import { integrationService } from '../../services/integrations';
 

@@ -1,4 +1,5 @@
-import { useState, useId, useMemo, useEffect, type ReactNode, memo } from 'react';
+import { useState, useReducer, useId, useMemo, useEffect, useCallback, useRef, memo } from 'react';
+import React from 'react';
 import {
   Box,
   Typography,
@@ -11,7 +12,6 @@ import {
   Grid,
   Tooltip,
   Collapse,
-  Alert,
   Snackbar,
   FormControl,
   Select,
@@ -29,7 +29,11 @@ import {
   Stack,
   useTheme,
   useMediaQuery,
+  LinearProgress,
+  Slide,
+  Menu,
   Divider,
+  Avatar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -44,6 +48,7 @@ import {
   ContentCopy as DuplicateIcon,
   GridView as GridViewIcon,
   TableRows as TableViewIcon,
+  ViewList as CompactViewIcon,
   Schedule as ScheduleIcon,
   Person as PersonIcon,
   Movie as MovieIcon,
@@ -51,17 +56,45 @@ import {
   InterpreterMode as InterpreterModeIcon,
   Note as NoteIcon,
   Inventory as InventoryIcon,
-  FileDownload as DownloadIcon,
+  Sort as SortIcon,
+  Today as TodayIcon,
+  SwapVert as BulkStatusIcon,
+  AccessTime as TimeIcon,
+  MoreVert as MoreVertIcon,
+  BookmarkBorder as PoolIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
-import settingsService from '../services/settingsService';
 import { RolesIcon as TheaterComedyIcon, AuditionsIcon, CandidatesIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, StatsIcon } from './icons/CastingIcons';
 import { Schedule, Role, Candidate } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { auditionPoolService, PoolAudition } from '../services/auditionPoolService';
 import { useToast } from './ToastStack';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import cameraPng from './icons/Keep/roleroom_camera.png';
+import { formatNotesToReactNodes } from '../utils/auditionNoteFormatter';
+import { AuditionGuide } from './production/AuditionGuide';
+import {
+  scheduleReducer,
+  initialScheduleState,
+  stateToApiFilters,
+  hasActiveFilters as computeHasActiveFilters,
+  type SortField as ReducerSortField,
+  type StatusFilter as ReducerStatusFilter,
+} from '../hooks/scheduleReducer';
+import { useAuditionSchedules } from '../hooks/useAuditionSchedules';
+import { ScheduleDetailsDrawer } from './ScheduleDetailsDrawer';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
 const TOUCH_TARGET_SIZE = 44;
+
+/** Escape a string for safe embedding in an HTML template literal. */
+const escapeHtml = (s: string): string =>
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
@@ -71,14 +104,15 @@ const focusVisibleStyles = {
   },
 };
 
-type SortField = 'date' | 'status' | 'candidate' | 'role';
+type SortField = ReducerSortField;
 type SortDirection = 'asc' | 'desc';
-type ViewMode = 'grid' | 'table';
-type StatusFilter = 'all' | 'scheduled' | 'completed' | 'cancelled';
+type ViewMode = 'grid' | 'table' | 'compact';
+type StatusFilter = ReducerStatusFilter;
 
 interface AuditionSchedulePanelProps {
   projectId: string;
-  schedules: Schedule[];
+  /** Legacy: schedules pre-fetched by parent. Panel now owns its own fetch via useAuditionSchedules. */
+  schedules?: Schedule[];
   candidates: Candidate[];
   roles: Role[];
   availableScenes: { id: string; name: string }[];
@@ -87,11 +121,13 @@ interface AuditionSchedulePanelProps {
   onCreateSchedule: () => void;
   onNavigateToTab: (tabIndex: number) => void;
   profession?: 'photographer' | 'videographer' | null;
+  /** Optional – enables per-user favorite persistence via DB */
+  userId?: string;
 }
 
 function AuditionSchedulePanelInner({
   projectId,
-  schedules,
+  schedules: schedulesProp = [],
   candidates,
   roles,
   availableScenes,
@@ -99,6 +135,7 @@ function AuditionSchedulePanelInner({
   onEditSchedule,
   onCreateSchedule,
   onNavigateToTab,
+  userId,
 }: AuditionSchedulePanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -106,297 +143,256 @@ function AuditionSchedulePanelInner({
   const titleId = useId();
   const statsId = useId();
   
-  // State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [dateFilter, setDateFilter] = useState('');
-  const [candidateFilter, setCandidateFilter] = useState('all');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [showStats, setShowStats] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  // ── UI state — single reducer (replaces 10+ useState) ──────
+  const [uiState, dispatch] = useReducer(scheduleReducer, initialScheduleState);
+  const {
+    searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter,
+    locationFilter, favoritesOnly, todayOnly,
+    sortField, sortDirection, viewMode, showStats, selectedIds, expandedCards,
+    poolMode, drawerScheduleId, lastSelectedIndex,
+  } = uiState;
+
+  // Adapter setters – preserve existing internal API without touching every call site
+  const setSearchQuery      = useCallback((q: string)           => dispatch({ type: 'SET_SEARCH',            query: q }),        []);
+  const setStatusFilter     = useCallback((s: StatusFilter)     => dispatch({ type: 'SET_STATUS_FILTER',     status: s }),       []);
+  const setDateFilter       = useCallback((d: string)           => dispatch({ type: 'SET_DATE_FILTER',       date: d }),         []);
+  const setCandidateFilter  = useCallback((id: string)          => dispatch({ type: 'SET_CANDIDATE_FILTER',  candidateId: id }), []);
+  const setRoleFilter       = useCallback((id: string)          => dispatch({ type: 'SET_ROLE_FILTER',       roleId: id }),      []);
+  const setLocationFilter   = useCallback((loc: string)         => dispatch({ type: 'SET_LOCATION_FILTER',   location: loc }),   []);
+  const setFavoritesOnly    = useCallback((v: boolean)          => dispatch({ type: 'SET_FAVORITES_ONLY',    value: v }),        []);
+  const setTodayOnly        = useCallback((v: boolean)          => dispatch({ type: 'SET_TODAY_ONLY',        value: v }),        []);
+  const setSortField        = useCallback((f: ReducerSortField) => dispatch({ type: 'SET_SORT',              field: f }),        []);
+  const setSortDirection    = useCallback((d: SortDirection)    => dispatch({ type: 'SET_SORT_DIRECTION',    dir: d }),          []);
+  const setViewMode         = useCallback((m: ViewMode)         => dispatch({ type: 'SET_VIEW_MODE',         mode: m }),         []);
+  const setShowStats        = useCallback(() => dispatch({ type: 'TOGGLE_STATS' }),                                              []);
+  const setPoolMode         = useCallback((m: 'project' | 'pool') => dispatch({ type: 'SET_POOL_MODE',      mode: m }),         []);
+  const clearFilters        = useCallback(() => dispatch({ type: 'CLEAR_FILTERS' }),                                             []);
+  const openDrawer          = useCallback((id: string)          => dispatch({ type: 'OPEN_DRAWER',           scheduleId: id }),  []);
+  const closeDrawer         = useCallback(()                    => dispatch({ type: 'CLOSE_DRAWER' }),                           []);
+
+  // Derived: is any filter active?
+  const hasActiveFilters = computeHasActiveFilters(uiState);
+
+  // Per-render state (not part of filter/sort/view)
   const [undoSnackbarOpen, setUndoSnackbarOpen] = useState(false);
   const [lastDeleted, setLastDeleted] = useState<Schedule | null>(null);
-  const [poolMode, setPoolMode] = useState<'project' | 'pool'>('project');
   const [poolAuditions, setPoolAuditions] = useState<PoolAudition[]>([]);
   const [poolLoading, setPoolLoading] = useState(false);
-  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+  const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; schedule: Schedule } | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const { showSuccess, showError } = useToast();
-  
   const containerPadding = isMobile ? 2 : isTablet ? 3 : 4;
 
-  const FAVORITES_NAMESPACE = 'virtualStudio_scheduleFavorites';
+  // Stable ref so the keyboard effect never becomes stale without re-subscribing
+  const handleExportCSVRef = useRef<() => void>(() => {});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusedRowIndexRef = useRef<number>(-1);
 
-  // Load favorites from database (with settings cache fallback)
-  useEffect(() => {
-    const loadFavorites = async () => {
-      try {
-        const { favoritesApi } = await import('@/services/castingApiService');
-        const dbFavorites = await favoritesApi.get(projectId, 'schedule');
-        if (dbFavorites.length > 0) {
-          setFavorites(new Set(dbFavorites));
-          await settingsService.setSetting(FAVORITES_NAMESPACE, dbFavorites, { projectId });
-          setFavoritesLoaded(true);
-          return;
-        }
-      } catch (error) {
-        console.warn('Database unavailable, using settings cache:', error);
-      }
-      const cached = await settingsService.getSetting<string[]>(FAVORITES_NAMESPACE, { projectId });
-      if (cached && cached.length > 0) {
-        setFavorites(new Set(cached));
-        setFavoritesLoaded(true);
-        return;
-      }
-      setFavoritesLoaded(true);
-    };
-    loadFavorites();
-  }, [projectId]);
+  // ── Server-side data – resolves filter/sort/pagination ─────
+  const apiFilters = useMemo(() => stateToApiFilters(uiState), [uiState]);
+  const {
+    items: hookItems,
+    counts: serverCounts,
+    createMutation,
+    updateMutation: _updateMutation,
+    patchMutation,
+    deleteMutation,
+    bulkDeleteMutation,
+    favoriteMutation,
+    isFetching,
+  } = useAuditionSchedules(projectId, apiFilters, userId);
 
-  // Save favorites to database and settings cache
-  useEffect(() => {
-    const saveFavorites = async () => {
-      const values = [...favorites];
-      await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
-      try {
-        const { favoritesApi } = await import('@/services/castingApiService');
-        await favoritesApi.set(projectId, 'schedule', values);
-      } catch (error) {
-        console.warn('Database save failed:', error);
-      }
-    };
-    if (!favoritesLoaded) return;
-    saveFavorites();
-  }, [favorites, projectId, favoritesLoaded]);
+  /**
+   * When the hook resolves, use server-filtered items.
+   * Fall back to the prop-supplied array on first render or when offline.
+   */
+  const usingHookData = hookItems.length > 0 || isFetching;
 
-  // Keyboard shortcuts
+  // Derive favorites as a Set<id> from per-row flag returned by the API
+  const favorites = useMemo(
+    () => new Set(hookItems.filter(i => (i as Record<string, unknown>).favorite === true).map(i => i.id)),
+    [hookItems],
+  );
+
+  /** Toggle a favorite via the DB API (or fall back to local state when no userId) */
+  const toggleFavoriteViaApi = useCallback((id: string) => {
+    if (userId) {
+      favoriteMutation.mutate({ scheduleId: id, favorite: !favorites.has(id) });
+    }
+  }, [favorites, userId, favoriteMutation]);
+
+  // Keyboard shortcuts — uses a stable ref so the effect never grows stale
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable;
+
+      // Global shortcuts (always active)
+      if (e.key === 'Escape') {
+        if (selectedIds.size > 0) {
+          e.preventDefault();
+          dispatch({ type: 'DESELECT_ALL' });
+        } else {
+          dispatch({ type: 'CLOSE_DRAWER' });
+        }
+        return;
+      }
+
+      if (isTyping) return;
+
+      // Non-typing shortcuts
+      if (e.key === '/') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        onCreateSchedule();
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'n') { e.preventDefault(); onCreateSchedule(); }
-        if (e.key === 'e') { e.preventDefault(); handleExportCSV(); }
+        if (e.key === 'e') { e.preventDefault(); handleExportCSVRef.current(); }
+        if (e.key === 'd') {
+          e.preventDefault();
+          if (focusedRowIndexRef.current >= 0) {
+            const s = filteredAndSortedSchedulesRef.current[focusedRowIndexRef.current];
+            if (s) handleDuplicateRef.current(s);
+          }
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = Math.min(
+          focusedRowIndexRef.current + 1,
+          filteredAndSortedSchedulesRef.current.length - 1,
+        );
+        focusedRowIndexRef.current = next;
+        const row = document.querySelector(`[data-schedule-index="${next}"]`) as HTMLElement | null;
+        row?.focus();
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = Math.max(focusedRowIndexRef.current - 1, 0);
+        focusedRowIndexRef.current = prev;
+        const row = document.querySelector(`[data-schedule-index="${prev}"]`) as HTMLElement | null;
+        row?.focus();
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const s = filteredAndSortedSchedulesRef.current[focusedRowIndexRef.current];
+        if (s) openDrawer(s.id);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCreateSchedule, selectedIds.size]);
+
+  // ── O(1) lookup maps — rebuilt only when the source arrays change ──────────
+  const candidateById = useMemo(
+    () => new Map(candidates.map(c => [c.id, c.name])),
+    [candidates],
+  );
+  const roleById = useMemo(
+    () => new Map(roles.map(r => [r.id, r.name])),
+    [roles],
+  );
+  const sceneById = useMemo(
+    () => new Map(availableScenes.map(s => [s.id, s.name])),
+    [availableScenes],
+  );
+
+  const getCandidateName = useCallback(
+    (id: string) => candidateById.get(id) ?? 'Ukjent',
+    [candidateById],
+  );
+  const getRoleName = useCallback(
+    (id: string) => roleById.get(id) ?? 'Ukjent',
+    [roleById],
+  );
+  const getSceneName = useCallback(
+    (id?: string) => (id ? sceneById.get(id) ?? null : null),
+    [sceneById],
+  );
 
   // Helper functions
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return '#10b981';
-      case 'cancelled': return '#ef4444';
-      default: return '#00d4ff';
+      case 'confirmed':         return '#3b82f6';  // blue
+      case 'awaiting_callback': return '#a855f7';  // purple
+      case 'completed':         return '#10b981';  // green
+      case 'cancelled':         return '#ef4444';  // red
+      case 'pool':              return '#94a3b8';  // neutral
+      default:                  return '#ffb800';  // amber (scheduled)
     }
   };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'completed': return 'Fullført';
-      case 'cancelled': return 'Kansellert';
-      default: return 'Planlagt';
+      case 'confirmed':         return 'Bekreftet';
+      case 'awaiting_callback': return 'Tilbakemelding';
+      case 'completed':         return 'Fullf\u00f8rt';
+      case 'cancelled':         return 'Kansellert';
+      case 'pool':              return 'Uplanlagt';
+      default:                  return 'Planlagt';
     }
   };
 
-  const getCandidateName = (candidateId: string) => 
-    candidates.find(c => c.id === candidateId)?.name || 'Ukjent';
-  
-  const getRoleName = (roleId: string) => 
-    roles.find(r => r.id === roleId)?.name || 'Ukjent';
+  // NOTE: renderFormattedNotes extracted to auditionNoteFormatter.tsx as formatNotesToReactNodes
+  // ── placeholder so references in JSX below are resolved via the imported util ──
+  const renderFormattedNotes = formatNotesToReactNodes;
 
-  const getSceneName = (sceneId?: string) =>
-    sceneId ? availableScenes.find(s => s.id === sceneId)?.name : null;
+  // Map a server AuditionScheduleRow (snake_case, denormalized) to the component's Schedule shape
+  const mapHookItem = useCallback((item: Record<string, unknown>): Schedule & { candidateName?: string; roleName?: string; isFavorite?: boolean } => ({
+    id:          String(item.id ?? ''),
+    candidateId: String(item.candidate_id ?? item.candidateId ?? ''),
+    roleId:      String(item.role_id      ?? item.roleId      ?? ''),
+    sceneId:     item.scene_id    ? String(item.scene_id)    : undefined,
+    locationId:  item.location_id ? String(item.location_id) : undefined,
+    date:        String(item.date ?? ''),
+    time:        String(item.time ?? ''),
+    location:    String(item.location ?? ''),
+    notes:       item.notes ? String(item.notes) : undefined,
+    status:      (item.status as Schedule['status']) ?? 'scheduled',
+    candidateName: item.candidate_name ? String(item.candidate_name) : undefined,
+    roleName:      item.role_name      ? String(item.role_name)      : undefined,
+    isFavorite:    Boolean(item.favorite),
+  }), []);
 
-  // Render formatted notes matching ProductionDayView style
-  const renderFormattedNotes = (notes: string): ReactNode => {
-    if (!notes) return null;
+  /**
+   * The active schedule list.
+   * When the hook has resolved (usingHookData), the server has already applied
+   * all filters + sort, so we just map rows to the Schedule shape.
+   * Otherwise fall back to local filter+sort on the prop array.
+   */
+  const schedules = usingHookData
+    ? (hookItems as Record<string, unknown>[]).map(mapHookItem)
+    : schedulesProp;
 
-    const lines = notes.split('\n');
+  // Precomputed timestamps for O(1) sort comparisons (only used in fallback path)
+  const scheduleTimeMs = useMemo(
+    () => new Map(schedulesProp.map(s => [s.id, Date.parse(`${s.date}T${s.time}`)])),
+    [schedulesProp],
+  );
 
-    return lines.map((line, lineIndex) => {
-      // Check for divider line
-      if (line.includes('―――――――――――')) {
-        return (
-          <Divider
-            key={lineIndex}
-            sx={{
-              my: 1.5,
-              borderColor: 'rgba(255,193,7,0.3)',
-              borderWidth: 2,
-            }}
-          />
-        );
-      }
-
-      // Check for heading (## )
-      const isHeading = line.startsWith('## ');
-      const headingContent = isHeading ? line.substring(3) : line;
-
-      // Check for bullet list (• )
-      const isBullet = line.startsWith('• ');
-      const bulletContent = isBullet ? line.substring(2) : headingContent;
-
-      // Check for numbered list (1. , 2. , etc.)
-      const numberMatch = line.match(/^(\d+)\.\s/);
-      const isNumbered = numberMatch !== null;
-      const numberedContent = isNumbered ? line.substring(numberMatch[0].length) : bulletContent;
-
-      // Check for checkbox (☐ or ☑)
-      const isUncheckedBox = line.startsWith('☐ ');
-      const isCheckedBox = line.startsWith('☑ ');
-      const checkboxContent = (isUncheckedBox || isCheckedBox) ? line.substring(2) : numberedContent;
-
-      // Parse inline formatting (bold and italic)
-      const parseInlineFormatting = (text: string): React.ReactNode => {
-        const parts: React.ReactNode[] = [];
-        let remaining = text;
-        let keyCounter = 0;
-
-        while (remaining.length > 0) {
-          const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
-          const italicMatch = remaining.match(/_(.+?)_/);
-
-          const boldIndex = boldMatch ? remaining.indexOf(boldMatch[0]) : -1;
-          const italicIndex = italicMatch ? remaining.indexOf(italicMatch[0]) : -1;
-
-          if (boldIndex === -1 && italicIndex === -1) {
-            if (remaining) parts.push(remaining);
-            break;
-          }
-
-          const usesBold = boldIndex !== -1 && (italicIndex === -1 || boldIndex < italicIndex);
-
-          if (usesBold && boldMatch) {
-            if (boldIndex > 0) parts.push(remaining.substring(0, boldIndex));
-            parts.push(
-              <Box component="span" key={`bold-${keyCounter++}`} sx={{ fontWeight: 700, color: '#ffb800' }}>
-                {boldMatch[1]}
-              </Box>
-            );
-            remaining = remaining.substring(boldIndex + boldMatch[0].length);
-          } else if (italicMatch) {
-            if (italicIndex > 0) parts.push(remaining.substring(0, italicIndex));
-            parts.push(
-              <Box component="span" key={`italic-${keyCounter++}`} sx={{ fontStyle: 'italic', color: 'rgba(255,255,255,0.85)' }}>
-                {italicMatch[1]}
-              </Box>
-            );
-            remaining = remaining.substring(italicIndex + italicMatch[0].length);
-          }
-        }
-
-        return parts.length > 0 ? parts : text;
-      };
-
-      const content = parseInlineFormatting(checkboxContent);
-
-      if (isHeading) {
-        return (
-          <Typography
-            key={lineIndex}
-            sx={{
-              fontWeight: 800,
-              fontSize: { xs: '1rem', sm: '1.125rem' },
-              color: '#ffb800',
-              mt: lineIndex > 0 ? 1.5 : 0,
-              mb: 0.75,
-              borderBottom: '2px solid rgba(255,184,0,0.3)',
-              pb: 0.5,
-            }}
-          >
-            {content}
-          </Typography>
-        );
-      }
-
-      if (isBullet) {
-        return (
-          <Box key={lineIndex} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 0.5 }}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#ffb800', mt: 1, flexShrink: 0 }} />
-            <Typography sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}>{content}</Typography>
-          </Box>
-        );
-      }
-
-      if (isNumbered && numberMatch) {
-        return (
-          <Box key={lineIndex} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 0.5 }}>
-            <Box
-              sx={{
-                minWidth: 20,
-                height: 20,
-                borderRadius: 1,
-                bgcolor: 'rgba(255,184,0,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '0.75rem',
-                color: '#ffb800',
-                flexShrink: 0,
-              }}
-            >
-              {numberMatch[1]}
-            </Box>
-            <Typography sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}>{content}</Typography>
-          </Box>
-        );
-      }
-
-      if (isUncheckedBox || isCheckedBox) {
-        return (
-          <Box key={lineIndex} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 0.5 }}>
-            <Box
-              sx={{
-                width: 18,
-                height: 18,
-                borderRadius: 1,
-                border: '2px solid',
-                borderColor: isCheckedBox ? '#4caf50' : 'rgba(255,255,255,0.4)',
-                bgcolor: isCheckedBox ? 'rgba(76,175,80,0.2)' : 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                mt: 0.25,
-              }}
-            >
-              {isCheckedBox && <Typography sx={{ color: '#4caf50', fontWeight: 700, fontSize: '0.75rem' }}>✓</Typography>}
-            </Box>
-            <Typography
-              sx={{
-                color: isCheckedBox ? 'rgba(255,255,255,0.5)' : '#fff',
-                lineHeight: 1.6,
-                fontSize: { xs: '0.8rem', sm: '0.85rem' },
-                textDecoration: isCheckedBox ? 'line-through' : 'none',
-              }}
-            >
-              {content}
-            </Typography>
-          </Box>
-        );
-      }
-
-      if (line.trim() === '') {
-        return <Box key={lineIndex} sx={{ height: 8 }} />;
-      }
-
-      return (
-        <Typography key={lineIndex} sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' }, mb: 0.25 }}>
-          {content}
-        </Typography>
-      );
-    });
-  };
-
-  // Filter and sort
+  // Filter and sort — only runs when NOT using hook data (server handles it otherwise)
   const filteredAndSortedSchedules = useMemo(() => {
-    let result = [...schedules];
+    if (usingHookData) {
+      // Already filtered + sorted by server; just return the mapped array
+      return schedules;
+    }
+    let result = [...schedulesProp];
     
     // Search
     if (searchQuery) {
@@ -428,6 +424,11 @@ function AuditionSchedulePanelInner({
     if (roleFilter !== 'all') {
       result = result.filter(s => s.roleId === roleFilter);
     }
+
+    // Location filter
+    if (locationFilter !== 'all') {
+      result = result.filter(s => s.location === locationFilter);
+    }
     
     // Sort - favorites first
     result.sort((a, b) => {
@@ -438,7 +439,7 @@ function AuditionSchedulePanelInner({
       let comparison = 0;
       switch (sortField) {
         case 'date':
-          comparison = new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime();
+          comparison = (scheduleTimeMs.get(a.id) ?? 0) - (scheduleTimeMs.get(b.id) ?? 0);
           break;
         case 'status':
           comparison = a.status.localeCompare(b.status);
@@ -454,58 +455,100 @@ function AuditionSchedulePanelInner({
     });
     
     return result;
-  }, [schedules, searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, sortField, sortDirection, favorites]);
+  }, [usingHookData, schedules, schedulesProp, searchQuery, statusFilter, dateFilter, candidateFilter, roleFilter, locationFilter, sortField, sortDirection, favorites, scheduleTimeMs, getCandidateName, getRoleName]);
 
-  // Statistics
-  const statistics = useMemo(() => ({
-    total: schedules.length,
-    scheduled: schedules.filter(s => s.status === 'scheduled').length,
-    completed: schedules.filter(s => s.status === 'completed').length,
-    cancelled: schedules.filter(s => s.status === 'cancelled').length,
-    upcoming: schedules.filter(s => s.status === 'scheduled' && new Date(s.date) >= new Date()).length,
-    favorites: favorites.size,
-  }), [schedules, favorites]);
+  // Unique location strings derived from the full schedule list (used by the toolbar filter)
+  const uniqueLocations = useMemo(
+    () => [...new Set(schedules.filter(s => s.location).map(s => s.location))].sort(),
+    [schedules],
+  );
+
+  // Stable refs for keyboard handler (avoids stale closure)
+  const filteredAndSortedSchedulesRef = useRef(filteredAndSortedSchedules);
+  useEffect(() => { filteredAndSortedSchedulesRef.current = filteredAndSortedSchedules; }, [filteredAndSortedSchedules]);
+  const handleDuplicateRef = useRef<(s: Schedule) => void>(() => {});
+
+  // Statistics – use server counts when hook is live (accurate, includes pool)
+  const statistics = useMemo(() => {
+    if (serverCounts) {
+      return {
+        total:     serverCounts.total,
+        scheduled: serverCounts.scheduled,
+        completed: serverCounts.completed,
+        cancelled: serverCounts.cancelled,
+        upcoming:  serverCounts.today,   // 'today' maps to upcoming scheduled today
+        favorites: serverCounts.favorites,
+      };
+    }
+    // Fallback: compute from prop data
+    return {
+      total:     schedulesProp.length,
+      scheduled: schedulesProp.filter(s => s.status === 'scheduled').length,
+      completed: schedulesProp.filter(s => s.status === 'completed').length,
+      cancelled: schedulesProp.filter(s => s.status === 'cancelled').length,
+      upcoming:  schedulesProp.filter(s => {
+        if (s.status !== 'scheduled') return false;
+        const ms = scheduleTimeMs.get(s.id);
+        return ms !== undefined && ms >= Date.now();
+      }).length,
+      favorites: favorites.size,
+    };
+  }, [serverCounts, schedulesProp, favorites, scheduleTimeMs]);
 
   // Handlers
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('asc');
     }
   };
 
   const toggleFavorite = (id: string) => {
-    setFavorites(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
+    if (userId) {
+      toggleFavoriteViaApi(id);
+    }
+    // When no userId (unauthenticated), silently skip (favorites require login)
   };
 
   const handleSelectAll = () => {
     if (selectedIds.size === filteredAndSortedSchedules.length) {
-      setSelectedIds(new Set());
+      dispatch({ type: 'DESELECT_ALL' });
     } else {
-      setSelectedIds(new Set(filteredAndSortedSchedules.map(s => s.id)));
+      dispatch({ type: 'SELECT_ALL', ids: filteredAndSortedSchedules.map(s => s.id) });
     }
   };
 
-  const handleToggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
+  const handleToggleSelect = (id: string, index: number, shiftKey: boolean) => {
+    if (shiftKey && lastSelectedIndex !== null && lastSelectedIndex !== index) {
+      const from = Math.min(lastSelectedIndex, index);
+      const to   = Math.max(lastSelectedIndex, index);
+      const rangeIds = filteredAndSortedSchedules.slice(from, to + 1).map(s => s.id);
+      dispatch({ type: 'RANGE_SELECT', ids: rangeIds });
+    } else {
+      dispatch({ type: 'TOGGLE_SELECTED', id, index });
+    }
   };
+
+  /** Open the Details Drawer for the clicked row */
+  const handleRowClick = (scheduleId: string) => {
+    openDrawer(scheduleId);
+  };
+
+  /** Called from the Details Drawer when user picks a new status */
+  const handleStatusChange = useCallback(async (id: string, status: Schedule['status']) => {
+    try {
+      await patchMutation.mutateAsync({ scheduleId: id, patch: { status } });
+      onSchedulesChange();
+    } catch (error) {
+      console.error('Failed to update status:', error);
+    }
+  }, [patchMutation, onSchedulesChange]);
 
   const handleDeleteWithUndo = async (schedule: Schedule) => {
     setLastDeleted(schedule);
     try {
-      await castingService.deleteSchedule(projectId, schedule.id);
+      await deleteMutation.mutateAsync(schedule.id);
       onSchedulesChange();
       setUndoSnackbarOpen(true);
     } catch (error) {
@@ -517,7 +560,18 @@ function AuditionSchedulePanelInner({
   const handleUndoDelete = async () => {
     if (lastDeleted) {
       try {
-        await castingService.saveSchedule(projectId, lastDeleted);
+        await createMutation.mutateAsync({
+          id: lastDeleted.id,
+          candidateId: lastDeleted.candidateId,
+          roleId: lastDeleted.roleId,
+          sceneId: lastDeleted.sceneId,
+          locationId: lastDeleted.locationId,
+          date: lastDeleted.date,
+          startTime: lastDeleted.time,
+          notes: lastDeleted.notes,
+          location: lastDeleted.location,
+          status: lastDeleted.status,
+        });
         onSchedulesChange();
       } catch (error) {
         console.error('Failed to restore schedule:', error);
@@ -528,30 +582,57 @@ function AuditionSchedulePanelInner({
   };
 
   const handleBulkDelete = async () => {
-    if (window.confirm(`Er du sikker på at du vil slette ${selectedIds.size} avtaler?`)) {
-      try {
-        await Promise.all(
-          Array.from(selectedIds).map(id => castingService.deleteSchedule(projectId, id))
-        );
-        onSchedulesChange();
-        setSelectedIds(new Set());
-      } catch (error) {
-        console.error('Failed to bulk delete schedules:', error);
-      }
+    if (!window.confirm(`Er du sikker på at du vil slette ${selectedIds.size} avtaler?`)) return;
+    const ids = Array.from(selectedIds);
+    try {
+      const { deleted } = await bulkDeleteMutation.mutateAsync(ids);
+      dispatch({ type: 'DESELECT_ALL' });
+      onSchedulesChange();
+      showSuccess(`${deleted} avtale${deleted !== 1 ? 'r' : ''} slettet`, 3000);
+    } catch {
+      // Bulk endpoint failed – fall back to individual deletes
+      const results = await Promise.allSettled(ids.map(id => deleteMutation.mutateAsync(id)));
+      const failed = results.filter(r => r.status === 'rejected').length;
+      const deleted = results.length - failed;
+      dispatch({ type: 'DESELECT_ALL' });
+      onSchedulesChange();
+      if (failed > 0) showError(`${deleted} slettet, ${failed} feilet`, 5000);
+      else showSuccess(`${deleted} slettet`, 3000);
     }
   };
 
   const handleDuplicate = async (schedule: Schedule) => {
-    const newSchedule: Schedule = {
-      ...schedule,
-      id: `schedule-${Date.now()}`,
-      status: 'scheduled',
-    };
     try {
-      await castingService.saveSchedule(projectId, newSchedule);
+      await createMutation.mutateAsync({
+        id: `schedule-${crypto.randomUUID()}`,
+        candidateId: schedule.candidateId,
+        roleId: schedule.roleId,
+        sceneId: schedule.sceneId,
+        locationId: schedule.locationId,
+        date: schedule.date,
+        startTime: schedule.time,
+        notes: schedule.notes,
+        location: schedule.location,
+        status: 'scheduled',
+      });
       onSchedulesChange();
     } catch (error) {
       console.error('Failed to duplicate schedule:', error);
+    }
+  };
+
+  // Keep stable ref in sync for ⌘D keyboard shortcut
+  useEffect(() => { handleDuplicateRef.current = handleDuplicate; });
+
+  const handleBulkStatusChange = async (status: Schedule['status']) => {
+    const ids = Array.from(selectedIds);
+    try {
+      await Promise.all(ids.map(id => patchMutation.mutateAsync({ scheduleId: id, patch: { status } })));
+      dispatch({ type: 'DESELECT_ALL' });
+      onSchedulesChange();
+      showSuccess(`${ids.length} oppdatert til "${getStatusLabel(status)}"`, 3000);
+    } catch {
+      showError('Noen oppdateringer feilet', 4000);
     }
   };
 
@@ -567,9 +648,10 @@ function AuditionSchedulePanelInner({
     }
   };
 
+  // Pool auditions are only loaded when the user switches to pool view
   useEffect(() => {
-    loadPoolAuditions();
-  }, []);
+    if (poolMode === 'pool') loadPoolAuditions();
+  }, [poolMode]);
 
   const handleSaveToPool = async (schedule: Schedule) => {
     try {
@@ -617,7 +699,7 @@ function AuditionSchedulePanelInner({
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = useCallback(() => {
     try {
       const project = castingService.getProject(projectId);
       if (!project) {
@@ -625,7 +707,7 @@ function AuditionSchedulePanelInner({
         return;
       }
 
-      const htmlContent = generateAuditionsHTML(project, filteredAndSortedSchedules, candidates, roles);
+      const htmlContent = generateAuditionsHTML(project, filteredAndSortedSchedules);
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
@@ -636,16 +718,18 @@ function AuditionSchedulePanelInner({
       printWindow.document.write(htmlContent);
       printWindow.document.close();
 
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
+      setTimeout(() => { printWindow.print(); }, 250);
     } catch (error) {
       console.error('Error exporting auditions:', error);
       alert('Kunne ikke eksportere auditions');
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, filteredAndSortedSchedules]);
 
-  const generateAuditionsHTML = (project: any, schedules: any[], candidates: any[], roles: any[]): string => {
+  // Keep the stable ref in sync so the keyboard effect always calls the latest version
+  useEffect(() => { handleExportCSVRef.current = handleExportCSV; }, [handleExportCSV]);
+  // generateAuditionsHTML closes over candidateById/roleById Maps from outer scope
+  const generateAuditionsHTML = (project: any, schedules: any[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -656,9 +740,13 @@ function AuditionSchedulePanelInner({
     });
 
     const totalSchedules = schedules.length;
-    const completedSchedules = schedules.filter(s => s.status === 'completed').length;
-    const scheduledSchedules = schedules.filter(s => s.status === 'scheduled').length;
+    const completedSchedules = schedules.filter((s: any) => s.status === 'completed').length;
+    const scheduledSchedules = schedules.filter((s: any) => s.status === 'scheduled').length;
     const completedPercent = totalSchedules > 0 ? Math.round((completedSchedules / totalSchedules) * 100) : 0;
+
+    // O(1) lookups via outer Maps
+    const safeCandidate = (id: string) => escapeHtml(candidateById.get(id) ?? 'Ukjent');
+    const safeRole      = (id: string) => escapeHtml(roleById.get(id) ?? 'Ukjent');
 
     const scheduleIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -667,14 +755,11 @@ function AuditionSchedulePanelInner({
       <line x1="3" y1="10" x2="21" y2="10"/>
     </svg>`;
 
-    const getCandidateName = (candidateId: string) => candidates.find(c => c.id === candidateId)?.name || 'Ukjent';
-    const getRoleName = (roleId: string) => roles.find(r => r.id === roleId)?.name || 'Ukjent';
-
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${project.name} - Auditions</title>
+  <title>${escapeHtml(project.name)} - Auditions</title>
   <style>
     @page { margin: 0; counter-increment: page; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -731,7 +816,7 @@ function AuditionSchedulePanelInner({
     <div class="header">
       <div class="title">
         ${scheduleIconSVG}
-        ${project.name} - Auditions
+        ${escapeHtml(project.name)} - Auditions
       </div>
       <div class="subtitle">Eksportert: ${dateStr}</div>
     </div>
@@ -784,15 +869,16 @@ function AuditionSchedulePanelInner({
           <tbody>
             ${schedules.map((s) => {
               const statusBadgeClass = s.status === 'completed' ? 'badge-completed' : s.status === 'cancelled' ? 'badge-cancelled' : 'badge-scheduled';
-              const notes = s.notes || '-';
+              const rawNotes = s.notes || '-';
+              const notesText = escapeHtml(rawNotes.length > 50 ? rawNotes.substring(0, 50) + '...' : rawNotes);
               return `<tr>
               <td>${new Date(s.date).toLocaleDateString('nb-NO')}</td>
-              <td style="text-align: center;">${s.time}</td>
-              <td><strong>${getCandidateName(s.candidateId)}</strong></td>
-              <td>${getRoleName(s.roleId)}</td>
-              <td style="font-size: 13px;">${s.location || '-'}</td>
+              <td style="text-align: center;">${escapeHtml(s.time)}</td>
+              <td><strong>${safeCandidate(s.candidateId)}</strong></td>
+              <td>${safeRole(s.roleId)}</td>
+              <td style="font-size: 13px;">${escapeHtml(s.location || '-')}</td>
               <td><span class="badge ${statusBadgeClass}">${getStatusLabel(s.status)}</span></td>
-              <td style="font-size: 13px;">${notes.length > 50 ? notes.substring(0, 50) + '...' : notes}</td>
+              <td style="font-size: 13px;">${notesText}</td>
             </tr>`;
             }).join('')}
           </tbody>
@@ -802,7 +888,7 @@ function AuditionSchedulePanelInner({
     </div>
     <div class="footer">
       <div class="footer-left">
-        <span>${project.name}</span>
+        <span>${escapeHtml(project.name)}</span>
         <span>|</span>
         <span>ID: ${project.id.substring(0, 8)}</span>
       </div>
@@ -818,23 +904,8 @@ function AuditionSchedulePanelInner({
   };
 
   const toggleCardExpanded = (id: string) => {
-    setExpandedCards(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
+    dispatch({ type: 'TOGGLE_EXPANDED', id });
   };
-
-  const clearFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('all');
-    setDateFilter('');
-    setCandidateFilter('all');
-    setRoleFilter('all');
-  };
-
-  const hasActiveFilters = searchQuery || statusFilter !== 'all' || dateFilter || candidateFilter !== 'all' || roleFilter !== 'all';
 
   return (
     <Box
@@ -842,8 +913,8 @@ function AuditionSchedulePanelInner({
       aria-labelledby={titleId}
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%' }}
     >
-      {/* Header with Icon and Title */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      {/* ── Header ─────────────────────────────────────────── */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box
             sx={{
@@ -863,30 +934,75 @@ function AuditionSchedulePanelInner({
               variant="h5"
               component="h2"
               id={titleId}
-              sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
+              sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem' }, lineHeight: 1.2, mb: 0.25 }}
             >
-              Audition-planlegger
+              Audition Schedule
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-              Planlegg og administrer auditions
-            </Typography>
+            {/* Meta info row: total · showing · favorites · upcoming */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                {statistics.total} totalt
+              </Typography>
+              {filteredAndSortedSchedules.length !== statistics.total && (
+                <>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.2)' }}>·</Typography>
+                  <Typography variant="caption" sx={{ color: '#ffb800' }}>
+                    Viser {filteredAndSortedSchedules.length}
+                  </Typography>
+                </>
+              )}
+              {statistics.favorites > 0 && (
+                <>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.2)' }}>·</Typography>
+                  <Typography variant="caption" sx={{ color: '#ffc107' }}>
+                    ⭐ {statistics.favorites} favoritter
+                  </Typography>
+                </>
+              )}
+              {statistics.upcoming > 0 && (
+                <>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.2)' }}>·</Typography>
+                  <Typography variant="caption" sx={{ color: '#3b82f6' }}>
+                    📅 {statistics.upcoming} i dag
+                  </Typography>
+                </>
+              )}
+              {isFetching && (
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                  · oppdaterer…
+                </Typography>
+              )}
+            </Box>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Tooltip title="Eksporter til CSV (Ctrl+E)">
-            <Button
-              variant="outlined"
-              startIcon={<ExportIcon />}
-              onClick={handleExportCSV}
-              sx={{
-                borderColor: 'rgba(255,255,255,0.2)',
-                color: '#fff',
-                minHeight: TOUCH_TARGET_SIZE,
-                ...focusVisibleStyles,
-              }}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Tooltip title="Open guide">
+            <IconButton
+              onClick={() => setGuideOpen(true)}
+              size="small"
+              sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#ffb800' } }}
+              aria-label="Open Audition Planner guide"
             >
-              {!isMobile && 'Eksporter'}
-            </Button>
+              <HelpIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Eksporter (Ctrl+E)">
+            <span>
+              <Button
+                variant="outlined"
+                startIcon={<ExportIcon />}
+                onClick={handleExportCSV}
+                disabled={filteredAndSortedSchedules.length === 0}
+                sx={{
+                  borderColor: 'rgba(255,255,255,0.2)',
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  ...focusVisibleStyles,
+                }}
+              >
+                {!isMobile && 'Eksporter'}
+              </Button>
+            </span>
           </Tooltip>
           <Tooltip title="Vis statistikk">
             <Button
@@ -904,7 +1020,7 @@ function AuditionSchedulePanelInner({
               {!isMobile && 'Statistikk'}
             </Button>
           </Tooltip>
-          <Tooltip title="Ny avtale (Ctrl+N)">
+          <Tooltip title="Ny avtale (F)">
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -913,18 +1029,30 @@ function AuditionSchedulePanelInner({
               sx={{
                 bgcolor: '#ffb800',
                 color: '#000',
-                fontWeight: 600,
+                fontWeight: 700,
                 minHeight: TOUCH_TARGET_SIZE,
                 '&:hover': { bgcolor: '#e6a600' },
                 '&:disabled': { bgcolor: 'rgba(255,184,0,0.3)' },
                 ...focusVisibleStyles,
               }}
             >
-              {isMobile ? '' : 'Ny avtale'}
+              {isMobile ? '' : '+ New Schedule'}
             </Button>
           </Tooltip>
         </Box>
       </Box>
+
+      {/* isFetching indicator */}
+      {isFetching && (
+        <LinearProgress
+          sx={{
+            mb: 1,
+            borderRadius: 1,
+            bgcolor: 'rgba(255,184,0,0.1)',
+            '& .MuiLinearProgress-bar': { bgcolor: '#ffb800' },
+          }}
+        />
+      )}
 
       {/* Project/Templates Toggle */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
@@ -1033,398 +1161,631 @@ function AuditionSchedulePanelInner({
       {/* Project View - only shown when in project mode */}
       {poolMode === 'project' && (
       <>
-      {/* Search and Filter Controls */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 2 }, alignItems: { xs: 'stretch', sm: 'center' } }}>
-          <TextField
-            placeholder={isMobile ? 'Søk...' : 'Søk på kandidat, rolle, lokasjon...'}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            size="small"
-            slotProps={{
-              input: {
-                startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 1 }} />,
-                sx: { minHeight: TOUCH_TARGET_SIZE },
-              },
-              htmlInput: { 'aria-label': 'Søk i avtaler' },
-            }}
-            sx={{
-              flex: 1,
-              '& .MuiOutlinedInput-root': {
-                color: '#fff',
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-                '&.Mui-focused fieldset': { borderColor: '#ffb800' },
-              },
-            }}
-          />
-          <TextField
-            type="date"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            size="small"
-            slotProps={{
-              input: { sx: { minHeight: TOUCH_TARGET_SIZE } },
-              htmlInput: { 'aria-label': 'Filtrer på dato' },
-            }}
-            sx={{
-              minWidth: { xs: '100%', sm: 160 },
-              '& .MuiOutlinedInput-root': {
-                color: '#fff',
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                '&.Mui-focused fieldset': { borderColor: '#ffb800' },
-              },
-            }}
-          />
-        </Box>
-        
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 2 }, alignItems: { xs: 'stretch', sm: 'center' } }}>
-          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 } }}>
-            <Select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              aria-label="Filtrer etter status"
-              sx={{
-                color: '#fff',
-                minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
-              }}
-            >
-              <MenuItem value="all">Alle statuser</MenuItem>
-              <MenuItem value="scheduled">Planlagt</MenuItem>
-              <MenuItem value="completed">Fullført</MenuItem>
-              <MenuItem value="cancelled">Kansellert</MenuItem>
-            </Select>
-          </FormControl>
-          
-          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 } }}>
+      {/* ── Row 1: Search + Sort + View Toggles ── */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Search field – press / to focus */}
+        <TextField
+          inputRef={searchInputRef}
+          placeholder={isMobile ? 'Filtrer…  (/)' : 'Filtrer avtaler…  (trykk / for å fokusere)'}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          size="small"
+          slotProps={{
+            input: {
+              startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.5)', mr: 1, fontSize: 18 }} />,
+              endAdornment: searchQuery
+                ? <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ color: 'rgba(255,255,255,0.4)', p: 0.25 }}><ClearIcon sx={{ fontSize: 16 }} /></IconButton>
+                : null,
+              sx: { minHeight: TOUCH_TARGET_SIZE },
+            },
+            htmlInput: { 'aria-label': 'Filtrer avtaler' },
+          }}
+          sx={{
+            flex: 1,
+            minWidth: 200,
+            '& .MuiOutlinedInput-root': {
+              color: '#fff',
+              '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+              '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
+              '&.Mui-focused fieldset': { borderColor: '#ffb800' },
+            },
+          }}
+        />
+
+        {/* Date filter */}
+        <TextField
+          type="date"
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+          size="small"
+          slotProps={{
+            input: { sx: { minHeight: TOUCH_TARGET_SIZE, color: dateFilter ? '#ffb800' : '#fff' } },
+            htmlInput: { 'aria-label': 'Filtrer på dato' },
+          }}
+          sx={{
+            minWidth: { xs: '100%', sm: 155 },
+            '& .MuiOutlinedInput-root': {
+              color: dateFilter ? '#ffb800' : '#fff',
+              '& fieldset': { borderColor: dateFilter ? 'rgba(255,184,0,0.5)' : 'rgba(255,255,255,0.15)' },
+              '&.Mui-focused fieldset': { borderColor: '#ffb800' },
+            },
+          }}
+        />
+
+        {/* Candidate filter */}
+        {candidates.length > 0 && (
+          <FormControl size="small" sx={{ minWidth: 160, display: { xs: 'none', md: 'flex' } }}>
             <Select
               value={candidateFilter}
               onChange={(e) => setCandidateFilter(e.target.value)}
-              aria-label="Filtrer etter kandidat"
+              displayEmpty
+              startAdornment={<CandidatesIcon sx={{ fontSize: 18, color: candidateFilter !== 'all' ? '#ffb800' : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
+              aria-label="Filtrer på kandidat"
               sx={{
-                color: '#fff',
+                color: candidateFilter !== 'all' ? '#ffb800' : '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: candidateFilter !== 'all' ? 'rgba(255,184,0,0.5)' : 'rgba(255,255,255,0.15)' },
                 '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+                '& .MuiSvgIcon-root:last-child': { color: 'rgba(255,255,255,0.5)' },
               }}
+              MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
             >
               <MenuItem value="all">Alle kandidater</MenuItem>
-              {candidates.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              {candidates.map(c => (
+                <MenuItem key={c.id} value={c.id} sx={{ fontSize: 13 }}>{c.name}</MenuItem>
+              ))}
             </Select>
           </FormControl>
-          
-          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 } }}>
+        )}
+
+        {/* Role filter */}
+        {roles.length > 0 && (
+          <FormControl size="small" sx={{ minWidth: 160, display: { xs: 'none', lg: 'flex' } }}>
             <Select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              aria-label="Filtrer etter rolle"
+              displayEmpty
+              startAdornment={<PersonIcon sx={{ fontSize: 18, color: roleFilter !== 'all' ? '#00d4ff' : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
+              aria-label="Filtrer på rolle"
               sx={{
-                color: '#fff',
+                color: roleFilter !== 'all' ? '#00d4ff' : '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: roleFilter !== 'all' ? 'rgba(0,212,255,0.5)' : 'rgba(255,255,255,0.15)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff' },
+                '& .MuiSvgIcon-root:last-child': { color: 'rgba(255,255,255,0.5)' },
               }}
+              MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
             >
               <MenuItem value="all">Alle roller</MenuItem>
-              {roles.map(r => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}
+              {roles.map(r => (
+                <MenuItem key={r.id} value={r.id} sx={{ fontSize: 13 }}>{r.name}</MenuItem>
+              ))}
             </Select>
           </FormControl>
+        )}
 
-          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-            {hasActiveFilters && (
-              <Tooltip title="Nullstill filtre">
-                <Button
-                  variant="outlined"
-                  onClick={clearFilters}
-                  sx={{
-                    borderColor: 'rgba(255,255,255,0.2)',
-                    color: '#fff',
-                    minHeight: TOUCH_TARGET_SIZE,
-                    ...focusVisibleStyles,
-                  }}
-                >
-                  <ClearIcon />
-                </Button>
-              </Tooltip>
-            )}
-            <Tooltip title="Kortvisning">
-              <Button
-                variant={viewMode === 'grid' ? 'contained' : 'outlined'}
-                onClick={() => setViewMode('grid')}
+        {/* Location filter */}
+        {uniqueLocations.length > 0 && (
+          <FormControl size="small" sx={{ minWidth: 160, display: { xs: 'none', xl: 'flex' } }}>
+            <Select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              displayEmpty
+              startAdornment={<LocationIcon sx={{ fontSize: 18, color: locationFilter !== 'all' ? '#00e676' : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
+              aria-label="Filtrer på sted"
+              sx={{
+                color: locationFilter !== 'all' ? '#00e676' : '#fff',
+                minHeight: TOUCH_TARGET_SIZE,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: locationFilter !== 'all' ? 'rgba(0,230,118,0.5)' : 'rgba(255,255,255,0.15)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00e676' },
+                '& .MuiSvgIcon-root:last-child': { color: 'rgba(255,255,255,0.5)' },
+              }}
+              MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
+            >
+              <MenuItem value="all">Alle steder</MenuItem>
+              {uniqueLocations.map(loc => (
+                <MenuItem key={loc} value={loc} sx={{ fontSize: 13 }}>{loc}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+
+        {/* Sort dropdown */}
+        <FormControl size="small" sx={{ minWidth: 175 }}>
+          <Select
+            value={`${sortField}:${sortDirection}`}
+            onChange={(e) => {
+              const [field, dir] = e.target.value.split(':');
+              setSortField(field as typeof sortField);
+              setSortDirection(dir as 'asc' | 'desc');
+            }}
+            displayEmpty
+            startAdornment={<SortIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
+            aria-label="Sorter avtaler"
+            sx={{
+              color: '#fff',
+              minHeight: TOUCH_TARGET_SIZE,
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+              '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' },
+            }}
+          >
+            <MenuItem value="date:asc">Dato (tidligst)</MenuItem>
+            <MenuItem value="date:desc">Dato (senest)</MenuItem>
+            <MenuItem value="status:asc">Status</MenuItem>
+            <MenuItem value="role:asc">Rolle</MenuItem>
+            <MenuItem value="candidate:asc">Kandidat</MenuItem>
+          </Select>
+        </FormControl>
+
+        {/* View toggles */}
+        <Box sx={{ display: 'flex', gap: 0.5, ml: { sm: 'auto' } }}>
+          {([
+            { mode: 'table' as const, icon: <TableViewIcon />, label: 'Tabellvisning' },
+            { mode: 'compact' as const, icon: <CompactViewIcon />, label: 'Kompaktvisning' },
+            { mode: 'grid' as const, icon: <GridViewIcon />, label: 'Kortvisning' },
+          ] as const).map(({ mode, icon, label }) => (
+            <Tooltip key={mode} title={label}>
+              <IconButton
+                onClick={() => setViewMode(mode)}
+                size="small"
+                aria-label={label}
                 sx={{
-                  minHeight: TOUCH_TARGET_SIZE,
-                  minWidth: TOUCH_TARGET_SIZE,
-                  bgcolor: viewMode === 'grid' ? 'rgba(255,184,0,0.2)' : 'transparent',
-                  color: viewMode === 'grid' ? '#ffb800' : 'rgba(255,255,255,0.7)',
-                  borderColor: viewMode === 'grid' ? '#ffb800' : 'rgba(255,255,255,0.2)',
+                  width: TOUCH_TARGET_SIZE,
+                  height: TOUCH_TARGET_SIZE,
+                  borderRadius: 1,
+                  color: viewMode === mode ? '#ffb800' : 'rgba(255,255,255,0.4)',
+                  bgcolor: viewMode === mode ? 'rgba(255,184,0,0.12)' : 'transparent',
+                  border: '1px solid',
+                  borderColor: viewMode === mode ? 'rgba(255,184,0,0.4)' : 'rgba(255,255,255,0.12)',
+                  '&:hover': { bgcolor: 'rgba(255,184,0,0.08)', borderColor: 'rgba(255,184,0,0.3)' },
                   ...focusVisibleStyles,
                 }}
               >
-                <GridViewIcon />
-              </Button>
+                {icon}
+              </IconButton>
             </Tooltip>
-            <Tooltip title="Tabellvisning">
-              <Button
-                variant={viewMode === 'table' ? 'contained' : 'outlined'}
-                onClick={() => setViewMode('table')}
-                sx={{
-                  minHeight: TOUCH_TARGET_SIZE,
-                  minWidth: TOUCH_TARGET_SIZE,
-                  bgcolor: viewMode === 'table' ? 'rgba(255,184,0,0.2)' : 'transparent',
-                  color: viewMode === 'table' ? '#ffb800' : 'rgba(255,255,255,0.7)',
-                  borderColor: viewMode === 'table' ? '#ffb800' : 'rgba(255,255,255,0.2)',
-                  ...focusVisibleStyles,
-                }}
-              >
-                <TableViewIcon />
-              </Button>
-            </Tooltip>
-            {selectedIds.size > 0 && (
-              <Tooltip title={`Slett ${selectedIds.size} valgte`}>
-                <Button
-                  variant="contained"
-                  onClick={handleBulkDelete}
-                  sx={{ bgcolor: '#ff4444', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
-                >
-                  <DeleteIcon />
-                  <Box component="span" sx={{ ml: 0.5 }}>{selectedIds.size}</Box>
-                </Button>
-              </Tooltip>
-            )}
-          </Box>
+          ))}
         </Box>
       </Box>
 
-      {/* Results count */}
-      {hasActiveFilters && (
-        <Alert severity="info" sx={{ mb: 2, bgcolor: 'rgba(255,184,0,0.1)', color: '#fff', '& .MuiAlert-icon': { color: '#ffb800' } }}>
-          Viser {filteredAndSortedSchedules.length} av {schedules.length} avtaler
-        </Alert>
-      )}
+      {/* ── Row 2: Filter chips ── */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2, alignItems: 'center' }}>
+        {/* Favorites chip */}
+        <Chip
+          size="small"
+          icon={<StarIcon sx={{ fontSize: '14px !important', color: favoritesOnly ? '#ffb800 !important' : 'rgba(255,255,255,0.5) !important' }} />}
+          label={`Favoritter${serverCounts?.favorites != null ? ` (${serverCounts.favorites})` : statistics.favorites > 0 ? ` (${statistics.favorites})` : ''}`}
+          onClick={() => setFavoritesOnly(!favoritesOnly)}
+          variant={favoritesOnly ? 'filled' : 'outlined'}
+          sx={{
+            cursor: 'pointer',
+            bgcolor: favoritesOnly ? 'rgba(255,184,0,0.2)' : 'transparent',
+            color: favoritesOnly ? '#ffb800' : 'rgba(255,255,255,0.6)',
+            borderColor: favoritesOnly ? 'rgba(255,184,0,0.5)' : 'rgba(255,255,255,0.15)',
+            '&:hover': { bgcolor: 'rgba(255,184,0,0.15)', borderColor: 'rgba(255,184,0,0.4)' },
+          }}
+        />
+
+        {/* Today chip */}
+        <Chip
+          size="small"
+          icon={<TodayIcon sx={{ fontSize: '14px !important', color: todayOnly ? '#3b82f6 !important' : 'rgba(255,255,255,0.5) !important' }} />}
+          label={`I dag${serverCounts?.today != null ? ` (${serverCounts.today})` : statistics.upcoming > 0 ? ` (${statistics.upcoming})` : ''}`}
+          onClick={() => setTodayOnly(!todayOnly)}
+          variant={todayOnly ? 'filled' : 'outlined'}
+          sx={{
+            cursor: 'pointer',
+            bgcolor: todayOnly ? 'rgba(59,130,246,0.2)' : 'transparent',
+            color: todayOnly ? '#3b82f6' : 'rgba(255,255,255,0.6)',
+            borderColor: todayOnly ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.15)',
+            '&:hover': { bgcolor: 'rgba(59,130,246,0.15)', borderColor: 'rgba(59,130,246,0.4)' },
+          }}
+        />
+
+        {/* Pool chip */}
+        <Chip
+          size="small"
+          icon={<PoolIcon sx={{ fontSize: '14px !important', color: statusFilter === 'pool' ? '#94a3b8 !important' : 'rgba(255,255,255,0.5) !important' }} />}
+          label={`Pool${serverCounts?.pool != null ? ` (${serverCounts.pool})` : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'pool' ? 'all' : 'pool')}
+          variant={statusFilter === 'pool' ? 'filled' : 'outlined'}
+          sx={{
+            cursor: 'pointer',
+            bgcolor: statusFilter === 'pool' ? 'rgba(148,163,184,0.2)' : 'transparent',
+            color: statusFilter === 'pool' ? '#94a3b8' : 'rgba(255,255,255,0.6)',
+            borderColor: statusFilter === 'pool' ? 'rgba(148,163,184,0.5)' : 'rgba(255,255,255,0.15)',
+            '&:hover': { bgcolor: 'rgba(148,163,184,0.15)' },
+          }}
+        />
+
+        {/* Status quick-filters (non-pool statuses) */}
+        {(['scheduled', 'confirmed', 'awaiting_callback', 'completed', 'cancelled'] as const).map((s) => {
+          const isActive = statusFilter === s;
+          const color = getStatusColor(s);
+          return (
+            <Chip
+              key={s}
+              size="small"
+              label={getStatusLabel(s)}
+              onClick={() => setStatusFilter(statusFilter === s ? 'all' : s)}
+              variant={isActive ? 'filled' : 'outlined'}
+              sx={{
+                cursor: 'pointer',
+                bgcolor: isActive ? `${color}22` : 'transparent',
+                color: isActive ? color : 'rgba(255,255,255,0.5)',
+                borderColor: isActive ? `${color}88` : 'rgba(255,255,255,0.1)',
+                '&:hover': { bgcolor: `${color}18`, borderColor: `${color}55` },
+              }}
+            />
+          );
+        })}
+
+        {/* Active text/date/candidate/role chips */}
+        {searchQuery && (
+          <Chip size="small" label={`"${searchQuery}"`}
+            onDelete={() => setSearchQuery('')}
+            icon={<SearchIcon sx={{ fontSize: '13px !important', color: '#ffb800 !important' }} />}
+            sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', borderColor: 'rgba(255,184,0,0.3)', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+        )}
+        {dateFilter && (
+          <Chip size="small" label={`📅 ${dateFilter}`}
+            onDelete={() => setDateFilter('')}
+            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+        )}
+        {candidateFilter !== 'all' && (
+          <Chip size="small" label={getCandidateName(candidateFilter)}
+            onDelete={() => setCandidateFilter('all')}
+            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+        )}
+        {roleFilter !== 'all' && (
+          <Chip size="small" label={getRoleName(roleFilter)}
+            onDelete={() => setRoleFilter('all')}
+            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+        )}
+        {locationFilter !== 'all' && (
+          <Chip size="small" label={`📍 ${locationFilter}`}
+            onDelete={() => setLocationFilter('all')}
+            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+        )}
+
+        {/* Clear all */}
+        {hasActiveFilters && (
+          <Chip size="small" label="Fjern alle"
+            onClick={clearFilters}
+            icon={<ClearIcon sx={{ fontSize: '13px !important' }} />}
+            sx={{ bgcolor: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.55)', '& .MuiChip-icon': { color: 'rgba(255,255,255,0.4)' }, '&:hover': { bgcolor: 'rgba(255,255,255,0.12)' } }} />
+        )}
+
+        {/* Result count */}
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', ml: 0.5, whiteSpace: 'nowrap' }}>
+          {filteredAndSortedSchedules.length !== schedules.length
+            ? `Viser ${filteredAndSortedSchedules.length} av ${schedules.length}`
+            : `${schedules.length} avtale${schedules.length !== 1 ? 'r' : ''}`}
+        </Typography>
+      </Box>
 
       {/* Empty State */}
       {schedules.length === 0 ? (
-        <Box
-          sx={{
-            textAlign: 'center',
-            py: 8,
-            px: 4,
-            bgcolor: 'rgba(255, 184, 0, 0.03)',
-            borderRadius: 3,
-            border: '2px dashed rgba(255, 184, 0, 0.2)',
-          }}
+        <RoleRoomEmptyState
+          iconSrc={cameraPng}
+          title="Planlegg auditions og møter"
+          subtitle={candidates.length === 0 || roles.length === 0
+            ? 'Du trenger minst én rolle og én kandidat for å opprette avtaler.'
+            : `Du har ${candidates.length} kandidat${candidates.length > 1 ? 'er' : ''} klare for planlegging.`}
+          color="#ffb800"
+          buttonLabel="Opprett avtale"
+          onAction={onCreateSchedule}
+          disabled={candidates.length === 0 || roles.length === 0}
         >
-          <Box
-            sx={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              bgcolor: 'rgba(255, 184, 0, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto',
-              mb: 3,
-            }}
-          >
-            <InterpreterModeIcon sx={{ fontSize: 40, color: '#ffb800' }} />
-          </Box>
-          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
-            Planlegg auditions og møter
-          </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 4, maxWidth: 450, mx: 'auto' }}>
-            {candidates.length === 0 || roles.length === 0
-              ? 'Du trenger minst én rolle og én kandidat for å opprette avtaler.'
-              : `Du har ${candidates.length} kandidat${candidates.length > 1 ? 'er' : ''} klare for planlegging.`
-            }
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {(candidates.length === 0 || roles.length === 0) && (
             <Button
-              variant="contained"
+              variant="outlined"
               size="large"
-              startIcon={<AddIcon />}
-              onClick={onCreateSchedule}
-              disabled={candidates.length === 0 || roles.length === 0}
+              onClick={() => onNavigateToTab(candidates.length === 0 ? 2 : 1)}
               sx={{
-                bgcolor: '#ffb800',
-                color: '#000',
+                mt: 2,
+                borderColor: 'rgba(255,255,255,0.3)',
+                color: '#fff',
                 fontWeight: 600,
                 px: 4,
                 py: 1.5,
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { bgcolor: '#e6a600', transform: 'translateY(-2px)' },
-                '&:disabled': { bgcolor: 'rgba(255,184,0,0.3)', color: 'rgba(0,0,0,0.5)' },
+                '&:hover': { borderColor: '#ffb800', bgcolor: 'rgba(255,184,0,0.1)' },
                 ...focusVisibleStyles,
               }}
             >
-              Opprett avtale
+              {candidates.length === 0 ? 'Legg til kandidater' : 'Opprett roller'}
             </Button>
-            {(candidates.length === 0 || roles.length === 0) && (
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={() => onNavigateToTab(candidates.length === 0 ? 2 : 1)}
+          )}
+        </RoleRoomEmptyState>
+      ) : viewMode === 'table' ? (
+        /* ── Table View (redesigned per UX spec) ── */
+        <>
+          <TableContainer component={Paper} sx={{ bgcolor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5, overflow: 'hidden' }}>
+                <Table size="small" sx={{ tableLayout: 'fixed' }}>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}>
+                      {/* ☐ Select all */}
+                      <TableCell padding="checkbox" sx={{ width: 44, borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <Checkbox
+                          checked={selectedIds.size === filteredAndSortedSchedules.length && filteredAndSortedSchedules.length > 0}
+                          indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedSchedules.length}
+                          onChange={handleSelectAll}
+                          size="small"
+                          sx={{ color: 'rgba(255,255,255,0.4)', '&.Mui-checked': { color: '#ffb800' }, '&.MuiCheckbox-indeterminate': { color: '#ffb800' } }}
+                        />
+                      </TableCell>
+                      {/* ⭐ Favourite */}
+                      <TableCell sx={{ width: 40, borderColor: 'rgba(255,255,255,0.07)', p: 0 }} />
+                      {/* Date */}
+                      <TableCell sx={{ width: 120, borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <TableSortLabel active={sortField === 'date'} direction={sortField === 'date' ? sortDirection : 'asc'} onClick={() => handleSort('date')}
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          Dato
+                        </TableSortLabel>
+                      </TableCell>
+                      {/* Timeslot */}
+                      <TableCell sx={{ width: 100, borderColor: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Tid
+                      </TableCell>
+                      {/* Candidate */}
+                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <TableSortLabel active={sortField === 'candidate'} direction={sortField === 'candidate' ? sortDirection : 'asc'} onClick={() => handleSort('candidate')}
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          Kandidat
+                        </TableSortLabel>
+                      </TableCell>
+                      {/* Role */}
+                      <TableCell sx={{ width: 150, borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <TableSortLabel active={sortField === 'role'} direction={sortField === 'role' ? sortDirection : 'asc'} onClick={() => handleSort('role')}
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          Rolle
+                        </TableSortLabel>
+                      </TableCell>
+                      {/* Status */}
+                      <TableCell sx={{ width: 130, borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <TableSortLabel active={sortField === 'status'} direction={sortField === 'status' ? sortDirection : 'asc'} onClick={() => handleSort('status')}
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          Status
+                        </TableSortLabel>
+                      </TableCell>
+                      {/* Notes */}
+                      <TableCell sx={{ borderColor: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Notater
+                      </TableCell>
+                      {/* ⋮ actions */}
+                      <TableCell sx={{ width: 44, borderColor: 'rgba(255,255,255,0.07)', p: 0 }} />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredAndSortedSchedules.map((schedule, index) => {
+                      const isFav = favorites.has(schedule.id);
+                      const isSelected = selectedIds.has(schedule.id);
+                      const statusColor = getStatusColor(schedule.status);
+                      const dateFmt = (() => {
+                        try {
+                          return new Date(schedule.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' });
+                        } catch { return schedule.date; }
+                      })();
+                      const timeslot = schedule.time
+                        ? (schedule.endTime ? `${schedule.time}–${schedule.endTime}` : schedule.time)
+                        : '—';
+                      const notesPreview = schedule.notes
+                        ? schedule.notes.length > 60 ? schedule.notes.slice(0, 60) + '…' : schedule.notes
+                        : null;
+                      return (
+                        <TableRow
+                          key={schedule.id}
+                          data-schedule-index={index}
+                          hover
+                          onClick={() => handleRowClick(schedule.id)}
+                          sx={{
+                            height: 56,
+                            cursor: 'pointer',
+                            bgcolor: isSelected ? 'rgba(255,184,0,0.07)' : 'transparent',
+                            '&:hover': { bgcolor: isSelected ? 'rgba(255,184,0,0.11)' : 'rgba(255,255,255,0.03)' },
+                            '&:focus-within': { outline: '2px solid rgba(255,184,0,0.4)', outlineOffset: -1 },
+                            transition: 'background-color 0.15s',
+                          }}
+                        >
+                          {/* Checkbox */}
+                          <TableCell padding="checkbox" sx={{ borderColor: 'rgba(255,255,255,0.05)' }} onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              onChange={(e) => handleToggleSelect(schedule.id, index, (e.nativeEvent as MouseEvent).shiftKey)}
+                              size="small"
+                              sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#ffb800' } }}
+                            />
+                          </TableCell>
+                          {/* ⭐ Favourite */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)', p: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                            <IconButton
+                              size="small"
+                              onClick={() => toggleFavorite(schedule.id)}
+                              aria-label={isFav ? 'Fjern favoritt' : 'Legg til favoritt'}
+                              sx={{ color: isFav ? '#ffb800' : 'rgba(255,255,255,0.2)', p: 0.5, '&:hover': { color: '#ffb800' } }}
+                            >
+                              {isFav ? <StarIcon sx={{ fontSize: 16 }} /> : <StarBorderIcon sx={{ fontSize: 16 }} />}
+                            </IconButton>
+                          </TableCell>
+                          {/* Date */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, whiteSpace: 'nowrap' }}>
+                            {dateFmt}
+                          </TableCell>
+                          {/* Timeslot */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', fontSize: 13, whiteSpace: 'nowrap' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <TimeIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.35)' }} />
+                              {timeslot}
+                            </Box>
+                          </TableCell>
+                          {/* Candidate */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: '#10b981', flexShrink: 0 }}>
+                                {getCandidateName(schedule.candidateId).charAt(0).toUpperCase()}
+                              </Avatar>
+                              <Typography noWrap variant="body2" sx={{ color: '#fff', fontSize: 13 }}>
+                                {getCandidateName(schedule.candidateId)}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          {/* Role */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                            <Chip
+                              label={getRoleName(schedule.roleId)}
+                              size="small"
+                              sx={{ bgcolor: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.25)', fontSize: 11, height: 20, maxWidth: 130 }}
+                            />
+                          </TableCell>
+                          {/* Status */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                            <Chip
+                              label={getStatusLabel(schedule.status)}
+                              size="small"
+                              sx={{ bgcolor: `${statusColor}22`, color: statusColor, border: `1px solid ${statusColor}55`, fontSize: 11, height: 20, fontWeight: 500 }}
+                            />
+                          </TableCell>
+                          {/* Notes preview */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)', maxWidth: 0 }}>
+                            {notesPreview ? (
+                              <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, display: 'block' }}>
+                                {notesPreview}
+                              </Typography>
+                            ) : (
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.15)', fontSize: 12 }}>—</Typography>
+                            )}
+                          </TableCell>
+                          {/* ⋮ Row actions */}
+                          <TableCell sx={{ borderColor: 'rgba(255,255,255,0.05)', p: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => { e.stopPropagation(); setRowMenuAnchor({ el: e.currentTarget, schedule }); }}
+                              aria-label="Handlinger"
+                              sx={{ color: 'rgba(255,255,255,0.3)', p: 0.5, '&:hover': { color: '#fff' } }}
+                            >
+                              <MoreVertIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              {/* Row actions popover menu */}
+              <Menu
+                anchorEl={rowMenuAnchor?.el}
+                open={Boolean(rowMenuAnchor)}
+                onClose={() => setRowMenuAnchor(null)}
+                PaperProps={{ sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', minWidth: 180 } }}
+              >
+                <MenuItem onClick={() => { if (rowMenuAnchor) { closeDrawer(); onEditSchedule(rowMenuAnchor.schedule); } setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
+                  <EditIcon sx={{ fontSize: 16, color: '#ffb800' }} /> Rediger
+                </MenuItem>
+                <MenuItem onClick={() => { if (rowMenuAnchor) handleDuplicate(rowMenuAnchor.schedule); setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
+                  <DuplicateIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.6)' }} /> Dupliser
+                </MenuItem>
+                <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+                <MenuItem onClick={() => { if (rowMenuAnchor) handleSaveToPool(rowMenuAnchor.schedule); setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
+                  <InventoryIcon sx={{ fontSize: 16, color: '#9c27b0' }} /> Lagre til pool
+                </MenuItem>
+                <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+                <MenuItem onClick={() => { if (rowMenuAnchor) handleDeleteWithUndo(rowMenuAnchor.schedule); setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14, color: '#ef4444' }}>
+                  <DeleteIcon sx={{ fontSize: 16 }} /> Slett
+                </MenuItem>
+              </Menu>
+            </>
+      ) : viewMode === 'compact' ? (
+        /* ── Compact List View ── */
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {filteredAndSortedSchedules.map((schedule, index) => {
+            const isFav = favorites.has(schedule.id);
+            const isSelected = selectedIds.has(schedule.id);
+            const statusColor = getStatusColor(schedule.status);
+            const dateFmt = (() => {
+              try { return new Date(schedule.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' }); }
+              catch { return schedule.date; }
+            })();
+            const timeslot = schedule.time
+              ? (schedule.endTime ? `${schedule.time}–${schedule.endTime}` : schedule.time)
+              : null;
+            return (
+              <Box
+                key={schedule.id}
+                data-schedule-index={index}
+                onClick={() => handleRowClick(schedule.id)}
                 sx={{
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  color: '#fff',
-                  fontWeight: 600,
-                  px: 4,
-                  py: 1.5,
-                  minHeight: TOUCH_TARGET_SIZE,
-                  '&:hover': { borderColor: '#ffb800', bgcolor: 'rgba(255,184,0,0.1)' },
-                  ...focusVisibleStyles,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 1.5,
+                  height: 40,
+                  cursor: 'pointer',
+                  bgcolor: isSelected ? 'rgba(255,184,0,0.07)' : 'transparent',
+                  borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  '&:hover': { bgcolor: isSelected ? 'rgba(255,184,0,0.1)' : 'rgba(255,255,255,0.03)' },
+                  transition: 'background-color 0.12s',
                 }}
               >
-                {candidates.length === 0 ? 'Legg til kandidater' : 'Opprett roller'}
-              </Button>
-            )}
-          </Box>
-        </Box>
-      ) : viewMode === 'table' ? (
-        /* Table View */
-        <TableContainer component={Paper} sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell padding="checkbox" sx={{ borderColor: 'rgba(255,255,255,0.1)' }}>
+                {/* Checkbox */}
+                <Box onClick={(e) => e.stopPropagation()} sx={{ flexShrink: 0 }}>
                   <Checkbox
-                    checked={selectedIds.size === filteredAndSortedSchedules.length && filteredAndSortedSchedules.length > 0}
-                    indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedSchedules.length}
-                    onChange={handleSelectAll}
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#ffb800' } }}
+                    checked={isSelected}
+                    onChange={(e) => handleToggleSelect(schedule.id, index, (e.nativeEvent as MouseEvent).shiftKey)}
+                    size="small"
+                    sx={{ p: 0.25, color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#ffb800' } }}
                   />
-                </TableCell>
-                <TableCell sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.1)', width: 40 }} />
-                <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-                  <TableSortLabel
-                    active={sortField === 'date'}
-                    direction={sortField === 'date' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('date')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ffb800' } }}
-                  >
-                    Dato/Tid
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-                  <TableSortLabel
-                    active={sortField === 'candidate'}
-                    direction={sortField === 'candidate' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('candidate')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ffb800' } }}
-                  >
-                    Kandidat
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-                  <TableSortLabel
-                    active={sortField === 'role'}
-                    direction={sortField === 'role' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('role')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ffb800' } }}
-                  >
-                    Rolle
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.1)' }}>Lokasjon</TableCell>
-                <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-                  <TableSortLabel
-                    active={sortField === 'status'}
-                    direction={sortField === 'status' ? sortDirection : 'asc'}
-                    onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', '&.Mui-active': { color: '#ffb800' } }}
-                  >
-                    Status
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.1)' }}>Handlinger</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredAndSortedSchedules.map((schedule) => (
-                <TableRow
-                  key={schedule.id}
-                  hover
-                  sx={{
-                    cursor: 'pointer',
-                    '&:hover': { bgcolor: 'rgba(255,184,0,0.05)' },
-                    bgcolor: selectedIds.has(schedule.id) ? 'rgba(255,184,0,0.1)' : 'transparent',
-                  }}
-                  onClick={() => onEditSchedule(schedule)}
-                >
-                  <TableCell padding="checkbox" sx={{ borderColor: 'rgba(255,255,255,0.1)' }} onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds.has(schedule.id)}
-                      onChange={() => handleToggleSelect(schedule.id)}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#ffb800' } }}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }} onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      size="small"
-                      onClick={() => toggleFavorite(schedule.id)}
-                      sx={{ color: favorites.has(schedule.id) ? '#ffc107' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
-                    >
-                      {favorites.has(schedule.id) ? <StarIcon /> : <StarBorderIcon />}
+                </Box>
+                {/* ⭐ */}
+                <Box onClick={(e) => e.stopPropagation()} sx={{ flexShrink: 0 }}>
+                  <IconButton size="small" onClick={() => toggleFavorite(schedule.id)} sx={{ p: 0.25, color: isFav ? '#ffb800' : 'rgba(255,255,255,0.2)', '&:hover': { color: '#ffb800' } }}>
+                    {isFav ? <StarIcon sx={{ fontSize: 14 }} /> : <StarBorderIcon sx={{ fontSize: 14 }} />}
+                  </IconButton>
+                </Box>
+                {/* Date */}
+                <Typography variant="caption" noWrap sx={{ color: '#fff', fontSize: 12, width: 110, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                  {dateFmt}{timeslot ? ` · ${timeslot}` : ''}
+                </Typography>
+                {/* Candidate */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, minWidth: 0 }}>
+                  <Avatar sx={{ width: 20, height: 20, fontSize: 10, bgcolor: '#10b981', flexShrink: 0 }}>
+                    {getCandidateName(schedule.candidateId).charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Typography noWrap variant="caption" sx={{ color: '#fff', fontSize: 12, flex: 1, minWidth: 0 }}>
+                    {getCandidateName(schedule.candidateId)}
+                  </Typography>
+                </Box>
+                {/* Role */}
+                <Chip
+                  label={getRoleName(schedule.roleId)}
+                  size="small"
+                  sx={{ bgcolor: 'rgba(0,212,255,0.1)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)', fontSize: 10, height: 18, maxWidth: 110, flexShrink: 0, display: { xs: 'none', md: 'flex' } }}
+                />
+                {/* Status dot */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                  <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: statusColor }} />
+                  <Typography variant="caption" sx={{ color: statusColor, fontSize: 11, display: { xs: 'none', sm: 'block' } }}>
+                    {getStatusLabel(schedule.status)}
+                  </Typography>
+                </Box>
+                {/* ⋮ actions */}
+                <Box onClick={(e) => e.stopPropagation()} sx={{ flexShrink: 0 }}>
+                  <Tooltip title="Rediger">
+                    <IconButton size="small" onClick={() => { closeDrawer(); onEditSchedule(schedule); }} sx={{ p: 0.25, color: 'rgba(255,255,255,0.3)', '&:hover': { color: '#ffb800' } }}>
+                      <EditIcon sx={{ fontSize: 15 }} />
                     </IconButton>
-                  </TableCell>
-                  <TableCell sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ScheduleIcon sx={{ fontSize: 16, color: '#ffb800' }} />
-                      {new Date(schedule.date).toLocaleDateString('nb-NO')} {schedule.time}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <PersonIcon sx={{ fontSize: 16, color: '#10b981' }} />
-                      {getCandidateName(schedule.candidateId)}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <MovieIcon sx={{ fontSize: 16, color: '#00d4ff' }} />
-                      {getRoleName(schedule.roleId)}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.87)', borderColor: 'rgba(255,255,255,0.1)' }}>
-                    {schedule.location || '-'}
-                  </TableCell>
-                  <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-                    <Chip
-                      label={getStatusLabel(schedule.status)}
-                      size="small"
-                      sx={{ bgcolor: getStatusColor(schedule.status), color: '#fff', fontSize: '11px' }}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ borderColor: 'rgba(255,255,255,0.1)' }} onClick={(e) => e.stopPropagation()}>
-                    <Stack direction="row" spacing={0.5}>
-                      <Tooltip title="Rediger">
-                        <IconButton size="small" onClick={() => onEditSchedule(schedule)} sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Dupliser">
-                        <IconButton size="small" onClick={() => handleDuplicate(schedule)} sx={{ color: 'rgba(255,255,255,0.87)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
-                          <DuplicateIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Slett">
-                        <IconButton size="small" onClick={() => handleDeleteWithUndo(schedule)} sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#ef4444' }, minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                  </Tooltip>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
       ) : (
         /* Grid View - Responsive for iPad and Desktop */
         <Grid container spacing={{ xs: 2, sm: 2.5, md: 3 }}>
-          {filteredAndSortedSchedules.map((schedule) => {
+          {filteredAndSortedSchedules.map((schedule, index) => {
             const isExpanded = expandedCards.has(schedule.id);
             const sceneName = getSceneName(schedule.sceneId);
             const statusColor = getStatusColor(schedule.status);
@@ -1453,9 +1814,9 @@ function AuditionSchedulePanelInner({
                       boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
                     },
                   }}
-                  onClick={() => onEditSchedule(schedule)}
+                  onClick={() => handleRowClick(schedule.id)}
                   tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter') onEditSchedule(schedule); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleRowClick(schedule.id); }}
                 >
                   {/* Date/Time Header */}
                   <Box
@@ -1541,7 +1902,7 @@ function AuditionSchedulePanelInner({
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, md: 1.5 } }}>
                         <Checkbox
                           checked={selectedIds.has(schedule.id)}
-                          onChange={() => handleToggleSelect(schedule.id)}
+                          onChange={(e) => handleToggleSelect(schedule.id, index, (e.nativeEvent as MouseEvent).shiftKey)}
                           onClick={(e) => e.stopPropagation()}
                           sx={{
                             p: 0.5,
@@ -1846,6 +2207,21 @@ function AuditionSchedulePanelInner({
                             <DuplicateIcon sx={{ fontSize: { xs: 18, md: 22 } }} />
                           </IconButton>
                         </Tooltip>
+                        <Tooltip title="Lagre som mal">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); handleSaveToPool(schedule); }}
+                            sx={{
+                              minWidth: { xs: TOUCH_TARGET_SIZE, md: 48 },
+                              minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
+                              color: 'rgba(255,255,255,0.87)',
+                              '&:hover': { color: '#9c27b0' },
+                              ...focusVisibleStyles,
+                            }}
+                          >
+                            <InventoryIcon sx={{ fontSize: { xs: 18, md: 22 } }} />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Slett">
                           <IconButton
                             size="small"
@@ -2024,7 +2400,7 @@ function AuditionSchedulePanelInner({
                         <Button
                           size="small"
                           variant="contained"
-                          startIcon={<DownloadIcon />}
+                          startIcon={<ExportIcon />}
                           onClick={() => handleImportFromPool(poolAudition)}
                           sx={{
                             bgcolor: '#9c27b0',
@@ -2072,6 +2448,125 @@ function AuditionSchedulePanelInner({
         }
         sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#333' } }}
       />
+
+      {/* ── Bulk Action Bar (sticky bottom, slides up when items selected) ── */}
+      <Slide direction="up" in={selectedIds.size > 0} mountOnEnter unmountOnExit>
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1400,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            borderRadius: 2,
+            bgcolor: '#1e1e2e',
+            border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+            minWidth: 360,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, mr: 0.5, whiteSpace: 'nowrap' }}>
+            {selectedIds.size} valgt
+          </Typography>
+          <Box sx={{ width: '1px', height: 20, bgcolor: 'rgba(255,255,255,0.15)', mx: 0.5 }} />
+          {/* Delete */}
+          <Tooltip title="Slett valgte (Del)">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DeleteIcon sx={{ fontSize: 16 }} />}
+              onClick={handleBulkDelete}
+              sx={{ borderColor: '#ef4444', color: '#ef4444', fontSize: 12, py: 0.5, '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
+            >
+              Slett
+            </Button>
+          </Tooltip>
+          {/* Duplicate */}
+          <Tooltip title="Dupliser valgte">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DuplicateIcon sx={{ fontSize: 16 }} />}
+              onClick={() => {
+                const todup = filteredAndSortedSchedules.filter(s => selectedIds.has(s.id));
+                todup.forEach(s => handleDuplicate(s));
+              }}
+              sx={{ borderColor: 'rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.8)', fontSize: 12, py: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}
+            >
+              Dupliser
+            </Button>
+          </Tooltip>
+          {/* Export */}
+          <Tooltip title="Eksporter valgte">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ExportIcon sx={{ fontSize: 16 }} />}
+              onClick={handleExportCSV}
+              sx={{ borderColor: 'rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.8)', fontSize: 12, py: 0.5, '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}
+            >
+              Eksporter
+            </Button>
+          </Tooltip>
+          {/* Change Status */}
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <Select
+              displayEmpty
+              value=""
+              onChange={(e) => { if (e.target.value) handleBulkStatusChange(e.target.value as Schedule['status']); }}
+              startAdornment={<BulkStatusIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', mr: 0.5 }} />}
+              renderValue={() => <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Endre status</Typography>}
+              sx={{
+                color: '#fff',
+                fontSize: 12,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+                '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' },
+              }}
+            >
+              {(['scheduled', 'confirmed', 'awaiting_callback', 'completed', 'cancelled'] as const).map(s => (
+                <MenuItem key={s} value={s}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getStatusColor(s), flexShrink: 0 }} />
+                    {getStatusLabel(s)}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {/* Dismiss (Esc) */}
+          <Tooltip title="Avbryt (Esc)">
+            <IconButton size="small" onClick={() => dispatch({ type: 'DESELECT_ALL' })} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.4)', '&:hover': { color: '#fff' } }}>
+              <ClearIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Slide>
+
+      {/* ── Details Drawer ── */}
+      <ScheduleDetailsDrawer
+        open={drawerScheduleId !== null}
+        schedule={drawerScheduleId ? (filteredAndSortedSchedules.find(s => s.id === drawerScheduleId) ?? null) : null}
+        isFavorite={drawerScheduleId ? favorites.has(drawerScheduleId) : false}
+        onClose={closeDrawer}
+        onEdit={(s) => { closeDrawer(); onEditSchedule(s); }}
+        onDuplicate={handleDuplicate}
+        onDelete={(s) => { closeDrawer(); handleDeleteWithUndo(s); }}
+        onToggleFavorite={toggleFavorite}
+        onStatusChange={handleStatusChange}
+        getCandidateName={getCandidateName}
+        getRoleName={getRoleName}
+      />
+
+      {/* Audition Planner guide */}
+      <AuditionGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+
     </Box>
   );
 }

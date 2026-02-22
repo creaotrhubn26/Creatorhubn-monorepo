@@ -37,7 +37,7 @@ import {
   Cancel,
   Visibility,
   Email,
-  SelectAll
+  SelectAll,
 } from '@mui/icons-material';
 
 interface RefundRequest {

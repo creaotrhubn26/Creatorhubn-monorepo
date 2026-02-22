@@ -4,7 +4,12 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
 import React from 'react';
-import { Box, Container, Typography, Paper } from '@mui/material';
+import {
+  Box,
+  Container,
+  Typography,
+  Paper,
+} from '@mui/material';
 import { Lightbulb } from '@mui/icons-material';
 import ContextualPhotographyTipsOverlay from '../components/photography/ContextualPhotographyTipsOverlay';
 

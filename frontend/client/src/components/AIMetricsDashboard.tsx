@@ -937,7 +937,7 @@ const styles: Record<string, React.CSSProperties> = {
   activeTab: {
     backgroundColor: '#ff8c00',
     color: '#000',
-    boxShadow:'0 0 10px rgba(2, 5, 5, 140, 0, 0.3)',
+    boxShadow:'0 0 10px rgba(255, 140, 0, 0.3)',
   },
 };
 

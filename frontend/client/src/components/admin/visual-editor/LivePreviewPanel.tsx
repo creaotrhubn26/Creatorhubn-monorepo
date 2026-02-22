@@ -45,7 +45,7 @@ import {
   GridOn,
   CameraAlt,
   Accessible,
-  Speed,
+  Speed as Speed,
   TouchApp,
   Close,
 } from '@mui/icons-material';
@@ -208,7 +208,7 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
       timestamp: Date.now(),
       data,
     };
-    setInteractions((prev) => [...prev, interaction].slice(-50); // Keep last 50 interactions
+    setInteractions((prev) => [...prev, interaction].slice(-50)); // Keep last 50 interactions
   };
 
   const generatePreviewHTML = () => {

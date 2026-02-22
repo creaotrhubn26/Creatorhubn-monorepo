@@ -6,12 +6,12 @@
 import { useTheming } from '../../../utils/theming-helper';
 import { useResearchBackedAnimations } from '../../../hooks/useResearchBackedAnimations';
 import React, { memo, useCallback, useState, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  Tooltip,
   IconButton,
   Button,
   Dialog,
@@ -56,7 +56,7 @@ import {
   Publish,
   FavoriteBorder,
   Favorite,
-  Speed,
+  Speed as Speed,
   Refresh,
   TrendingFlat,
   TrendingUp,

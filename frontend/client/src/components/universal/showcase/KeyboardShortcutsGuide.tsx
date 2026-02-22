@@ -20,7 +20,7 @@ import {
   Divider,
   IconButton,
   Paper,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   Close,
@@ -55,7 +55,7 @@ import {
   Category,
   Add,
   Remove,
-  Settings
+  Settings,
 } from '@mui/icons-material';
 
 interface KeyboardShortcut {

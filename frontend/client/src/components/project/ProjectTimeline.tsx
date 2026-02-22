@@ -34,14 +34,6 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-} from '@mui/lab';
-import {
   Add as AddIcon,
   Event as EventIcon,
   Schedule as ScheduleIcon,

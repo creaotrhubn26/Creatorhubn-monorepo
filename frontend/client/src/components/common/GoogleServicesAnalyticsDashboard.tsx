@@ -44,7 +44,7 @@ import {
   Refresh,
   Settings,
   Security,
-  Speed,
+  Speed as Speed,
   Storage,
   Timeline,
   ExpandMore,

@@ -5,13 +5,13 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Paper, 
-  Typography, 
-  Chip, 
-  LinearProgress, 
-  Tooltip, 
+import {
+  Box,
+  Paper,
+  Typography,
+  Chip,
+  LinearProgress,
+  Tooltip,
   IconButton,
   Button,
   ButtonGroup,
@@ -58,7 +58,7 @@ import {
   Step,
   StepLabel,
   StepContent,
-  StepButton
+  StepButton,
 } from '@mui/material';
 import {
   Download,
@@ -118,7 +118,7 @@ import {
   Queue,
   BarChart,
   PieChart,
-  ShowChart
+  ShowChart,
 } from '@mui/icons-material';
 import { useExport, UseExportOptions } from '../../../hooks/useExport';
 import { ExportConfig, ExportFormat, ExportOptions, ExportResult } from '../../../utils/exportManager';

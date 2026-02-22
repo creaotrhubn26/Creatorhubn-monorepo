@@ -8,8 +8,12 @@ import React, { ReactNode, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { motion, AnimatePresence, useAnimation, useInView } from 'framer-motion';
-import { Box, IconButton, Typography, Fab ,
-  MuiCard as MuiMuiCard
+import {
+  Box,
+  IconButton,
+  Typography,
+  Fab,
+  Card as MuiMuiCard,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 import { keyframes } from '@mui/system';

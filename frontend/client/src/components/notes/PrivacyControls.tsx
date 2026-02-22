@@ -393,7 +393,7 @@ const PrivacyControls: React.FC<PrivacyControlsProps> = ({
             <Typography variant="h4" color="white" sx={{ color: theming.colors.primary }}>
               Privacy Score: {privacyScore}%
             </Typography>
-            <Typography variant="body2" color="rgba(2, 5, 5,255,255,0.8)">
+            <Typography variant="body2" color="rgba(255,255,255,0.8)">
               Based on current privacy settings and compliance
             </Typography>
           </Box>

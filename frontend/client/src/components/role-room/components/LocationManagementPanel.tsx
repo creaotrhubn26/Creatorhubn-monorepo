@@ -80,6 +80,8 @@ import { castingService } from '../services/castingService';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisDialog } from './LocationAnalysisDialog';
 import { useToast } from './ToastStack';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import locationPng from './icons/Keep/roleroom_location.png';
 
 // WCAG 2.2 - 2.5.5 Target Size (minimum 44x44px)
 const TOUCH_TARGET_SIZE = 44;
@@ -243,7 +245,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       studio: '#9c27b0',
       outdoor: '#4caf50',
       indoor: '#2196f3',
-      virtual: '#ff9800',
+      virtual: '#9333ea',
       other: '#607d8b',
     };
     return colors[type] || '#607d8b';
@@ -996,9 +998,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <MapIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ff9800' }} />
+              <MapIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9333ea' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.withCoordinates}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Med koordinater</Typography>
@@ -1189,7 +1191,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 setSearchQuery('');
               }}
               sx={{ 
-                color: '#ff9800', 
+                color: '#9333ea', 
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
@@ -1220,16 +1222,12 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
       {/* Empty state */}
       {locations.length === 0 ? (
-        <Box
-          role="status"
-          sx={{ textAlign: 'center', py: { xs: 4, sm: 8 }, color: 'rgba(255,255,255,0.87)' }}
-        >
-          <LocationIcon sx={{ fontSize: { xs: 60, sm: 70, md: 65, lg: 80, xl: 104 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, opacity: 0.3 }} />
-          <Typography variant="body1" sx={{ fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>Ingen lokasjoner ennå</Typography>
-          <Typography variant="body2" sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-            Legg til lokasjoner for å organisere produksjonssteder
-          </Typography>
-        </Box>
+        <RoleRoomEmptyState
+          iconSrc={locationPng}
+          title="Ingen lokasjoner ennå"
+          subtitle="Legg til lokasjoner for å organisere produksjonssteder"
+          color="#4caf50"
+        />
       ) : filteredAndSortedLocations.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: { xs: 48, sm: 56, md: 52, lg: 64, xl: 80 }, mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, opacity: 0.3 }} />

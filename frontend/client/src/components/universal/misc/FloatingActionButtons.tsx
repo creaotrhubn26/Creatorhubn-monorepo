@@ -16,7 +16,7 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 
 import {
@@ -35,7 +35,7 @@ import {
   CalendarMonth,
   Group,
   Work,
-  PhotoLibrary
+  PhotoLibrary,
 } from '@mui/icons-material';
 
 interface FloatingActionButtonsProps {

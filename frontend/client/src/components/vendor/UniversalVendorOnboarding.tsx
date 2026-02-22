@@ -24,7 +24,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -42,7 +42,7 @@ import {
   AccountBalance,
   Receipt,
   Sync,
-  AutoAwesome
+  AutoAwesome,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getVendorTypeConfig, getProductCategories } from '@shared/vendor-type-registry';

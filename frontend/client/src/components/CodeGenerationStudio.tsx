@@ -269,8 +269,7 @@ export function CodeGenerationDemo() {
 };
 
   const handleComponentSelected = (componentData: any) => {
-    const apiSuggestions: Record<string 
- string> = {
+    const apiSuggestions: Record<string, string> = {
       'payment-form':'stripe','chat-interface':'openai','image-gallery':'unsplash','video-player':'pexels', 'email-form':'sendgrid', 'map-component' : 'google-maps',
   };
 
@@ -305,7 +304,7 @@ export function CodeGenerationDemo() {
     generateFullMutation.mutate(data);
 
     if (generatedCode) {
-      dataFlow.syncData('code-generation:result', generatedCode'code-generation-studio', 'all');
+      dataFlow.syncData('code-generation:result', generatedCode, 'code-generation-studio', 'all');
   }
 };
 
@@ -331,7 +330,7 @@ export function CodeGenerationDemo() {
         </Box>
 
         {/* Features Overview */}
-        <Grid container spacing={2}, sx={{ mb: 4 }}>
+        <Grid container spacing={2} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={{ borderLeft: 4, borderColor: 'primary.main' }}>
               <CardContent>
@@ -400,7 +399,7 @@ export function CodeGenerationDemo() {
           }
           />
           <CardContent>
-            <Box component="form" onSubmit={handleSubmit(onSubmit) as any}, sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box component="form" onSubmit={handleSubmit(onSubmit) as any} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Controller
                 name="providerId"
                 control={control}

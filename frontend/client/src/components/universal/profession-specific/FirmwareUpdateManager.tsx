@@ -37,19 +37,10 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  Timeline,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineItem,
-  TimelineOppositeContent,
-  TimelineSeparator,
-} from '@mui/lab';
-import {
   AutoMode,
   BugReport,
   CameraAlt,
-  CameraStand,
+  CameraOutdoor as CameraStand,
   CheckCircle,
   CloudSync,
   FlashOn,

@@ -11,13 +11,9 @@ import {
   TextField,
   Chip,
   Grid,
-  Alert
+  Alert,
 } from '@mui/material';
-import {
-  ExpandMore as ExpandIcon,
-  PlayArrow as ExecuteIcon,
-  Code as CodeIcon
-} from '@mui/icons-material';
+import { ExpandMore as ExpandIcon, PlayArrow as ExecuteIcon, Code as CodeIcon } from '@mui/icons-material';
 import { WireMockResponseViewer, WireMockTestResult } from './WireMockResponseViewer';
 
 interface AdminAPIEndpoint {

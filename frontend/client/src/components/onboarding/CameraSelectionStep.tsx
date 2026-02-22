@@ -31,17 +31,17 @@ import {
 } from '@mui/material';
 import {
   Search,
-  PhotoCameraAlt,
+  PhotoCamera as PhotoCameraAlt,
   Check,
   Close,
   Memory,
-  Videocamcam,
+  Videocam as Videocamcam,
   AddCircle as Add,
   Delete,
   CameraAlt,
   Info,
   Verified,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

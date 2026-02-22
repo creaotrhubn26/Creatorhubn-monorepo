@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, useEffect, memo } from 'react';
+import { useId, useMemo, useState, useEffect, memo, lazy, Suspense } from 'react';
 import {
   Box,
   Typography,
@@ -8,7 +8,8 @@ import {
   Chip,
   Grid,
   Tooltip,
-  LinearProgress,
+  LinearProgress as _LinearProgress,
+  CircularProgress,
   useTheme,
   useMediaQuery,
   TextField,
@@ -17,12 +18,14 @@ import {
 import {
   Add as AddIcon,
   Share as ShareIcon,
-  ViewKanban as ViewKanbanIcon,
+  ViewKanban as _ViewKanbanIcon,
   Edit as EditIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
-  CheckCircle as CheckCircleIcon,
+  CheckCircle as _CheckCircleIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
+import DashboardGuide from './DashboardGuide';
 import { 
   DashboardCustomIcon as DashboardIcon, 
   CalendarCustomIcon as CalendarIcon, 
@@ -37,7 +40,11 @@ import {
 } from './icons/CastingIcons';
 import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
-import { KanbanPanel } from './KanbanPanel';
+import { useToast } from './ToastStack';
+
+const KanbanPanelLazy = lazy(() =>
+  import('./KanbanPanel').then(m => ({ default: m.KanbanPanel }))
+);
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
 const TOUCH_TARGET_SIZE = 44;
@@ -79,17 +86,21 @@ function DashboardPanelInner({
   onUpdate,
   onEditCandidate,
   onCandidatesChange,
-  profession,
+  profession: _profession,
 }: DashboardPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
-  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
+  const _isTablet = useMediaQuery(theme.breakpoints.down('md'));
+  const _isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const titleId = useId();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const { showSuccess, showError } = useToast();
   
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
 
@@ -117,18 +128,20 @@ function DashboardPanelInner({
 
   const handleSaveTitle = async () => {
     if (!project) return;
-    
     const trimmedTitle = editedTitle.trim();
-    if (trimmedTitle && trimmedTitle !== project.name) {
-      const updatedProject = { ...project, name: trimmedTitle };
-      try {
-        await castingService.saveProject(updatedProject);
-        if (onUpdate) onUpdate();
-      } catch (error) {
-        console.error('Failed to save title:', error);
-      }
+    if (!trimmedTitle || trimmedTitle === project.name) { setIsEditingTitle(false); return; }
+    setIsSavingTitle(true);
+    try {
+      await castingService.saveProject({ ...project, name: trimmedTitle });
+      if (onUpdate) onUpdate();
+      showSuccess('Tittel lagret');
+    } catch (error) {
+      console.error('Failed to save title:', error);
+      showError('Kunne ikke lagre tittel. Prøv igjen.');
+    } finally {
+      setIsSavingTitle(false);
+      setIsEditingTitle(false);
     }
-    setIsEditingTitle(false);
   };
 
   const handleStartEditDescription = () => {
@@ -143,29 +156,41 @@ function DashboardPanelInner({
 
   const handleSaveDescription = async () => {
     if (!project) return;
-    
     const trimmedDescription = editedDescription.trim();
-    if (trimmedDescription !== (project.description || '')) {
-      const updatedProject = { ...project, description: trimmedDescription || undefined };
-      try {
-        await castingService.saveProject(updatedProject);
-        if (onUpdate) onUpdate();
-      } catch (error) {
-        console.error('Failed to save description:', error);
-      }
+    if (trimmedDescription === (project.description || '')) { setIsEditingDescription(false); return; }
+    setIsSavingDescription(true);
+    try {
+      await castingService.saveProject({ ...project, description: trimmedDescription || undefined });
+      if (onUpdate) onUpdate();
+      showSuccess('Beskrivelse lagret');
+    } catch (error) {
+      console.error('Failed to save description:', error);
+      showError('Kunne ikke lagre beskrivelse. Prøv igjen.');
+    } finally {
+      setIsSavingDescription(false);
+      setIsEditingDescription(false);
     }
-    setIsEditingDescription(false);
   };
 
-  // Statistics
+  // Statistics — single-pass loops, no redundant .filter() calls
   const stats = useMemo(() => {
-    const openRoles = roles.filter(r => r.status === 'open' || r.status === 'casting').length;
-    const filledRoles = roles.filter(r => r.status === 'filled').length;
-    const confirmedCandidates = candidates.filter(c => c.status === 'confirmed').length;
-    const selectedCandidates = candidates.filter(c => c.status === 'selected').length;
-    const shortlistCandidates = candidates.filter(c => c.status === 'shortlist').length;
-    const upcomingSchedules = schedules.filter(s => new Date(s.date) >= new Date()).length;
-    
+    let openRoles = 0, filledRoles = 0;
+    for (const r of roles) {
+      if (r.status === 'open' || r.status === 'casting') openRoles++;
+      else if (r.status === 'filled') filledRoles++;
+    }
+    let confirmedCandidates = 0, selectedCandidates = 0, shortlistCandidates = 0;
+    for (const c of candidates) {
+      if (c.status === 'confirmed') confirmedCandidates++;
+      else if (c.status === 'selected') selectedCandidates++;
+      else if (c.status === 'shortlist') shortlistCandidates++;
+    }
+    // Compare ISO date strings (YYYY-MM-DD) lexicographically — avoids timezone edge cases
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let upcomingSchedules = 0;
+    for (const s of schedules) {
+      if (s.date >= todayStr) upcomingSchedules++;
+    }
     return {
       totalRoles: roles.length,
       openRoles,
@@ -179,17 +204,22 @@ function DashboardPanelInner({
     };
   }, [roles, candidates, schedules]);
 
-  // Status distribution for progress bar
+  // Status distribution for progress bar — single reduce pass
   const statusDistribution = useMemo(() => {
     if (candidates.length === 0) return [];
+    const counts = candidates.reduce<Record<string, number>>((acc, c) => {
+      acc[c.status] = (acc[c.status] || 0) + 1;
+      return acc;
+    }, {});
     return [
-      { status: 'confirmed', color: '#10b981', label: 'Bekreftet', count: candidates.filter(c => c.status === 'confirmed').length },
-      { status: 'selected', color: '#8b5cf6', label: 'Valgt', count: candidates.filter(c => c.status === 'selected').length },
-      { status: 'shortlist', color: '#ffb800', label: 'Shortlist', count: candidates.filter(c => c.status === 'shortlist').length },
-      { status: 'requested', color: '#00d4ff', label: 'Forespurt', count: candidates.filter(c => c.status === 'requested').length },
-      { status: 'pending', color: '#6b7280', label: 'Venter', count: candidates.filter(c => c.status === 'pending').length },
-      { status: 'rejected', color: '#ef4444', label: 'Avvist', count: candidates.filter(c => c.status === 'rejected').length },
-    ].filter(s => s.count > 0);
+      { status: 'confirmed', color: '#10b981', label: 'Bekreftet' },
+      { status: 'selected', color: '#8b5cf6', label: 'Valgt' },
+      { status: 'shortlist', color: '#ffb800', label: 'Shortlist' },
+      { status: 'requested', color: '#00d4ff', label: 'Forespurt' },
+      { status: 'pending', color: '#6b7280', label: 'Venter' },
+      { status: 'rejected', color: '#ef4444', label: 'Avvist' },
+    ].map(s => ({ ...s, count: counts[s.status] || 0 }))
+     .filter(s => s.count > 0);
   }, [candidates]);
 
   const statCards = [
@@ -199,10 +229,10 @@ function DashboardPanelInner({
     { title: 'Kommende avtaler', value: stats.upcomingSchedules, color: '#ffb800', icon: AuditionsIcon, tabIndex: 8 },
   ];
 
-  const quickLinks = [
+  const _quickLinks = [
     { title: 'Team', description: 'Administrer crew', color: '#00d4ff', icon: TeamIcon, tabIndex: 3 },
     { title: 'Steder', description: 'Lokasjoner', color: '#4caf50', icon: LocationIcon, tabIndex: 4 },
-    { title: 'Utstyr', description: 'Rekvisitter', color: '#ff9800', icon: PropsIcon, tabIndex: 5 },
+    { title: 'Utstyr', description: 'Rekvisitter', color: '#9333ea', icon: PropsIcon, tabIndex: 5 },
     { title: 'Kamera', description: 'Shot lists', color: '#e91e63', icon: ShotListIcon, tabIndex: 6 },
     { title: 'Kalender', description: 'Produksjonsplan', color: '#9c27b0', icon: CalendarIcon, tabIndex: 7 },
   ];
@@ -266,6 +296,7 @@ function DashboardPanelInner({
                 <IconButton
                   onClick={handleSaveTitle}
                   size="small"
+                  disabled={isSavingTitle}
                   sx={{
                     color: '#00d4ff',
                     minWidth: TOUCH_TARGET_SIZE,
@@ -275,7 +306,7 @@ function DashboardPanelInner({
                   }}
                   aria-label="Lagre tittel"
                 >
-                  <SaveIcon />
+                  {isSavingTitle ? <CircularProgress size={20} sx={{ color: '#00d4ff' }} /> : <SaveIcon />}
                 </IconButton>
                 <IconButton
                   onClick={handleCancelEdit}
@@ -364,6 +395,7 @@ function DashboardPanelInner({
                 <IconButton
                   onClick={handleSaveDescription}
                   size="small"
+                  disabled={isSavingDescription}
                   sx={{
                     color: '#00d4ff',
                     minWidth: TOUCH_TARGET_SIZE,
@@ -373,7 +405,7 @@ function DashboardPanelInner({
                   }}
                   aria-label="Lagre beskrivelse"
                 >
-                  <SaveIcon />
+                  {isSavingDescription ? <CircularProgress size={20} sx={{ color: '#00d4ff' }} /> : <SaveIcon />}
                 </IconButton>
                 <IconButton
                   onClick={handleCancelEditDescription}
@@ -420,6 +452,26 @@ function DashboardPanelInner({
             )}
           </Box>
         </Box>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Tooltip title="Åpne Dashboard-guide">
+          <IconButton
+            onClick={() => setGuideOpen(true)}
+            size="small"
+            sx={{
+              color: 'rgba(255,255,255,0.5)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 1.5,
+              p: 0.75,
+              minWidth: TOUCH_TARGET_SIZE,
+              minHeight: TOUCH_TARGET_SIZE,
+              '&:hover': { color: '#8b5cf6', borderColor: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.1)' },
+              ...focusVisibleStyles,
+            }}
+            aria-label="Åpne guide"
+          >
+            <HelpIcon sx={{ fontSize: 20 }} />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Del prosjekt med teamet">
           <Button
             variant="outlined"
@@ -439,12 +491,15 @@ function DashboardPanelInner({
             {!isMobile && 'Del prosjekt'}
           </Button>
         </Tooltip>
+        </Box>
       </Box>
+
+      <DashboardGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
 
       {/* Statistics Cards */}
       <Grid container spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }} sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
         {statCards.map((card) => (
-          <Grid key={card.title} size={{ xs: 6, sm: 6, md: 3 }}>
+          <Grid item key={card.title} xs={6} sm={6} md={3}>
             <Card
               component="button"
               onClick={() => onNavigateToTab(card.tabIndex)}
@@ -626,15 +681,17 @@ function DashboardPanelInner({
       {/* Kanban Board */}
       <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(132,204,22,0.2)', mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
         <CardContent sx={{ p: 0 }}>
-          <KanbanPanel
-            project={project}
-            candidates={candidates}
-            roles={roles}
-            onCandidatesChange={onCandidatesChange || (() => {})}
-            onEditCandidate={onEditCandidate || (() => {})}
-            onCreateCandidate={onCreateCandidate}
-            onNavigateToTab={onNavigateToTab}
-          />
+          <Suspense fallback={<CircularProgress sx={{ color: '#84cc16', display: 'block', mx: 'auto', my: 4 }} />}>
+            <KanbanPanelLazy
+              project={project}
+              candidates={candidates}
+              roles={roles}
+              onCandidatesChange={onCandidatesChange || (() => {})}
+              onEditCandidate={onEditCandidate || (() => {})}
+              onCreateCandidate={onCreateCandidate}
+              onNavigateToTab={onNavigateToTab}
+            />
+          </Suspense>
         </CardContent>
       </Card>
     </Box>

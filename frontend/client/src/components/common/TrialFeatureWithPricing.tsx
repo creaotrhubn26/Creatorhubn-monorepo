@@ -29,7 +29,7 @@ import {
 } from '@mui/material';
 import {
   AutoAwesome,
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Upgrade,
   Timer,
   CheckCircle,
@@ -37,7 +37,7 @@ import {
   Star,
   Payment,
   Google,
-  CreditDirectionsCard,
+  CreditCard as CreditDirectionsCard,
   Phone,
   Info,
 } from '@mui/icons-material';

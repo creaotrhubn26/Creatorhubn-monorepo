@@ -25,7 +25,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
 } from '@mui/material';
 import {
   Science,
@@ -40,7 +40,7 @@ import {
   Info,
   Warning,
   Error as ErrorIcon,
-  Refresh
+  Refresh,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -472,7 +472,7 @@ export default function PrototypeTesterDashboard() {
                     border: '2px solid',
                     borderColor: 'transparent','&:hover': {
                       borderColor: '#ff9800',
-                      bgcolor: 'rgba(2, 5, 5, 152, 0, 0.05)'
+                      bgcolor: 'rgba(255, 152, 0, 0.05)'
                     }
                   }}
                   onClick={() => setShowTestDataDialog(true)}

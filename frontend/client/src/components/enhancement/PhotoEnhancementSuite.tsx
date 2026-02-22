@@ -63,7 +63,7 @@ import {
   Twitter,
   LinkedIn,
   MusicNote,
-  PushPin
+  PushPin,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

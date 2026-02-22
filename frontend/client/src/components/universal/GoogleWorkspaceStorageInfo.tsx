@@ -28,7 +28,7 @@ import {
   Divider,
   Stack,
   useTheme,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   Storage,
@@ -36,7 +36,7 @@ import {
   CloudQueue,
   FolderOpen,
   Warning,
-  Google as GoogleIcon
+  Google as GoogleIcon,
 } from '@mui/icons-material';
 
 interface GoogleWorkspaceStorageData {

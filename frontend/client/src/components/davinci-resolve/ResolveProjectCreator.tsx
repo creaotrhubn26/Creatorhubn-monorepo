@@ -26,7 +26,7 @@ import {
   Tab,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   VideoLibrary,
@@ -37,7 +37,7 @@ import {
   TrendingUp as TimelineIcon,
   ExpandMore,
   PlayArrow,
-  Settings
+  Settings,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 // Toast removed - Zero Toast Compliance Policy

@@ -14,7 +14,7 @@ import {
   IconButton,
   Chip,
   TextField,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   History,
@@ -22,7 +22,7 @@ import {
   Restore,
   Delete,
   CompareArrows,
-  AudioFile
+  AudioFile,
 } from '@mui/icons-material';
 
 interface VersionHistoryPanelProps {

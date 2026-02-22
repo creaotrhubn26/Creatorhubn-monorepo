@@ -31,7 +31,7 @@ import {
   Card,
   CardContent,
   Stack,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -44,7 +44,7 @@ import {
   Info as InfoIcon,
   QueueMusic as QueueIcon,
   Storage as StorageIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { 
   validateFiles, 

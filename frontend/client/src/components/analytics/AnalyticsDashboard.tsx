@@ -14,7 +14,7 @@ import {
   Card,
   CardContent,
   Stack,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import { Notifications, NotificationsActive, Refresh } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';

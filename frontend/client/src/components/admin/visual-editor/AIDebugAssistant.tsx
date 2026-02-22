@@ -48,7 +48,7 @@ import {
   ContentCopy,
   PlayArrow,
   Security,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import { AIContext } from './AICodeCompletionSystem';
 
@@ -169,7 +169,7 @@ export default function AIDebugAssistant({
     // Simulate progressive analysis
     for (let i = 0; i < steps.length; i++) {
       setActiveStep(i);
-      await new Promise((resolve) => setTimeout(resolve, 800);
+      await new Promise((resolve) => setTimeout(resolve, 800));
     }
 
     await analyzeErrors();
@@ -177,7 +177,7 @@ export default function AIDebugAssistant({
   }, [analyzeErrors]);
 
   const analyzeCustomError = useCallback(async () => {
-    if (!customErrorInput.trim() return;
+    if (!customErrorInput.trim()) return;
 
     setIsAnalyzing(true);
 
@@ -258,10 +258,10 @@ export default function AIDebugAssistant({
             <Chip
               label={`${issues.length} issues`}
               size="small"
-              sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.2)', color: 'white' }} />
+              sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
           )}
         </Box>
-        <IconButton size="small" onClick={onClose}, sx={{ color: 'white' }}>
+        <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
           <Close />
         </IconButton>
       </Box>
@@ -339,7 +339,7 @@ export default function AIDebugAssistant({
                       </Box>
                     )}
 
-                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5 flexWrap: 'wrap' }}>
+                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                       <Chip
                         label={`${issue.suggestedFixes.length} fixes`}
                         size="small"
@@ -608,7 +608,7 @@ function generateSuggestedFixes(
       id: `fix-${Date.now()}-1`,
       title: 'Quick Fix',
       description: 'AI-suggested fix based on error pattern',
-      confidence: 0.85
+      confidence: 0.85,
       fixedCode: code, // Would be modified based on error
       explanation: 'This fix addresses the immediate error',
       pros: ['Resolves the error','Minimal code changes'],

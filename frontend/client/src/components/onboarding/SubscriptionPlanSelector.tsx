@@ -34,7 +34,7 @@ import {
   TrendingUp,
   People,
   Work,
-  Speed,
+  Speed as Speed,
   Security,
   CloudSync,
   MonetizationOn,
@@ -46,7 +46,7 @@ import {
   Phone,
   Timer,
   Diamond,
-  Rocket,
+  RocketLaunch as Rocket,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

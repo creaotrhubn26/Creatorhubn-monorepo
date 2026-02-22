@@ -28,7 +28,7 @@ import {
   ListItemText,
   ListItemIcon,
   Divider,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
 import {
   AudioFile,
@@ -37,7 +37,7 @@ import {
   Pending,
   Close,
   AutoFixHigh,
-  Delete
+  Delete,
 } from '@mui/icons-material';
 
 interface BatchAudioEnhancementDialogProps {

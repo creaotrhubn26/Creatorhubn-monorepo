@@ -24,7 +24,12 @@ import {
   Paper,
   LinearProgress,
 } from '@mui/material';
-import { CheckCircle, Close as CloseIcon, Lightbulb, TrendingUp } from '@mui/icons-material';
+import {
+  CheckCircle,
+  Close as CloseIcon,
+  Lightbulb,
+  TrendingUp,
+} from '@mui/icons-material';
 import {
   RingIcon,
   PhotographyIcon,

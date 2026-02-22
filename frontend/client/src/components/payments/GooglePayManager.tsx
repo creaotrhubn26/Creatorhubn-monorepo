@@ -33,7 +33,7 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  ShoppingDirectionsCart as ShoppingCartIcon,
+  ShoppingCart as ShoppingCartIcon,
   Payment as PaymentIcon,
   AttachMoney as AttachMoneyIcon,
   CloudOff as CloudOffIcon,

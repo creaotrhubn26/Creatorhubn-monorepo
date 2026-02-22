@@ -1,13 +1,13 @@
 import * as React from 'react';
-import { 
-  Box, 
-  Button, 
-  List, 
-  ListItemButton, 
-  ListItemText, 
+import {
+  Box,
+  Button,
+  List,
+  ListItemButton,
+  ListItemText,
   ListItemAvatar,
   Avatar,
-  Stack, 
+  Stack,
   Typography,
   TextField,
   Dialog,
@@ -17,16 +17,16 @@ import {
   Chip,
   CircularProgress,
   IconButton,
-  Tooltip
+  Tooltip,
 } from '@mui/material';
-import { 
-  CloudUpload, 
-  Refresh, 
-  Download, 
-  Favorite, 
+import {
+  CloudUpload,
+  Refresh,
+  Download,
+  Favorite,
   Share,
   LightMode,
-  People
+  People,
 } from '@mui/icons-material';
 import { communityService, CommunitySetup } from '../../core/services/community';
 

@@ -25,7 +25,7 @@ import {
   Tab,
   Divider,
   Stack,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Add,
@@ -40,7 +40,7 @@ import {
   AddCircle,
   Schedule,
   PhotoLibrary,
-  Image as ImageIcon
+  Image as ImageIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';

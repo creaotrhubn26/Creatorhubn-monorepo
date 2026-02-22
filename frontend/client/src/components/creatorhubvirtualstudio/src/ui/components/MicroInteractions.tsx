@@ -16,19 +16,19 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Box,
   Button,
-  ButtonProps,
   Switch,
-  SwitchProps,
   Tooltip,
-  TooltipProps,
   Slider,
-  SliderProps,
   Badge,
-  BadgeProps,
   CircularProgress,
   IconButton,
-  IconButtonProps,
 } from '@mui/material';
+import type { ButtonProps } from '@mui/material/Button';
+import type { SwitchProps } from '@mui/material/Switch';
+import type { TooltipProps } from '@mui/material/Tooltip';
+import type { SliderProps } from '@mui/material/Slider';
+import type { BadgeProps } from '@mui/material/Badge';
+import type { IconButtonProps } from '@mui/material/IconButton';
 import { styled, keyframes } from '@mui/material/styles';
 import { Check } from '@mui/icons-material';
 import {

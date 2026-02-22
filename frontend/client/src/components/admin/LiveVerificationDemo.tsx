@@ -23,7 +23,7 @@ import {
   Switch,
   FormControlLabel,
   Rating,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -38,7 +38,7 @@ import {
   Email,
   PriorityHigh,
   Category,
-  Visibility
+  Visibility,
 } from '@mui/icons-material';
 import { mockBackendService } from '../../services/MockBackendService';
 import UniversalChatWidget from '../chat/UniversalChatWidget';

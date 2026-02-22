@@ -41,7 +41,7 @@ import {
   Select,
   FormControl,
   InputLabel,
-  InputAdornment
+  InputAdornment,
 } from '@mui/material';
 import {
   Science,
@@ -68,17 +68,8 @@ import {
   Settings as SettingsIcon,
   ExpandMore,
   Notifications,
-  TrendingUp
+  TrendingUp,
 } from '@mui/icons-material';
-import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent,
-} from '@mui/lab';
 import PaymentMethodLogo from '../common/PaymentMethodLogo';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

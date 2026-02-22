@@ -18,7 +18,7 @@ import {
   Alert,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -32,7 +32,7 @@ import {
   ExpandMore,
   School,
   TipsAndUpdates,
-  Tune
+  Tune,
 } from '@mui/icons-material';
 
 interface PhotographyTip {

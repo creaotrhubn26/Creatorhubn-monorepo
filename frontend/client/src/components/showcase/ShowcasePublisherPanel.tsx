@@ -110,7 +110,7 @@ const ShowcasePublisherPanel: React.FC<ShowcasePublisherPanelProps> = ({ userId 
       );
   }, [items, category, search]);
 
-  const currentVideo = customizations?.draftSections?.video || customizations?.sections?.video || {};
+  const currentVideo: { videoUrl?: string; title?: string; showcaseItemId?: string } = customizations?.draftSections?.video || customizations?.sections?.video || {};
 
   const handlePublishSelection = () => {
     if (!selectedItem) return;

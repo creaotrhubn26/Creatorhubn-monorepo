@@ -24,7 +24,7 @@ import {
   Search,
   LocationOn,
   CheckCircle,
-  Info
+  Info,
 } from '@mui/icons-material';
 
 import ShippingCalculator from './ShippingCalculator';

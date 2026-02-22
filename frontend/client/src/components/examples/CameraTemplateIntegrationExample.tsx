@@ -11,7 +11,7 @@ import {
   IconButton,
   Tooltip,
   Alert,
-  Paper
+  Paper,
 } from '@mui/material';
 import {
   CameraAlt,
@@ -21,7 +21,7 @@ import {
   Save,
   Add,
   Edit,
-  Delete
+  Delete,
 } from '@mui/icons-material';
 import CameraTemplateSidebar from '../camera/CameraTemplateSidebar';
 import { useCameraTemplateSidebar } from '../../hooks/useCameraTemplateSidebar';

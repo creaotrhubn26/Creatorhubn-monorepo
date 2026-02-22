@@ -40,7 +40,7 @@ import {
   ListItemIcon,
   Select,
   FormControl,
-  InputLabel
+  InputLabel,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -59,7 +59,7 @@ import {
   DragIndicator as DragIcon,
   ExpandMore as ExpandMoreIcon,
   Save as SaveIcon,
-  Cancel as CancelIcon
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

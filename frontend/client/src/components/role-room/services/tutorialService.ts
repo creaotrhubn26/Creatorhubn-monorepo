@@ -27,8 +27,8 @@ const STORAGE_KEY = 'virtual-studio-tutorials';
 
 const defaultCastingPlannerTutorial: Tutorial = {
   id: 'default-casting-planner',
-  name: 'Casting Planner Veiledning',
-  description: 'Lær alle funksjonene i Casting Planner',
+  name: 'The Role Room Veiledning',
+  description: 'Lær alle funksjonene i The Role Room',
   category: 'casting-planner',
   isActive: true,
   createdAt: new Date().toISOString(),
@@ -36,8 +36,8 @@ const defaultCastingPlannerTutorial: Tutorial = {
   steps: [
     {
       id: 'welcome',
-      title: 'Velkommen til Casting Planner!',
-      description: 'Denne veiledningen tar deg gjennom alle funksjonene i Casting Planner. Du lærer hvordan du planlegger produksjoner, administrerer team, og organiserer opptak effektivt.',
+      title: 'Velkommen til The Role Room!',
+      description: 'Denne veiledningen tar deg gjennom alle funksjonene i The Role Room. Du lærer hvordan du planlegger produksjoner, administrerer team, og organiserer opptak effektivt.',
       panel: -1,
       duration: 8000,
       tips: [
@@ -239,7 +239,7 @@ const defaultCastingPlannerTutorial: Tutorial = {
     {
       id: 'complete',
       title: 'Gratulerer! Du har fullført veiledningen',
-      description: 'Du har nå lært alle hovedfunksjonene i Casting Planner. Klikk på "Nytt prosjekt"-knappen for å starte din første produksjon!',
+      description: 'Du har nå lært alle hovedfunksjonene i The Role Room. Klikk på "Nytt prosjekt"-knappen for å starte din første produksjon!',
       panel: -1,
       targetSelector: '[data-tutorial-target="create-project-button"]',
       action: 'click',

@@ -60,3 +60,38 @@ export type {
   CallSheetPDFOptions,
   PDFSection,
 } from '../../services/callSheetPDFGenerator';
+
+// ── Shot List UI modules ──────────────────────────────────────────────────────
+export { ShotListPanel }       from './ShotListPanel';
+export { ShotListCard }        from './ShotListCard';
+export { ShotListGrid }        from './ShotListGrid';
+export { ShotListTopBar }      from './ShotListTopBar';
+export { ShotListFilterBar }   from './ShotListFilterBar';
+export { ShotListSidebar }     from './ShotListSidebar';
+export { ShotListGuide }       from './ShotListGuide';
+export type { ShotListGuideProps } from './ShotListGuide';
+export { StripboardGuide }     from './StripboardGuide';
+export {
+  CreateEditShotListDialog,
+  ExportDialog,
+  DeleteConfirmDialog,
+  BatchAssignDialog,
+} from './ShotListDialogs';
+
+// Shot List filter helpers
+export {
+  applyFilters,
+  getSceneOptions,
+  DEFAULT_FILTERS,
+} from './shotListFilters';
+export type {
+  ShotListFilters,
+  ShotListSortField,
+  StatusFilter,
+  ViewMode,
+  SceneOption,
+} from './shotListFilters';
+
+// Shot List data hook
+export { useShotListData }     from './useShotListData';
+export type { ShotListSummary, ProjectShotStats } from './useShotListData';

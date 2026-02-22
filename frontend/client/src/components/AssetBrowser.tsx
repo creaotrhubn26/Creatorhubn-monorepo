@@ -38,7 +38,7 @@ import {
   DialogActions,
   FormControl,
   InputLabel,
-  Select
+  Select,
 } from '@mui/material';
 import {
   Search,
@@ -69,7 +69,7 @@ import {
   CloudQueue,
   Sync,
   FolderOpen,
-  KeyboardArrowLeft
+  KeyboardArrowLeft,
 } from '@mui/icons-material';
 import { UniversalFileUpload } from './universal/UniversalFileUpload';
 import StoryArcDataIntegration, { StoryArc, BeatClip, Track } from '../services/storyArcDataIntegration';

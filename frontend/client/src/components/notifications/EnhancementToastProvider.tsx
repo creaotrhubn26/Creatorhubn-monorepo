@@ -2,8 +2,22 @@
 // CreatorHub Norge uses Material UI feedback components only
 import { useTheming } from '../../utils/theming-helper';
 import React, { createContext, useContext, useState, useCallback } from 'react';
-// import { Snackbar, Alert, AlertColor, IconButton, Box, Typography } from '@mui/material';
-// import { Close, Download, Error, CheckCircle, Info, Warning } from '@mui/icons-material';
+// import {
+  Snackbar,
+  Alert,
+  IconButton,
+  Box,
+  Typography,
+} from '@mui/material';
+import type { AlertColor } from '@mui/material/Alert';
+// import {
+  Close,
+  Download,
+  Error,
+  CheckCircle,
+  Info,
+  Warning,
+} from '@mui/icons-material';
 
 interface ToastMessage {
   id: string;

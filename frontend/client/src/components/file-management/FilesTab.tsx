@@ -18,7 +18,6 @@ import {
   CardContent,
   CardActions,
   Button,
-
   List,
   ListItem,
   ListItemIcon,
@@ -27,19 +26,17 @@ import {
   IconButton,
   Chip,
   CircularProgress,
-
   Dialog,
   DialogTitle,
-  DialogContent, 
+  DialogContent,
   DialogActions,
   LinearProgress,
   Alert,
-  AlertTitle
+  AlertTitle,
 } from '@mui/material';
 import {
   FolderOpen,
   InsertDriveFile,
-
   Delete,
   CloudUpload,
   Sync,
@@ -56,7 +53,7 @@ import {
   Build,
   AutoFixHigh,
   Lightbulb,
-  Rocket,
+  RocketLaunch as Rocket,
   Construction,
   PhotoCamera,
   Palette,
@@ -66,7 +63,7 @@ import {
   EventNote,
   Security,
   Collections,
-  PhotoLibrary
+  PhotoLibrary,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -701,7 +698,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 <Button
                   variant="contained"
                   startIcon={theming.getThemedIcon('photoLibrary')}
-                  onClick={() => window.open('/gallery-manager', ','_blank')}
+                  onClick={() => window.open('/gallery-manager', '_blank')}
                   sx={{
                     ...theming.getThemedButtonSx(),
                     bgcolor: 'secondary.light','&:hover': { bgcolor: 'secondary.main' }}}
@@ -1150,11 +1147,11 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 flexWrap: 'wrap'
             }}>
                 <Chip 
-                  icon={theming.getThemedIcon('autoFixHigh')}}
+                  icon={theming.getThemedIcon('autoFixHigh')}
                   label="Mappestruktur: Perfekt!" 
                   variant="filled"
                   sx={{ 
-                    fontWeight: 60
+                    fontWeight: 600,
                     fontSize: '1rem',
                     padding: '8px 4px',
                     backgroundColor: 'info.main',
@@ -1166,7 +1163,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                   label="Sikkerhetskopi: Trygt lagret!" 
                   variant="filled"
                   sx={{ 
-                    fontWeight: 60
+                    fontWeight: 600,
                     fontSize: '1rem',
                     padding: '8px 4px',
                     backgroundColor: 'info.main',

@@ -9,7 +9,7 @@ export interface ComponentMetadata {
   name: string;
   category: 'orchestrator' | 'management' | 'communication' | 'showcase' | 'settings' | 'integration' | 'ai' | 'file' | 'equipment' | 'contract' | 'crm' | 'tutorial' | 'modal' | 'system' | 'admin' | 'business' | 'security' | 'format' | 'content' | 'accessibility' | 'testing' | 'calendar' | 'cms' | 'onboarding' | 'form' | 'marketing' | 'ui' | 'dashboard' | 'video' | 'project' | 'analytics' | 'landing' | 'academy' | 'community' | 'company' | 'legal' | 'pricing' | 'wedding' | 'vendor' | 'email' | 'seo' | 'prototype';
   description: string;
-  profession: ('photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin')[];
+  profession: ('' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin')[];
   tabIndex?: number;
   dependencies: string[];
   props: {

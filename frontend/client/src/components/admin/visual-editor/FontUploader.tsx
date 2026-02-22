@@ -21,7 +21,12 @@ import {
   Chip,
   LinearProgress,
 } from '@mui/material';
-import { CloudUpload, Delete, Check, Error as ErrorIcon } from '@mui/icons-material';
+import {
+  CloudUpload,
+  Delete,
+  Check,
+  Error as ErrorIcon,
+} from '@mui/icons-material';
 
 interface UploadedFont {
   name: string;

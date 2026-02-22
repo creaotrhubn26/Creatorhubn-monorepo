@@ -1,44 +1,44 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  TextField, 
-  Grid, 
-  Slider, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  IconButton, 
-  Chip, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  TextField,
+  Grid,
+  Slider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Chip,
   Alert,
   CircularProgress,
   Paper,
-  Stack
+  Stack,
 } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  PlayArrow, 
-  Stop, 
-  Edit, 
-  Save, 
-  Download, 
-  Preview, 
+import {
+  PlayArrow,
+  Stop,
+  Edit,
+  Save,
+  Download,
+  Preview,
   Close,
   Animation,
   TextFields,
   ColorLens,
-  Speed
+  Speed as Speed,
 } from '@mui/icons-material';
 
 interface LowerThirdTemplate {

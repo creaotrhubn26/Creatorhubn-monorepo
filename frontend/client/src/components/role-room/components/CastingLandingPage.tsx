@@ -1,72 +1,155 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Box, Typography, Button, Container } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
+import {
+  Box,
+  Typography,
+  Button,
+  Container,
+} from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PlayArrow as PlayArrowIcon,
-  Movie as MovieIcon,
+  PersonSearch as PersonSearchIcon,
+  Event as EventIcon,
+  PeopleAlt as PeopleAltIcon,
+  AutoStories as AutoStoriesIcon,
+  CalendarMonth as CalendarMonthIcon,
+  LocationOn as LocationOnIcon,
+  Gavel as GavelIcon,
+  Email as EmailIcon,
   Videocam as VideocamIcon,
 } from '@mui/icons-material';
-import { TeamIcon as GroupsIcon, CalendarCustomIcon as CalendarIcon } from './icons/CastingIcons';
 import LoginDialog from './LoginDialog';
 
 interface CastingLandingPageProps {
   onEnter: () => void;
+  onGuestEnter?: () => void;
 }
 
-export function CastingLandingPage({ onEnter }: CastingLandingPageProps) {
-  const [showIntro, setShowIntro] = useState(true);
-  const [introPhase, setIntroPhase] = useState(0);
+/* ── Golden Circle content ──────────────────────────────────────────
+ * WHY  — Purpose  (innermost circle — lead with this)
+ * HOW  — Process  (how the purpose is fulfilled)
+ * WHAT — Product  (the tangible features / result)
+ * ────────────────────────────────────────────────────────────────── */
+const WHY  = 'Vi tror at hver god fortelling starter med de rette menneskene i de rette rollene.';
+const HOW  = 'Vi samler roller, kandidater, auditions og produksjonsplan i ett arbeidsrom — slik at du aldri mister oversikten.';
+const WHAT_FEATURES = [
+  { icon: <PersonSearchIcon sx={{ fontSize: 36 }} />, title: 'Casting & Kandidater',    desc: 'Søk, filtrer og administrer kandidater i grid eller tabell. Flytt dem gjennom prosessen med drag-and-drop Kanban.' },
+  { icon: <PeopleAltIcon    sx={{ fontSize: 36 }} />, title: 'Roller & Crew',           desc: 'Bygg roller med krav og tilordne kandidater. Administrer hele crewet med avdeling, kontaktinfo og tilgjengelighet.' },
+  { icon: <EventIcon        sx={{ fontSize: 36 }} />, title: 'Audition & Planlegging',  desc: 'Planlegg audition-tider, tildel kandidater til slots og administrer en felles audition-pool på tvers av prosjekter.' },
+  { icon: <AutoStoriesIcon  sx={{ fontSize: 36 }} />, title: 'Manus & Historiestruktur',desc: 'Skriv manus med profesjonell filmatisk formatering og organiser historiestrukturen som beat-kort på korkplansje.' },
+  { icon: <VideocamIcon     sx={{ fontSize: 36 }} />, title: 'Storyboard',   desc: 'Tegn storyboard direkte i nettleseren, kombiner med manus i split-visning, og la AI foreslå kameravinkler.' },
+  { icon: <CalendarMonthIcon sx={{ fontSize: 36 }}/>, title: 'Produksjonskalender',     desc: 'Opprett produksjonsdagsplaner, sjekk crew-konflikter automatisk og send varsler til hele teamet.' },
+  { icon: <LocationOnIcon   sx={{ fontSize: 36 }} />, title: 'Utstyr & Lokasjoner',     desc: 'Book filmingsutstyr med tilgjengelighetssporing og administrer opptakslokasjoner med kart og kontaktinfo.' },
+  { icon: <GavelIcon        sx={{ fontSize: 36 }} />, title: 'Kontrakter & Samtykke',   desc: 'Send tilbud og kontrakter til cast/crew. Opprett og spor samtykkeskjemaer per kandidat med signeringsstatus.' },
+  { icon: <EmailIcon        sx={{ fontSize: 36 }} />, title: 'Call Sheets & E-post',    desc: 'Generer komplette call sheets klar for utskrift og design rike HTML-e-poster med mal-bibliotek og forhåndsvisning.' },
+];
+export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPageProps) {
+  const [showIntro, setShowIntro]       = useState(true);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [typedWhy,  setTypedWhy]  = useState('');
+  const [typedHow,  setTypedHow]  = useState('');
+  const [typedWhat, setTypedWhat] = useState('');
+  const [cursorTarget, setCursorTarget] = useState<'why'|'how'|'what'|'none'>('none');
+  const [cursorVisible, setCursorVisible] = useState(true);
 
-  // Memoize particle positions so they don't recalculate on every render
-  const particlePositions = useMemo(() => 
-    Array.from({ length: 20 }, () => ({
-      top: `${Math.random() * 100}%`,
-      left: `${Math.random() * 100}%`,
-    })), []
-  );
+  /* ── pull published visual-editor settings ── */
+  const { data: pageData } = usePublishedPageCustomizations('landing-desktop');
+  // Admin demoMode toggle — false = hide all guest-bypass surfaces
+  const lp: Record<string, unknown> = (pageData?.sections?.loginPanel as Record<string, unknown> | undefined) ?? {};
+  const demoModeEnabled = lp.demoMode !== false;
+  const ip = (pageData?.sections?.intro ?? {}) as Record<string, any>;
+  const introEnabled     = ip.enabled !== false;
+  const introVideoUrl    = (ip.videoUrl         as string | undefined) || '/role-room-assets/the_role_room_intro.mp4';
+  const introSkipLabel   = (ip.skipLabel        as string | undefined) || 'Hopp over';
+  const backdropVideoUrl = (ip.backdropVideoUrl as string | undefined) || '/role-room-assets/landing_backdrop.mp4';
+  const whyLabel         = (ip.whyLabel         as string | undefined) || 'Hvorfor vi finnes';
+  const whyText          = (ip.whyText          as string | undefined) || WHY;
+  const howLabel         = (ip.howLabel         as string | undefined) || 'Slik gjør vi det';
+  const howText          = (ip.howText          as string | undefined) || HOW;
+  const whatLabel        = (ip.whatLabel        as string | undefined) || 'Hva du får';
 
+  /* skip intro entirely if disabled in visual editor */
   useEffect(() => {
+    if (pageData && !introEnabled) setShowIntro(false);
+  }, [pageData, introEnabled]);
+
+  // Chain typewriter: WHY label → HOW label → WHAT label
+  useEffect(() => {
+    if (showIntro) return;
+    const steps = [
+      { label: whyLabel,  setter: setTypedWhy,  target: 'why'  as const },
+      { label: howLabel,   setter: setTypedHow,  target: 'how'  as const },
+      { label: whatLabel,  setter: setTypedWhat, target: 'what' as const },
+    ];
     const timers: ReturnType<typeof setTimeout>[] = [];
-    
-    timers.push(setTimeout(() => setIntroPhase(1), 500));
-    timers.push(setTimeout(() => setIntroPhase(2), 1800));
-    timers.push(setTimeout(() => setIntroPhase(3), 3000));
-    timers.push(setTimeout(() => setShowIntro(false), 4500));
-    
+    let stepIdx = 0;
+    const runStep = (delay: number) => {
+      if (stepIdx >= steps.length) {
+        let blinks = 0;
+        const blink = setInterval(() => {
+          setCursorVisible(v => !v);
+          if (++blinks >= 6) { clearInterval(blink); setCursorVisible(false); setCursorTarget('none'); }
+        }, 350);
+        return;
+      }
+      const { label, setter, target } = steps[stepIdx++];
+      const t = setTimeout(() => {
+        setCursorTarget(target);
+        setCursorVisible(true);
+        let i = 0;
+        const iv = setInterval(() => {
+          setter(label.slice(0, ++i));
+          if (i >= label.length) { clearInterval(iv); runStep(150); }
+        }, 80);
+      }, delay);
+      timers.push(t);
+    };
+    runStep(400);
     return () => timers.forEach(clearTimeout);
+  }, [showIntro, whyLabel, howLabel, whatLabel]);
+
+  // Safety fallback — dismiss intro if video never fires onEnded
+  useEffect(() => {
+    const t = setTimeout(() => setShowIntro(false), 20_000);
+    return () => clearTimeout(t);
   }, []);
 
-  const skipIntro = () => {
-    setShowIntro(false);
-  };
-
-  const handleStartClick = () => {
-    setLoginDialogOpen(true);
-  };
-
-  const handleLoginSuccess = (_user: { id: number; email: string; role: string; display_name: string }) => {
-    setLoginDialogOpen(false);
-    // Reload the page - the app will now show planner since user is authenticated
-    window.location.reload();
-  };
-
-  const features = [
-    { icon: <GroupsIcon sx={{ fontSize: 40 }} />, title: 'Rolleadministrasjon', desc: 'Opprett og administrer roller for produksjoner' },
-    { icon: <MovieIcon sx={{ fontSize: 40 }} />, title: 'Kandidatdatabase', desc: 'Organiser kandidater med bilder og profiler' },
-    { icon: <CalendarIcon sx={{ fontSize: 40 }} />, title: 'Timeplanlegging', desc: 'Planlegg auditions og innspillingsdager' },
-    { icon: <VideocamIcon sx={{ fontSize: 40 }} />, title: 'Bildelister', desc: 'Lag detaljerte shot-lister for hver scene' },
-  ];
+  const handleStartClick   = () => setLoginDialogOpen(true);
+  const handleLoginSuccess = () => { setLoginDialogOpen(false); window.location.reload(); };
 
   return (
-    <Box sx={{ 
-      width: '100%', 
-      minHeight: '100vh', 
+    <Box sx={{
+      width: '100%',
+      minHeight: '100vh',
       bgcolor: '#0a0a0f',
       overflowX: loginDialogOpen ? 'visible' : 'hidden',
       overflowY: loginDialogOpen ? 'visible' : 'auto',
       position: 'relative',
     }}>
+
+      {/* ── full-bleed video backdrop ── */}
+      <Box
+        component="video"
+        src={backdropVideoUrl}
+        autoPlay loop muted playsInline
+        sx={{
+          position: 'fixed', inset: 0,
+          width: '100%', height: '100%',
+          objectFit: 'cover', objectPosition: 'center 30%',
+          opacity: 0.22,
+          zIndex: 0,
+          pointerEvents: 'none',
+          filter: 'saturate(0.6) brightness(0.55)',
+        }}
+      />
+      {/* dark gradient over video so text is always readable */}
+      <Box sx={{
+        position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
+        background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.4) 40%, rgba(10,10,15,0.75) 100%)',
+      }} />
+
+      {/* ── intro video splash ── */}
       <AnimatePresence>
         {showIntro && (
           <motion.div
@@ -74,358 +157,240 @@ export function CastingLandingPage({ onEnter }: CastingLandingPageProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8 }}
             style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
+              position: 'fixed', inset: 0,
               zIndex: 100,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: '#0a0a0f',
-              pointerEvents: showIntro ? 'auto' : 'none',
+              background: '#000',
             }}
           >
-            <Box sx={{ 
-              position: 'absolute',
-              inset: 0,
-              overflow: 'hidden',
-            }}>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: introPhase >= 1 ? 0.15 : 0 }}
-                transition={{ duration: 2 }}
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '200vmax',
-                  height: '200vmax',
-                  background: 'radial-gradient(circle, #8b5cf6 0%, transparent 50%)',
-                }}
-              />
-              
-              {[...Array(20)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{ 
-                    opacity: introPhase >= 2 ? [0, 0.6, 0] : 0,
-                    scale: introPhase >= 2 ? [0, 1, 1.5] : 0,
-                  }}
-                  transition={{ 
-                    duration: 3,
-                    delay: i * 0.1,
-                    repeat: Infinity,
-                    repeatDelay: 2,
-                  }}
-                  style={{
-                    position: 'absolute',
-                    top: particlePositions[i].top,
-                    left: particlePositions[i].left,
-                    width: 4,
-                    height: 4,
-                    borderRadius: '50%',
-                    background: '#8b5cf6',
-                  }}
-                />
-              ))}
-            </Box>
-
-            <Box sx={{ textAlign: 'center', zIndex: 10 }}>
-              <motion.div
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ 
-                  scale: introPhase >= 1 ? 1 : 0,
-                  rotate: introPhase >= 1 ? 0 : -180,
-                }}
-                transition={{ 
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 20,
-                  duration: 1.2,
-                }}
-              >
-                <img
-                  src="/casting-planner-logo.png"
-                  alt="Casting Planner"
-                  style={{
-                    width: 160,
-                    height: 160,
-                    borderRadius: 16,
-                    boxShadow: '0 0 60px rgba(139, 92, 246, 0.5)',
-                  }}
-                />
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ 
-                  opacity: introPhase >= 2 ? 1 : 0,
-                  y: introPhase >= 2 ? 0 : 30,
-                }}
-                transition={{ duration: 0.8 }}
-              >
-                <Typography
-                  variant="h2"
-                  sx={{
-                    mt: 4,
-                    fontWeight: 700,
-                    fontSize: { xs: '2rem', sm: '3rem', md: '4rem' },
-                    background: 'linear-gradient(135deg, #fff 0%, #8b5cf6 50%, #6366f1 100%)',
-                    backgroundClip: 'text',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    letterSpacing: '-0.02em',
-                  }}
-                >
-                  Casting Planner
-                </Typography>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ 
-                  opacity: introPhase >= 3 ? 1 : 0,
-                }}
-                transition={{ duration: 0.6 }}
-              >
-                <Typography
-                  sx={{
-                    mt: 2,
-                    color: 'rgba(255,255,255,0.87)',
-                    fontSize: { xs: '1rem', sm: '1.25rem' },
-                    fontWeight: 300,
-                    letterSpacing: '0.1em',
-                  }}
-                >
-                  Profesjonell casting og produksjonsplanlegging
-                </Typography>
-              </motion.div>
-            </Box>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
-              style={{
-                position: 'absolute',
-                bottom: 40,
-                right: 40,
+            <Box
+              component="video"
+              src={introVideoUrl}
+              autoPlay muted playsInline
+              onEnded={() => setShowIntro(false)}
+              sx={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                objectFit: 'cover',
               }}
+            />
+            {/* Skip button */}
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }}
+              style={{ position: 'absolute', bottom: 40, right: 40, zIndex: 10 }}
             >
               <Button
-                onClick={skipIntro}
-                sx={{
-                  color: 'rgba(255,255,255,0.7)',
-                  fontSize: '0.85rem',
-                  '&:hover': { color: 'rgba(255,255,255,0.8)' },
-                }}
+                onClick={() => setShowIntro(false)}
+                sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem',
+                  '&:hover': { color: 'rgba(255,255,255,0.8)' } }}
               >
-                Hopp over
+                {introSkipLabel}
               </Button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ── main page ── */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: showIntro ? 0 : 1 }}
         transition={{ duration: 0.5, delay: 0.3 }}
+        style={{ position: 'relative', zIndex: 2 }}
       >
-        <Box sx={{
-          background: 'linear-gradient(180deg, rgba(139,92,246,0.1) 0%, transparent 50%)',
-          minHeight: '100vh',
-        }}>
-          <Container maxWidth="lg" sx={{ pt: { xs: 8, md: 12 }, pb: 8 }}>
-            <Box sx={{ textAlign: 'center', mb: 10 }}>
-              <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.8 }}
-              >
-                <img
-                  src="/casting-planner-logo.png"
-                  alt="Casting Planner"
-                  style={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: 12,
-                    marginBottom: 24,
-                    boxShadow: '0 8px 32px rgba(139, 92, 246, 0.3)',
-                  }}
-                />
-              </motion.div>
+        <Container maxWidth="lg" sx={{ pt: { xs: 4, md: 6 }, pb: 10 }}>
 
-              <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7, duration: 0.8 }}
-              >
-                <Typography
-                  variant="h1"
-                  sx={{
-                    fontSize: { xs: '2.5rem', sm: '3.5rem', md: '4.5rem' },
-                    fontWeight: 800,
-                    color: '#fff',
-                    mb: 2,
-                    lineHeight: 1.1,
-                  }}
-                >
-                  Din komplette{' '}
-                  <Box component="span" sx={{
-                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                    backgroundClip: 'text',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}>
-                    casting-løsning
-                  </Box>
-                </Typography>
-              </motion.div>
+          {/* ── Logo hero ── */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0 }}>
+            <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3, duration: 1 }}>
+              <Box
+                component="img"
+                src="/role-room-assets/landing_logo.webp"
+                alt="The Role Room"
+                sx={{
+                  width: '100%',
+                  maxWidth: 640,
+                  height: 'auto',
+                  display: 'block',
+                  filter: 'drop-shadow(0 0 32px rgba(139,92,246,0.55))',
+                }}
+              />
+            </motion.div>
+          </Box>
 
-              <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.9, duration: 0.8 }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                    color: 'rgba(255,255,255,0.87)',
-                    maxWidth: 600,
-                    mx: 'auto',
-                    mb: 5,
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Planlegg produksjoner, administrer roller og kandidater, 
-                  og hold oversikt over hele casting-prosessen fra én plattform.
-                </Typography>
-              </motion.div>
+          {/* ════ WHY ════ */}
+          <Box sx={{ textAlign: 'center', mb: 6 }}>
+            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.5, duration: 0.8 }}>
+              <Typography sx={{
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.25em',
+                textTransform: 'uppercase', mb: 2, minHeight: '1.4em',
+                background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
+                backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              }}>
+                {typedWhy}
+                <Box component="span" sx={{
+                  display: 'inline-block', width: '2px', height: '0.85em',
+                  bgcolor: '#8b5cf6', ml: '2px', verticalAlign: 'middle',
+                  opacity: cursorTarget === 'why' && cursorVisible ? 1 : 0, transition: 'opacity 0.15s',
+                }} />
+              </Typography>
+              <Typography variant="h1" sx={{
+                fontSize: { xs: '2rem', sm: '2.8rem', md: '3.6rem' },
+                fontWeight: 800, color: '#fff', lineHeight: 1.15,
+                maxWidth: 780, mx: 'auto',
+              }}>
+                {whyText}
+              </Typography>
+            </motion.div>
+          </Box>
 
-              <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 1.1, duration: 0.8 }}
+          {/* ════ HOW ════ */}
+          <Box sx={{ textAlign: 'center', mb: 10 }}>
+            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.75, duration: 0.8 }}>
+              <Typography sx={{
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.25em',
+                textTransform: 'uppercase', mb: 2, minHeight: '1.4em',
+                background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
+                backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              }}>
+                {typedHow}
+                <Box component="span" sx={{
+                  display: 'inline-block', width: '2px', height: '0.85em',
+                  bgcolor: '#8b5cf6', ml: '2px', verticalAlign: 'middle',
+                  opacity: cursorTarget === 'how' && cursorVisible ? 1 : 0, transition: 'opacity 0.15s',
+                }} />
+              </Typography>
+              <Typography sx={{
+                fontSize: { xs: '1.05rem', sm: '1.2rem' },
+                color: 'rgba(255,255,255,0.72)',
+                maxWidth: 600, mx: 'auto', lineHeight: 1.75, fontWeight: 300,
+              }}>
+                {howText}
+              </Typography>
+            </motion.div>
+          </Box>
+
+          {/* ── CTA ── */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, mb: 6 }}>
+            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 1, duration: 0.8 }}>
+              <Button
+                variant="contained" size="large"
+                onClick={handleStartClick}
+                startIcon={<PlayArrowIcon />}
+                sx={{
+                  px: 5, py: 2, fontSize: '1.05rem', fontWeight: 600, borderRadius: 3,
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                  boxShadow: '0 8px 32px rgba(139,92,246,0.4)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #9b6cf6 0%, #7376f1 100%)',
+                    boxShadow: '0 12px 40px rgba(139,92,246,0.55)',
+                    transform: 'translateY(-2px)',
+                  },
+                  transition: 'all 0.3s ease',
+                }}
               >
+                Start The Role Room
+              </Button>
+            </motion.div>
+            {onGuestEnter && demoModeEnabled && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.6, duration: 0.6 }}>
                 <Button
-                  variant="contained"
-                  size="large"
-                  onClick={handleStartClick}
-                  startIcon={<PlayArrowIcon />}
+                  onClick={onGuestEnter}
+                  size="small"
                   sx={{
-                    px: 5,
-                    py: 2,
-                    fontSize: '1.1rem',
-                    fontWeight: 600,
-                    borderRadius: 3,
-                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                    boxShadow: '0 8px 32px rgba(139, 92, 246, 0.4)',
-                    '&:hover': {
-                      background: 'linear-gradient(135deg, #9b6cf6 0%, #7376f1 100%)',
-                      boxShadow: '0 12px 40px rgba(139, 92, 246, 0.5)',
-                      transform: 'translateY(-2px)',
-                    },
-                    transition: 'all 0.3s ease',
+                    color: 'rgba(200,185,255,0.5)',
+                    fontSize: '0.78rem',
+                    fontWeight: 400,
+                    textTransform: 'none',
+                    letterSpacing: '0.02em',
+                    '&:hover': { color: 'rgba(200,185,255,0.85)', bgcolor: 'transparent', textDecoration: 'underline' },
                   }}
                 >
-                  Start Casting Planner
+                  Gå inn uten innlogging →
                 </Button>
               </motion.div>
-            </Box>
+            )}
+          </Box>
 
-            <Box sx={{ 
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' },
-              gap: 3,
-            }}>
-              {features.map((feature, index) => (
-                <motion.div
-                  key={feature.title}
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 1.3 + index * 0.15, duration: 0.6 }}
-                >
-                  <Box sx={{
-                    p: 4,
-                    borderRadius: 3,
-                    bgcolor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    textAlign: 'center',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      bgcolor: 'rgba(139,92,246,0.1)',
-                      borderColor: 'rgba(139,92,246,0.3)',
-                      transform: 'translateY(-4px)',
-                    },
-                  }}>
-                    <Box sx={{ 
-                      color: '#8b5cf6',
-                      mb: 2,
-                    }}>
-                      {feature.icon}
-                    </Box>
-                    <Typography sx={{ 
-                      color: '#fff', 
-                      fontWeight: 600,
-                      fontSize: '1.1rem',
-                      mb: 1,
-                    }}>
-                      {feature.title}
-                    </Typography>
-                    <Typography sx={{ 
-                      color: 'rgba(255,255,255,0.87)',
-                      fontSize: '0.9rem',
-                      lineHeight: 1.5,
-                    }}>
-                      {feature.desc}
-                    </Typography>
-                  </Box>
-                </motion.div>
-              ))}
-            </Box>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 2.2, duration: 1 }}
-            >
-              <Box sx={{ 
-                mt: 12, 
-                textAlign: 'center',
-                color: 'rgba(255,255,255,0.7)',
-                fontSize: '0.85rem',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
+          {/* ════ WHAT ════ */}
+          <Box sx={{ mb: 4, textAlign: 'center' }}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2, duration: 0.6 }}>
+              <Typography sx={{
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '1.1rem', fontWeight: 700, letterSpacing: '0.25em',
+                textTransform: 'uppercase', mb: 1, minHeight: '1.4em',
+                background: 'linear-gradient(90deg, #fff 0%, #8b5cf6 55%, #6366f1 100%)',
+                backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
               }}>
-                <Typography>
-                  En del av
-                </Typography>
-                <img 
-                  src="/creatorhub-virtual-studio-logo.svg" 
-                  alt="CreatorHub Virtual Studio"
-                  style={{ 
-                    height: '40px',
-                    opacity: 0.7,
-                    filter: 'brightness(1.2)',
-                  }}
-                />
-              </Box>
+                {typedWhat}
+                <Box component="span" sx={{
+                  display: 'inline-block', width: '2px', height: '0.85em',
+                  bgcolor: '#8b5cf6', ml: '2px', verticalAlign: 'middle',
+                  opacity: cursorTarget === 'what' && cursorVisible ? 1 : 0, transition: 'opacity 0.15s',
+                }} />
+              </Typography>
             </motion.div>
-          </Container>
-        </Box>
+          </Box>
+          <Box sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' },
+            gap: 3,
+            mb: 10,
+          }}>
+            {WHAT_FEATURES.map((f, i) => (
+              <motion.div
+                key={f.title}
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 1.3 + i * 0.12, duration: 0.6 }}
+              >
+                <Box sx={{
+                  p: 4, borderRadius: 3, height: '100%',
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  textAlign: 'center',
+                  transition: 'all 0.3s ease',
+                  backdropFilter: 'blur(12px)',
+                  '&:hover': {
+                    bgcolor: 'rgba(139,92,246,0.09)',
+                    borderColor: 'rgba(139,92,246,0.28)',
+                    transform: 'translateY(-4px)',
+                  },
+                }}>
+                  <Box sx={{ color: '#8b5cf6', mb: 2 }}>{f.icon}</Box>
+                  <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '1.05rem', mb: 1 }}>
+                    {f.title}
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.88rem', lineHeight: 1.6 }}>
+                    {f.desc}
+                  </Typography>
+                </Box>
+              </motion.div>
+            ))}
+          </Box>
+
+          {/* ── footer ── */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.2, duration: 1 }}>
+            <Box sx={{
+              mt: 12, textAlign: 'center',
+              color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            }}>
+              <Typography>En del av</Typography>
+              <img src="/creatorhub-virtual-studio-logo.svg" alt="CreatorHub Virtual Studio"
+                style={{ height: 40, opacity: 0.5, filter: 'brightness(1.2)' }} />
+            </Box>
+          </motion.div>
+
+        </Container>
       </motion.div>
 
       <LoginDialog
         open={loginDialogOpen}
         onClose={() => setLoginDialogOpen(false)}
         onLoginSuccess={handleLoginSuccess}
+        onGuestEnter={onGuestEnter}
         isLandingPage={true}
       />
     </Box>

@@ -14,7 +14,7 @@ import {
   Stack,
   Button,
   Card,
-  CardContent
+  CardContent,
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -22,7 +22,7 @@ import {
   Schedule as ScheduleIcon,
   Visibility as VisibilityIcon,
   Mouse as MouseIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 
 interface EmailProjectHistoryProps {

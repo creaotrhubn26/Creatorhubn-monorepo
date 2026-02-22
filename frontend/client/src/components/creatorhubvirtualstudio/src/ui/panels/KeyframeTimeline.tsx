@@ -47,7 +47,7 @@ import {
   SkipNext,
   Repeat,
   RepeatOne,
-  Speed,
+  Speed as Speed,
   ZoomIn,
   ZoomOut,
   FitScreen,

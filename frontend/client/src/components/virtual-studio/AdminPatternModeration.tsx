@@ -23,11 +23,7 @@ import {
   CircularProgress,
   Stack,
 } from '@mui/material';
-import {
-  CheckCircle,
-  Cancel,
-  Visibility,
-} from '@mui/icons-material';
+import { CheckCircle, Cancel, Visibility } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface Pattern {

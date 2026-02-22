@@ -2,23 +2,23 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  TextField, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
-  TableRow, 
-  Paper, 
-  Chip, 
-  IconButton, 
-  Alert, 
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  IconButton,
+  Alert,
   CircularProgress,
   Grid,
   FormControl,
@@ -26,18 +26,18 @@ import {
   Select,
   MenuItem,
   Tooltip,
-  Link
+  Link,
 } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
-import { 
-  Search, 
-  Refresh, 
-  TrendingUp, 
-  TrendingDown, 
+import {
+  Search,
+  Refresh,
+  TrendingUp,
+  TrendingDown,
   OpenInNew,
   CameraAlt,
   Videocam,
-  Headphones
+  Headphones,
 } from '@mui/icons-material';
 
 interface EquipmentPrice {

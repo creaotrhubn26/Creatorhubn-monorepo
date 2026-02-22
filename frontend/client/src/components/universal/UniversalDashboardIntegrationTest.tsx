@@ -8,7 +8,20 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
-import { Box, Typography, Card, CardContent, List, ListItem, ListItemText, Chip, Alert, Button, Divider, Stack } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
+  Alert,
+  Button,
+  Divider,
+  Stack,
+} from '@mui/material';
 import { useUniversalDashboard } from './UniversalDashboardContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';

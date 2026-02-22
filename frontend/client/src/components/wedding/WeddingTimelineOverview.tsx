@@ -29,7 +29,7 @@ import {
   Alert,
   Badge,
   Tabs,
-  Tab
+  Tab,
 } from '@mui/material';
 import {
   Event,
@@ -46,7 +46,7 @@ import {
   Person,
   AccessTime,
   CalendarToday,
-  Group
+  Group,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';

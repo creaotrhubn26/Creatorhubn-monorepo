@@ -36,7 +36,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Tab,
-  Tabs
+  Tabs,
 } from '@mui/material';
 import {
   AddCircle as Add,
@@ -50,7 +50,7 @@ import {
   Memory,
   AttachMoney,
   Category,
-  Info
+  Info,
 } from '@mui/icons-material';
 
 interface Product {

@@ -48,7 +48,7 @@ import {
   Dashboard,
   Settings,
   Refresh,
-  FilterListList,
+  FilterList as FilterListList,
 } from '@mui/icons-material';
 
 interface FeedbackEntry {

@@ -1,10 +1,10 @@
 import { useTheming } from '../utils/theming-helper';
 import React, { useState } from 'react';
-import { 
-  Box, 
-  IconButton, 
-  Fab, 
-  Tooltip, 
+import {
+  Box,
+  IconButton,
+  Fab,
+  Tooltip,
   Card as MuiCard,
   CardContent,
   Grid,
@@ -13,7 +13,7 @@ import {
   Chip,
   Badge,
   useTheme,
-  alpha
+  alpha,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -39,7 +39,16 @@ import {
 import UniversalShowcase from '../components/universal/UniversalShowcase';
 import { ShowcaseDriveManager } from '../components/showcase/ShowcaseDriveManager';
 import { CategoryManager } from '../components/showcase/CategoryManager';
-import { Dialog, DialogTitle, DialogContent, Typography, Tabs, Tab, Alert, Button } from '@mui/material';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Typography,
+  Tabs,
+  Tab,
+  Alert,
+  Button,
+} from '@mui/material';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
 import { CREATOR_HUB_BRANDING } from '../constants/CreatorHubBranding';

@@ -88,7 +88,7 @@ interface ShootModeViewProps {
 
 const statusConfig: Record<ShotStatus, { label: string; color: string; bgColor: string }> = {
   not_started: { label: 'Ikke startet', color: '#9e9e9e', bgColor: 'rgba(158,158,158,0.15)' },
-  in_progress: { label: 'Pagar', color: '#ff9800', bgColor: 'rgba(255,152,0,0.15)' },
+  in_progress: { label: 'Pagar', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
   completed: { label: 'Fullfort', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
 };
 
@@ -438,18 +438,18 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: 1,
-              bgcolor: isTimerRunning ? 'rgba(255,152,0,0.2)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${isTimerRunning ? '#ff9800' : 'rgba(255,255,255,0.1)'}`,
+              bgcolor: isTimerRunning ? 'rgba(147,51,234,0.2)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${isTimerRunning ? '#9333ea' : 'rgba(255,255,255,0.1)'}`,
               borderRadius: 2,
               px: 2,
               py: 1,
             }}
           >
-            <Timer sx={{ color: isTimerRunning ? '#ff9800' : '#fff' }} />
+            <Timer sx={{ color: isTimerRunning ? '#9333ea' : '#fff' }} />
             <Typography
               variant="h5"
               sx={{
-                color: isTimerRunning ? '#ff9800' : '#fff',
+                color: isTimerRunning ? '#9333ea' : '#fff',
                 fontFamily: 'monospace',
                 fontWeight: 600,
                 minWidth: 80,
@@ -460,8 +460,8 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             <IconButton
               onClick={() => setIsTimerRunning(!isTimerRunning)}
               sx={{
-                color: isTimerRunning ? '#ff9800' : '#4caf50',
-                bgcolor: isTimerRunning ? 'rgba(255,152,0,0.1)' : 'rgba(76,175,80,0.1)',
+                color: isTimerRunning ? '#9333ea' : '#4caf50',
+                bgcolor: isTimerRunning ? 'rgba(147,51,234,0.1)' : 'rgba(76,175,80,0.1)',
               }}
             >
               {isTimerRunning ? <Pause /> : <PlayArrow />}
@@ -479,7 +479,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               </Typography>
             </Box>
             <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 700 }}>
+              <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700 }}>
                 {stats.inProgress}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -577,7 +577,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
               {stats.completed} av {stats.total} shots fullfort
             </Typography>
-            <Typography variant="caption" sx={{ color: '#ff9800' }}>
+            <Typography variant="caption" sx={{ color: '#9333ea' }}>
               Ca. {stats.remainingMinutes} min gjenstaar
             </Typography>
           </Box>
@@ -758,7 +758,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                 <Chip size="small" label={currentShot.shotType} sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff' }} />
-                <Chip size="small" label={currentShot.cameraAngle} sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ff9800' }} />
+                <Chip size="small" label={currentShot.cameraAngle} sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#9333ea' }} />
                 <Chip size="small" label={currentShot.cameraMovement} sx={{ bgcolor: 'rgba(156,39,176,0.15)', color: '#9c27b0' }} />
               </Box>
             </Box>
@@ -890,7 +890,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
       >
         <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Notes sx={{ color: '#ff9800' }} />
+            <Notes sx={{ color: '#9333ea' }} />
             Feltnotater - {selectedShotForNotes?.description || `Shot ${shots.findIndex(s => s.id === selectedShotForNotes?.id) + 1}`}
           </Box>
         </DialogTitle>
@@ -923,7 +923,7 @@ export const ShootModeView: React.FC<ShootModeViewProps> = ({
             variant="contained"
             onClick={handleSaveNotes}
             startIcon={<Save />}
-            sx={{ bgcolor: '#ff9800', color: '#000' }}
+            sx={{ bgcolor: '#9333ea', color: '#000' }}
           >
             Lagre notater
           </Button>
@@ -1077,7 +1077,7 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
           <Chip
             size="small"
             label={shot.cameraAngle}
-            sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ff9800', fontSize: '0.7rem' }}
+            sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#9333ea', fontSize: '0.7rem' }}
           />
           <Chip
             size="small"
@@ -1122,9 +1122,9 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
               onOpenNotes();
             }}
             sx={{
-              color: shot.notes ? '#ff9800' : 'rgba(255,255,255,0.5)',
+              color: shot.notes ? '#9333ea' : 'rgba(255,255,255,0.5)',
               fontSize: '0.75rem',
-              '&:hover': { bgcolor: 'rgba(255,152,0,0.1)' },
+              '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
             }}
           >
             {shot.notes ? 'Se notater' : 'Legg til notat'}
@@ -1134,8 +1134,8 @@ const ShootModeCard: React.FC<ShootModeCardProps> = ({
               size="small"
               label="Har notater"
               sx={{
-                bgcolor: 'rgba(255,152,0,0.15)',
-                color: '#ff9800',
+                bgcolor: 'rgba(147,51,234,0.15)',
+                color: '#9333ea',
                 fontSize: '0.65rem',
                 height: 20,
               }}

@@ -31,7 +31,7 @@ import {
   ListItemSecondaryAction,
   Breadcrumbs,
   Link,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   CreateNewFolder,
@@ -43,7 +43,7 @@ import {
   VideoLibrary,
   LibraryMusic,
   Assignment,
-  Business
+  Business,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getAuthHeader } from '@/lib/google/impersonation';

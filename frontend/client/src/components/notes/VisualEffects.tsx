@@ -303,7 +303,7 @@ const VisualEffects: React.FC<VisualEffectsProps> = ({
                   left:  0,
                   right:  0,
                   bottom:  0,
-                  background: 'radial-gradient(circle, rgba(2, 5, 5,255,255,0.8) 1px, transparent 1px)',
+                  background: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)',
                   backgroundSize: '20px 20px',
                   animation: 'particle-rain 1s linear infinite'
             }}

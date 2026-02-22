@@ -32,7 +32,7 @@ import {
   CircularProgress,
   Tooltip,
   Paper,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Chat as ClosemppIcon,
@@ -49,7 +49,7 @@ import {
   Add,
   PersonAdd,
   VpnKey,
-  Security
+  Security,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

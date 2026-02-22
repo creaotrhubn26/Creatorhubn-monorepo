@@ -22,7 +22,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Screenshot as ScreenshotIcon,
@@ -41,7 +41,7 @@ import {
   Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
   Security as SecurityIcon,
-  Speed as SpeedIcon
+  Speed as SpeedIcon,
 } from '@mui/icons-material';
 // Import Tesseract dynamically
 const Tesseract = await import('tesseract.js');
@@ -641,7 +641,7 @@ export const ScreenshotCapture: React.FC<ScreenshotCaptureProps> = ({
       fullWidth
       PaperProps={{
         sx: {
-          background: 'linear-gradient(135deg, rgba(2, 5, 5,107,53,0.1) 0%, rgba(78,205,196,0.1) 100%)',
+          background: 'linear-gradient(135deg, rgba(255,107,53,0.1) 0%, rgba(78,205,196,0.1) 100%)',
           backdropFilter: 'blur(10px)'
     }
     }}

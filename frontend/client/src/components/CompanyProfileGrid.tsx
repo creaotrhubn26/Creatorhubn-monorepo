@@ -22,7 +22,7 @@ import {
   IconButton,
   Fade,
   Skeleton,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -30,7 +30,7 @@ import {
   Sort as SortIcon,
   ViewModule as GridViewIcon,
   ViewList as ListViewIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import CompanyProfileQuickView from './CompanyProfileQuickView';

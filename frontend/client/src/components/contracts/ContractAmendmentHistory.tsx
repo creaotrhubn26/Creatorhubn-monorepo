@@ -33,15 +33,6 @@ import {
   AccessTime,
   Visibility,
 } from '@mui/icons-material';
-import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent,
-} from '@mui/lab';
 
 interface ContractAmendmentHistoryProps {
   open: boolean;

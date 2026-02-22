@@ -41,18 +41,18 @@ import {
   Chat as ChatIcon,
   Email as EmailIcon,
   Notifications as NotificationIcon,
-  VideocamCall as MeetingIcon,
+  VideoCall as MeetingIcon,
   Folder as ProjectIcon,
   Settings as SettingsIcon,
   Search as SearchIcon,
   Add as AddIcon,
   Send as SendIcon,
-  AttachDescription as AttachIcon,
+  AttachFile as AttachIcon,
   EmojiEmotions as EmojiIcon,
   MoreVert as MoreIcon,
   Group as GroupIcon,
   Person as PersonIcon,
-  DirectionsBusiness as BusinessIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

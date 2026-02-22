@@ -20,7 +20,12 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Person, Circle, MoreVert, Comment as CommentIcon } from '@mui/icons-material';
+import {
+  Person,
+  Circle,
+  MoreVert,
+  Comment as CommentIcon,
+} from '@mui/icons-material';
 import {
   User,
   Cursor,

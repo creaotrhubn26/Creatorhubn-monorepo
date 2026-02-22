@@ -1,5 +1,15 @@
 import * as React from 'react';
-import { Box, Paper, Stack, Typography, Button, Tabs, Tab, TextField, IconButton } from '@mui/material';
+import {
+  Box,
+  Paper,
+  Stack,
+  Typography,
+  Button,
+  Tabs,
+  Tab,
+  TextField,
+  IconButton,
+} from '@mui/material';
 import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
 import PersonOutlinedIcon from '@mui/icons-material/PersonOutlined';
 import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined';

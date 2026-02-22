@@ -34,7 +34,7 @@ import {
   IconButton,
   Tooltip,
   SvgIcon,
-  Card as MuiCard, // eslint-disable-line @typescript-eslint/no-unused-vars -- Used throughout for consistent wedding timeline card styling
+  Card as MuiCard,
 } from '@mui/material';
 import {
   Schedule,

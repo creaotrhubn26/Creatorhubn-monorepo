@@ -29,7 +29,7 @@ import {
   IconButton,
   Tooltip,
   Badge,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Description as DocumentIcon,
@@ -45,7 +45,7 @@ import {
   CheckCircle as CheckIcon,
   Warning as WarningIcon,
   Refresh as RefreshIcon,
-  SmartToy as SmartIcon
+  SmartToy as SmartIcon,
 } from '@mui/icons-material';
 
 interface MeetingPreparation {

@@ -2,9 +2,9 @@ import { useTheming } from '../utils/theming-helper';
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { 
-  Box, 
-  Typography, 
+import {
+  Box,
+  Typography,
   Paper,
   TextField,
   Button,
@@ -13,15 +13,15 @@ import {
   IconButton,
   Card,
   CardContent,
-  Divider
+  Divider,
 } from '@mui/material';
-import { 
+import {
   Lock,
   LockOpen,
   Refresh,
   Phone,
   Email,
-  Info
+  Info,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

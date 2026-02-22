@@ -13,7 +13,7 @@ import {
   IconButton,
   useTheme,
   CircularProgress,
-  Alert
+  Alert,
 } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import {
@@ -31,7 +31,7 @@ import {
   Star,
   AttachMoney,
   Chat,
-  Error as ErrorIcon
+  Error as ErrorIcon,
 } from '@mui/icons-material';
 
 // Import dynamic profession system

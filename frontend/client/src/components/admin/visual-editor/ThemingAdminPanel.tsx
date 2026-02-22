@@ -32,7 +32,7 @@ import {
   Save,
   Close,
   CheckCircle,
-  Warning
+  Warning,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { themingAdminService } from '../../../services/ThemingAdminService';

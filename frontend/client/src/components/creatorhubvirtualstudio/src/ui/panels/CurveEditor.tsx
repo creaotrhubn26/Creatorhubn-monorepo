@@ -10,7 +10,15 @@ import {
   Chip,
   Divider,
 } from '@mui/material';
-import { Timeline, ShowChart, LinearScale, Edit, Undo, Redo, Restore } from '@mui/icons-material';
+import {
+  Timeline,
+  ShowChart,
+  LinearScale,
+  Edit,
+  Undo,
+  Redo,
+  Restore,
+} from '@mui/icons-material';
 import { useAnimationStore, type EasingFunction } from '../../state/animationStore';
 
 interface BezierPoint {

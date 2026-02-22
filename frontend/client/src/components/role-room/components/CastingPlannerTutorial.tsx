@@ -46,8 +46,8 @@ import { tutorialService, Tutorial, TutorialStep } from '../services/tutorialSer
 const defaultTutorialSteps: TutorialStep[] = [
   {
     id: 'welcome',
-    title: 'Velkommen til Casting Planner!',
-    description: 'Denne veiledningen tar deg gjennom alle funksjonene i Casting Planner. Du lærer hvordan du planlegger produksjoner, administrerer team, og organiserer opptak effektivt.',
+    title: 'Velkommen til The Role Room!',
+    description: 'Denne veiledningen tar deg gjennom alle funksjonene i The Role Room. Du lærer hvordan du planlegger produksjoner, administrerer team, og organiserer opptak effektivt.',
     panel: -1,
     duration: 8000,
     tips: [
@@ -249,7 +249,7 @@ const defaultTutorialSteps: TutorialStep[] = [
   {
     id: 'complete',
     title: 'Gratulerer! Du har fullført veiledningen',
-    description: 'Du har nå lært alle hovedfunksjonene i Casting Planner. Klikk på "Nytt prosjekt"-knappen for å starte din første produksjon!',
+    description: 'Du har nå lært alle hovedfunksjonene i The Role Room. Klikk på "Nytt prosjekt"-knappen for å starte din første produksjon!',
     panel: -1,
     targetSelector: '[data-tutorial-target="create-project-button"]',
     action: 'click',
@@ -270,7 +270,7 @@ const panelInfo = [
   { name: 'Kandidater', icon: CandidatesIcon, color: '#10b981' },
   { name: 'Team', icon: TeamIcon, color: '#00d4ff' },
   { name: 'Steder', icon: LocationIcon, color: '#4caf50' },
-  { name: 'Utstyr', icon: PropIcon, color: '#ff9800' },
+  { name: 'Utstyr', icon: PropIcon, color: '#9333ea' },
   { name: 'Kalender', icon: CalendarIcon, color: '#9c27b0' },
   { name: 'Shot Lists', icon: ShotListIcon, color: '#e91e63' },
   { name: 'Auditions', icon: AuditionIcon, color: '#ffb800' },
@@ -284,7 +284,7 @@ const stepIndicatorMeta: Record<string, { label: string; icon: IconComponentType
   'candidates': { label: 'Kandidater', icon: CandidatesIcon, color: '#10b981' },
   'team': { label: 'Team', icon: TeamIcon, color: '#00d4ff' },
   'locations': { label: 'Steder', icon: LocationIcon, color: '#4caf50' },
-  'props': { label: 'Utstyr', icon: PropIcon, color: '#ff9800' },
+  'props': { label: 'Utstyr', icon: PropIcon, color: '#9333ea' },
   'calendar': { label: 'Kalender', icon: CalendarIcon, color: '#9c27b0' },
   'shotlist': { label: 'Shot Lists', icon: ShotListIcon, color: '#e91e63' },
   'shotlist-ai': { label: 'AI', icon: AIIcon, color: '#00d4ff' },
@@ -631,8 +631,8 @@ export const CastingPlannerTutorial: FC<CastingPlannerTutorialProps> = ({
                   }}
                 >
                   <img
-                    src="/casting-planner-logo.png"
-                    alt="Casting Planner"
+                    src="/role-room-assets/TheRoleRoom_Logo_Tagline.webp"
+                    alt="The Role Room"
                     style={{
                       width: '100%',
                       height: '100%',

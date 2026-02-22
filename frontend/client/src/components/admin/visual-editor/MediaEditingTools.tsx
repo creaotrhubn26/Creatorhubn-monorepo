@@ -28,7 +28,7 @@ import {
   Stack,
   Tabs,
   Tab,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Crop,
@@ -37,7 +37,7 @@ import {
   Tag,
   FilterList,
   FontDownload,
-  Image
+  Image,
 } from '@mui/icons-material';
 
 // Import helper functions separately

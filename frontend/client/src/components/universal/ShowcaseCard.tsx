@@ -13,7 +13,7 @@ import {
   Menu,
   MenuItem,
   ListItemIcon,
-  ListItemText
+  ListItemText,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -42,7 +42,7 @@ import {
   OpenInNew,
   Business,
   ViewModule,
-  Sync
+  Sync,
 } from '@mui/icons-material';
 
 export const formatFileSize = (bytes: number): string => {
@@ -211,15 +211,15 @@ const ShowcaseCard = React.memo(({
       }}
       sx={{ 
         bgcolor: showcaseSettings.cardBackground === 'dark' ? 'rgba(6, 31, 46, 0.8)' :
-                showcaseSettings.cardBackground === 'light' ? 'rgba(2, 5, 5, 255, 255, 0.9)' :
+                showcaseSettings.cardBackground === 'light' ? 'rgba(255, 255, 255, 0.9)' :
                 showcaseSettings.cardBackground === 'transparent' ? 'transparent' :
                 'rgba(26, 31, 46, 0.8)',
         background: showcaseSettings.cardBackground === 'dark' ? 
                    'linear-gradient(145deg, rgba(26, 31, 46, 0.9), rgba(31, 36, 50, 0.7))' :
                    showcaseSettings.cardBackground === 'light' ?
-                   'linear-gradient(145deg, rgba(2, 5, 5, 255, 255, 0.9), rgba(2, 4, 5, 245, 245, 0.7))' :
+                   'linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(2, 4, 5, 245, 245, 0.7))' :
                    'linear-gradient(145deg, rgba(26, 31, 46, 0.9), rgba(31, 36, 50, 0.7))',
-        border: '1px solid rgba(2, 5, 5, 107, 53, 0.1)',
+        border: '1px solid rgba(255, 107, 53, 0.1)',
         borderRadius: showcaseSettings.cardBorderRadius === 'none' ? 0 :
                      showcaseSettings.cardBorderRadius === 'small' ? 1 :
                      showcaseSettings.cardBorderRadius === 'medium' ? 3 :
@@ -229,9 +229,9 @@ const ShowcaseCard = React.memo(({
         backdropFilter: 'blur(20px)',
         boxShadow: showcaseSettings.cardShadow === 'none' ? 'none' :
                   showcaseSettings.cardShadow === 'subtle' ? '0 1px 3px rgba(0,0,0,0.12)' :
-                  showcaseSettings.cardShadow === 'medium' ? '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(2, 5, 5, 107, 53, 0.1)' :
-                  showcaseSettings.cardShadow === 'strong' ? '0 8px 30px rgba(0,0,0,0.5), 0 2px 8px rgba(2, 5, 5, 107, 53, 0.2)' :
-                  '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(2, 5, 5, 107, 53, 0.1)',
+                  showcaseSettings.cardShadow === 'medium' ? '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(255, 107, 53, 0.1)' :
+                  showcaseSettings.cardShadow === 'strong' ? '0 8px 30px rgba(0,0,0,0.5), 0 2px 8px rgba(255, 107, 53, 0.2)' :
+                  '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(255, 107, 53, 0.1)',
         position: 'relative',
         transition: showcaseSettings.animationSpeed === 'disabled' ? 'none' :
                    showcaseSettings.animationSpeed === 'slow' ? 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)' :
@@ -247,7 +247,7 @@ const ShowcaseCard = React.memo(({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.03), transparent, rgba(2, 5, 5, 140, 0, 0.03))',
+          background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.03), transparent, rgba(255, 140, 0, 0.03))',
           opacity: 0,
           transition: 'opacity 0.3s ease',
           pointerEvents: 'none',
@@ -433,7 +433,7 @@ const ShowcaseCard = React.memo(({
         </Typography>
         
         <Typography variant="caption" sx={{ 
-          color: 'rgba(2, 5, 5,255,255,0.7)',
+          color: 'rgba(255,255,255,0.7)',
           display: 'block',
           mb: 1 }}>
           {item.stats?.views} visninger • {new Date().toLocaleDateString('no-NO')}
@@ -468,15 +468,15 @@ const ShowcaseCard = React.memo(({
                   handleClientSelection(item.id);
                 }}
                 sx={{
-                  color: clientSelections.includes(item.id) ? accentColor : 'rgba(2, 5, 5,255,255,0.5)',
-                  bgcolor: clientSelections.includes(item.id) ? 'rgba(2, 5, 5, 107, 53, 0.2)' : 'transparent',
+                  color: clientSelections.includes(item.id) ? accentColor : 'rgba(255,255,255,0.5)',
+                  bgcolor: clientSelections.includes(item.id) ? 'rgba(255, 107, 53, 0.2)' : 'transparent',
                   variant: showcaseSettings.buttonStyle === 'filled' ? 'contained' :
                           showcaseSettings.buttonStyle === 'outlined' ? 'outlined' :
                           showcaseSettings.buttonStyle === 'text' ? 'text' : 'text','&:hover': { 
                     color: accentColor,
                     bgcolor: showcaseSettings.buttonStyle === 'filled' ? accentColor :
-                            showcaseSettings.buttonStyle === 'outlined' ? 'rgba(2, 5, 5, 107, 53, 0.1)' :
-                            'rgba(2, 5, 5, 107, 53, 0.1)'
+                            showcaseSettings.buttonStyle === 'outlined' ? 'rgba(255, 107, 53, 0.1)' :
+                            'rgba(255, 107, 53, 0.1)'
                   }
                 }}
               >
@@ -496,7 +496,7 @@ const ShowcaseCard = React.memo(({
                   toggleFavorite(item.id);
                 }}
                 sx={{ 
-                  color: favorites.has(item.id) ? '#ff4444' : 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: '#ff4444' }
+                  color: favorites.has(item.id) ? '#ff4444' : 'rgba(255,255,255,0.5)','&:hover': { color: '#ff4444' }
                 }}
               >
                 {favorites.has(item.id) ? <Favorite sx={{ fontSize: 16 }} /> : <FavoriteBorder sx={{ fontSize: 16 }} />}
@@ -509,7 +509,7 @@ const ShowcaseCard = React.memo(({
                       showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
                 disabled={projectState === 'delivered'}
                 sx={{ 
-                  color: projectState === 'delivered' ? 'rgba(2, 5, 5,255,255,0.2)' : 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: projectState === 'delivered' ? 'rgba(2, 5, 5,255,255,0.2)' : '#fff' }
+                  color: projectState === 'delivered' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)','&:hover': { color: projectState === 'delivered' ? 'rgba(255,255,255,0.2)' : '#fff' }
                 }}
                 onClick={() => setShowComments(!showComments)}
               >
@@ -523,7 +523,7 @@ const ShowcaseCard = React.memo(({
                       showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
                 disabled={projectState === 'in_review'}
                 sx={{ 
-                  color: projectState === 'in_review' ? 'rgba(2, 5, 5,255,255,0.2)' : 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: projectState === 'in_review' ? 'rgba(2, 5, 5,255,255,0.2)' : accentColor }
+                  color: projectState === 'in_review' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)','&:hover': { color: projectState === 'in_review' ? 'rgba(255,255,255,0.2)' : accentColor }
             }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -539,7 +539,7 @@ const ShowcaseCard = React.memo(({
                 size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
                       showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
                 sx={{ 
-                  color: 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: '#9C27B0' }
+                  color: 'rgba(255,255,255,0.5)','&:hover': { color: '#9C27B0' }
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -556,7 +556,7 @@ const ShowcaseCard = React.memo(({
                   size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
                         showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
                   sx={{ 
-                    color: 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: accentColor }
+                    color: 'rgba(255,255,255,0.5)','&:hover': { color: accentColor }
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -590,7 +590,7 @@ const ShowcaseCard = React.memo(({
           </Box>
           
           {showcaseSettings.showStatusText && (
-            <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
               {[
                 clientSelections.includes(item.id) ? 'Valgt' : 'Ikke valgt',
                 favorites.has(item.id) ? 'Favoritt' : 'Ikke favoritt',

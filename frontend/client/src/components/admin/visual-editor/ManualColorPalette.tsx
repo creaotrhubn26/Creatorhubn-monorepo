@@ -21,7 +21,13 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
-import { Shuffle, ContentCopy, Check, AutoAwesome, ColorLens } from '@mui/icons-material';
+import {
+  Shuffle,
+  ContentCopy,
+  Check,
+  AutoAwesome,
+  ColorLens,
+} from '@mui/icons-material';
 
 interface ColorPalette {
   primary: string;

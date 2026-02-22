@@ -25,7 +25,7 @@ import {
   Divider,
   Switch,
   FormControlLabel,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Close,
@@ -44,7 +44,7 @@ import {
   Download,
   Share,
   Bookmark,
-  MusicNote
+  MusicNote,
 } from '@mui/icons-material';
 
 interface AudioTrack {

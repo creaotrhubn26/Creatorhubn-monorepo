@@ -4,8 +4,24 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Chip, Divider } from '@mui/material';
-import { CheckCircle, Error as ErrorIcon, Sync, Send, Storage } from '@mui/icons-material';
+import {
+  Box,
+  Button,
+  Typography,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
+  Divider,
+} from '@mui/material';
+import {
+  CheckCircle,
+  Error as ErrorIcon,
+  Sync,
+  Send,
+  Storage,
+} from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { useTheming } from '../../utils/theming-helper';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';

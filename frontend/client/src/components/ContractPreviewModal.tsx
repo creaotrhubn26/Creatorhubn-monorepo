@@ -29,7 +29,7 @@ import {
   Button,
   IconButton,
   Fade,
-  Backdrop
+  Backdrop,
 } from '@mui/material';
 import {
   Description,
@@ -38,7 +38,7 @@ import {
   Event,
   Person,
   Euro,
-  Download
+  Download,
 } from '@mui/icons-material';
 
 interface ContractPreviewModalProps {

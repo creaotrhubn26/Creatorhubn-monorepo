@@ -1,15 +1,15 @@
 import * as React from 'react';
-import { 
-  Box, 
-  Button, 
-  Typography, 
-  Select, 
-  MenuItem, 
-  FormControl, 
+import {
+  Box,
+  Button,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
   InputLabel,
   LinearProgress,
   Stack,
-  Chip
+  Chip,
 } from '@mui/material';
 import { PhotoCamera, Download, Settings } from '@mui/icons-material';
 import renderService from '../../core/services/render';

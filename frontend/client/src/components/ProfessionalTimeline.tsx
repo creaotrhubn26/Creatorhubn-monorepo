@@ -1,5 +1,15 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-import { Box, Menu, MenuItem, Divider, Typography, Chip, Tooltip, TextField, Select } from '@mui/material';
+import {
+  Box,
+  Menu,
+  MenuItem,
+  Divider,
+  Typography,
+  Chip,
+  Tooltip,
+  TextField,
+  Select,
+} from '@mui/material';
 import { BeatClip, Track } from '../services/storyArcDataIntegration';
 
 export interface TimelineMarker {

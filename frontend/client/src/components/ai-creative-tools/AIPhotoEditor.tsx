@@ -1,6 +1,11 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Card as MuiCard, CardContent, CardHeader, Typography } from '@mui/material';
+import {
+  Card as MuiCard,
+  CardContent,
+  CardHeader,
+  Typography,
+} from '@mui/material';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
@@ -11,13 +16,45 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { UniversalFileUpload } from '../universal/UniversalFileUpload';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  CloudUpload, CloudDownload, AutoFixHigh, Sparkles, Bolt, Visibility, Settings,
-  Palette, Contrast, Brightness4, FilterList, ContentCut, RotateRight,
-  OpenWith, Crop, Flip, Flip, WbSunny, Nightlight,
-  People, Layers, CenterFocusStrong, EmojiEvents, Star, TrendingUp, CameraAlt,
-  Image as ImageIcon, Videocam, MusicNote, Edit, Save, Refresh,
-  ArrowBack, ArrowForward, ZoomIn, ZoomOut, GridOn, OpenInFull
+import {
+  CloudUpload,
+  CloudDownload,
+  AutoFixHigh,
+  AutoAwesome as Sparkles,
+  Bolt,
+  Visibility,
+  Settings,
+  Palette,
+  Contrast,
+  Brightness4,
+  FilterList,
+  ContentCut,
+  RotateRight,
+  OpenWith,
+  Crop,
+  Flip,
+  Flip,
+  WbSunny,
+  Nightlight,
+  People,
+  Layers,
+  CenterFocusStrong,
+  EmojiEvents,
+  Star,
+  TrendingUp,
+  CameraAlt,
+  Image as ImageIcon,
+  Videocam,
+  MusicNote,
+  Edit,
+  Save,
+  Refresh,
+  ArrowBack,
+  ArrowForward,
+  ZoomIn,
+  ZoomOut,
+  GridOn,
+  OpenInFull,
 } from '@mui/icons-material';
 
 interface AIPhotoEditorProps {

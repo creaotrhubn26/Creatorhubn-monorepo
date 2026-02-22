@@ -55,7 +55,7 @@ import {
   Settings as SettingsIcon,
   Payment,
   CardMembership,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import { useToast } from '../../hooks/use-toast';
 // Import dynamic profession system

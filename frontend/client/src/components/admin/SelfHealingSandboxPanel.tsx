@@ -17,7 +17,7 @@ import {
   IconButton,
   Tooltip,
   Alert,
-  Grid
+  Grid,
 } from '@mui/material';
 import {
   AutoFixHigh as AutoFixIcon,
@@ -25,7 +25,7 @@ import {
   FileDownload as ExportIcon,
   Delete as ClearIcon,
   Visibility as ViewIcon,
-  CheckCircle as SuccessIcon
+  CheckCircle as SuccessIcon,
 } from '@mui/icons-material';
 import { selfHealingSandbox, RecordedCall, WireMockMapping } from '../../utils/selfHealingSandbox';
 import { toast } from '../../hooks/use-toast';

@@ -13,7 +13,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   TextField,
   Button,
   Grid,
@@ -29,13 +28,13 @@ import {
   Divider,
   Autocomplete,
 } from '@mui/material';
-import { 
-  LocationOn, 
-  Search, 
-  CheckCircle, 
+import {
+  LocationOn,
+  Search,
+  CheckCircle,
   Warning,
   Info,
-  Place
+  Place,
 } from '@mui/icons-material';
 
 interface PostalCodeInfo {

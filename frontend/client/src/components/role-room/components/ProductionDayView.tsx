@@ -87,6 +87,8 @@ import { WeatherForecastCard } from './WeatherForecastCard';
 import { TravelCostsCard } from './TravelCostsCard';
 import { useToast } from './ToastStack';
 import { RichTextEditor } from './RichTextEditor';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import calenderPng from './icons/Keep/roleroom_calender.png';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -1577,16 +1579,12 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
       {/* Empty state */}
       {productionDays.length === 0 ? (
-        <Box
-          role="status"
-          sx={{ textAlign: 'center', py: { xs: 4, sm: 8 }, color: 'rgba(255,255,255,0.87)' }}
-        >
-          <CalendarIcon sx={{ fontSize: { xs: 48, sm: 64 }, mb: 2, opacity: 0.3 }} />
-          <Typography variant="body1">Ingen produksjonsdager ennå</Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Legg til produksjonsdager for å planlegge dag-for-dag produksjon
-          </Typography>
-        </Box>
+        <RoleRoomEmptyState
+          iconSrc={calenderPng}
+          title="Ingen produksjonsdager ennå"
+          subtitle="Legg til produksjonsdager for å planlegge dag-for-dag produksjon"
+          color="#9c27b0"
+        />
       ) : filteredAndSortedDays.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
@@ -2656,8 +2654,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                       sx={{
                                         p: { xs: 2, sm: 2.5 },
                                         borderRadius: 2.5,
-                                        bgcolor: 'rgba(255,152,0,0.08)',
-                                        border: '1px solid rgba(255,152,0,0.2)',
+                                        bgcolor: 'rgba(147,51,234,0.08)',
+                                        border: '1px solid rgba(147,51,234,0.2)',
                                         height: '100%',
                                         transition: 'all 0.2s ease',
                                       }}
@@ -2668,16 +2666,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             width: { xs: 36, sm: 40 },
                                             height: { xs: 36, sm: 40 },
                                             borderRadius: 2,
-                                            bgcolor: 'rgba(255,152,0,0.2)',
+                                            bgcolor: 'rgba(147,51,234,0.2)',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                           }}
                                         >
-                                          <InventoryIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#ffb74d' }} />
+                                          <InventoryIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#c084fc' }} />
                                         </Box>
                                         <Box sx={{ flex: 1 }}>
-                                          <Typography sx={{ color: '#ffb74d', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                          <Typography sx={{ color: '#c084fc', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                                             Utstyr
                                           </Typography>
                                           <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
@@ -2688,8 +2686,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           label={dayProps.length}
                                           size="small"
                                           sx={{
-                                            bgcolor: 'rgba(255,152,0,0.3)',
-                                            color: '#ffb74d',
+                                            bgcolor: 'rgba(147,51,234,0.3)',
+                                            color: '#c084fc',
                                             fontWeight: 700,
                                             minWidth: 32,
                                           }}
@@ -2702,7 +2700,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             label={prop.name}
                                             size="medium"
                                             sx={{
-                                              bgcolor: 'rgba(255,152,0,0.2)',
+                                              bgcolor: 'rgba(147,51,234,0.2)',
                                               color: '#ffcc80',
                                               fontWeight: 500,
                                               fontSize: { xs: '0.8rem', sm: '0.875rem' },
@@ -2822,9 +2820,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                   sx={{
                                     mt: 2,
                                     borderRadius: 2,
-                                    bgcolor: 'rgba(255,152,0,0.1)',
-                                    border: '1px solid rgba(255,152,0,0.3)',
-                                    '& .MuiAlert-icon': { color: '#ffb74d' },
+                                    bgcolor: 'rgba(147,51,234,0.1)',
+                                    border: '1px solid rgba(147,51,234,0.3)',
+                                    '& .MuiAlert-icon': { color: '#c084fc' },
                                     '& .MuiAlert-message': {
                                       color: 'rgba(255,255,255,0.9)',
                                       fontSize: '0.875rem',
@@ -2925,7 +2923,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                               width: 8,
                                               height: 8,
                                               borderRadius: '50%',
-                                              bgcolor: log.action === 'created' ? '#10b981' : log.action === 'status_changed' ? '#ff9800' : '#9c27b0',
+                                              bgcolor: log.action === 'created' ? '#10b981' : log.action === 'status_changed' ? '#9333ea' : '#9c27b0',
                                               mt: 0.75,
                                               flexShrink: 0,
                                             }}
@@ -3567,7 +3565,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             bgcolor: '#1c2128',
             color: '#fff',
             borderRadius: 3,
-            border: '2px solid rgba(255,152,0,0.3)',
+            border: '2px solid rgba(147,51,234,0.3)',
           },
         }}
       >
@@ -3576,8 +3574,8 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             display: 'flex',
             alignItems: 'center',
             gap: 2,
-            bgcolor: 'rgba(255,152,0,0.1)',
-            borderBottom: '1px solid rgba(255,152,0,0.2)',
+            bgcolor: 'rgba(147,51,234,0.1)',
+            borderBottom: '1px solid rgba(147,51,234,0.2)',
           }}
         >
           <Box
@@ -3585,7 +3583,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               width: 48,
               height: 48,
               borderRadius: 2,
-              bgcolor: 'rgba(255,152,0,0.2)',
+              bgcolor: 'rgba(147,51,234,0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -3600,13 +3598,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             <NotifyIcon
               sx={{
                 fontSize: 28,
-                color: '#ff9800',
+                color: '#9333ea',
                 animation: 'ring 0.5s ease-in-out 2',
               }}
             />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#ff9800' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#9333ea' }}>
               Informer teamet?
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -3619,11 +3617,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             severity="warning"
             icon={<WarningIcon />}
             sx={{
-              bgcolor: 'rgba(255,152,0,0.1)',
+              bgcolor: 'rgba(147,51,234,0.1)',
               color: '#fff',
-              border: '1px solid rgba(255,152,0,0.3)',
+              border: '1px solid rgba(147,51,234,0.3)',
               mb: 3,
-              '& .MuiAlert-icon': { color: '#ff9800' },
+              '& .MuiAlert-icon': { color: '#9333ea' },
             }}
           >
             Følgende felt er endret og kan påvirke teamet:
@@ -3648,16 +3646,16 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     width: 36,
                     height: 36,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(255,152,0,0.2)',
+                    bgcolor: 'rgba(147,51,234,0.2)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  {field === 'Dato' && <CalendarIcon sx={{ color: '#ff9800', fontSize: 20 }} />}
-                  {field === 'Arbeidstid' && <TimeIcon sx={{ color: '#ff9800', fontSize: 20 }} />}
-                  {field === 'Lokasjon' && <LocationIcon sx={{ color: '#ff9800', fontSize: 20 }} />}
-                  {field === 'Notater' && <NotesIcon sx={{ color: '#ff9800', fontSize: 20 }} />}
+                  {field === 'Dato' && <CalendarIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
+                  {field === 'Arbeidstid' && <TimeIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
+                  {field === 'Lokasjon' && <LocationIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
+                  {field === 'Notater' && <NotesIcon sx={{ color: '#9333ea', fontSize: 20 }} />}
                 </Box>
                 <Typography sx={{ color: '#fff', fontWeight: 600 }}>
                   {field}
@@ -3707,11 +3705,11 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
             startIcon={<NotifyIcon />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#ff9800',
+              bgcolor: '#9333ea',
               color: '#000',
               fontWeight: 700,
               minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { bgcolor: '#f57c00' },
+              '&:hover': { bgcolor: '#6d28d9' },
             }}
           >
             Informer teamet

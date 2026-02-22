@@ -31,7 +31,14 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { PhotoCamera, Code, AutoAwesome, CheckCircle, Warning, Info } from '@mui/icons-material';
+import {
+  PhotoCamera,
+  Code,
+  AutoAwesome,
+  CheckCircle,
+  Warning,
+  Info,
+} from '@mui/icons-material';
 import { AIVisionService, PhotoAnalysis } from '@/services/ai-vision-service';
 
 interface AIVisionCodeGeneratorProps {
@@ -73,7 +80,7 @@ export default function AIVisionCodeGenerator({
     // Analyze with AI Vision
     setAnalyzing(true);
     try {
-      const img = await loadImage(URL.createObjectURL(file);
+      const img = await loadImage(URL.createObjectURL(file));
       const result = await AIVisionService.analyzePhoto(img, {
         includeComposition: true,
         includeQuality: true,
@@ -149,7 +156,7 @@ export default function AIVisionCodeGenerator({
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        , 'Content-Type': 'application/json',
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.REACT_APP_OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
@@ -189,7 +196,7 @@ export default function AIVisionCodeGenerator({
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        , 'Content-Type': 'application/json',
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.REACT_APP_OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
@@ -232,7 +239,7 @@ export default function AIVisionCodeGenerator({
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        , 'Content-Type': 'application/json','x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY ||
+        'Content-Type': 'application/json','x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY ||
           import.meta.env.REACT_APP_ANTHROPIC_API_KEY || '', 'anthropic-version' : '2023-06-01',
       },
       body: JSON.stringify({
@@ -440,7 +447,7 @@ export default function AIVisionCodeGenerator({
                   <Typography variant="subtitle2" gutterBottom fontWeight={600}>
                     Scene Detection
                   </Typography>
-                  <Stack direction="row" spacing={1}, sx={{ mb: 1 }}>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
                     <Chip label={analysis.scene.type} size="small" color="primary" />
                     <Chip label={analysis.scene.lighting} size="small" />
                     {analysis.scene.hasPeople && (

@@ -3,16 +3,61 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
-import { 
-  Box, Typography, Card, CardContent, Grid, Button, Slider, Chip, LinearProgress, 
-  Alert, Select, MenuItem, FormControl, InputLabel, Dialog, DialogTitle, 
-  DialogContent, DialogActions, List, ListItem, ListItemText, Divider
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  Slider,
+  Chip,
+  LinearProgress,
+  Alert,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
 } from '@mui/material';
-import { 
-  PhotoCamera, AutoFixHigh, Brightness6, Contrast, Palette, Face, Tune, 
-  CloudUpload, FolderOpen, Save, Assessment, CloudDone, ZoomIn, CompareArrows, Fullscreen,
-  ZoomOut, ViewColumn, VisibilityOff, Compare, Layers, SwapHoriz, Opacity, Close,
-  PanTool, FitScreen, CenterFocusStrong, Visibility, RotateLeft, RotateRight, GridOn
+import {
+  PhotoCamera,
+  AutoFixHigh,
+  Brightness6,
+  Contrast,
+  Palette,
+  Face,
+  Tune,
+  CloudUpload,
+  FolderOpen,
+  Save,
+  Assessment,
+  CloudDone,
+  ZoomIn,
+  CompareArrows,
+  Fullscreen,
+  ZoomOut,
+  ViewColumn,
+  VisibilityOff,
+  Compare,
+  Layers,
+  SwapHoriz,
+  Opacity,
+  Close,
+  PanTool,
+  FitScreen,
+  CenterFocusStrong,
+  Visibility,
+  RotateLeft,
+  RotateRight,
+  GridOn,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import ProgressTracking from '../../photo-enhancer/ProgressTracking';

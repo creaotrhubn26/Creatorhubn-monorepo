@@ -26,7 +26,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Paper,
-  Stack
+  Stack,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -34,12 +34,12 @@ import {
   ExpandMore,
   Info,
   Warning,
-  Speed,
+  Speed as Speed,
   Storage,
   TrendingUp,
   AutoAwesome,
   Category,
-  Lightbulb
+  Lightbulb,
 } from '@mui/icons-material';
 import {
   getSuggestionsForComponent,

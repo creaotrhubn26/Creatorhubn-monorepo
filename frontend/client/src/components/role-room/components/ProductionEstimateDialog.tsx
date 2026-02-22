@@ -71,7 +71,7 @@ interface ProductionEstimate {
 const getRiskColor = (level: 'low' | 'medium' | 'high' | 'critical'): string => {
   switch (level) {
     case 'low': return '#4caf50';
-    case 'medium': return '#ff9800';
+    case 'medium': return '#9333ea';
     case 'high': return '#f44336';
     case 'critical': return '#9c27b0';
   }

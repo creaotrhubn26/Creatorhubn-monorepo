@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Snackbar, Alert, AlertColor } from '@mui/material';
+import { Snackbar, Alert } from '@mui/material';
+import type { AlertColor } from '@mui/material/Alert';
 import ScrollStory from './ScrollStory.enhanced';
 import type { ScrollStory as ScrollStoryType } from './useScrollStory';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';

@@ -8,7 +8,13 @@
  */
 
 import React from 'react';
-import { Box, Typography, Paper, Divider, Grid } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Paper,
+  Divider,
+  Grid,
+} from '@mui/material';
 import { useBrandedTheme } from '@/contexts/WhiteLabelThemeProvider';
 import { useWhiteLabelBranding } from '@/contexts/WhiteLabelBrandingContext';
 

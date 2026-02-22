@@ -46,7 +46,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
 } from '@mui/material';
 import {
   Schedule,
@@ -70,7 +70,7 @@ import {
   StarBorder,
   Star,
   PhotoCamera,
-  Videocam
+  Videocam,
 } from '@mui/icons-material';
 
 interface ClientActivity {
@@ -658,8 +658,8 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
 
   if (isLoading) {
     return (
-      <Paper sx={{ p: 2, bgcolor: 'rgba(2, 5, 5,255,255,0.03)', border: '1px solid rgba(2, 5, 5,255,255,0.1)' }}>
-        <LinearProgress sx={{ bgcolor: 'rgba(2, 5, 5,255,255,0.1)','& .MuiLinearProgress-bar': { bgcolor: accentColor } }} />
+      <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <LinearProgress sx={{ bgcolor: 'rgba(255,255,255,0.1)','& .MuiLinearProgress-bar': { bgcolor: accentColor } }} />
       </Paper>
     );
   }
@@ -1154,7 +1154,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
             </Collapse>
           </Box>
 
-          <Divider sx={{ borderColor: 'rgba(2, 5, 5,255,255,0.1)' }} />
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
         </>
       )}
 
@@ -1442,7 +1442,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
         </Collapse>
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(2, 5, 5,255,255,0.1)' }} />
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
       {/* TIMELINE EVENTS Section (Upcoming ceremony, meetings, photo sessions) */}
       {timelineEvents.length > 0 && (
@@ -1451,7 +1451,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
             <Box 
               sx={{ 
                 p: 1.5, 
-                bgcolor: urgentTimelineEvents > 0 ? 'rgba(1, 5, 6, 39, 176, 0.08)' : 'rgba(2, 5, 5,255,255,0.03)',
+                bgcolor: urgentTimelineEvents > 0 ? 'rgba(1, 5, 6, 39, 176, 0.08)' : 'rgba(255,255,255,0.03)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -1501,7 +1501,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                       sx={{ 
                         px: 2,
                         py: 2,
-                        borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
                         bgcolor: hoursUntil < 2 ? 'rgba(1, 5, 6, 39, 176, 0.08)' : 'transparent','&:hover': {
                           bgcolor: 'rgba(1, 5, 6, 39, 176, 0.15)',
                           cursor: 'pointer'
@@ -1544,18 +1544,18 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                         }
                         secondary={
                           <Box>
-                            <Typography variant="caption" display="block" sx={{ color: 'rgba(2, 5, 5,255,255,0.8)', fontWeight: 500}}>
+                            <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.8)', fontWeight: 500}}>
                               {activity.clientName}
                               {activity.eventType && ` • ${activity.eventType}`}
                             </Typography>
                             {activity.eventLocation && (
-                              <Typography variant="caption" display="block" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)' }}>
+                              <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                                 📍 {activity.eventLocation}
                               </Typography>
                             )}
                             {activity.message && (
                               <Typography variant="caption" display="block" sx={{ 
-                                color: 'rgba(2, 5, 5,255,255,0.7)', 
+                                color: 'rgba(255,255,255,0.7)', 
                                 fontStyle: 'italic',
                                 mt: 0.5 }}>
                                 {activity.message}
@@ -1578,7 +1578,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                                     fontWeight: 700}}
                                 />
                               )}
-                              <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', ml: 'auto' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', ml: 'auto' }}>
                                 {hoursUntil < 1 ? 'Mindre enn 1 time!' :
                                  hoursUntil < 24 ? `Om ${Math.round(hoursUntil)} timer` :
                                  `Om ${Math.round(hoursUntil / 24)} dager`}
@@ -1594,7 +1594,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
             </Collapse>
           </Box>
 
-          <Divider sx={{ borderColor: 'rgba(2, 5, 5,255,255,0.1)' }} />
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
         </>
       )}
 
@@ -1603,12 +1603,12 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
         <Box 
           sx={{ 
             p: 1.5, 
-            bgcolor: 'rgba(2, 5, 5,255,255,0.03)',
+            bgcolor: 'rgba(255,255,255,0.03)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             cursor: 'pointer','&:hover': {
-              bgcolor: 'rgba(2, 5, 5,255,255,0.05)'
+              bgcolor: 'rgba(255,255,255,0.05)'
             }
           }}
           onClick={() => toggleSection('deadlines')}
@@ -1642,7 +1642,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
               <ListItem>
                 <ListItemText 
                   primary={
-                    <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
                       Ingen kommende frister
                     </Typography>
                   }
@@ -1661,7 +1661,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                       px: 2,
                       py: 1.5,
                       borderLeft: `4px solid ${urgencyColor}`,
-                      borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
                       bgcolor: isOverdue || isUrgent ? `${urgencyColor}10` : 'transparent','&:hover': {
                         bgcolor: `${urgencyColor}15`,
                         cursor: 'pointer'
@@ -1691,11 +1691,11 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                       }
                       secondary={
                         <Box>
-                          <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', display: 'block' }}>
                             {activity.itemName}
                           </Typography>
                           {activity.count !== undefined && (
-                            <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)', display: 'block' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}>
                               {activity.count} elementer valgt
                             </Typography>
                           )}
@@ -1736,19 +1736,19 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
         </Collapse>
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(2, 5, 5,255,255,0.1)' }} />
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
       {/* COMMENTS Section */}
       <Box>
         <Box 
           sx={{ 
             p: 1.5, 
-            bgcolor: 'rgba(2, 5, 5,255,255,0.03)',
+            bgcolor: 'rgba(255,255,255,0.03)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             cursor: 'pointer','&:hover': {
-              bgcolor: 'rgba(2, 5, 5,255,255,0.05)'
+              bgcolor: 'rgba(255,255,255,0.05)'
             }
           }}
           onClick={() => toggleSection('comments')}
@@ -1773,7 +1773,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
               <ListItem>
                 <ListItemText 
                   primary={
-                    <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
                       Ingen nye kommentarer
                     </Typography>
                   }
@@ -1786,7 +1786,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                   sx={{ 
                     px: 2,
                     py: 1.5,
-                    borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)','&:hover': {
+                    borderBottom: '1px solid rgba(255,255,255,0.05)','&:hover': {
                       bgcolor: 'rgba(1, 5, 6, 39, 176, 0.1)',
                       cursor: 'pointer'
                     }
@@ -1809,20 +1809,20 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                           {activity.clientName}
                         </Typography>
                         {getItemTypeIcon(activity.itemType)}
-                        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
                           {timeAgo(activity.timestamp)}
                         </Typography>
                       </Box>
                     }
                     secondary={
                       <Box>
-                        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)', display: 'block', mb: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block', mb: 0.5 }}>
                           på: {activity.itemName}
                         </Typography>
                         <Typography 
                           variant="body2" 
                           sx={{ 
-                            color: 'rgba(2, 5, 5,255,255,0.9)',
+                            color: 'rgba(255,255,255,0.9)',
                             fontStyle: 'italic',
                             bgcolor: 'rgba(1, 5, 6, 39, 176, 0.1)',
                             p: 1,
@@ -1842,19 +1842,19 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
         </Collapse>
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(2, 5, 5,255,255,0.1)' }} />
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
       {/* DOWNLOADS Section */}
       <Box>
         <Box 
           sx={{ 
             p: 1.5, 
-            bgcolor: 'rgba(2, 5, 5,255,255,0.03)',
+            bgcolor: 'rgba(255,255,255,0.03)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             cursor: 'pointer','&:hover': {
-              bgcolor: 'rgba(2, 5, 5,255,255,0.05)'
+              bgcolor: 'rgba(255,255,255,0.05)'
             }
           }}
           onClick={() => toggleSection('downloads')}
@@ -1888,7 +1888,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
               <ListItem>
                 <ListItemText 
                   primary={
-                    <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
                       Ingen nedlastinger ennå
                     </Typography>
                   }
@@ -1901,7 +1901,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                   sx={{ 
                     px: 2,
                     py: 1,
-                    borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)','&:hover': {
+                    borderBottom: '1px solid rgba(255,255,255,0.05)','&:hover': {
                       bgcolor: 'rgba(33, 150, 243, 0.1)',
                       cursor: 'pointer'
                     }
@@ -1925,7 +1925,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                     }
                     secondary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                           {activity.itemName}
                         </Typography>
                         {activity.count && activity.count > 1 && (
@@ -1935,7 +1935,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             sx={{ height: 16, fontSize: '0.65rem' }}
                           />
                         )}
-                        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', ml: 'auto' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', ml: 'auto' }}>
                           {timeAgo(activity.timestamp)}
                         </Typography>
                       </Box>
@@ -1948,20 +1948,20 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
         </Collapse>
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(2, 5, 5,255,255,0.1)' }} />
+      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
       {/* SELECTIONS/FAVORITES Section */}
       <Box>
         <Box 
           sx={{ 
             p: 1.5, 
-            bgcolor: 'rgba(2, 5, 5,255,255,0.03)',
+            bgcolor: 'rgba(255,255,255,0.03)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             cursor: 'pointer',
             '&:hover': {
-              bgcolor: 'rgba(2, 5, 5,255,255,0.05)'
+              bgcolor: 'rgba(255,255,255,0.05)'
             }
           }}
           onClick={() => toggleSection('selections')}
@@ -1995,7 +1995,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
               <ListItem>
                 <ListItemText 
                   primary={
-                    <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
                       Ingen valg ennå
                     </Typography>
                   }
@@ -2008,8 +2008,8 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                   sx={{ 
                     px: 2,
                     py: 1,
-                    borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)', '&:hover': {
-                      bgcolor: 'rgba(2, 5, 5, 64, 129, 0.1)',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)', '&:hover': {
+                      bgcolor: 'rgba(255, 64, 129, 0.1)',
                       cursor: 'pointer'
                     }
                   }}
@@ -2041,10 +2041,10 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                     }
                     secondary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                           {activity.count} elementer fra {activity.itemName}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', ml: 'auto' }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', ml: 'auto' }}>
                           {timeAgo(activity.timestamp)}
                         </Typography>
                       </Box>

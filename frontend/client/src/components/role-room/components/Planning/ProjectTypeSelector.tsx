@@ -7,8 +7,8 @@ import {
   Box,
   Button,
   Chip,
-  SelectChangeEvent,
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import { Folder } from '@mui/icons-material';
 import AddIcon from '@mui/icons-material/Add';
 import { PROJECT_TYPES } from './projectTypeConstants';
@@ -81,7 +81,7 @@ export const ProjectTypeSelector: React.FC<ProjectTypeSelectorProps> = ({
             );
           })}
 
-          {/* Dynamic custom types - Hidden in Casting Planner */}
+          {/* Dynamic custom types - Hidden in The Role Room */}
           {!isCastingPlanner && customTypes.filter((t) => !t.isGlobal).length > 0 && (
             <MenuItem disabled sx={{ opacity: 0.6, fontWeight: 600 }}>
               — Custom Types —

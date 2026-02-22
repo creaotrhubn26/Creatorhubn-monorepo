@@ -15,7 +15,7 @@ import {
   Badge,
   Tabs,
   Tab,
-  Fab
+  Fab,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -29,7 +29,7 @@ import {
   Error as ErrorIcon,
   FileDownload,
   CloudQueue,
-  SwapVert
+  SwapVert,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import backgroundUploadService, { UploadTask } from '@/services/BackgroundUploadService';

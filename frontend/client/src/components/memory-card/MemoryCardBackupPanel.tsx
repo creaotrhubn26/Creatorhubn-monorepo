@@ -13,13 +13,18 @@ import { LinearProgress as Progress } from '@mui/material';
 import { Divider as Separator } from '@mui/material';
 /* Alert & AlertDescription removed - Zero Toast Compliance */
 // import { Alert, AlertDescription } from "@/components/material-ui";
-import { Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import {
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+} from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
   Memory as SdDirectionsCardIcon,
-  PhotoCameraAlt as CameraIcon,
-  Videocamcam as VideoIcon,
+  PhotoCamera as CameraIcon,
+  Videocam as VideoIcon,
   Security as SecurityIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,

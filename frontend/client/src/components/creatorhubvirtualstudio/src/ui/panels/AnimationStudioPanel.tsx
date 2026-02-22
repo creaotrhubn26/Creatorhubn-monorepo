@@ -76,7 +76,7 @@ import {
   Videocam,
   Animation,
   Route,
-  Speed,
+  Speed as Speed,
   FilterList,
   Info,
   VideoFile,

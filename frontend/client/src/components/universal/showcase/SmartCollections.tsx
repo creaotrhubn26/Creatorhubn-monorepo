@@ -27,7 +27,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
 } from '@mui/material';
 import {
   AutoFixHigh,
@@ -45,7 +45,7 @@ import {
   MusicNote,
   VideoLibrary,
   Inventory,
-  Refresh
+  Refresh,
 } from '@mui/icons-material';
 
 interface ShowcaseItem {

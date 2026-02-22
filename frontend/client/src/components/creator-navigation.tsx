@@ -4,7 +4,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from "@/components/material-ui";
 import { Card as ViewModule, CardContent } from '@mui/material';
 import { Button } from '@mui/material';
-import { PhotoCamera, Videocam, Headset, CheckCircle } from "@mui/icons-material";
+import {
+  PhotoCamera,
+  Videocam,
+  Headset,
+  CheckCircle,
+} from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 

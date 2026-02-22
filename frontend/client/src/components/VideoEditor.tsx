@@ -46,12 +46,12 @@ import {
   TableRow,
 } from '@mui/material';
 import {
-  PlayArrowArrow,
+  PlayArrow as PlayArrowArrow,
   Pause,
   Stop,
   SkipNext,
   SkipPrevious,
-  VolumeUpUp,
+  VolumeUp as VolumeUpUp,
   VolumeOff,
   Fullscreen,
   CloudUpload,
@@ -60,11 +60,11 @@ import {
   Undo,
   Redo,
   ContentCut,
-  ContentContentCopy,
+  ContentCopy as ContentContentCopy,
   Delete,
   Add,
-  VideocamDescription,
-  LibraryMusicNote,
+  Videocam as VideocamDescription,
+  LibraryMusic as LibraryMusicNote,
   Image,
   TextFields,
   Palette,
@@ -84,9 +84,9 @@ import {
   Mic,
   Speaker,
   Transform,
-  FilterListVintage,
+  FilterVintage as FilterListVintage,
   AutoAwesome,
-  Speed,
+  Speed as Speed,
 } from '@mui/icons-material';
 import { UniversalFileUpload } from '@/components/universal/UniversalFileUpload';
 

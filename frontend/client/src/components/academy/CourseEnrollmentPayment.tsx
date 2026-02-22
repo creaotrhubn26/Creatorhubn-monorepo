@@ -18,7 +18,14 @@ import {
   Chip,
   CircularProgress,
 } from '@mui/material';
-import { CheckCircle, School, AttachMoney, Security, Info, Star } from '@mui/icons-material';
+import {
+  CheckCircle,
+  School,
+  AttachMoney,
+  Security,
+  Info,
+  Star,
+} from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';

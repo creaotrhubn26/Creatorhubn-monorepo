@@ -7,12 +7,9 @@ import {
   Box,
   Typography,
   Button,
-  Chip
+  Chip,
 } from '@mui/material';
-import {
-  CloudDone,
-  Launch
-} from '@mui/icons-material';
+import { CloudDone, Launch } from '@mui/icons-material';
 
 interface GoogleDriveIntegrationProps {
   userId: string;

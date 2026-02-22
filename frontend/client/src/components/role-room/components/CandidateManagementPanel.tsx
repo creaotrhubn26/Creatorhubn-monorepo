@@ -196,6 +196,8 @@ import { castingService } from '../services/castingService';
 import { castingAuthService } from '../services/castingAuthService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { useToast } from './ToastStack';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import kandidaterPng from './icons/Keep/roleroom_kandidater.png';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
 const TOUCH_TARGET_SIZE = 44;
@@ -1463,61 +1465,16 @@ function CandidateManagementPanelInner({
 
       {/* Empty state */}
       {candidates.length === 0 ? (
-        <Box
-          role="status"
-          sx={{
-            textAlign: 'center',
-            py: { xs: 4, sm: 6, md: 5, lg: 7, xl: 8 },
-            px: { xs: 2, sm: 4, md: 3.5, lg: 4, xl: 5 },
-            bgcolor: 'rgba(16, 185, 129, 0.03)',
-            borderRadius: 3,
-            border: '2px dashed rgba(16, 185, 129, 0.2)',
-          }}
-        >
-          <Box
-            sx={{
-              width: { xs: 60, sm: 70, md: 65, lg: 80, xl: 104 },
-              height: { xs: 60, sm: 70, md: 65, lg: 80, xl: 104 },
-              borderRadius: '50%',
-              bgcolor: 'rgba(16, 185, 129, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto',
-              mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-            }}
-          >
-            <PersonIcon sx={{ fontSize: { xs: 30, sm: 36, md: 33, lg: 40, xl: 52 }, color: '#10b981' }} />
-          </Box>
-          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 1, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.4rem', lg: '1.6rem', xl: '2rem' } }}>
-            Legg til kandidater
-          </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 3, sm: 4, md: 3.5, lg: 4, xl: 5 }, maxWidth: { xs: 300, sm: 400, md: 350, lg: 450, xl: 500 }, mx: 'auto', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-            {roles.length > 0
-              ? `Du har ${roles.length} rolle${roles.length > 1 ? 'r' : ''} som venter på kandidater.`
-              : 'Start med å opprette roller, deretter legg til kandidater.'}
-          </Typography>
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-            onClick={onCreateCandidate}
-            sx={{
-              bgcolor: '#10b981',
-              color: '#fff',
-              fontWeight: 600,
-              px: { xs: 3, sm: 4, md: 3.5, lg: 4, xl: 5 },
-              py: { xs: 1.25, sm: 1.5, md: 1.375, lg: 1.5, xl: 1.75 },
-              fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-              minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { bgcolor: '#059669', transform: 'translateY(-2px)' },
-              transition: 'all 0.2s',
-              ...focusVisibleStyles,
-            }}
-          >
-            Legg til kandidat
-          </Button>
-        </Box>
+        <RoleRoomEmptyState
+          iconSrc={kandidaterPng}
+          title="Legg til kandidater"
+          subtitle={roles.length > 0
+            ? `Du har ${roles.length} rolle${roles.length > 1 ? 'r' : ''} som venter på kandidater.`
+            : 'Start med å opprette roller, deretter legg til kandidater.'}
+          color="#10b981"
+          buttonLabel="Legg til kandidat"
+          onAction={onCreateCandidate}
+        />
       ) : filteredAndSortedCandidates.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
           <SearchIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />

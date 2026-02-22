@@ -11,7 +11,7 @@ import {
   Chip,
   IconButton,
   Tooltip,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   Verified as VerifiedIcon,
@@ -19,7 +19,7 @@ import {
   EmojiEvents as TrophyIcon,
   Psychology as ExpertIcon,
   Info as InfoIcon,
-  TrendingUp as ProgressIcon
+  TrendingUp as ProgressIcon,
 } from '@mui/icons-material';
 
 interface BadgeLevel {
@@ -54,9 +54,7 @@ interface CompactBadgeDisplayProps {
   onProjectSelect?: (project: any) => void
 }
 
-export const CompactBadgeDisplay: React.FC<CompactBadgeDisplayProps> = (
-  // Theming system
-  const theming = useTheming('photographer');{
+export const CompactBadgeDisplay: React.FC<CompactBadgeDisplayProps> = ({
   currentPoints = 0,
   size = 'medium',
   showProgress = false,
@@ -70,6 +68,9 @@ export const CompactBadgeDisplay: React.FC<CompactBadgeDisplayProps> = (
   selectedProject,
   onProjectSelect
 }) => {
+  // Theming system
+  const theming = useTheming('photographer');
+
   // Find current level
   const getCurrentLevel = (): BadgeLevel => {
     for (let i = BADGE_LEVELS.length - 1; i >= 0; i--) {
@@ -114,8 +115,9 @@ export const CompactBadgeDisplay: React.FC<CompactBadgeDisplayProps> = (
           gap:  1,
           cursor: onClick ? 'pointer' : 'default',
           p:  1,
-          borderRadius: 1 '&:hover': onClick ? { bgcolor: 'action.hover' } : {}
-      }}
+          borderRadius: 1,
+          '&:hover': onClick ? { bgcolor: 'action.hover' } : {},
+        }}
         onClick={onClick}
       >
         <Avatar

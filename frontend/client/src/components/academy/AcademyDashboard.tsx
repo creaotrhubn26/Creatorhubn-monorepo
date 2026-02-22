@@ -57,7 +57,6 @@ import {
 import { Virtuoso } from 'react-virtuoso';
 
 import {
-  // Navigation
   Home,
   School,
   VideoLibrary,
@@ -68,56 +67,33 @@ import {
   Analytics,
   Message,
   Settings,
-  // Actions
   Search,
   Add,
   Upload,
   Download,
   Edit,
-
-  // Status & Icons
   PlayArrow,
   Notifications,
   NotificationsActive,
   AccountCircle,
   Bookmark,
   Close,
-
-  // Learning specific
   VideoCall,
-
-  // Communication
   Chat,
   Email,
   Announcement,
   Forum,
-
-  // Analytics & Progress
   ShowChart,
   Timeline as TimelineIcon,
   TrendingUp,
-
-  // Content Management
   AutoAwesome,
-
-  // Grading & Assessment
   Grade,
   Quiz,
-
-  // Calendar & Time
   Schedule,
-
-  // Expand/Collapse
   ExpandMore,
   ExpandLess,
-
-  // Help
   HelpOutline,
-
-  // Video editing
   Theaters,
-
-  // Payment
   AttachMoney,
   AccountBalance,
   Save,

@@ -25,7 +25,7 @@ import {
   Select,
   FormControl,
   InputLabel,
-  Badge
+  Badge,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -36,7 +36,7 @@ import {
   VolumeOff,
   Fullscreen,
   PictureInPicture,
-  Speed,
+  Speed as Speed,
   Subtitles,
   Timeline,
   HighQuality,
@@ -52,7 +52,7 @@ import {
   YouTube,
   CloudUpload,
   AutoFixHigh,
-  GraphicEq
+  GraphicEq,
 } from '@mui/icons-material';
 
 interface VideoChapter {

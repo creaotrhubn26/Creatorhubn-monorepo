@@ -5,7 +5,8 @@
  */
 
 import React, { useEffect } from 'react';
-import { Snackbar, Alert, AlertColor, IconButton } from '@mui/material';
+import { Snackbar, Alert, IconButton } from '@mui/material';
+import type { AlertColor } from '@mui/material/Alert';
 import CloseIcon from '@mui/icons-material/Close';
 import { colors, spacing, borderRadius, shadows, transitions } from '../../styles/designTokens';
 

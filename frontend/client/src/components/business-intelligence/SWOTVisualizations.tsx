@@ -4,7 +4,15 @@
  */
 
 import React from 'react';
-import { Box, Card, CardContent, Typography, Grid2 as Grid, Stack, Chip } from '@mui/material';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid2 as Grid,
+  Stack,
+  Chip,
+} from '@mui/material';
 import ReactECharts from 'echarts-for-react';
 import { useTheming } from '@/utils/theming-helper';
 import { SWOTItem, SWOTTrend } from '@/services/BusinessIntelligenceService';

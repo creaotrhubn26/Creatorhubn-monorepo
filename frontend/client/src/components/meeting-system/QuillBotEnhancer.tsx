@@ -22,7 +22,7 @@ import {
   LinearProgress,
   Card as MuiCard,
   CardContent,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   AutoFixHigh,
@@ -31,7 +31,7 @@ import {
   CheckCircle,
   Psychology,
   TuneRounded,
-  SpellcheckRounded
+  SpellcheckRounded,
 } from '@mui/icons-material';
 
 interface QuillBotEnhancerProps {

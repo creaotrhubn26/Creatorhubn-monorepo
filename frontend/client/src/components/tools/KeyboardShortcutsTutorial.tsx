@@ -28,7 +28,7 @@ import {
   Paper,
   Divider,
   IconButton,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   Close,
@@ -41,7 +41,7 @@ import {
   Computer,
   FilterList,
   ContentCopy,
-  TipsAndUpdates
+  TipsAndUpdates,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 import { useMutation, useQueryClient } from '@tanstack/react-query';

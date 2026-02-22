@@ -3,7 +3,12 @@
  */
 
 import React from 'react';
-import { Box, Button, Typography, Alert } from '@mui/material';
+import {
+  Box,
+  Button,
+  Typography,
+  Alert,
+} from '@mui/material';
 import { useTrialFeature } from '../../hooks/useTrialFeature';
 import { TrialUpgradePrompt } from './TrialUpgradePrompt';
 

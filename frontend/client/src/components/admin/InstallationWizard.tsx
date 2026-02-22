@@ -32,7 +32,7 @@ import {
   Avatar,
   Fade,
   Zoom,
-  Slide
+  Slide,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -42,7 +42,7 @@ import {
   GetApp,
   Update,
   Security,
-  Speed,
+  Speed as Speed,
   BugReport,
   AutoFixHigh,
   SmartToy,
@@ -53,8 +53,8 @@ import {
   ExpandMore,
   TrendingUp,
   Shield,
-  Rocket,
-  Build
+  RocketLaunch as Rocket,
+  Build,
 } from '@mui/icons-material';
 import { keyframes } from '@mui/system';
 

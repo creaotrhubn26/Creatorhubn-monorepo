@@ -59,7 +59,7 @@ import {
   Lightbulb as LightbulbIcon,
   Settings as SettingsIcon,
   School as LearnIcon,
-  AutoAwesome as MagicIcon
+  AutoAwesome as MagicIcon,
 } from '@mui/icons-material';
 import { TransitionProps } from '@mui/material/transitions';
 import { PhotographyTip, TipContext } from '../../shared/photography-tips-schema';

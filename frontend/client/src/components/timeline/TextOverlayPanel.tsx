@@ -23,7 +23,7 @@ import {
   Grid,
   Card,
   CardActionArea,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import { Close, Add, PlayArrow } from '@mui/icons-material';
 import { TextAnimationEngine } from '../../services/text-animation-engine';

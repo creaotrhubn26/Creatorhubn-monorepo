@@ -7,23 +7,19 @@
  */
 
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Card, 
-  CardContent, 
-  Typography, 
-  Button, 
-  TextField, 
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  TextField,
   CircularProgress,
   Paper,
   Avatar,
-  Chip
+  Chip,
 } from '@mui/material';
-import { 
-  Send as SendIcon,
-  SmartToy as AIIcon,
-  Person as PersonIcon
-} from '@mui/icons-material';
+import { Send as SendIcon, SmartToy as AIIcon, Person as PersonIcon } from '@mui/icons-material';
 import useOpenAIApi from '@/hooks/useOpenAIApi';
 
 interface Message {

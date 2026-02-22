@@ -40,7 +40,7 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableRow
+  TableRow,
 } from '@mui/material';
 import {
   Close,
@@ -58,7 +58,7 @@ import {
   PhotoCamera,
   Videocam,
   MusicNote,
-  Store
+  Store,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';

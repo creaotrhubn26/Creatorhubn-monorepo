@@ -76,7 +76,7 @@ import {
   Share,
   MoreHoriz,
   CameraAlt,
-  Aperture,
+  Camera as Aperture,
   Iso,
   ShutterSpeed,
   Straighten,

@@ -5,7 +5,13 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { Box, Container, Typography, Button, Paper } from '@mui/material';
+import {
+  Box,
+  Container,
+  Typography,
+  Button,
+  Paper,
+} from '@mui/material';
 import { ErrorOutline, Refresh } from '@mui/icons-material';
 
 interface Props {

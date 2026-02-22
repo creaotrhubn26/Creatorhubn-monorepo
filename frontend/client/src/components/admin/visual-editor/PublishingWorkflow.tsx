@@ -44,7 +44,7 @@ import {
   LinearProgress,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
 } from '@mui/material';
 import {
   Publish,
@@ -52,7 +52,7 @@ import {
   AccountTree,
   Merge,
   Schedule,
-  Save
+  Save,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';

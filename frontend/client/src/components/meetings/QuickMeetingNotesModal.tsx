@@ -32,7 +32,7 @@ import {
   FormControlLabel,
   Grid,
   Chip,
-  Alert
+  Alert,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -48,7 +48,7 @@ import {
   Schedule as ClockIcon,
   LocationOn as MapPinIcon,
   CloudDone as CloudDoneIcon,
-  Folder as FolderIcon
+  Folder as FolderIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 

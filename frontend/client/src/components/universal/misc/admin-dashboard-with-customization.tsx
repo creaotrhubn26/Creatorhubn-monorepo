@@ -31,7 +31,7 @@ import {
   Security as SecurityIcon,
   Group as GroupIcon,
   Store as StoreIcon,
-  BoxChart as BarChartIcon,
+  BarChart as BarChartIcon,
   Warning as WarningIcon,
   Person as PersonIcon,
   TrendingUp as TrendingUpIcon,
@@ -48,14 +48,12 @@ import {
   Monitor as MonitorIcon,
   Psychology as PsychologyIcon,
   CameraAlt as CameraIcon,
-  Videocamcam as VideocamIcon,
-  LibraryMusicNote as LibraryMusicIcon,
-  DirectionsBusiness as BusinessIcon,
+  Videocam as VideocamIcon,
+  LibraryMusic as LibraryMusicIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  Button /* Alert & AlertDescription removed - Zero Toast Compliance */,
-} from '@mui/material';
+import { Button } from '@mui/material';
 export default function AdminDashboardWithCustomization() {
   const { user, isAuthenticated } = useAuth();
   

@@ -23,7 +23,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -31,7 +31,7 @@ import {
   Cancel as RejectIcon,
   Lightbulb as SuggestionIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 interface SplitSheetLegalSuggestionsProps {

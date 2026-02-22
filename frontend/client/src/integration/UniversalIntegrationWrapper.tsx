@@ -5,7 +5,8 @@
  */
 
 import React, { useEffect } from 'react';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider import { useTheming } from '../../utils/theming-helper';";
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
 
 interface UniversalIntegrationWrapperProps {
   componentId: string;
@@ -20,7 +21,7 @@ interface UniversalIntegrationWrapperProps {
 }
 
 export const UniversalIntegrationWrapper: React.FC<UniversalIntegrationWrapperProps> = ({
-  componentd,
+  componentIId,
   componentName,
   componentType,
   componentCategory,
@@ -43,14 +44,14 @@ export const UniversalIntegrationWrapper: React.FC<UniversalIntegrationWrapperPr
     dataFlow.registerNode({
       type: 'source',
       componentId,
-      dataKey: `${componentd}:data`,
-      transform: (data) => ({ ...data, lastUpdated: Date.now(, ),})
+      dataKey: `${componentId}:data`,
+      transform: (data) => ({ ...data, lastUpdated: Date.now() })
   });
 
     dataFlow.registerNode({
       type: 'destination',
       componentId,
-      dataKey: `${componentd}:input`,
+      dataKey: `${componentId}:input`,
       transform: (data) => data
 });
 
@@ -102,7 +103,7 @@ export const UniversalIntegrationWrapper: React.FC<UniversalIntegrationWrapperPr
         
         sendMessage: (to: string, type: string, data: any, priority: 'low' | 'medium' | 'high' | 'critical' = 'medium') => {
           communication.sendMessage({
-            from: componentd,
+            from: componentId,
             to,
             type,
             data,
@@ -138,56 +139,56 @@ export const UniversalIntegrationWrapper: React.FC<UniversalIntegrationWrapperPr
 export const INTEGRATION_WRAPPERS = {
   DASHBOARD: {
     componentType: 'dashboard',
-    capabilities: ['data:read','data: write','event: emit','event: listen','ui: update','widget: manage, ', ],
+    capabilities: ['data:read','data:write','event:emit','event:listen','ui:update','widget:manage'],
     componentCategory: 'main'
 },
   
   SHOWCASE: {
     componentType: 'showcase',
-    capabilities: ['data:read','event: listen','ui: update','media: display','interaction: handle, ', ],
+    capabilities: ['data:read','event:listen','ui:update','media:display','interaction:handle'],
     componentCategory: 'showcase'
 },
   
   CHAT: {
     componentType: 'widget',
-    capabilities: ['message:send','message: receive','event: emit','event: listen','ui: update, ', ],
+    capabilities: ['message:send','message:receive','event:emit','event:listen','ui:update'],
     componentCategory: 'communication'
 },
   
   SETTINGS: {
     componentType: 'widget',
-    capabilities: ['data:read','data: write','event: emit','event: listen','settings: manage, ', ],
+    capabilities: ['data:read','data:write','event:emit','event:listen','settings:manage'],
     componentCategory: 'settings'
 },
   
   PROJECT: {
     componentType: 'widget',
-    capabilities: ['data:read','data: write','event: emit','event: listen','project: manage, ', ],
+    capabilities: ['data:read','data:write','event:emit','event:listen','project:manage'],
     componentCategory: 'project'
 },
   
   CRM: {
     componentType: 'dashboard',
-    capabilities: ['data:read','data: write','event: emit','event: listen','client: manage', ],
+    capabilities: ['data:read','data:write','event:emit','event:listen','client:manage'],
     componentCategory: 'crm'
 },
   
   ANALYTICS: {
     componentType: 'dashboard',
-    capabilities: ['data:read','event: listen','ui: update','analytics: track', ],
+    capabilities: ['data:read','event:listen','ui:update','analytics:track'],
     componentCategory: 'analytics'
 },
   
   FILE_MANAGER: {
     componentType: 'widget',
-    capabilities: ['data:read','data: write','event: emit''event: listen', 'file: manage', ],
+    capabilities: ['data:read','data:write','event:emit','event:listen','file:manage'],
     componentCategory: 'files'
 }
 };
 
 // HOC to wrap any component with integration
 export const withUniversalIntegrationWrapper = <P extends object>(
-  WrappedComponent: React.ComponentType<>,
+  WrappedComponent: React.ComponentType<P>,
   config: {
     componentId: string;
     componentName: string;

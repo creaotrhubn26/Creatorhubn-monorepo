@@ -15,7 +15,7 @@ import {
   Chip,
   Stack,
   Divider,
-  CircularProgress
+  CircularProgress,
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -24,7 +24,7 @@ import {
   BusinessCenter as BusinessIcon,
   Analytics as AnalyticsIcon,
   LocationOn as LocationIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';

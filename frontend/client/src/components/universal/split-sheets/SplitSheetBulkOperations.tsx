@@ -31,13 +31,9 @@ import {
   Alert,
   Stack,
   Chip,
-  LinearProgress
+  LinearProgress,
 } from '@mui/material';
-import {
-  PlayArrow as StartIcon,
-  CheckCircle as CompleteIcon,
-  FileDownload as ExportIcon
-} from '@mui/icons-material';
+import { PlayArrow as StartIcon, CheckCircle as CompleteIcon, FileDownload as ExportIcon } from '@mui/icons-material';
 import type { SplitSheet } from './types';
 
 interface SplitSheetBulkOperationsProps {

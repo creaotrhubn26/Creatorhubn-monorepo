@@ -9,8 +9,43 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
-import { Box, Typography, Grid, Card, CardContent, Button, Chip, TextField, FormControl, InputLabel, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, Alert, List, ListItem, ListItemText, ListItemAvatar, Avatar, Divider } from '@mui/material';
-import { AddCircle as AddIcon, Search as SearchIcon, Business as BusinessIcon, VideoCall, WorkOutline, Add, Schedule, Assessment as AssessmentIcon, AccountBalance as SplitSheetIcon, Description as ContractIcon } from '@mui/icons-material';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Button,
+  Chip,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
+  Divider,
+} from '@mui/material';
+import {
+  AddCircle as AddIcon,
+  Search as SearchIcon,
+  Business as BusinessIcon,
+  VideoCall,
+  WorkOutline,
+  Add,
+  Schedule,
+  Assessment as AssessmentIcon,
+  AccountBalance as SplitSheetIcon,
+  Description as ContractIcon,
+} from '@mui/icons-material';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -141,6 +176,9 @@ export default function UniversalCRMDashboard({
     };
   }, [communication, dataFlow]);
 
+  // Use profession from props or context with dynamic fallback
+  const activeProfession = profession || currentProfession || getCurrentUserProfession();
+
   // Listen to global events
   useEffect(() => {
     const unsubscribe = communication.onMessage(async (message: any) => {
@@ -170,8 +208,6 @@ export default function UniversalCRMDashboard({
     return unsubscribe;
   }, [communication, onProjectSelect, onCustomerSelect, activeProfession]);
 
-  // Use profession from props or context with dynamic fallback
-  const activeProfession = profession || currentProfession || getCurrentUserProfession();
   const tabLabels = adaptTabLabels();
   
   // Define terminology based on profession using dynamic system

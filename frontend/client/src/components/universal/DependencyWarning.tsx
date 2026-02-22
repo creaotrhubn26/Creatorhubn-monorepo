@@ -19,13 +19,13 @@ import {
   ListItemIcon,
   ListItemText,
   Chip,
-  Divider
+  Divider,
 } from '@mui/material';
 import {
   Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { 
   DependencyCheckResult, 

@@ -10,11 +10,7 @@ import {
   Chip,
   Divider,
 } from '@mui/material';
-import {
-  Palette as PaletteIcon,
-  Whatshot as HeatIcon,
-  Info as InfoIcon,
-} from '@mui/icons-material';
+import { Palette as PaletteIcon, Whatshot as HeatIcon, Info as InfoIcon } from '@mui/icons-material';
 
 interface ExposureVisualizationPanelProps {
   falseColorEnabled: boolean;

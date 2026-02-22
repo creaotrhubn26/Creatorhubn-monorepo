@@ -33,7 +33,7 @@ import {
   Paper,
   LinearProgress,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import {
   LibraryMusic,
@@ -47,7 +47,7 @@ import {
   Update,
   Extension,
   Group,
-  CloudSync
+  CloudSync,
 } from '@mui/icons-material';
 
 interface PluginVendor {
