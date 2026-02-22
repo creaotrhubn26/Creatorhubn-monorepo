@@ -180,7 +180,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
             <Avatar sx={{ bgcolor: professionColor, mr:  2 }}>
-              {profession === 'photographer' ? theming.getThemedIcon('photoCamera,') : theming.getThemedIcon('videocam')}
+              {profession === 'photographer' ? theming.getThemedIcon('photoCamera') : theming.getThemedIcon('videocam')}
             </Avatar>
             <Box sx={{ flex:  1 }}>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
@@ -198,7 +198,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
                 alignItems: 'flex-end'}}
             >
               {update.isCritical && (
-                <Chip label="Kritisk" color="error" size="small" icon={theming.getThemedIcon('warning')}} />
+                <Chip label="Kritisk" color="error" size="small" icon={theming.getThemedIcon('warning')} />
               )}
               <Chip
                 label={getRecommendationText()}
@@ -231,7 +231,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
             </Typography>
             <List dense>
               {benefits.slice(0, 3).map((benefit, index) => (
-                <ListItem key={index} sx={{ py: 0.2, 5}}>
+                <ListItem key={index} sx={{ py: 0.5 }}>
                   <ListItemIcon sx={{ minWidth: 24}}>
                     <CheckCircle sx={{ fontSize: '1rem', color: professionColor }} />
                   </ListItemIcon>
@@ -239,11 +239,11 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
                 </ListItem>
               ))}
               {benefits.length > 3 && (
-                <ListItem sx={{ py: 0.2, 5}}>
+                <ListItem sx={{ py: 0.5 }}>
                   <ListItemText
                     primary={`+${benefits.length - 3} flere forbedringer...`}
                     primaryTypographyProps={{
-                      variant: 'body',
+                      variant: 'body2',
                       color: 'text.secondary',
                       fontStyle: 'italic'}}
                   />
@@ -259,13 +259,13 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
                 sx={{
                   textAlign: 'center',
                   p:  1,
-                  bgcolor: 'grey.5',
+                  bgcolor: 'grey.50',
                   borderRadius:  1}}
               >
                 <Typography variant="body2" color="text.secondary">
                   Størrelse
                 </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600}>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
                   {update.downloadSize || 'Ukjent'}
                 </Typography>
               </Box>
@@ -275,13 +275,13 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
                 sx={{
                   textAlign: 'center',
                   p:  1,
-                  bgcolor: 'grey.5',
+                  bgcolor: 'grey.50',
                   borderRadius:  1}}
               >
                 <Typography variant="body2" color="text.secondary">
                   Installasjonstid
                 </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600}>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
                   {update.installationTime || '15-20 min'}
                 </Typography>
               </Box>
@@ -318,15 +318,15 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
           <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
             {update.downloadUrl && (
               <Button variant="contained"
-                startIcon={installing ? <LinearProgress sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('download')}
+                startIcon={installing ? <LinearProgress sx={theming.getThemedButtonSx()} /> : theming.getThemedIcon('download')}
                 onClick={() => {
                   setInstalling(true);
-                  window.open(update.downloadUrl','_blank');
+                  window.open(update.downloadUrl, '_blank');
                   setTimeout(() => setInstalling(false), 3000);
               }}
                 disabled={installing}
                 sx={{
-                  bgcolor: professionColor, '&:hover': { bgcolor: professionColor, opacity: 0.9,}}}
+                  bgcolor: professionColor, '&:hover': { bgcolor: professionColor, opacity: 0.9 }}}
               >
                 {installing ? 'Laster ned...' : 'Last ned'}
               </Button>
@@ -343,7 +343,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
               <Button
                 variant="text"
                 startIcon={theming.getThemedIcon('launch')}
-                onClick={() => window.open(update.sourceUrl','_blank')}
+                onClick={() => window.open(update.sourceUrl, '_blank')}
                 size="small"
               >
                 Produsent
@@ -364,7 +364,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
           <Box sx={{ mt:  2 }}>
             {update.newFeatures?.length > 0 && (
               <Accordion>
-                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                   <Typography variant="body2">
                     <NewReleases sx={{ mr: 1, fontSize: '1rem', verticalAlign: 'middle'}} />
                     Nye funksjoner ({update.newFeatures.length})
@@ -387,7 +387,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
 
             {update.bugFixes?.length > 0 && (
               <Accordion>
-                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                   <Typography variant="body2">
                     <BugReport sx={{ mr: 1, fontSize: '1rem', verticalAlign: 'middle'}} />
                     Feilrettinger ({update.bugFixes.length})
@@ -423,7 +423,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
                 {equipment.brand} {equipment.model} - Firmware {update.version}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Utgitt: {new Date(update.releaseDate).toLocaleDateString(', ')}
+                Utgitt: {new Date(update.releaseDate).toLocaleDateString('nb-NO')}
               </Typography>
             </Box>
           </Box>
@@ -490,7 +490,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
                 {update.rollbackInstructions.map((instruction, index) => (
                   <ListItem key={index}>
                     <ListItemIcon>
-                      <Typography variant="body2" sx={{ fontWeight: 600}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {index + 1}.
                       </Typography>
                     </ListItemIcon>
@@ -507,7 +507,7 @@ const FirmwareUpdateService: React.FC<FirmwareUpdateServiceProps> = ({
             <Button variant="contained"
               startIcon={theming.getThemedIcon('download')}
               onClick={() => {
-                window.open(update.downloadUrl', '_blank');
+                window.open(update.downloadUrl, '_blank');
                 setShowDetails(false);
             }}
               sx={{ bgcolor: professionColor }}
