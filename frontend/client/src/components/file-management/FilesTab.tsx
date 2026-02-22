@@ -731,7 +731,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                       border: '1px solid',
                       borderColor: 'secondary.main' }}
                   >
-                    <Typography variant="h6" sx={{  color: 'primary.main', fontWeight: 600, color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600 }}>
                       3
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -747,9 +747,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                       bgcolor: 'secondary.light',
                       border: '1px solid',
                       borderColor: 'secondary.main',
-                    border: '1px solid',
-                    borderColor: 'secondary.main',
-                    textAlign: 'center' }}
+                      textAlign: 'center' }}
                 >
                   <Typography
                     variant="h6"
@@ -911,7 +909,6 @@ const FilesTab: React.FC<FilesTabProps> = ({
                   <Construction sx={{ color: 'warning.main', fontSize: 2}} />
                   <Typography variant="h6" sx={{  flexGrow: 1, color: 'warning.main',   
                     fontWeight: 700, 
-                    color: 'warning.main',
                     background: 'linear-gradient(45deg, warning.light, warning.main)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent'

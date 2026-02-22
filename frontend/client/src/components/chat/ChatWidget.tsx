@@ -594,15 +594,19 @@ export default function ChatWidget({
                           mb:  1}}
                       >
                         <Paper
-                          sx={{
-                            p: 1.5,
-                            maxWidth: '70, %',
-                            bgcolor: message.senderId === 'current-user'
+                          sx={[
+                            {
+                              p: 1.5,
+                              maxWidth: '70, %',
+                              bgcolor: message.senderId === 'current-user'
                                 ? getProfessionColor()
                                 : 'grey.10',
-                            color: message.senderId === 'current-user' ? 'white' : 'text.primary',
-                            borderRadius:  2}}
-                         sx={theming.getThemedCardSx()}>
+                              color: message.senderId === 'current-user' ? 'white' : 'text.primary',
+                              borderRadius: 2,
+                            },
+                            theming.getThemedCardSx(),
+                          ]}
+                        >
                           <Typography variant="body2">{message.content}</Typography>
                           <Typography
                             variant="caption"

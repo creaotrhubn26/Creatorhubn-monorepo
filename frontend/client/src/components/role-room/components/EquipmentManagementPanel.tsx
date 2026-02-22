@@ -41,6 +41,7 @@ import {
   ImageListItem,
   ImageListItemBar,
   Divider,
+  Rating,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -87,8 +88,17 @@ import {
   WifiOff as OfflineIcon,
   Sync as SyncIcon,
   AssignmentLate as MissingItemIcon,
+  TrendingUp as TrendingUpIcon,
+  Update as UpdateIcon,
+  Newspaper as NewspaperIcon,
+  AttachMoney as AttachMoneyIcon,
 } from '@mui/icons-material';
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon } from './icons/CastingIcons';
+import { useQuery } from '@tanstack/react-query';
+import EquipmentCatalogBrowser, { type CatalogEquipment } from '../../equipment/EquipmentCatalogBrowser';
+import FirmwareManagementInterface from '../../equipment/FirmwareManagementInterface';
+import { useAuth } from '../../../hooks/use-auth';
+import { apiRequest } from '../../../lib/queryClient';
 import { 
   Equipment, 
   equipmentApi, 
@@ -124,6 +134,48 @@ const focusVisibleStyles = {
 type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
+
+// ── Bridge: data shapes from external database APIs ───────────────────────────
+interface GearNewsArticle {
+  title: string;
+  summary?: string;
+  category?: string;
+  brand?: string;
+  url?: string;
+  rating?: number;
+  price?: string;
+  isNew?: boolean;
+  isTrending?: boolean;
+}
+interface GearNewsResponse {
+  success?: boolean;
+  data?: GearNewsArticle[];
+}
+interface MarketEquipmentItem {
+  id: string;
+  brand: string;
+  model: string;
+  category: string;
+  currentPrice?: string;
+  msrp?: string;
+  availability?: string;
+  photographerRating?: string;
+  videographerRating?: string;
+  sourceUrl?: string;
+}
+interface LensItem {
+  id: string;
+  brand: string;
+  model: string;
+  focalLength?: string;
+  aperture?: string;
+  mount?: string;
+  lensType?: string;
+  imageStabilization?: boolean;
+  weatherSealing?: boolean;
+  weight?: string;
+  currentPrice?: string;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   available: 'Tilgjengelig',
@@ -288,6 +340,41 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<'delete' | 'status' | 'assign'>('delete');
   const [bulkNewStatus, setBulkNewStatus] = useState<Equipment['status']>('available');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Catalog bridge — browse manufacturer catalog and import items into this project
+  const { user } = useAuth();
+  const [catalogBridgeOpen, setCatalogBridgeOpen] = useState(false);
+  // Active sub-tab inside the catalog bridge dialog (0=catalog, 1=news, 2=market, 3=lenses)
+  const [catalogDialogTab, setCatalogDialogTab] = useState(0);
+  // Firmware panel — manage firmware updates for this project's equipment
+  const [firmwarePanelOpen, setFirmwarePanelOpen] = useState(false);
+
+  // ── External database data: gear news, market prices, lens database ──────────
+  const { data: gearNewsRaw, isLoading: gearNewsLoading } = useQuery<GearNewsResponse>({
+    queryKey: ['/api/gear-news', 'videographer'],
+    queryFn: () => apiRequest('/api/gear-news?profession=videographer') as Promise<GearNewsResponse>,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+  const gearNewsArticles: GearNewsArticle[] = gearNewsRaw?.data ?? [];
+
+  const { data: marketRaw, isLoading: marketPricesLoading } = useQuery<MarketEquipmentItem[]>({
+    queryKey: ['/api/equipment/market-prices', 'videographer'],
+    queryFn: () => apiRequest('/api/equipment/market-prices?profession=videographer') as Promise<MarketEquipmentItem[]>,
+    staleTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+  const marketItems: MarketEquipmentItem[] = Array.isArray(marketRaw) ? marketRaw : [];
+
+  const { data: lensRaw, isLoading: lensDbLoading } = useQuery<LensItem[]>({
+    queryKey: ['/api/equipment/lenses', 'videographer'],
+    queryFn: () => apiRequest('/api/equipment/lenses?profession=videographer') as Promise<LensItem[]>,
+    staleTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+  const lensItems: LensItem[] = Array.isArray(lensRaw) ? lensRaw : [];
   
   // History/audit log
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -359,10 +446,23 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [offlineOutboxOpen, setOfflineOutboxOpen] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState<OfflineEntry[]>([]);
-      setNewCategoryName('');
-      setNewCategoryDialogOpen(false);
-      showSuccess(`Kategori "${newCategoryName.trim()}" lagt til`);
+
+  const handleAddCustomCategory = async () => {
+    const trimmedName = newCategoryName.trim();
+    if (!trimmedName) {
+      return;
     }
+    if (allCategories.includes(trimmedName)) {
+      showError('Kategorien finnes allerede');
+      return;
+    }
+
+    const updated = [...customCategories, trimmedName];
+    setCustomCategories(updated);
+    await equipmentCategoriesService.saveCustomCategories(projectId, updated);
+    setNewCategoryName('');
+    setNewCategoryDialogOpen(false);
+    showSuccess(`Kategori "${trimmedName}" lagt til`);
   };
 
   const handleRemoveCustomCategory = async (category: string) => {
@@ -469,6 +569,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       console.error('Error loading vendor links:', error);
     }
   };
+
+  // Re-fetch vendor links whenever the category filter changes
+  useEffect(() => {
+    loadVendorLinks();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVendorCategory]);
 
   // Image search functions - Multi-source search via backend proxies (no keys in client)
   const searchImages = useCallback(async (query: string) => {
@@ -812,6 +918,90 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       });
       setFormErrors({}); // Clear validation errors
     }
+    setDialogOpen(true);
+  };
+
+  /** Import a catalog item into the project: pre-fills the add-dialog with the
+   *  catalog data so the user only needs to confirm / add a serial number. */
+  const handleImportFromCatalog = (item: CatalogEquipment) => {
+    setCatalogBridgeOpen(false);
+    setEditingEquipment(null);
+    setFormErrors({});
+    setFormData({
+      name: [item.brand, item.model].filter(Boolean).join(' ') || '',
+      description: item.description || '',
+      category: item.category || '',
+      brand: item.brand || '',
+      model: item.model || '',
+      serialNumber: '',
+      quantity: 1,
+      condition: 'good',
+      primaryLocationId: '',
+      notes: item.specifications
+        ? Object.entries(item.specifications)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join('\n')
+        : '',
+      imageUrl: item.imageUrl || (item.images?.[0] ?? ''),
+      status: 'available',
+      isGlobal: false,
+    });
+    setDialogOpen(true);
+  };
+
+  /** Import a market-price item into the project's add-dialog */
+  const handleImportFromMarket = (item: MarketEquipmentItem) => {
+    setCatalogBridgeOpen(false);
+    setEditingEquipment(null);
+    setFormErrors({});
+    setFormData({
+      name: [item.brand, item.model].filter(Boolean).join(' ') || '',
+      description: '',
+      category: item.category || '',
+      brand: item.brand || '',
+      model: item.model || '',
+      serialNumber: '',
+      quantity: 1,
+      condition: 'good',
+      primaryLocationId: '',
+      notes: item.currentPrice
+        ? `Markedspris: ${parseFloat(item.currentPrice).toLocaleString('nb-NO')} kr`
+        : '',
+      imageUrl: '',
+      status: 'available',
+      isGlobal: false,
+    });
+    setDialogOpen(true);
+  };
+
+  /** Import a lens database item into the project's add-dialog */
+  const handleImportFromLens = (lens: LensItem) => {
+    setCatalogBridgeOpen(false);
+    setEditingEquipment(null);
+    setFormErrors({});
+    setFormData({
+      name: [lens.brand, lens.model].filter(Boolean).join(' ') || '',
+      description: [lens.focalLength, lens.aperture, lens.mount].filter(Boolean).join(' · ') || '',
+      category: 'lenses',
+      brand: lens.brand || '',
+      model: lens.model || '',
+      serialNumber: '',
+      quantity: 1,
+      condition: 'good',
+      primaryLocationId: '',
+      notes: [
+        lens.focalLength && `Brennvidde: ${lens.focalLength}`,
+        lens.aperture && `Blender: ${lens.aperture}`,
+        lens.mount && `Fatning: ${lens.mount}`,
+        lens.lensType && `Type: ${lens.lensType}`,
+        lens.weight && `Vekt: ${lens.weight}`,
+        lens.imageStabilization && 'Bildestabilisering: Ja',
+        lens.weatherSealing && 'Værtetting: Ja',
+      ].filter(Boolean).join('\n'),
+      imageUrl: '',
+      status: 'available',
+      isGlobal: false,
+    });
     setDialogOpen(true);
   };
 
@@ -1159,22 +1349,59 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  // 6. History/audit log (mock data - would connect to real API)
-  const handleOpenHistory = (eq: Equipment) => {
+  // 6. History/audit log — real API data
+  const handleOpenHistory = async (eq: Equipment) => {
     setSelectedEquipmentHistory(eq);
-    // Mock history data - in production, fetch from API
-    setEquipmentHistory([
-      { id: '1', action: 'Opprettet', user: 'System', timestamp: eq.created_at || new Date().toISOString(), details: 'Utstyr lagt til i katalogen' },
-      { id: '2', action: 'Status endret', user: 'Bruker', timestamp: new Date().toISOString(), details: `Status satt til ${STATUS_LABELS[eq.status || 'available']}` },
-      ...(eq.assignees?.map((a, i) => ({
+    setHistoryDialogOpen(true);
+    // Seed with a static creation entry immediately
+    const creationEntry = {
+      id: 'create-0',
+      action: 'Opprettet',
+      user: 'System',
+      timestamp: eq.created_at || new Date().toISOString(),
+      details: 'Utstyr lagt til i katalogen',
+    };
+    setEquipmentHistory([creationEntry]);
+    try {
+      const checkouts = await equipmentCheckoutApi.getAll(projectId || '', eq.id);
+      const checkoutEntries = checkouts.flatMap(c => {
+        const entries = [
+          {
+            id: `checkout-${c.id}`,
+            action: 'Utlevert',
+            user: c.checked_out_by || 'Ukjent',
+            timestamp: c.checked_out_at,
+            details: `Utlevert til ${c.checked_out_to}${c.purpose ? ' — ' + c.purpose : ''}`,
+          },
+        ];
+        if (c.checked_in_at) {
+          entries.push({
+            id: `checkin-${c.id}`,
+            action: 'Innlevert',
+            user: c.checked_out_to || 'Ukjent',
+            timestamp: c.checked_in_at,
+            details: `Innlevert${c.condition_on_return ? ', tilstand: ' + c.condition_on_return : ''}${c.notes ? ' — ' + c.notes : ''}`,
+          });
+        }
+        return entries;
+      });
+      // Add current assignee entries from equipment assignees array
+      const assignEntries = (eq.assignees || []).map((a, i) => ({
         id: `assign-${i}`,
         action: 'Tilordnet',
         user: 'Bruker',
-        timestamp: new Date().toISOString(),
+        timestamp: eq.updated_at || new Date().toISOString(),
         details: `Tilordnet til ${getCrewName(a.crew_id)}`,
-      })) || []),
-    ]);
-    setHistoryDialogOpen(true);
+      }));
+      // Sort all entries chronologically (oldest first)
+      const allEntries = [creationEntry, ...checkoutEntries, ...assignEntries].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      setEquipmentHistory(allEntries);
+    } catch (err) {
+      console.error('Error loading equipment history:', err);
+      // Fall back to static creation entry already set above
+    }
   };
 
   // 7. Maintenance scheduling
@@ -1559,6 +1786,24 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     return Array.from(allCats).sort();
   }, [equipment, customCategories]);
 
+  // Per-category item counts for sidebar
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const eq of equipment) {
+      const cat = eq.category || 'Annet';
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return counts;
+  }, [equipment]);
+
+  // Items assigned/checked-out today
+  const assignedToday = useMemo(() => {
+    const today = new Date().toDateString();
+    return equipment.filter(eq =>
+      eq.assignedTo && eq.updatedAt && new Date(eq.updatedAt as string).toDateString() === today
+    ).length;
+  }, [equipment]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -1730,6 +1975,38 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               Maler
             </Button>
           </Tooltip>
+          <Tooltip title="Bla i produsent-katalog og importer utstyr til prosjektet">
+            <Button
+              variant="outlined"
+              startIcon={<SearchIcon />}
+              onClick={() => setCatalogBridgeOpen(true)}
+              sx={{
+                borderColor: '#9333ea',
+                color: '#9333ea',
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { borderColor: '#c084fc', bgcolor: 'rgba(147,51,234,0.1)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              Katalog
+            </Button>
+          </Tooltip>
+          <Tooltip title="Administrer fastvare-oppdateringer for prosjektets utstyr">
+            <Button
+              variant="outlined"
+              startIcon={<SyncIcon />}
+              onClick={() => setFirmwarePanelOpen(true)}
+              sx={{
+                borderColor: '#2196f3',
+                color: '#2196f3',
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { borderColor: '#64b5f6', bgcolor: 'rgba(33,150,243,0.1)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              Fastvare
+            </Button>
+          </Tooltip>
           <Tooltip title="Rapporter">
             <Button
               variant="outlined"
@@ -1859,6 +2136,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Button>
             <Button
               size="small"
+              startIcon={<CalendarTodayIcon />}
+              onClick={() => handleBulkAction('assign')}
+              sx={{ color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.15)' } }}
+            >
+              Tilordne dag
+            </Button>
+            <Button
+              size="small"
               startIcon={<PersonIcon />}
               onClick={() => handleBulkAction('assign')}
               sx={{ color: '#2196f3', '&:hover': { bgcolor: 'rgba(33,150,243,0.15)' } }}
@@ -1884,62 +2169,244 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         )}
       </Box>
 
-      {/* Quick Stats Bar */}
+      {/* Compact Stats Bar */}
       {equipment.length > 0 && (
-        <Box sx={{ 
-          display: 'flex', 
-          gap: 2, 
-          mb: 3, 
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          mb: 2,
+          px: 1,
           flexWrap: 'wrap',
         }}>
-          {[
-            { label: 'Tilgjengelig', value: equipment.filter(e => e.status === 'available').length, color: '#4caf50' },
-            { label: 'I bruk', value: equipment.filter(e => e.status === 'in_use').length, color: '#2196f3' },
-            { label: 'Vedlikehold', value: equipment.filter(e => e.status === 'maintenance').length, color: '#9333ea' },
-            { label: 'Totalt', value: equipment.reduce((sum, e) => sum + (e.quantity || 1), 0), color: '#9c27b0' },
-          ].map((stat) => (
-            <Box
-              key={stat.label}
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 700, fontSize: '0.85rem' }}>
+            {equipment.reduce((s, e) => s + (e.quantity || 1), 0)} totalt
+          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
+            Viser {filteredEquipment.length}
+          </Typography>
+          {assignedToday > 0 && (
+            <>
+              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
+              <Typography variant="body2" sx={{ color: '#4caf50', fontSize: '0.85rem', fontWeight: 600 }}>
+                {assignedToday} tildelt i dag
+              </Typography>
+            </>
+          )}
+          {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
+            <>
+              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem' }}>
+                Filtrert fra {equipment.length}
+              </Typography>
+            </>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Tooltip title={sidebarOpen ? 'Skjul kategoriliste' : 'Vis kategoriliste'}>
+            <IconButton
+              size="small"
+              onClick={() => setSidebarOpen(prev => !prev)}
               sx={{
-                flex: '1 1 auto',
-                minWidth: 120,
-                p: 1.5,
-                borderRadius: 2,
-                bgcolor: `${stat.color}10`,
-                border: `1px solid ${stat.color}30`,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.5,
-                transition: 'all 0.2s',
-                cursor: 'default',
-                '&:hover': {
-                  bgcolor: `${stat.color}20`,
-                  transform: 'translateY(-1px)',
-                },
+                color: sidebarOpen ? '#9333ea' : 'rgba(255,255,255,0.5)',
+                bgcolor: sidebarOpen ? 'rgba(147,51,234,0.12)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(147,51,234,0.15)' },
+                borderRadius: 1,
+                p: 0.5,
               }}
             >
-              <Box sx={{ 
-                width: 40, 
-                height: 40, 
-                borderRadius: '50%', 
-                bgcolor: `${stat.color}20`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                <Typography variant="h5" sx={{ color: stat.color, fontWeight: 700 }}>
-                  {stat.value}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>
-                  {stat.label}
-                </Typography>
-              </Box>
-            </Box>
-          ))}
+              <FilterIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
       )}
+
+      {/* Sidebar + Main content row */}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+        {/* ── Category Sidebar ── */}
+        {!isMobile && sidebarOpen && equipment.length > 0 && (
+          <Box sx={{
+            width: 220,
+            flexShrink: 0,
+            bgcolor: 'rgba(0,0,0,0.25)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 3,
+            p: 1.5,
+            position: 'sticky',
+            top: 16,
+          }}>
+            <Typography variant="overline" sx={{
+              color: 'rgba(255,255,255,0.4)',
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              px: 1,
+              display: 'block',
+              mb: 1,
+            }}>
+              Kategorier
+            </Typography>
+
+            {/* All equipment row */}
+            <Box
+              onClick={() => setCategoryFilter('all')}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 1,
+                py: 0.75,
+                borderRadius: 1.5,
+                cursor: 'pointer',
+                bgcolor: categoryFilter === 'all' ? 'rgba(147,51,234,0.18)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
+                transition: 'background 0.15s',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <BuildIcon sx={{ fontSize: 15, color: categoryFilter === 'all' ? '#9333ea' : 'rgba(255,255,255,0.5)' }} />
+                <Typography variant="body2" sx={{ color: categoryFilter === 'all' ? '#c084fc' : 'rgba(255,255,255,0.8)', fontWeight: categoryFilter === 'all' ? 700 : 400, fontSize: '0.82rem' }}>
+                  Alle
+                </Typography>
+              </Box>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem' }}>
+                {equipment.length}
+              </Typography>
+            </Box>
+
+            {/* Per-category rows */}
+            {categories.map(cat => {
+              const count = categoryCounts[cat] || 0;
+              const isExpanded = expandedCategories.has(cat);
+              const isActive = categoryFilter === cat;
+              return (
+                <Box key={cat}>
+                  <Box
+                    onClick={() => {
+                      setCategoryFilter(isActive ? 'all' : cat);
+                      setExpandedCategories(prev => {
+                        const next = new Set(prev);
+                        isExpanded ? next.delete(cat) : next.add(cat);
+                        return next;
+                      });
+                    }}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      px: 1,
+                      py: 0.75,
+                      borderRadius: 1.5,
+                      cursor: 'pointer',
+                      bgcolor: isActive ? 'rgba(147,51,234,0.18)' : 'transparent',
+                      '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(cat), flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.8)', fontWeight: isActive ? 700 : 400, fontSize: '0.82rem' }}>
+                        {cat}
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)', fontSize: '0.72rem', fontWeight: isActive ? 700 : 400 }}>
+                      {count}
+                    </Typography>
+                  </Box>
+
+                  {/* Expanded: show first 5 items in this category */}
+                  {isExpanded && (
+                    <Box sx={{ pl: 2.5, pb: 0.5 }}>
+                      {equipment
+                        .filter(e => e.category === cat)
+                        .slice(0, 5)
+                        .map(e => (
+                          <Box
+                            key={e.id}
+                            onClick={(ev) => { ev.stopPropagation(); handleOpenDialog(e); }}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.75,
+                              py: 0.4,
+                              px: 0.5,
+                              borderRadius: 1,
+                              cursor: 'pointer',
+                              '&:hover': { bgcolor: 'rgba(147,51,234,0.08)' },
+                            }}
+                          >
+                            <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: getCategoryColor(cat), flexShrink: 0 }} />
+                            <Typography
+                              variant="caption"
+                              sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            >
+                              {e.name}
+                            </Typography>
+                          </Box>
+                        ))}
+                      {equipment.filter(e => e.category === cat).length > 5 && (
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', pl: 0.5 }}>
+                          +{equipment.filter(e => e.category === cat).length - 5} til
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+
+            <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.07)' }} />
+
+            {/* Maintenance shortcut */}
+            <Box
+              onClick={() => setStatusFilter('maintenance')}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 1,
+                py: 0.75,
+                borderRadius: 1.5,
+                cursor: 'pointer',
+                bgcolor: statusFilter === 'maintenance' ? 'rgba(255,152,0,0.15)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(255,152,0,0.1)' },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <WarningIcon sx={{ fontSize: 15, color: '#ff9800' }} />
+                <Typography variant="body2" sx={{ color: statusFilter === 'maintenance' ? '#ffb74d' : 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
+                  Vedlikehold
+                </Typography>
+              </Box>
+              <Typography variant="caption" sx={{ color: 'rgba(255,152,0,0.7)', fontSize: '0.72rem' }}>
+                {equipment.filter(e => e.status === 'maintenance').length}
+              </Typography>
+            </Box>
+
+            {/* Help / Tips */}
+            <Box
+              onClick={() => setFilterOpen(true)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1,
+                py: 0.75,
+                borderRadius: 1.5,
+                cursor: 'pointer',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+              }}
+            >
+              <BookmarkIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.82rem' }}>
+                Hjelp &amp; filter
+              </Typography>
+            </Box>
+          </Box>
+        )}
+
+        {/* ── Main content column ── */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
 
       <Collapse in={filterOpen}>
         <Box sx={{ 
@@ -2057,6 +2524,43 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
         </Box>
       </Collapse>
+
+      {/* Active filter chips */}
+      {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
+        <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          {searchQuery && (
+            <Chip
+              label={`Søk: "${searchQuery}"`}
+              size="small"
+              onDelete={() => setSearchQuery('')}
+              sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', borderColor: 'rgba(147,51,234,0.3)', border: '1px solid' }}
+            />
+          )}
+          {categoryFilter !== 'all' && (
+            <Chip
+              label={`Kategori: ${categoryFilter}`}
+              size="small"
+              icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(categoryFilter), ml: '8px !important' }} />}
+              onDelete={() => setCategoryFilter('all')}
+              sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', borderColor: 'rgba(147,51,234,0.3)', border: '1px solid' }}
+            />
+          )}
+          {statusFilter !== 'all' && (
+            <Chip
+              label={STATUS_LABELS[statusFilter as keyof typeof STATUS_LABELS] ?? statusFilter}
+              size="small"
+              onDelete={() => setStatusFilter('all')}
+              sx={{ bgcolor: `${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9333ea'}20`, color: STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#c084fc', border: `1px solid ${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9333ea'}40` }}
+            />
+          )}
+          <Chip
+            label="Nullstill"
+            size="small"
+            onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); }}
+            sx={{ bgcolor: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)', border: '1px solid', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }, cursor: 'pointer' }}
+          />
+        </Box>
+      )}
 
       {viewMode === 'grid' ? (
         <Grid container spacing={2.5}>
@@ -2716,6 +3220,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Table>
         </TableContainer>
       )}
+
+        </Box>{/* end main content column */}
+      </Box>{/* end sidebar + main row */}
 
       <Dialog
         open={dialogOpen}
@@ -4295,7 +4802,40 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               </Button>
             </Stack>
           </Box>
-          
+
+          {/* Category filter chips */}
+          {vendorCategories.length > 0 && (
+            <Box sx={{ mt: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Chip
+                label="Alle"
+                size="small"
+                onClick={() => setSelectedVendorCategory('all')}
+                sx={{
+                  bgcolor: selectedVendorCategory === 'all' ? '#2196f3' : 'rgba(33,150,243,0.12)',
+                  color: selectedVendorCategory === 'all' ? '#fff' : '#2196f3',
+                  fontWeight: selectedVendorCategory === 'all' ? 700 : 400,
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: selectedVendorCategory === 'all' ? '#1976d2' : 'rgba(33,150,243,0.25)' },
+                }}
+              />
+              {vendorCategories.map(vc => (
+                <Chip
+                  key={vc.category}
+                  label={`${vc.category} (${vc.count})`}
+                  size="small"
+                  onClick={() => setSelectedVendorCategory(vc.category)}
+                  sx={{
+                    bgcolor: selectedVendorCategory === vc.category ? '#2196f3' : 'rgba(33,150,243,0.12)',
+                    color: selectedVendorCategory === vc.category ? '#fff' : '#2196f3',
+                    fontWeight: selectedVendorCategory === vc.category ? 700 : 400,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: selectedVendorCategory === vc.category ? '#1976d2' : 'rgba(33,150,243,0.25)' },
+                  }}
+                />
+              ))}
+            </Box>
+          )}
+
           {vendorLinks.length > 0 && (
             <Box sx={{ mt: 4 }}>
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 2 }}>
@@ -4588,17 +5128,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           >
             <Tab icon={<SearchIcon />} label="Søk bilder" iconPosition="start" />
             <Tab icon={<MovieIcon />} label="Filmreferanser" iconPosition="start" />
+            <Tab icon={<LinkIcon />} label="Lim inn URL" iconPosition="start" />
           </Tabs>
           
           <Box sx={{ p: 2 }}>
-            {/* Search Input */}
+            {/* Search Input — hidden when URL tab is active */}
+            {imagePickerTab < 2 && (
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
               <TextField
                 fullWidth
                 placeholder={imagePickerTab === 0 ? "Søk etter utstyr, props, rekvisitter..." : "Søk film for referansebilder..."}
                 value={imageSearchQuery}
                 onChange={(e) => setImageSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && searchImages(imageSearchQuery)}
+                onKeyDown={(e) => e.key === 'Enter' && searchImages(imagePickerTab === 1 ? imageSearchQuery + ' cinema film' : imageSearchQuery)}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -4615,7 +5157,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               />
               <Button
                 variant="contained"
-                onClick={() => searchImages(imageSearchQuery)}
+                onClick={() => searchImages(imagePickerTab === 1 ? imageSearchQuery + ' cinema film' : imageSearchQuery)}
                 disabled={imageSearchLoading || !imageSearchQuery.trim()}
                 sx={{ 
                   bgcolor: '#9333ea', 
@@ -4627,17 +5169,22 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 {imageSearchLoading ? <CircularProgress size={20} /> : 'Søk'}
               </Button>
             </Box>
+            )}
             
-            {/* Quick Search Suggestions */}
+            {/* Quick Search Suggestions — content differs by tab */}
+            {imagePickerTab < 2 && (
             <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-              {['Kamera', 'Lys', 'Stativ', 'Mikrofon', 'Drone', 'Generator', 'Film props', 'Studio equipment'].map((term) => (
+              {(imagePickerTab === 0
+                ? ['Kamera', 'Lys', 'Stativ', 'Mikrofon', 'Drone', 'Generator', 'Film props', 'Studio equipment']
+                : ['Cinematography', 'Film noir', 'Scene design', 'Location scouting', 'Production design', 'Set lighting', 'Behind scenes', 'Film crew']
+              ).map((term) => (
                 <Chip
                   key={term}
                   label={term}
                   size="small"
                   onClick={() => {
                     setImageSearchQuery(term);
-                    searchImages(term);
+                    searchImages(imagePickerTab === 1 ? term + ' cinema film' : term);
                   }}
                   sx={{ 
                     bgcolor: 'rgba(255,255,255,0.1)', 
@@ -4648,6 +5195,66 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 />
               ))}
             </Box>
+            )}
+
+            {/* URL paste tab */}
+            {imagePickerTab === 2 && (
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  fullWidth
+                  placeholder="Lim inn bilde-URL her, f.eks. https://example.com/bilde.jpg"
+                  value={tempImageUrl}
+                  onChange={(e) => setTempImageUrl(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LinkIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: 'rgba(255,255,255,0.05)',
+                      color: '#fff',
+                    },
+                  }}
+                />
+                {tempImageUrl && (
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mb: 1, display: 'block' }}>
+                      Forhåndsvisning
+                    </Typography>
+                    <Box
+                      component="img"
+                      src={tempImageUrl}
+                      alt="Forhåndsvisning"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      sx={{
+                        width: '100%',
+                        maxHeight: 240,
+                        objectFit: 'contain',
+                        borderRadius: 1,
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        bgcolor: 'rgba(0,0,0,0.3)',
+                      }}
+                    />
+                  </Box>
+                )}
+                <Button
+                  variant="contained"
+                  disabled={!tempImageUrl.trim()}
+                  onClick={() => {
+                    if (tempImageUrl.trim()) {
+                      handleSelectSearchImage(tempImageUrl.trim());
+                      setTempImageUrl('');
+                    }
+                  }}
+                  sx={{ bgcolor: '#9333ea', color: '#fff', '&:hover': { bgcolor: '#6d28d9' }, alignSelf: 'flex-start' }}
+                >
+                  Bruk bilde
+                </Button>
+              </Stack>
+            )}
             
             {/* Search Results */}
             {imageSearchLoading ? (
@@ -5533,6 +6140,330 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             Synkroniser nå
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* ── Catalog Bridge Dialog ─────────────────────────────────────────────
+          4 tabs: Manufacturer catalog · Gear news · Market prices · Lens DB.
+          The onAddToProject / onImportFrom* callbacks pre-fill the add-dialog.  */}
+      <Dialog
+        open={catalogBridgeOpen}
+        onClose={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }}
+        fullScreen
+        PaperProps={{ sx: { bgcolor: '#0f0f1a' } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#fff', pb: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SearchIcon sx={{ color: '#9333ea' }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>Utstyr & Markeder</Typography>
+            <Chip label="Importer til prosjekt" size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc' }} />
+          </Box>
+          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        {/* Sub-tab navigation */}
+        <Box sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.02)' }}>
+          <Tabs
+            value={catalogDialogTab}
+            onChange={(_, v: number) => setCatalogDialogTab(v)}
+            sx={{
+              px: 2,
+              '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', minHeight: 48, fontSize: '0.82rem' },
+              '& .Mui-selected': { color: '#9333ea' },
+              '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
+            }}
+          >
+            <Tab icon={<SearchIcon sx={{ fontSize: 16 }} />} label="Produkt-katalog" iconPosition="start" />
+            <Tab icon={<NewspaperIcon sx={{ fontSize: 16 }} />} label="Utstyrsnyheter" iconPosition="start" />
+            <Tab icon={<TrendingUpIcon sx={{ fontSize: 16 }} />} label="Markedspriser" iconPosition="start" />
+            <Tab icon={<PhotoLibraryIcon sx={{ fontSize: 16 }} />} label="Objektiver" iconPosition="start" />
+          </Tabs>
+        </Box>
+
+        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
+
+          {/* Tab 0 — Manufacturer product catalog */}
+          {catalogDialogTab === 0 && (
+            <EquipmentCatalogBrowser
+              profession="videographer"
+              userId={user?.id ? String(user.id) : 'guest'}
+              onAddToProject={handleImportFromCatalog}
+            />
+          )}
+
+          {/* Tab 1 — Gear news feed */}
+          {catalogDialogTab === 1 && (
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <NewspaperIcon sx={{ color: '#9333ea' }} />
+                Utstyrsnyheter
+              </Typography>
+              {gearNewsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
+                  <CircularProgress sx={{ color: '#9333ea' }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter nyheter...</Typography>
+                </Box>
+              ) : gearNewsArticles.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <NewspaperIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen nyheter tilgjengelig akkurat nå.</Typography>
+                </Box>
+              ) : (
+                <Grid container spacing={2}>
+                  {gearNewsArticles.map((article, idx) => (
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={idx}>
+                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
+                        <CardContent sx={{ flexGrow: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
+                            {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontSize: '0.7rem' }} />}
+                            {article.isNew && <Chip label="NY" size="small" color="error" sx={{ fontSize: '0.7rem' }} />}
+                            {article.isTrending && <Chip label="Trending" size="small" color="warning" sx={{ fontSize: '0.7rem' }} />}
+                          </Box>
+                          <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 1, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {article.title}
+                          </Typography>
+                          {article.summary && (
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                              {article.summary}
+                            </Typography>
+                          )}
+                          {article.rating !== undefined && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                              <Rating value={article.rating / 2} precision={0.5} size="small" readOnly sx={{ '& .MuiRating-iconFilled': { color: '#9333ea' } }} />
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{article.rating}</Typography>
+                            </Box>
+                          )}
+                        </CardContent>
+                        <Box sx={{ p: 1.5, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                          {article.url && (
+                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" sx={{ color: '#9333ea' }}>
+                              <OpenInNewIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Box>
+          )}
+
+          {/* Tab 2 — Market prices */}
+          {catalogDialogTab === 2 && (
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUpIcon sx={{ color: '#4caf50' }} />
+                Markedspriser & Sammenligning
+              </Typography>
+              {marketPricesLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
+                  <CircularProgress sx={{ color: '#4caf50' }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter markedspriser...</Typography>
+                </Box>
+              ) : marketItems.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <AttachMoneyIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen markedsprisdata tilgjengelig.</Typography>
+                </Box>
+              ) : (
+                <>
+                  {/* Summary row */}
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(76,175,80,0.3)', borderRadius: 2 }}>
+                        <TrendingUpIcon sx={{ color: '#4caf50', mb: 1 }} />
+                        <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
+                          {marketItems.filter(i => i.availability === 'available').length}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Tilgjengelige produkter</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(147,51,234,0.3)', borderRadius: 2 }}>
+                        <AttachMoneyIcon sx={{ color: '#9333ea', mb: 1 }} />
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                          Fra: {marketItems.length > 0 ? Math.min(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                          Til: {marketItems.length > 0 ? Math.max(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(33,150,243,0.3)', borderRadius: 2 }}>
+                        <StarIcon sx={{ color: '#2196f3', mb: 1 }} />
+                        <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
+                          {(marketItems.reduce((acc, item) => acc + parseFloat(item.videographerRating || '0'), 0) / (marketItems.length || 1)).toFixed(1)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Gj.snitt videographer-rating</Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+
+                  {/* Items grid */}
+                  <Grid container spacing={2}>
+                    {marketItems.map(item => (
+                      <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
+                        <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
+                          <CardContent sx={{ flexGrow: 1 }}>
+                            <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
+                              {item.brand} {item.model}
+                            </Typography>
+                            <Chip label={item.category} size="small" sx={{ bgcolor: 'rgba(76,175,80,0.15)', color: '#4caf50', mb: 1.5, fontSize: '0.72rem' }} />
+                            <Stack spacing={0.75}>
+                              {item.currentPrice && (
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
+                                  <Typography variant="h6" sx={{ color: '#4caf50', fontWeight: 700, fontSize: '1rem' }}>
+                                    {parseFloat(item.currentPrice).toLocaleString('nb-NO')} kr
+                                  </Typography>
+                                </Box>
+                              )}
+                              {item.msrp && item.currentPrice && parseFloat(item.msrp) > parseFloat(item.currentPrice) && (
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
+                                    UVP: {parseFloat(item.msrp).toLocaleString('nb-NO')} kr
+                                  </Typography>
+                                  <Chip label={`-${Math.round((1 - parseFloat(item.currentPrice) / parseFloat(item.msrp)) * 100)}%`} size="small" color="success" sx={{ fontSize: '0.7rem' }} />
+                                </Box>
+                              )}
+                              {item.videographerRating && (
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Rating:</Typography>
+                                  <Rating value={parseFloat(item.videographerRating)} size="small" readOnly precision={0.1} sx={{ '& .MuiRating-iconFilled': { color: '#2196f3' } }} />
+                                </Box>
+                              )}
+                              {item.availability && (
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Status:</Typography>
+                                  <Chip label={item.availability} size="small" color={item.availability === 'available' ? 'success' : item.availability === 'limited' ? 'warning' : 'default'} sx={{ fontSize: '0.7rem' }} />
+                                </Box>
+                              )}
+                            </Stack>
+                          </CardContent>
+                          <Box sx={{ p: 1.5, pt: 0, display: 'flex', gap: 1 }}>
+                            {item.sourceUrl && (
+                              <IconButton size="small" href={item.sourceUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                                <OpenInNewIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromMarket(item)}
+                              sx={{ ml: 'auto', borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>
+                              Importer
+                            </Button>
+                          </Box>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </>
+              )}
+            </Box>
+          )}
+
+          {/* Tab 3 — Lens database */}
+          {catalogDialogTab === 3 && (
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PhotoLibraryIcon sx={{ color: '#9333ea' }} />
+                Objektiv Database
+              </Typography>
+              {lensDbLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
+                  <CircularProgress sx={{ color: '#9333ea' }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter objektivdatabase...</Typography>
+                </Box>
+              ) : lensItems.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <PhotoLibraryIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen objektiver i databasen ennå.</Typography>
+                </Box>
+              ) : (
+                <Grid container spacing={2}>
+                  {lensItems.map(lens => (
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={lens.id}>
+                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
+                        <CardContent sx={{ flexGrow: 1 }}>
+                          <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
+                            {lens.brand} {lens.model}
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
+                            {lens.focalLength && lens.aperture && (
+                              <Chip label={`${lens.focalLength} ${lens.aperture}`} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontWeight: 600, fontSize: '0.72rem' }} />
+                            )}
+                            {lens.mount && <Chip label={lens.mount} size="small" variant="outlined" sx={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.72rem' }} />}
+                            {lens.lensType && <Chip label={lens.lensType} size="small" variant="outlined" sx={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.72rem' }} />}
+                          </Box>
+                          <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
+                          <Stack spacing={0.75}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Bildestabilisering:</Typography>
+                              <CheckCircleIcon sx={{ fontSize: 16, color: lens.imageStabilization ? '#4caf50' : 'rgba(255,255,255,0.2)' }} />
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Værtetting:</Typography>
+                              <CheckCircleIcon sx={{ fontSize: 16, color: lens.weatherSealing ? '#4caf50' : 'rgba(255,255,255,0.2)' }} />
+                            </Box>
+                            {lens.weight && (
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Vekt:</Typography>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>{lens.weight}</Typography>
+                              </Box>
+                            )}
+                            {lens.currentPrice && (
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: '#9333ea' }}>
+                                  {parseFloat(lens.currentPrice).toLocaleString('nb-NO')} kr
+                                </Typography>
+                              </Box>
+                            )}
+                          </Stack>
+                        </CardContent>
+                        <Box sx={{ p: 1.5, pt: 0 }}>
+                          <Button size="small" fullWidth variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromLens(lens)}
+                            sx={{ borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>
+                            Legg til i prosjekt
+                          </Button>
+                        </Box>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Box>
+          )}
+
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Firmware Management Dialog ────────────────────────────────────────
+          Shows firmware update status for all equipment registered in the
+          project, reusing the standalone FirmwareManagementInterface panel.    */}
+      <Dialog
+        open={firmwarePanelOpen}
+        onClose={() => setFirmwarePanelOpen(false)}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{ sx: { bgcolor: '#0f0f1a', color: '#fff' } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SyncIcon sx={{ color: '#2196f3' }} />
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
+          </Box>
+          <IconButton onClick={() => setFirmwarePanelOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
+          <FirmwareManagementInterface
+            profession="videographer"
+            userId={user?.id ? String(user.id) : 'guest'}
+          />
+        </DialogContent>
       </Dialog>
 
     </Box>

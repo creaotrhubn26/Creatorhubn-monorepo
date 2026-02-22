@@ -118,6 +118,10 @@ const useCmsMode = () => {
 interface EquipmentCatalogBrowserProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
   userId: string;
+  /** When provided, shows a "Legg til i prosjekt" button alongside the
+   * normal inventory button so a parent (e.g. EquipmentManagementPanel)
+   * can pre-fill its own add-form from the catalog. */
+  onAddToProject?: (item: CatalogEquipment) => void;
 }
 
 interface CatalogEquipment {
@@ -224,7 +228,7 @@ const getEquipmentUseCases = (equipment: CatalogEquipment): string[] => {
 };
 
 // Helper function to generate "why choose this" recommendations
-const getWhyChooseThis = (equipment: CatalogEquipment): { pros: string[];, cons: string[]; bestFor: string } => {
+const getWhyChooseThis = (equipment: CatalogEquipment): { pros: string[]; cons: string[]; bestFor: string } => {
   const specs = equipment.specifications || {};
   const model = equipment.model.toLowerCase();
   const brand = equipment.brand;
@@ -338,6 +342,7 @@ const compareEquipment = (eq1: CatalogEquipment, eq2: CatalogEquipment): { winne
 
 const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
   profession,
+  onAddToProject,
   userId,
 }) => {
   const theming = useTheming(profession);
@@ -717,16 +722,29 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                 {isCompareSelected ? 'Valgt' : 'Sammenlign'}
               </Button>
             ) : (
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<Add />}
-                sx={{ bgcolor: professionColor }}
-                onClick={() => addEquipmentMutation.mutate(equipment)}
-                disabled={addEquipmentMutation.isPending}
-              >
-                Legg til
-              </Button>
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<Add />}
+                  sx={{ bgcolor: professionColor }}
+                  onClick={() => addEquipmentMutation.mutate(equipment)}
+                  disabled={addEquipmentMutation.isPending}
+                >
+                  Legg til
+                </Button>
+                {onAddToProject && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<Add />}
+                    sx={{ borderColor: '#9333ea', color: '#9333ea', '&:hover': { bgcolor: 'rgba(147,51,234,0.08)' } }}
+                    onClick={() => onAddToProject(equipment)}
+                  >
+                    Til prosjekt
+                  </Button>
+                )}
+              </Box>
             )}
           </CardActions>
         </Card>
@@ -1061,6 +1079,16 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
               <Button onClick={() => setSelectedEquipment(null)}>Lukk</Button>
+              {onAddToProject && selectedEquipment && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Add />}
+                  sx={{ borderColor: '#9333ea', color: '#9333ea', '&:hover': { bgcolor: 'rgba(147,51,234,0.08)' } }}
+                  onClick={() => { onAddToProject(selectedEquipment); setSelectedEquipment(null); }}
+                >
+                  Legg til i prosjekt
+                </Button>
+              )}
               <Button
                 variant="contained"
                 startIcon={addEquipmentMutation.isPending ? <CircularProgress size={16} /> : <Add />}
@@ -1200,7 +1228,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                             align="center"
                             sx={{
                               bgcolor: v.isBest ? '#4CAF50' + '20' : 'transparent',
-                              fontWeight: .isBest ? 600 : 400,
+                              fontWeight: v.isBest ? 600 : 400,
                               color: v.isBest ? '#4CAF50' : 'inherit'}}
                           >
                             {v.value}
@@ -1288,6 +1316,21 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setShowCompareDialog(false)}>Lukk</Button>
+          {onAddToProject && (
+            <Button
+              variant="outlined"
+              startIcon={<Add />}
+              sx={{ borderColor: '#9333ea', color: '#9333ea', '&:hover': { bgcolor: 'rgba(147,51,234,0.08)' } }}
+              onClick={() => {
+                compareList.forEach((eq) => onAddToProject(eq));
+                setShowCompareDialog(false);
+                setCompareMode(false);
+                setCompareList([]);
+              }}
+            >
+              Legg alle til prosjekt
+            </Button>
+          )}
           <Button
             variant="contained"
             startIcon={<Add />}
@@ -1446,7 +1489,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                         const urls: Record<string, string> = {
                           'B&H Photo':'https://www.bhphotovideo.com/','Amazon':'https://www.amazon.com/', 'Elkjøp':'https://www.elkjop.no/', 'Komplett' : 'https://www.komplett.no/',
                         };
-                        window.open(urls[source]'_blank');
+                        window.open(urls[source], '_blank');
                       }}
                     />
                   ))}
@@ -1463,7 +1506,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
               onClick={handleSaveImage}
               disabled={!imagePreview || uploadingImage}
               startIcon={uploadingImage ? <CircularProgress size={16} /> : <CheckCircle />}
-              sx={{ bgcolor: professionColor'&:hover': { bgcolor: professionColor } }}
+              sx={{ bgcolor: professionColor, '&:hover': { bgcolor: professionColor } }}
             >
               {uploadingImage ? 'Lagrer...' : 'Lagre bilde'}
             </Button>
@@ -1474,5 +1517,6 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
   );
 };
 
+export type { CatalogEquipment };
 export default EquipmentCatalogBrowser;
 

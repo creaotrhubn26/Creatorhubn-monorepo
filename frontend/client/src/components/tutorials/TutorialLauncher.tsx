@@ -206,8 +206,7 @@ const TutorialLauncher: React.FC<TutorialLauncherProps> = ({
                       fullWidth
                       startIcon={theming.getThemedIcon('play')}
                       onClick={tutorial.action}
-                      sx={{ bgcolor: professionColor }}
-                     sx={theming.getThemedButtonSx()}>
+                      sx={[{ bgcolor: professionColor }, theming.getThemedButtonSx()]}>
                       Start
                     </Button>
                   </CardContent>

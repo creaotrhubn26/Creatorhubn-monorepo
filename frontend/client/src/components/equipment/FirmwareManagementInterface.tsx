@@ -157,7 +157,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: ['/api/equipment/firmware-updates,', userId],
+    queryKey: ['/api/equipment/firmware-updates', userId],
     queryFn: () => apiRequest(`/api/equipment/firmware-updates/${userId}`),
   });
 
@@ -773,7 +773,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               {selectedUpdate.firmwareUpdate.sourceUrl && (
                 <Button
                   startIcon={<Launch />}
-                  onClick={() => window.open(selectedUpdate.firmwareUpdate.sourceUrl'_blank')}
+                  onClick={() => window.open(selectedUpdate.firmwareUpdate.sourceUrl, '_blank')}
                 >
                   Produsent
                 </Button>
@@ -783,7 +783,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                   variant="contained"
                   startIcon={<Download />}
                   onClick={() => {
-                    window.open(selectedUpdate.firmwareUpdate.downloadUrl'_blank');
+                    window.open(selectedUpdate.firmwareUpdate.downloadUrl, '_blank');
                     setSelectedUpdate(null);
                   }}
                   sx={{ bgcolor: professionColor }}

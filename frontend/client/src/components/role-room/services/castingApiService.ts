@@ -1,4 +1,12 @@
-const API_BASE = '/api/casting';
+const API_BASE = '/api/role-room';
+
+function getAuthHeaders(): Record<string, string> {
+  try {
+    const token = localStorage.getItem('creatorhub_auth_token');
+    if (token) return { 'Authorization': `Bearer ${token}` };
+  } catch { /* SSR / test env */ }
+  return {};
+}
 
 async function apiRequest<T>(
   endpoint: string,
@@ -8,6 +16,7 @@ async function apiRequest<T>(
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
       ...options.headers,
     },
   });
@@ -668,6 +677,20 @@ export const equipmentCheckoutApi = {
         `/projects/${projectId}/equipment-checkouts?active=true`
       );
       return result.checkouts;
+    } catch {
+      return [];
+    }
+  },
+
+  /** Returns all checkouts for a project, optionally filtered by equipmentId */
+  getAll: async (projectId: string, equipmentId?: string): Promise<EquipmentCheckout[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (equipmentId) params.set('equipmentId', equipmentId);
+      const result = await apiRequest<{ checkouts: EquipmentCheckout[] }>(
+        `/projects/${projectId}/equipment-checkouts?${params.toString()}`
+      );
+      return Array.isArray(result.checkouts) ? result.checkouts : [];
     } catch {
       return [];
     }

@@ -151,7 +151,7 @@ const getDefaultSections = (pageId: LandingPageId) => {
       },
       loginPanel: {
         id: 'loginPanel',
-        title: 'Login Panel — venstre brandings-panel',
+        panelLabel: 'Login Panel — venstre brandings-panel',
         fields: [
           { key: 'logoUrl',     label: 'Logo URL (tom = standard)' },
           { key: 'eyebrowText', label: 'Eyebrow-tekst (liten caps over tittel)' },
@@ -363,7 +363,7 @@ const getDefaultSections = (pageId: LandingPageId) => {
     },
     loginPanel: {
       id: 'loginPanel',
-      title: 'Login Panel — venstre brandings-panel',
+      panelLabel: 'Login Panel — venstre brandings-panel',
       fields: [
         { key: 'logoUrl',     label: 'Logo URL (tom = standard)' },
         { key: 'eyebrowText', label: 'Eyebrow-tekst (liten caps over tittel)' },

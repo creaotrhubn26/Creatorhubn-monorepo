@@ -119,13 +119,37 @@ function buildCorsOptions(): cors.CorsOptions {
   };
 }
 
+// ── Auth Session Type ────────────────────────────────────────
+
+type SessionData = { userId: string; email: string; name: string; role: string; loginAt: string };
+
 // ── API Key Middleware ───────────────────────────────────────
 
-function apiKeyAuth(pool: Pool) {
+/**
+ * Dual-auth middleware: accepts either
+ *   • x-api-key header  (external integrations)
+ *   • Authorization: Bearer <session-token>  (in-app users)
+ */
+function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // ── 1. Try Bearer token (in-app session) ──────────────
+    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
+    if (bearer && activeSessions) {
+      const session = activeSessions.get(bearer);
+      if (session) {
+        (req as Request & { apiKeyUser: { userId: string; scopes: string[] } }).apiKeyUser = {
+          userId: session.userId,
+          scopes: ['read', 'write', 'admin'],
+        };
+        next();
+        return;
+      }
+    }
+
+    // ── 2. Try x-api-key header (external clients) ────────
     const key = req.headers['x-api-key'];
     if (typeof key !== 'string' || !key) {
-      res.status(401).json({ error: 'Mangler x-api-key header' });
+      res.status(401).json({ error: 'Mangler x-api-key header eller gyldig session' });
       return;
     }
 
@@ -180,7 +204,7 @@ function requireScope(req: Request, scope: string): boolean {
 
 // ── Router Factory ───────────────────────────────────────────
 
-export function createRoleRoomRouter(pool: Pool): Router {
+export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, SessionData>): Router {
   const router = Router();
 
   // Apply CORS to all Role Room routes
@@ -210,7 +234,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
 
   // ── Connection Test (requires API key) ───────────────────
 
-  router.get('/test-connection', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/test-connection', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
     try {
       const result = await pool.query('SELECT NOW() AS server_time');
@@ -270,7 +294,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.delete('/api-keys/:keyId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/api-keys/:keyId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       await pool.query(
         `UPDATE role_room_api_keys SET is_active = FALSE WHERE id = $1`,
@@ -286,7 +310,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Casting Projects CRUD
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/projects', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
     try {
       const result = await pool.query<CastingProjectRow>(
@@ -303,7 +327,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.get('/projects/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const result = await pool.query<CastingProjectRow>(
         'SELECT * FROM casting_projects WHERE id = $1', [req.params.id]
@@ -342,7 +366,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/projects', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -392,7 +416,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.put('/projects/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.put('/projects/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -429,7 +453,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.delete('/projects/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/projects/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'admin')) {
       res.status(403).json({ error: 'Admin-tilgang kreves for sletting' });
       return;
@@ -446,7 +470,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // User Roles (RBAC)
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/projects/:projectId/roles', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/roles', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
         'SELECT * FROM casting_user_roles WHERE project_id = $1 ORDER BY created_at',
@@ -458,7 +482,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/projects/:projectId/roles', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/roles', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -489,7 +513,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.delete('/projects/:projectId/roles/:userId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/projects/:projectId/roles/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       await pool.query(
         'DELETE FROM casting_user_roles WHERE project_id = $1 AND user_id = $2',
@@ -505,7 +529,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Casting Roles (character roles)
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/projects/:projectId/casting-roles', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/casting-roles', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
         'SELECT * FROM casting_roles WHERE project_id = $1 ORDER BY created_at',
@@ -517,7 +541,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/projects/:projectId/casting-roles', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/casting-roles', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -540,7 +564,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Candidates
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/projects/:projectId/candidates', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/candidates', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
         'SELECT * FROM casting_candidates WHERE project_id = $1 ORDER BY name',
@@ -552,7 +576,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/projects/:projectId/candidates', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/candidates', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -575,7 +599,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Crew Members
   // ═══════════════════════════════════════════════════════════
 
-  router.get('/projects/:projectId/crew', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/crew', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
         'SELECT * FROM casting_crew WHERE project_id = $1 ORDER BY name',
@@ -587,7 +611,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.post('/projects/:projectId/crew', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/crew', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -629,7 +653,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
    * Returns:
    *   { items[], totalCount, counts{ total, scheduled, completed, cancelled, pool, today, favorites } }
    */
-  router.get('/projects/:projectId/schedules', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/schedules', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
     const {
       status, roleId, candidateId, dateFrom, dateTo, search,
@@ -788,7 +812,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   /**
    * POST /projects/:projectId/schedules – create a new slot
    */
-  router.post('/projects/:projectId/schedules', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/schedules', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -820,7 +844,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   /**
    * PUT /projects/:projectId/schedules/:scheduleId – full update
    */
-  router.put('/projects/:projectId/schedules/:scheduleId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.put('/projects/:projectId/schedules/:scheduleId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -856,7 +880,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   /**
    * PATCH /projects/:projectId/schedules/:scheduleId – partial update (status only, etc.)
    */
-  router.patch('/projects/:projectId/schedules/:scheduleId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.patch('/projects/:projectId/schedules/:scheduleId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -885,7 +909,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   /**
    * DELETE /projects/:projectId/schedules/:scheduleId – delete one
    */
-  router.delete('/projects/:projectId/schedules/:scheduleId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/projects/:projectId/schedules/:scheduleId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -909,7 +933,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
    * DELETE /projects/:projectId/schedules – bulk delete
    * Body: { ids: string[] }
    */
-  router.delete('/projects/:projectId/schedules', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/projects/:projectId/schedules', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -935,7 +959,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
    * POST /projects/:projectId/schedules/:scheduleId/favorite
    * Body: { userId: string, favorite: boolean }
    */
-  router.post('/projects/:projectId/schedules/:scheduleId/favorite', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/schedules/:scheduleId/favorite', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -966,7 +990,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Project Sync (Creatorhub ↔ Role Room)
   // ═══════════════════════════════════════════════════════════
 
-  router.post('/sync/project', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/sync/project', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
@@ -1039,7 +1063,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.get('/sync/status/:creatorhubProjectId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/sync/status/:creatorhubProjectId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const result = await pool.query(
         `SELECT * FROM casting_project_sync 
@@ -1057,7 +1081,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Onboarding Role Registration
   // ═══════════════════════════════════════════════════════════
 
-  router.post('/onboarding/register-role', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/onboarding/register-role', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { userId, email, profession, role } = req.body as {
       userId: string;
       email?: string;
@@ -1108,7 +1132,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // Marketplace Installation
   // ═══════════════════════════════════════════════════════════
 
-  router.post('/marketplace/install', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/marketplace/install', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
     const { appId } = req.body as { appId: string };
 
@@ -1130,7 +1154,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.get('/marketplace/installed', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/marketplace/installed', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
     try {
       const result = await pool.query(
@@ -1143,7 +1167,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
     }
   });
 
-  router.delete('/marketplace/uninstall/:appId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/marketplace/uninstall/:appId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const userId = getUserId(req);
     try {
       await pool.query(
@@ -1273,7 +1297,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   }
 
   // GET /api/liveset/:projectId/status?shootingDayId=
-  router.get('/liveset/:projectId/status', requireApiKey, (req: Request, res: Response) => {
+  router.get('/liveset/:projectId/status', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
@@ -1285,7 +1309,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /api/liveset/:projectId/roll
-  router.post('/liveset/:projectId/roll', requireApiKey, (req: Request, res: Response) => {
+  router.post('/liveset/:projectId/roll', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, sceneId, shotId, userId } = req.body as Record<string, string>;
     if (!shootingDayId || !sceneId || !shotId) return res.status(400).json({ error: 'shootingDayId, sceneId, shotId required' });
@@ -1299,7 +1323,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /api/liveset/:projectId/cut
-  router.post('/liveset/:projectId/cut', requireApiKey, (req: Request, res: Response) => {
+  router.post('/liveset/:projectId/cut', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, status, notes, cameraId, camera, lens, fps, iso, ndFilter,
             nextTake, loggedBy } = req.body as Record<string, string | number>;
@@ -1335,7 +1359,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /api/liveset/:projectId/circle
-  router.post('/liveset/:projectId/circle', requireApiKey, (req: Request, res: Response) => {
+  router.post('/liveset/:projectId/circle', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, takeId, userId } = req.body as Record<string, string>;
     if (!shootingDayId || !takeId) return res.status(400).json({ error: 'shootingDayId, takeId required' });
@@ -1349,7 +1373,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /api/liveset/:projectId/takes?shootingDayId=
-  router.get('/liveset/:projectId/takes', requireApiKey, (req: Request, res: Response) => {
+  router.get('/liveset/:projectId/takes', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
@@ -1357,7 +1381,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /api/liveset/:projectId/notes
-  router.post('/liveset/:projectId/notes', requireApiKey, (req: Request, res: Response) => {
+  router.post('/liveset/:projectId/notes', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, sceneId, shotId, takeId, type, note, createdBy } = req.body as Record<string, string>;
     if (!shootingDayId || !sceneId || !note) return res.status(400).json({ error: 'shootingDayId, sceneId, note required' });
@@ -1378,7 +1402,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /api/liveset/:projectId/notes?shootingDayId=
-  router.get('/liveset/:projectId/notes', requireApiKey, (req: Request, res: Response) => {
+  router.get('/liveset/:projectId/notes', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
@@ -1386,7 +1410,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /api/liveset/:projectId/setup-complete
-  router.post('/liveset/:projectId/setup-complete', requireApiKey, (req: Request, res: Response) => {
+  router.post('/liveset/:projectId/setup-complete', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, sceneId, shotId, userId } = req.body as Record<string, string>;
     if (!shootingDayId) return res.status(400).json({ error: 'shootingDayId required' });
@@ -1400,7 +1424,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /api/liveset/:projectId/audit?shootingDayId=
-  router.get('/liveset/:projectId/audit', requireApiKey, (req: Request, res: Response) => {
+  router.get('/liveset/:projectId/audit', apiKeyAuth(pool, activeSessions), (req: Request, res: Response) => {
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
@@ -1417,7 +1441,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // ── Inventory ─────────────────────────────────────────────
 
   // GET /projects/:projectId/equipment
-  router.get('/projects/:projectId/equipment', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/equipment', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
       const rows = await db2
@@ -1436,7 +1460,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment  — create
-  router.post('/equipment', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const body = req.body as Record<string, unknown>;
       const { project_id, name } = body as { project_id?: string; name?: string };
@@ -1477,7 +1501,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // PUT /equipment/:id  — update
-  router.put('/equipment/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.put('/equipment/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const body = req.body as Record<string, unknown>;
@@ -1510,7 +1534,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // DELETE /equipment/:id
-  router.delete('/equipment/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/equipment/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await db2.delete(castingEquipment).where(eq(castingEquipment.id, id));
@@ -1522,7 +1546,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment/:id/assign  — assign a crew member
-  router.post('/equipment/:id/assign', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/:id/assign', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { crew_id } = req.body as { crew_id?: string };
@@ -1544,7 +1568,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // DELETE /equipment/:id/assign/:crewId  — unassign
-  router.delete('/equipment/:id/assign/:crewId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/equipment/:id/assign/:crewId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id, crewId } = req.params;
       const [current] = await db2.select().from(castingEquipment).where(eq(castingEquipment.id, id));
@@ -1562,7 +1586,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment/bulk-assign
-  router.post('/equipment/bulk-assign', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/bulk-assign', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { equipment_ids, crew_id } = req.body as { equipment_ids?: string[]; crew_id?: string };
       if (!equipment_ids?.length || !crew_id) return res.status(400).json({ error: 'equipment_ids and crew_id required' });
@@ -1584,7 +1608,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /locations/:locationId/equipment
-  router.get('/locations/:locationId/equipment', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/locations/:locationId/equipment', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { locationId } = req.params;
       const rows = await db2.select().from(castingEquipment)
@@ -1596,7 +1620,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /crew/:crewId/equipment
-  router.get('/crew/:crewId/equipment', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/crew/:crewId/equipment', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { crewId } = req.params;
       // assignees is a jsonb array of crew IDs
@@ -1613,7 +1637,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // ── Bookings ─────────────────────────────────────────────
 
   // GET /equipment/:id/bookings
-  router.get('/equipment/:id/bookings', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/equipment/:id/bookings', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const rows = await db2.select().from(equipmentBookings)
@@ -1626,7 +1650,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /events/:eventId/equipment-bookings
-  router.get('/events/:eventId/equipment-bookings', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/events/:eventId/equipment-bookings', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { eventId } = req.params;
       const rows = await db2.select().from(equipmentBookings)
@@ -1638,7 +1662,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment/:id/bookings
-  router.post('/equipment/:id/bookings', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/:id/bookings', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const body = req.body as Record<string, unknown>;
@@ -1663,7 +1687,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // PUT /equipment/bookings/:bookingId
-  router.put('/equipment/bookings/:bookingId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.put('/equipment/bookings/:bookingId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
       const body = req.body as Record<string, unknown>;
@@ -1682,7 +1706,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // DELETE /equipment/bookings/:bookingId
-  router.delete('/equipment/bookings/:bookingId', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/equipment/bookings/:bookingId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       await db2.delete(equipmentBookings).where(eq(equipmentBookings.id, req.params.bookingId));
       res.json({ ok: true });
@@ -1695,7 +1719,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // For MVP these share the bookings table – clients can filter by event_id
 
   // GET /equipment/:id/availability
-  router.get('/equipment/:id/availability', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/equipment/:id/availability', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const rows = await db2.select().from(equipmentBookings)
         .where(and(eq(equipmentBookings.equipmentId, req.params.id), eq(equipmentBookings.status, 'confirmed')))
@@ -1707,7 +1731,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment/:id/availability
-  router.post('/equipment/:id/availability', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/:id/availability', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const body = req.body as { start_date: string; end_date: string; project_id?: string };
       const [row] = await db2.insert(equipmentBookings).values({
@@ -1726,7 +1750,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // DELETE /equipment/availability/:id
-  router.delete('/equipment/availability/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/equipment/availability/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       await db2.delete(equipmentBookings).where(eq(equipmentBookings.id, req.params.id));
       res.json({ ok: true });
@@ -1738,7 +1762,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // ── Conflict Detection ────────────────────────────────────
 
   // POST /equipment/:id/conflicts/check
-  router.post('/equipment/:id/conflicts/check', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/:id/conflicts/check', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { start_date, end_date, exclude_booking_id } = req.body as Record<string, string>;
@@ -1771,13 +1795,15 @@ export function createRoleRoomRouter(pool: Pool): Router {
 
   // ── Checkouts ─────────────────────────────────────────────
 
-  // GET /projects/:projectId/equipment-checkouts?active=true
-  router.get('/projects/:projectId/equipment-checkouts', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  // GET /projects/:projectId/equipment-checkouts?active=true&equipmentId=xxx
+  router.get('/projects/:projectId/equipment-checkouts', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
       const activeOnly = req.query.active === 'true';
+      const equipmentId = req.query.equipmentId as string | undefined;
       const conditions = [eq(equipmentCheckouts.projectId, projectId)];
       if (activeOnly) conditions.push(isNull(equipmentCheckouts.checkedInAt));
+      if (equipmentId) conditions.push(eq(equipmentCheckouts.equipmentId, equipmentId));
       const rows = await db2.select().from(equipmentCheckouts)
         .where(and(...conditions))
         .orderBy(desc(equipmentCheckouts.checkedOutAt));
@@ -1788,7 +1814,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment/:id/checkout
-  router.post('/equipment/:id/checkout', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/:id/checkout', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const body = req.body as Record<string, unknown>;
@@ -1820,7 +1846,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment/checkouts/:checkoutId/checkin
-  router.post('/equipment/checkouts/:checkoutId/checkin', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/checkouts/:checkoutId/checkin', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { checkoutId } = req.params;
       const body = req.body as { condition_on_return?: string; notes?: string };
@@ -1851,7 +1877,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   // ── Templates ─────────────────────────────────────────────
 
   // GET /projects/:projectId/equipment-templates
-  router.get('/projects/:projectId/equipment-templates', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/equipment-templates', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const rows = await db2.select().from(equipmentTemplates)
         .where(eq(equipmentTemplates.projectId, req.params.projectId))
@@ -1863,7 +1889,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // GET /equipment-templates/:id
-  router.get('/equipment-templates/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.get('/equipment-templates/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const [row] = await db2.select().from(equipmentTemplates).where(eq(equipmentTemplates.id, req.params.id));
       if (!row) return res.status(404).json({ error: 'Template not found' });
@@ -1874,7 +1900,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /projects/:projectId/equipment-templates
-  router.post('/projects/:projectId/equipment-templates', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/projects/:projectId/equipment-templates', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const body = req.body as Record<string, unknown>;
       if (!body.name) return res.status(400).json({ error: 'name required' });
@@ -1893,7 +1919,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // PUT /equipment-templates/:id
-  router.put('/equipment-templates/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.put('/equipment-templates/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const body = req.body as Record<string, unknown>;
       const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
@@ -1910,7 +1936,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // DELETE /equipment-templates/:id
-  router.delete('/equipment-templates/:id', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.delete('/equipment-templates/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       await db2.delete(equipmentTemplates).where(eq(equipmentTemplates.id, req.params.id));
       res.json({ ok: true });
@@ -1920,7 +1946,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
   });
 
   // POST /equipment-templates/:id/apply — create equipment items from a template
-  router.post('/equipment-templates/:id/apply', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment-templates/:id/apply', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { project_id } = req.body as { project_id?: string };
       if (!project_id) return res.status(400).json({ error: 'project_id required' });
@@ -1953,7 +1979,7 @@ export function createRoleRoomRouter(pool: Pool): Router {
 
   // ── Schedule-maintenance stub (used by EquipmentManagementPanel) ──────────
   // Patch the existing /api/equipment/schedule-maintenance into the Role Room namespace too
-  router.post('/equipment/schedule-maintenance', apiKeyAuth(pool), async (req: Request, res: Response) => {
+  router.post('/equipment/schedule-maintenance', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const body = req.body as Record<string, unknown>;
       const { equipment_id, scheduled_date, type, notes } = body as Record<string, string>;

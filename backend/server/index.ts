@@ -96,8 +96,9 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// ── Role Room API (x-api-key enforced, own CORS) ─────────
-app.use('/api/role-room', createRoleRoomRouter(pool));
+// ── Role Room API (x-api-key or Bearer session token) ────
+const activeSessions: Map<string, { userId: string; email: string; name: string; role: string; loginAt: string }> = new Map();
+app.use('/api/role-room', createRoleRoomRouter(pool, activeSessions));
 
 // ── Reference image proxy (shot.cafe + Unsplash) ──────────
 app.use('/api', createReferenceProxyRouter());
@@ -1059,7 +1060,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // Auth endpoints - session-based login
-const activeSessions: Map<string, { userId: string; email: string; name: string; role: string; loginAt: string }> = new Map();
 
 // POST /api/auth/login — Email/password login
 app.post('/api/auth/login', async (req, res) => {
@@ -10927,6 +10927,7 @@ app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, 
     if (USE_FREE_SERVICES) {
       try {
         const whisperForm = new FormData();
+        // @ts-ignore: Buffer satisfies BlobPart at runtime
         whisperForm.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
         if (language) whisperForm.append('language', language);
         whisperForm.append('response_format', responseFormat);
@@ -10966,6 +10967,7 @@ app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, 
     }
 
     const formData = new FormData();
+    // @ts-ignore: Buffer satisfies BlobPart at runtime
     formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
     formData.append('model', 'whisper-1');
     formData.append('language', language);
