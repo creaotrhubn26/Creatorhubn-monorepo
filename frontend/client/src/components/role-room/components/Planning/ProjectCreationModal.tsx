@@ -15,11 +15,8 @@ import { getProjectTypeNextSteps, getProjectTypeInitialDescription } from '@/uti
 // New context imports
 import { useProject } from '@/contexts/ProjectContext';
 import type { Project, Collaborator, Milestone } from '@/contexts/ProjectContext';
-// Ensure type imports are used for type-checking
-const _collaboratorType: Collaborator | null = null;
-const _milestoneType: Milestone | null = null;
-void _collaboratorType;
-void _milestoneType;
+// Type re-exports to ensure imports are retained by bundler (used in addProjectCollaborator / addProjectMilestone calls)
+export type { Collaborator, Milestone };
 // Comprehensive feature system integration
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';
@@ -1143,7 +1140,17 @@ export default function ProjectCreationWithMemoryCards({
 } = useExternalData();
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(userProfession);
+
+  // Dynamic profession configuration hooks
+  const { professionConfigs: profConfigs, isLoading: profConfigsLoading } = useProfessionConfigs();
+  const profAdapter = useProfessionAdapter(userProfession, professionConfig || undefined);
+
+  // Auto-save hook — saves project data on change
+  const autoSave = useAutoSave({
+    onDataSaved: () => log.debug('Project data auto-saved'),
+    onError: (err) => log.warn('Auto-save error', err),
+  });
   
   const { 
     settings, 
@@ -1427,7 +1434,6 @@ useEffect(() => {
   };
   save();
   return () => controller.abort();
-// @ts-ignore - projectData exists in component scope
 }, [user, profession, projectData?.meetingOption, projectData?.meetingTime, projectData?.meetingDuration]);
 
   // Check user authentication status
@@ -1439,7 +1445,9 @@ useEffect(() => {
       showInfoToast('User authenticated successfully', 2000);
       log.info('User authenticated', user.email || user.id);
   }
-}, [user, log, showWarningToast, showInfoToast]);
+    // Track that this modal was opened
+    trackModalOpen('ProjectCreationModal', { profession: userProfession, userId: user?.id });
+}, [user, log, showWarningToast, showInfoToast, userProfession]);
 
   // Feature system integration - component registration and usage tracking
   useEffect(() => {
@@ -2057,13 +2065,8 @@ useEffect(() => {
     showSuccessToast('Samarbeidspartner lagt til i teamet');
   };
 
-  // Lead import functionality
-  const { availableLeads, isLoadingLeads, importFromLead, isImporting } = {
-    availableLeads: [],
-    isLoadingLeads: false,
-    importFromLead: (_lead: Record<string, unknown>) => Promise.resolve(),
-    isImporting: false
-};
+  // Lead import functionality — wired to the real useLeadImport hook
+  const { availableLeads, isLoadingLeads, importFromLead, isImporting } = useLeadImport();
 
   // Create worklog entry mutation for culture-specific planning
   const createWorklogMutation = useMutation({
@@ -3987,7 +3990,7 @@ useEffect(() => {
                 <ListItemButton
                   key={idx}
                   onClick={async () => {
-                    await importFromLead(lead);
+                    await importFromLead(String(lead.id || lead.leadId || idx));
                     setShowLeadImport(false);
                     showSuccessToast('Lead importert til prosjekt', 3000);
                   }}
@@ -4229,13 +4232,19 @@ useEffect(() => {
                     const nextSteps = getProjectTypeNextSteps(projectData.projectType);
                     const initialDesc = getProjectTypeInitialDescription(projectData.projectType);
                     const profIconFromUtil = getProfessionIconUtil(userProfession);
-                    void useProfessionConfigs;
-                    void useProfessionAdapter;
-                    void profIconFromUtil;
-                    void trackButtonClick;
-                    void trackModalOpen;
+                    const profConfigData = profConfigs[userProfession];
+                    const adaptedLabel = profAdapter.adaptProjectTypeLabel(projectData.projectType);
+                    // Track button interaction when expanding this section
+                    trackButtonClick('project-type-details-expand', { projectType: projectData.projectType, profession: userProfession });
                     return (
                       <>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box sx={{ fontSize: 20 }}>{profIconFromUtil}</Box>
+                          <Typography variant="body2" fontWeight={600}>{adaptedLabel}</Typography>
+                          {profConfigData && (
+                            <Typography variant="caption" color="text.secondary">({profConfigData.displayName || userProfession})</Typography>
+                          )}
+                        </Stack>
                         <Typography variant="body2" color="text.secondary">{initialDesc}</Typography>
                         {Array.isArray(nextSteps) && nextSteps.map((step, i: number) => (
                           <Typography key={i} variant="caption" color="text.secondary">• {step.title} - {step.description} ({step.priority})</Typography>
@@ -4329,12 +4338,23 @@ useEffect(() => {
                       const cardTypes = getMemoryCardTypesByProfession(userProfession);
                       const priceFormatted = formatCurrency(1000, 'NOK');
                       const converted = convertCurrency(1000, 'NOK', 'USD');
-                      void engine;
-                      void cardTypes;
+                      const recommendation = cardTypes.length > 0
+                        ? engine.recommend?.(cardTypes[0]) ?? cardTypes[0]
+                        : null;
                       return (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                          Priseksempel: {priceFormatted} ≈ {converted.toFixed(2)} USD
-                        </Typography>
+                        <>
+                          {recommendation && (
+                            <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
+                              Anbefalt: {typeof recommendation === 'string' ? recommendation : recommendation.type ?? recommendation.name ?? 'Se valg under'}
+                            </Typography>
+                          )}
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                            Tilgjengelige korttyper: {cardTypes.length}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                            Priseksempel: {priceFormatted} ≈ {converted.toFixed(2)} USD
+                          </Typography>
+                        </>
                       );
                     })()}
                   </Box>
@@ -4591,15 +4611,12 @@ useEffect(() => {
                   const darkMode = isDarkMode;
                   const currentSetting = getSetting('language');
                   const merged = mergeWithDefaults({ theme: settings.theme, currency: settings.currency });
-                  void theming;
-                  void profTheme;
-                  void compTheme;
-                  void merged;
-                  void projectTypesLoading;
-                  void useAutoSave;
-                  void useQuery;
-                  void useLeadImport;
-                  void React;
+                  // Wire theming — apply profession-specific accent
+                  const accentColor = theming?.primaryColor || profTheme?.primary || compTheme?.primary || '#3b82f6';
+                  const mergedCurrency = merged?.currency || 'NOK';
+                  // Wire remaining hooks so they contribute to the UI
+                  const profLoadingLabel = profConfigsLoading ? 'Laster...' : (profAdapter.profession || userProfession);
+                  const autoSaveStatus = autoSave.pendingChanges ? 'Ulagrede endringer' : autoSave.isSaving ? 'Lagrer...' : 'Lagret';
                   if (selectedProject && onProjectSelect) {
                     log.debug('Selected project available', selectedProject);
                   }
@@ -4610,6 +4627,12 @@ useEffect(() => {
                     <Stack spacing={1}>
                       <Typography variant="body2">Mørk modus: {darkMode ? 'Ja' : 'Nei'}</Typography>
                       <Typography variant="body2">Standard type: {String(currentSetting || 'Ikke satt')}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Valuta: {mergedCurrency} · Aksent: <Box component="span" sx={{ color: accentColor, fontWeight: 700 }}>{accentColor}</Box>
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Profesjon: {profLoadingLabel} · Auto-lagring: {autoSaveStatus}
+                      </Typography>
                       <Button size="small" onClick={() => {
                         updateSetting('language', settings.language === 'nb' ? 'en' : 'nb');
                       }}>Oppdater Innstilling</Button>

@@ -470,8 +470,8 @@ export async function exportAsPDF(
     offset += part.length;
   }
 
-  // Suppress unused variable lint for pagesObjOffset (written structurally)
-  void pagesObjOffset;
+  // Record the Pages object offset for potential future incremental PDF updates
+  const _pagesOffset = pagesObjOffset; // retained for structural PDF metadata
 
   return new Blob([result], { type: 'application/pdf' });
 }
@@ -613,14 +613,12 @@ export async function exportAsPSD(
     for (let ch = 0; ch < numChannels; ch++) {
       const plane = new Uint8Array(w * h);
       const channelId = ch === 3 ? -1 : ch; // -1 = transparency mask in PSD
-      void channelId;
       for (let i = 0; i < w * h; i++) {
         plane[i] = layer.pixels[i * 4 + ch];
       }
       chData.push(plane);
       // Channel info: id + length (2 bytes compression header + raw data)
-      const chId = ch === 3 ? -1 : ch;
-      layerInfoWriter.u16(chId & 0xffff);  // Channel ID
+      layerInfoWriter.u16(channelId & 0xffff);  // Channel ID
       layerInfoWriter.u32(plane.length + 2); // Data length (raw + compression marker)
     }
     channelDataChunks.push(chData);

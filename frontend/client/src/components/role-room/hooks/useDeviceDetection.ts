@@ -68,11 +68,11 @@ function detectDevice(): DeviceInfo {
   const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
 
   // Detect touch screen capability
+  const nav = navigator as Navigator & { msMaxTouchPoints?: number };
   const hasTouchScreen = 
     'ontouchstart' in window ||
     navigator.maxTouchPoints > 0 ||
-    // @ts-ignore - legacy browser support
-    (navigator.msMaxTouchPoints || 0) > 0;
+    (nav.msMaxTouchPoints ?? 0) > 0;
 
   // Apple Pencil support (typically iPad Pro and newer iPads)
   const hasPencilSupport = isIPad && hasTouchScreen;

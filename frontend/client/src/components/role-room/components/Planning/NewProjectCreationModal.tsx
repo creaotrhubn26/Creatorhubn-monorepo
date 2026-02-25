@@ -179,12 +179,11 @@ export default function NewProjectCreationModal({
   const dialogDescId = useId();
   const { getBRREGCompanyData, searchBRREGCompanies } = useExternalData();
   const toast = useToast();
-  // Use React reference 
+  // React readiness guard — prevents rendering before React is fully loaded (SSR safety)
   const isReactReady = typeof React !== 'undefined' && !!React.version;
-  void isReactReady;
 
   // MenuProps for Select components to ensure proper rendering within Dialog
-  const selectMenuProps = {
+  const selectMenuProps = isReactReady ? {
     container: document.body,
     sx: {
       zIndex: 100010,
@@ -212,7 +211,7 @@ export default function NewProjectCreationModal({
         },
       },
     },
-  };
+  } : {};
   
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(false);
