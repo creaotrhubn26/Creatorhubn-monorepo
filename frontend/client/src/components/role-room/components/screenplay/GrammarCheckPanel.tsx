@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -335,6 +336,7 @@ export const GrammarCheckPanel: React.FC<GrammarCheckPanelProps> = ({
         overflow: 'hidden',
       }}
     >
+      <ContextualNudgeBanner context="grammar" accentColor="#f59e0b" />
       {/* Header */}
       <Box
         sx={{

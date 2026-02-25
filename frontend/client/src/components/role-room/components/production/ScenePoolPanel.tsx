@@ -16,6 +16,7 @@
  */
 
 import { type FC, type DragEvent, useCallback, useState } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box, Paper, Typography, Chip, IconButton, Tooltip,
   Divider, Collapse, LinearProgress, Stack, Badge,
@@ -300,6 +301,7 @@ export const ScenePoolPanel: FC<ScenePoolPanelProps> = ({
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
+      <ContextualNudgeBanner context="scene-pool" accentColor="#7C3AED" />
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <Box sx={{ p: { xs: 1.25, sm: 1.75 }, borderBottom: 1, borderColor: 'divider', bgcolor: alpha('#7C3AED', 0.04) }}>

@@ -10,7 +10,7 @@
  * - Database persistence with settings cache fallback
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -44,7 +44,7 @@ import {
   Save,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { BrushConfig, DEFAULT_BRUSH_CONFIG, AdvancedBrushType } from './AdvancedBrushEngine';
+import { BrushConfig, DEFAULT_BRUSH_CONFIG, AdvancedBrushType, AdvancedBrushEngine, hexToRgb } from './AdvancedBrushEngine';
 import settingsService from '../../services/settingsService';
 
 // =============================================================================
@@ -83,7 +83,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: true,
     category: 'Drawing',
     icon: '✏️',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'ink-pen',
@@ -92,7 +92,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: true,
     category: 'Drawing',
     icon: '🖊️',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'watercolor-wash',
@@ -101,7 +101,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: false,
     category: 'Painting',
     icon: '💧',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'thick-marker',
@@ -110,7 +110,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: false,
     category: 'Markers',
     icon: '🖍️',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'soft-brush',
@@ -119,7 +119,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: false,
     category: 'Painting',
     icon: '🖌️',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'highlighter-yellow',
@@ -128,7 +128,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: false,
     category: 'Markers',
     icon: '💛',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'calligraphy',
@@ -137,7 +137,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: true,
     category: 'Drawing',
     icon: '✒️',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
   {
     id: 'airbrush',
@@ -146,7 +146,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     favorite: false,
     category: 'Painting',
     icon: '🌫️',
-    createdAt: Date.now(),
+    createdAt: 0,
   },
 ];
 
@@ -191,24 +191,107 @@ const BrushPreview = styled(Box)({
   fontSize: 20,
   backgroundColor: 'rgba(255,255,255,0.1)',
   border: '1px solid rgba(255,255,255,0.2)',
+  overflow: 'hidden',
+});
+
+// =============================================================================
+// Live Brush Preview — renders a sample stroke on a 64×64 canvas
+// =============================================================================
+
+const previewCache = new Map<string, string>();
+
+function renderBrushPreviewDataURL(config: BrushConfig): string {
+  const key = JSON.stringify(config);
+  const cached = previewCache.get(key);
+  if (cached) return cached;
+
+  if (typeof document === 'undefined') return '';
+
+  const SIZE = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  // Semi-transparent bg so we can see stroke
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  const engine = new AdvancedBrushEngine(ctx, config);
+
+  // Draw an S-curve from bottom-left to top-right
+  const points: { x: number; y: number; pressure: number; tiltX: number; tiltY: number; timestamp: number }[] = [];
+  const STEPS = 24;
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS;
+    points.push({
+      x: 8 + t * (SIZE - 16),
+      y: SIZE - 10 - Math.sin(t * Math.PI) * (SIZE - 24),
+      pressure: 0.3 + Math.sin(t * Math.PI) * 0.6,
+      tiltX: 0,
+      tiltY: 0,
+      timestamp: i,
+    });
+  }
+
+  engine.startStroke(points[0]);
+  for (let i = 1; i < points.length; i++) {
+    engine.continueStroke(points[i]);
+  }
+  engine.endStroke();
+
+  const url = canvas.toDataURL('image/png');
+  // Cap cache at 100 entries
+  if (previewCache.size > 100) {
+    const first = previewCache.keys().next().value;
+    if (first) previewCache.delete(first);
+  }
+  previewCache.set(key, url);
+  return url;
+}
+
+/** Small component that shows a live canvas preview of a brush config */
+const LiveBrushThumbnail: React.FC<{ config: BrushConfig }> = React.memo(({ config }) => {
+  const dataUrl = useMemo(() => renderBrushPreviewDataURL(config), [config]);
+
+  if (!dataUrl) return null;
+
+  return (
+    <Box
+      component="img"
+      src={dataUrl}
+      alt="brush preview"
+      sx={{
+        width: 36,
+        height: 36,
+        borderRadius: '6px',
+        objectFit: 'cover',
+        imageRendering: 'smooth',
+      }}
+    />
+  );
 });
 
 // =============================================================================
 // Hooks
 // =============================================================================
 
-// Database availability cache
+// Database availability cache — resets after 60 s to allow recovery
 let dbAvailable: boolean | null = null;
+let dbCheckedAt = 0;
+const DB_CHECK_TTL = 60_000;
 
 async function checkDatabaseAvailability(): Promise<boolean> {
-  if (dbAvailable !== null) return dbAvailable;
+  if (dbAvailable !== null && Date.now() - dbCheckedAt < DB_CHECK_TTL) return dbAvailable;
   try {
-    const response = await fetch('/api/casting/health');
-    const result = await response.json();
-    dbAvailable = result.status === 'healthy';
+    const response = await fetch('/api/user/brush-presets', { method: 'HEAD' });
+    dbAvailable = response.ok || response.status === 404; // endpoint exists
+    dbCheckedAt = Date.now();
     return dbAvailable;
   } catch {
     dbAvailable = false;
+    dbCheckedAt = Date.now();
     return false;
   }
 }
@@ -216,6 +299,8 @@ async function checkDatabaseAvailability(): Promise<boolean> {
 function useBrushLibrary() {
   const [presets, setPresets] = useState<BrushPreset[]>([]);
   const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedRef = useRef(false);
 
   // Load from database with settings cache fallback
   useEffect(() => {
@@ -229,6 +314,7 @@ function useBrushLibrary() {
               setPresets(data.presets);
               setRecentlyUsed(data.recentlyUsed || []);
               await settingsService.setSetting(SETTINGS_NAMESPACE, data);
+              loadedRef.current = true;
               return;
             }
           }
@@ -243,21 +329,19 @@ function useBrushLibrary() {
       if (cached?.presets?.length) {
         setPresets(cached.presets);
         setRecentlyUsed(cached.recentlyUsed || []);
+        loadedRef.current = true;
         return;
       }
 
       setPresets(DEFAULT_PRESETS);
+      loadedRef.current = true;
     };
     loadPresets();
   }, []);
 
-  // Save to database with settings cache backup
-  const save = useCallback(async () => {
-    const data = { presets, recentlyUsed };
-
+  // Save to database with settings cache backup — debounced 600ms
+  const persistNow = useCallback(async (data: { presets: BrushPreset[]; recentlyUsed: string[] }) => {
     await settingsService.setSetting(SETTINGS_NAMESPACE, data);
-    
-    // Try to save to database
     try {
       if (await checkDatabaseAvailability()) {
         await fetch('/api/user/brush-presets', {
@@ -269,13 +353,17 @@ function useBrushLibrary() {
     } catch (error) {
       console.warn('Failed to save brush library to database:', error);
     }
-  }, [presets, recentlyUsed]);
+  }, []);
 
+  // Debounced auto-save on state change
   useEffect(() => {
-    if (presets.length > 0) {
-      save();
-    }
-  }, [presets, recentlyUsed, save]);
+    if (!loadedRef.current || presets.length === 0) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      persistNow({ presets, recentlyUsed });
+    }, 600);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [presets, recentlyUsed, persistNow]);
 
   const addPreset = useCallback((preset: BrushPreset) => {
     setPresets(prev => [...prev, preset]);
@@ -306,7 +394,13 @@ function useBrushLibrary() {
   }, []);
 
   const exportPresets = useCallback(() => {
-    const data = JSON.stringify(presets, null, 2);
+    const envelope = {
+      schemaVersion: 1,
+      app: 'TheRollRoom',
+      exportedAt: new Date().toISOString(),
+      presets,
+    };
+    const data = JSON.stringify(envelope, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -320,14 +414,50 @@ function useBrushLibrary() {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const imported = JSON.parse(e.target?.result as string);
-        if (Array.isArray(imported)) {
-          const newPresets = imported.map((p: BrushPreset) => ({
-            ...p,
-            id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            category: 'Custom',
-          }));
-          setPresets(prev => [...prev, ...newPresets]);
+        const raw = JSON.parse(e.target?.result as string);
+        // Accept versioned envelope or bare array for back-compat
+        const arr: unknown[] = Array.isArray(raw) ? raw : (raw?.presets ?? []);
+        if (!Array.isArray(arr) || arr.length === 0) {
+          console.error('Import failed: no presets found');
+          return;
+        }
+
+        const BRUSH_TYPES: string[] = [
+          'pencil', 'pen', 'marker', 'brush', 'watercolor', 'ink', 'highlighter', 'eraser',
+        ];
+
+        const validated = arr
+          .slice(0, 200) // cap at 200 presets
+          .filter((p): p is Record<string, unknown> =>
+            p !== null && typeof p === 'object' && typeof (p as Record<string, unknown>).name === 'string'
+          )
+          .map((p) => {
+            const cfg = (p.config && typeof p.config === 'object' ? p.config : {}) as Record<string, unknown>;
+            return {
+              id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              name: String(p.name).slice(0, 100),
+              config: {
+                ...DEFAULT_BRUSH_CONFIG,
+                type: (BRUSH_TYPES.includes(String(cfg.type)) ? String(cfg.type) : 'pen') as AdvancedBrushType,
+                size: Math.max(0.5, Math.min(200, Number(cfg.size) || DEFAULT_BRUSH_CONFIG.size)),
+                color: typeof cfg.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(cfg.color) ? cfg.color : DEFAULT_BRUSH_CONFIG.color,
+                opacity: Math.max(0, Math.min(1, Number(cfg.opacity) || DEFAULT_BRUSH_CONFIG.opacity)),
+                hardness: Math.max(0, Math.min(1, Number(cfg.hardness) || DEFAULT_BRUSH_CONFIG.hardness)),
+                flow: Math.max(0, Math.min(1, Number(cfg.flow) || DEFAULT_BRUSH_CONFIG.flow)),
+                wetness: Math.max(0, Math.min(1, Number(cfg.wetness) || DEFAULT_BRUSH_CONFIG.wetness)),
+                grain: Math.max(0, Math.min(1, Number(cfg.grain) || DEFAULT_BRUSH_CONFIG.grain)),
+                tiltSensitivity: Math.max(0, Math.min(1, Number(cfg.tiltSensitivity) || DEFAULT_BRUSH_CONFIG.tiltSensitivity)),
+                pressureSensitivity: Math.max(0, Math.min(1, Number(cfg.pressureSensitivity) || DEFAULT_BRUSH_CONFIG.pressureSensitivity)),
+              },
+              favorite: Boolean(p.favorite),
+              category: 'Custom',
+              icon: typeof p.icon === 'string' ? p.icon.slice(0, 4) : '🎨',
+              createdAt: Date.now(),
+            } satisfies BrushPreset;
+          });
+
+        if (validated.length > 0) {
+          setPresets(prev => [...prev, ...validated]);
         }
       } catch {
         console.error('Failed to import brush presets');
@@ -408,7 +538,8 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
     addPreset(newPreset);
     setSaveDialogOpen(false);
     setNewPresetName('');
-  }, [newPresetName, currentConfig, addPreset]);
+    onSaveCurrentBrush();
+  }, [newPresetName, currentConfig, addPreset, onSaveCurrentBrush]);
 
   const handleDeletePreset = useCallback(() => {
     if (menuPresetId) {
@@ -495,7 +626,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
               onClick={() => handleSelectPreset(preset)}
             >
               <BrushPreview sx={{ bgcolor: preset.config.color + '30' }}>
-                {preset.icon || '🖌️'}
+                <LiveBrushThumbnail config={preset.config} />
               </BrushPreview>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="body2" noWrap sx={{ fontSize: 12 }}>
@@ -553,7 +684,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
             onClick={() => handleSelectPreset(preset)}
           >
             <BrushPreview sx={{ bgcolor: preset.config.color + '30' }}>
-              {preset.icon || '🖌️'}
+              <LiveBrushThumbnail config={preset.config} />
             </BrushPreview>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="body2" noWrap sx={{ fontSize: 12 }}>

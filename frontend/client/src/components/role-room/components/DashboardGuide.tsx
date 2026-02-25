@@ -202,11 +202,51 @@ function StatPill({
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#8b5cf6',
+        borderColor: 'rgba(139,92,246,0.4)',
+        bgcolor: 'rgba(139,92,246,0.06)',
+        '&:hover': {
+          borderColor: '#8b5cf6',
+          bgcolor: 'rgba(139,92,246,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
 const ACCENT = '#8b5cf6';
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   // ── 1. Overview ──────────────────────────────────────────────────────────
   {
     id: 'overview',
@@ -245,6 +285,7 @@ const STEPS: Step[] = [
               Every number on the Dashboard is <strong>live</strong> — it updates
               automatically as you add or change roles and candidates.
             </Callout>
+            <CtaButton label="Åpne dashbord" action="open-dashboard" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Dashboard — full panel overview with all sections visible',
@@ -294,6 +335,7 @@ const STEPS: Step[] = [
               Click any stat card to jump directly to the relevant section instead of
               using the tab bar manually.
             </Callout>
+            <CtaButton label="Se statistikk" action="view-stats-cards" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Statistics cards row — all four cards with live counts',
@@ -344,6 +386,7 @@ const STEPS: Step[] = [
               in a tooltip. The <strong>% fullført</strong> chip in the top-right shows
               how many roles have been filled (status = "filled").
             </Callout>
+            <CtaButton label="Se castingfremdrift" action="view-casting-progress" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Casting Progress card — segmented bar and status legend',
@@ -401,6 +444,7 @@ const STEPS: Step[] = [
               at least one role and one candidate — hover the button to see the tooltip
               explaining why.
             </Callout>
+            <CtaButton label="Utfør handling" action="open-quick-actions" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Quick Actions card — three buttons (Ny rolle, Ny kandidat, Ny timeplan)',
@@ -442,6 +486,7 @@ const STEPS: Step[] = [
               The title is used throughout the app (tab titles, share links, exports)
               so keeping it clear and concise helps the whole team.
             </Callout>
+            <CtaButton label="Rediger prosjektinfo" action="edit-project-details" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Inline title edit active — TextField with Save / Cancel icons',
@@ -479,6 +524,7 @@ const STEPS: Step[] = [
               On mobile the button shows only the share icon — on desktop the full
               "Del prosjekt" label is visible.
             </Callout>
+            <CtaButton label="Del prosjektet" action="share-project" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Share panel open — invite form and collaborator list',
@@ -525,13 +571,15 @@ const STEPS: Step[] = [
               For a full walkthrough of every Kanban feature, open the dedicated Kanban
               Guide using the <strong>?</strong> help button in the Kanban toolbar.
             </Callout>
+            <CtaButton label="Åpne Kanban-tavle" action="open-kanban-board" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Kanban board embedded in Dashboard — columns with candidate cards',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Guide ID ─────────────────────────────────────────────────────────────────
 
@@ -542,26 +590,34 @@ const GUIDE_ID = 'dashboard' as const;
 interface DashboardGuideProps {
   open: boolean;
   onClose: () => void;
+  initialStepId?: string;
+  onAction?: (action: string) => void;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function DashboardGuide({ open, onClose }: DashboardGuideProps) {
+function DashboardGuide({ open, onClose, initialStepId, onAction }: DashboardGuideProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig = getGuideConfig(GUIDE_ID);
   const activeStepIds = getActiveStepIds(GUIDE_ID);
 
-  const visibleSteps: Step[] = STEPS.filter(s =>
+  const steps = buildSteps(onAction);
+  const visibleSteps: Step[] = steps.filter(s =>
     activeStepIds === null || activeStepIds.includes(s.id)
   ).map(s => {
     const override = getStepOverride(GUIDE_ID, s.id);
     if (!override) return s;
     return { ...s, label: override.label ?? s.label };
+  });
+
+  const [activeStepIndex, setActiveStepIndex] = useState(() => {
+    if (!initialStepId) return 0;
+    const idx = visibleSteps.findIndex(s => s.id === initialStepId);
+    return idx >= 0 ? idx : 0;
   });
 
   const currentStep = visibleSteps[activeStepIndex] ?? visibleSteps[0];

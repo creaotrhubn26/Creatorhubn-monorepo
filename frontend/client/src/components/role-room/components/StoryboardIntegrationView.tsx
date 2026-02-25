@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -211,6 +212,8 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <ContextualNudgeBanner context="storyboard" accentColor="#8b5cf6" />
+
       {/* Script Context Banner when synced */}
       {syncEnabled && currentDialogue && (
         <Alert 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -1088,6 +1089,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <ContextualNudgeBanner context="manuscript" accentColor="#ec4899" />
       {/* Header */}
       <Box sx={{ p: responsive.headerPadding, borderBottom: 1, borderColor: 'divider' }}>
         <Stack 

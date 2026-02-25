@@ -241,11 +241,51 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#ffb800',
+        borderColor: 'rgba(255,184,0,0.4)',
+        bgcolor: 'rgba(255,184,0,0.06)',
+        '&:hover': {
+          borderColor: '#ffb800',
+          bgcolor: 'rgba(255,184,0,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
 const ACCENT = '#ffb800';
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   // ── 1. Overview ──────────────────────────────────────────────────────────
   {
     id: 'overview',
@@ -315,6 +355,7 @@ const STEPS: Step[] = [
                 </Typography>
               </Box>
             </Box>
+            <CtaButton label="Åpne auditionplanlegger" action="open-audition-planner" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Header bar with Export / Statistics / New Schedule buttons',
@@ -363,10 +404,13 @@ const STEPS: Step[] = [
       {
         heading: 'Editing an existing slot',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            Click the <strong>Edit</strong> (pencil) icon on any card or row to reopen the same
-            form with the existing data pre-filled. Changes are saved immediately.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              Click the <strong>Edit</strong> (pencil) icon on any card or row to reopen the same
+              form with the existing data pre-filled. Changes are saved immediately.
+            </Typography>
+            <CtaButton label="Opprett auditiontime" action="create-audition-slot" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Edit form open on existing audition slot',
       },
@@ -408,6 +452,7 @@ const STEPS: Step[] = [
               In <strong>Table view</strong> click any column header to sort ascending/descending.
               The sort state persists as you change filters.
             </Callout>
+            <CtaButton label="Bytt visningsmodus" action="switch-view-mode" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Grid / Table / Compact view mode switcher and example of each',
@@ -483,6 +528,7 @@ const STEPS: Step[] = [
               Counts always reflect the <em>active filters</em> — so you can focus on today's
               sessions and see exactly how many are confirmed vs. still pending.
             </Typography>
+            <CtaButton label="Se statusoversikt" action="view-status-tracking" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Statistics banner showing status counts',
@@ -548,11 +594,14 @@ const STEPS: Step[] = [
       {
         heading: 'Active filter chips',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            Every active filter renders as a removable chip directly below the filter bar. Click the{' '}
-            <strong>✕</strong> on any chip to remove just that filter without clearing the others.
-            This makes it easy to drill down with multiple filters and peel them back one at a time.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              Every active filter renders as a removable chip directly below the filter bar. Click the{' '}
+              <strong>✕</strong> on any chip to remove just that filter without clearing the others.
+              This makes it easy to drill down with multiple filters and peel them back one at a time.
+            </Typography>
+            <CtaButton label="Filtrer auditions" action="filter-auditions" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Active filter chips visible — search term, date, role selected',
       },
@@ -602,6 +651,7 @@ const STEPS: Step[] = [
               Use favourites to flag the most important auditions in a busy day — for example
               top callbacks or time-sensitive slots — so they always stay visible at the top.
             </Callout>
+            <CtaButton label="Se favoritter" action="view-favourites" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Card with star icon highlighted and favourites visible at top of list',
@@ -640,6 +690,7 @@ const STEPS: Step[] = [
               You can also open the drawer with the keyboard: press <Key>↑</Key> / <Key>↓</Key>{' '}
               to navigate rows and <Key>Enter</Key> to open the drawer for the focused row.
             </Callout>
+            <CtaButton label="Åpne detaljer" action="open-details-drawer" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Details Drawer open with status selector and notes field',
@@ -689,11 +740,14 @@ const STEPS: Step[] = [
       {
         heading: 'Undo delete',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            After any deletion a <strong>snackbar notification</strong> appears at the bottom of
-            the screen with an <strong>Undo</strong> button. Click it within a few seconds to
-            restore the deleted slot(s). Once the snackbar disappears the deletion is permanent.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              After any deletion a <strong>snackbar notification</strong> appears at the bottom of
+              the screen with an <strong>Undo</strong> button. Click it within a few seconds to
+              restore the deleted slot(s). Once the snackbar disappears the deletion is permanent.
+            </Typography>
+            <CtaButton label="Velg flere" action="select-bulk-auditions" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Undo delete snackbar at bottom of screen',
       },
@@ -762,6 +816,7 @@ const STEPS: Step[] = [
             <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
               Use the search field in Pool view to filter templates by title.
             </Typography>
+            <CtaButton label="Åpne auditionpool" action="open-audition-pool" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Pool template card close-up — title, time, location, delete, import',
@@ -841,13 +896,15 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Paper>
+            <CtaButton label="Eksporter til CSV" action="export-auditions-csv" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Keyboard shortcut reference overlay',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Guide IDs ────────────────────────────────────────────────────────────────
 
@@ -858,9 +915,11 @@ const GUIDE_ID = 'audition' as const;
 interface AuditionGuideProps {
   open: boolean;
   onClose: () => void;
+  initialStepId?: string;
+  onAction?: (action: string) => void;
 }
 
-export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
+export function AuditionGuide({ open, onClose, initialStepId, onAction }: AuditionGuideProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -873,7 +932,8 @@ export function AuditionGuide({ open, onClose }: AuditionGuideProps) {
   const activeStepIds = getActiveStepIds(GUIDE_ID);
 
   // Resolve which steps are active (admin may hide some)
-  const visibleSteps: Step[] = STEPS.filter(s =>
+  const steps = buildSteps(onAction);
+  const visibleSteps: Step[] = steps.filter(s =>
     activeStepIds === null || activeStepIds.includes(s.id)
   ).map(s => {
     const override = getStepOverride(GUIDE_ID, s.id);

@@ -17,6 +17,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, Fragment, type FC, type DragEvent, type MouseEvent } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box, Paper, Typography, Button, IconButton, Chip,
   Grid, Divider, Tooltip, Alert,
@@ -370,8 +371,7 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
   }
 
   return (
-    <Box className="stripboard-print" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-
+    <Box className="stripboard-print" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>      <ContextualNudgeBanner context="stripboard" accentColor="#7C3AED" />
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <Box sx={{ p: { xs: 1.5, sm: 2, md: 2.5, lg: 3 }, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: { xs: 'wrap', md: 'nowrap' }, gap: { xs: 1, sm: 1.5, md: 2 }, bgcolor: alpha('#7C3AED', 0.02) }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5, md: 2 }, flex: { xs: '1 0 100%', sm: 'unset' }, justifyContent: { xs: 'space-between', sm: 'flex-start' } }}>
@@ -639,7 +639,16 @@ const StripboardPanel: FC<StripboardPanelProps> = ({
       </Box>
 
       {/* ── Stripboard Guide ─────────────────────────────────────────────── */}
-      <StripboardGuide open={showGuide} onClose={() => setShowGuide(false)} />
+      <StripboardGuide
+        open={showGuide}
+        onClose={() => setShowGuide(false)}
+        onAction={(action) => {
+          setShowGuide(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
+      />
 
       {/* ── Print CSS ────────────────────────────────────────────────────── */}
       <style>{`

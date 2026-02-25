@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -352,6 +353,8 @@ export const ScriptStoryboardSplitView: React.FC<ScriptStoryboardSplitViewProps>
   
   return (
     <SplitContainer ref={containerRef}>
+      <ContextualNudgeBanner context="storyboard-split" accentColor="#7C3AED" />
+
       {/* Scene Header */}
       {showSceneHeader && currentScene && (
         <SceneHeaderBar sx={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>

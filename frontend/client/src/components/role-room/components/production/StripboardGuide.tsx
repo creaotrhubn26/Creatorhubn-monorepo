@@ -198,9 +198,49 @@ function Key({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#7C3AED',
+        borderColor: 'rgba(124,58,237,0.4)',
+        bgcolor: 'rgba(124,58,237,0.06)',
+        '&:hover': {
+          borderColor: '#7C3AED',
+          bgcolor: 'rgba(124,58,237,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ─────────────────────────────────────────────────────────────────────
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   {
     id: 'overview',
     label: 'Overview',
@@ -251,6 +291,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Åpne stripboard" action="open-stripboard" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Stats bar – scene counts and pages progress',
@@ -317,6 +358,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Se strips" action="view-strips" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Single strip card with field labels',
@@ -354,12 +396,15 @@ const STEPS: Step[] = [
       {
         heading: 'Call Sheet button',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            Each shooting day header has a <strong>Call Sheet</strong> button (visible on
-            desktop). Clicking it triggers the <code>onGenerateCallSheet</code> callback so
-            your production management system can generate a PDF call sheet for that day
-            pre-populated with all cast and location data.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              Each shooting day header has a <strong>Call Sheet</strong> button (visible on
+              desktop). Clicking it triggers the <code>onGenerateCallSheet</code> callback so
+              your production management system can generate a PDF call sheet for that day
+              pre-populated with all cast and location data.
+            </Typography>
+            <CtaButton label="Administrer opptaksdager" action="manage-day-groups" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Call Sheet button on day header',
       },
@@ -407,11 +452,14 @@ const STEPS: Step[] = [
       {
         heading: "Bird's-eye overview panel",
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            In Location view an <strong>overview panel</strong> appears at the top of the
-            content area showing totals across all locations: unique location count, total
-            scenes, unique actors, and combined shoot time.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              In Location view an <strong>overview panel</strong> appears at the top of the
+              content area showing totals across all locations: unique location count, total
+              scenes, unique actors, and combined shoot time.
+            </Typography>
+            <CtaButton label="Bytt til lokasjonsvisning" action="switch-location-view" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Location overview panel',
       },
@@ -456,6 +504,7 @@ const STEPS: Step[] = [
               between day groups, then press <Key>Enter</Key> to drop. Press{' '}
               <Key>Escape</Key> to cancel without moving.
             </Typography>
+            <CtaButton label="Prøv dra og slipp" action="try-drag-drop" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Drag-and-drop strip being moved between days',
@@ -517,6 +566,7 @@ const STEPS: Step[] = [
               Deleting strips is permanent. Select the strips and press the red{' '}
               <strong>🗑 Delete</strong> icon. A confirmation dialog is shown.
             </Callout>
+            <CtaButton label="Tildel til dag" action="assign-to-day" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'New strip added at top of Unplanned group',
@@ -562,11 +612,14 @@ const STEPS: Step[] = [
       {
         heading: 'Optimisation dialog',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            On mobile, the optimisation panel is replaced by a full-screen dialog accessible
-            from the <strong>☰ mobile menu → Optimisation suggestions</strong>. The dialog
-            lists the same suggestions with one-tap actions like "Move scene to Day 3".
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              On mobile, the optimisation panel is replaced by a full-screen dialog accessible
+              from the <strong>☰ mobile menu → Optimisation suggestions</strong>. The dialog
+              lists the same suggestions with one-tap actions like "Move scene to Day 3".
+            </Typography>
+            <CtaButton label="Se optimaliseringsforslag" action="view-optimization" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Optimisation dialog on mobile',
       },
@@ -624,6 +677,7 @@ const STEPS: Step[] = [
               The <strong>↕ sort button</strong> toggles ascending / descending order within
               the selected grouping.
             </Typography>
+            <CtaButton label="Filtrer scener" action="open-filters" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Group By selector and sort direction toggle',
@@ -709,11 +763,14 @@ const STEPS: Step[] = [
       {
         heading: 'Importing JSON',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            Click the <strong>⬆ Upload</strong> icon to import a previously exported JSON
-            file. This replaces the current schedule with the imported data. Useful for
-            sharing schedules between team members or restoring a saved state.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              Click the <strong>⬆ Upload</strong> icon to import a previously exported JSON
+              file. This replaces the current schedule with the imported data. Useful for
+              sharing schedules between team members or restoring a saved state.
+            </Typography>
+            <CtaButton label="Eksporter stripboard" action="export-stripboard" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'JSON import file picker',
       },
@@ -762,13 +819,15 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Bytt til kompakt visning" action="toggle-compact-view" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Stripboard on mobile with kebab menu open',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -776,12 +835,14 @@ interface StripboardGuideProps {
   open: boolean;
   onClose: () => void;
   initialStepId?: string;
+  onAction?: (action: string) => void;
 }
 
 export const StripboardGuide: React.FC<StripboardGuideProps> = ({
   open,
   onClose,
   initialStepId,
+  onAction,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -789,9 +850,10 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig  = getGuideConfig('stripboard');
   const activeIds    = getActiveStepIds('stripboard');
+  const steps = buildSteps(onAction);
   const visibleSteps = activeIds.length > 0
-    ? (activeIds.map(id => STEPS.find(s => s.id === id)).filter(Boolean) as Step[])
-    : STEPS;
+    ? (activeIds.map(id => steps.find(s => s.id === id)).filter(Boolean) as Step[])
+    : steps;
 
   const initialIndex = initialStepId
     ? Math.max(0, visibleSteps.findIndex((s) => s.id === initialStepId))

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -322,6 +323,7 @@ const ReferencesPanel: React.FC = () => {
 
   return (
     <Stack spacing={2}>
+      <ContextualNudgeBanner context="production" accentColor="#f59e0b" />
       <Typography variant="subtitle2">Referansebilder & Mood</Typography>
 
       <Button

@@ -102,6 +102,7 @@ import {
 } from '../../services/productionWorkflowService';
 import { buildCan, LiveSetCan, LiveSetRole, ROLE_LABELS } from '../../services/liveSetPermissionsService';
 import * as Outbox from '../../services/liveSetOutboxService';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import { useLiveSetRealtime, PresenceEntry, LiveSetWsMessage, LiveSetMsgType } from '../../services/liveSetRealtimeService';
 import { exportDailyReportPdf, exportCirclePrintPdf, exportTakesCsv, exportNotesCsv, ExportContext } from '../../services/liveSetExportService';
 
@@ -704,6 +705,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
   return (
     <Box sx={{ position: 'fixed', inset: 0, bgcolor: bg, color: text, zIndex: 9999,
                display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'monospace' }}>
+      <ContextualNudgeBanner context="live-set" accentColor="#ef4444" />
 
       {/* ── Top bar ───────────────────────────────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',

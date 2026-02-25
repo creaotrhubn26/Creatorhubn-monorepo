@@ -1,4 +1,5 @@
 import { useState, useId, useMemo, useEffect, useRef, useCallback, type ReactElement } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -2001,6 +2002,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, bgcolor: 'transparent' }}
     >
       <OfflineBanner pending={offlinePending} />
+      <ContextualNudgeBanner context="crew" accentColor="#f59e0b" />
 
       {/* ── HEADER ── */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, pt: 1.5, pb: 1, gap: 1, flexWrap: 'wrap' }}>
@@ -3289,6 +3291,12 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       <CrewManagementGuide
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
       />
 
       {/* Undo delete snackbar */}

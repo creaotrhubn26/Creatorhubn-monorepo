@@ -201,9 +201,49 @@ function TierBadge({ tier }: { tier: 'MVP' | 'Pro' | 'Studio' }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#F97316',
+        borderColor: 'rgba(249,115,22,0.4)',
+        bgcolor: 'rgba(249,115,22,0.06)',
+        '&:hover': {
+          borderColor: '#F97316',
+          bgcolor: 'rgba(249,115,22,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ─────────────────────────────────────────────────────────────────────
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   // ── 1. Overview ───────────────────────────────────────────────────────────
   {
     id: 'overview',
@@ -261,6 +301,7 @@ const STEPS: Step[] = [
               a presence avatar row{' '}
               <TierBadge tier="Studio" />.
             </Typography>
+            <CtaButton label="Åpne Live Set" action="open-live-set" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Annotated 3-panel layout: left ROLL/CUT, centre scene info, right activity tabs',
@@ -346,6 +387,7 @@ const STEPS: Step[] = [
               Circling a take is a non-destructive action and can be toggled off at any
               point during the shooting day.
             </Callout>
+            <CtaButton label="Start opptak" action="start-roll" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Take row with star circled — highlighted in Takes log',
@@ -407,6 +449,7 @@ const STEPS: Step[] = [
               the PDF Daily Report — giving the DIT, editor, and DI team a complete record
               of every take's technical parameters.
             </Callout>
+            <CtaButton label="Legg til kameradata" action="add-camera-metadata" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Additional camera chips B / C / D selected in CUT dialog',
@@ -464,6 +507,7 @@ const STEPS: Step[] = [
               at any time — useful when correcting a mis-logged take or when matching
               numbers logged on a separate camera report.
             </Typography>
+            <CtaButton label="Se opptakslogg" action="view-takes-log" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Take counter field in left panel — editable + auto-increment toggle',
@@ -509,13 +553,16 @@ const STEPS: Step[] = [
       {
         heading: 'Continuity notes',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            A <strong>continuity note</strong> is a note tied to a specific take — for
-            example: <em>"HB right hand — take 4, scene 5A, glass on right side of table"</em>.
-            Long-press (or right-click) any take row in the Takes tab to add a tied
-            continuity note. It appears indented under that take row and is exported
-            alongside it in the PDF Daily Report.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              A <strong>continuity note</strong> is a note tied to a specific take — for
+              example: <em>"HB right hand — take 4, scene 5A, glass on right side of table"</em>.
+              Long-press (or right-click) any take row in the Takes tab to add a tied
+              continuity note. It appears indented under that take row and is exported
+              alongside it in the PDF Daily Report.
+            </Typography>
+            <CtaButton label="Skriv notat" action="add-quick-note" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Continuity note indented under a take row',
       },
@@ -556,6 +603,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Se aktivitetsstrøm" action="view-activity-feed" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Activity Feed tab — colour-coded event timeline',
@@ -589,6 +637,7 @@ const STEPS: Step[] = [
               content are made in the Stripboard and Shot List panels and reflected here
               automatically.
             </Callout>
+            <CtaButton label="Åpne sceneplan" action="open-scene-plan" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Scene Plan tab — shot list with progress ticks',
@@ -649,12 +698,15 @@ const STEPS: Step[] = [
       {
         heading: 'Export all at once',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            At the bottom of the export dropdown is an <strong>Export All</strong> option
-            that downloads all four files simultaneously as a ZIP archive named after the
-            project title and shooting date. Use this at end-of-day wrap to produce a
-            complete digital camera-report package in one click.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              At the bottom of the export dropdown is an <strong>Export All</strong> option
+              that downloads all four files simultaneously as a ZIP archive named after the
+              project title and shooting date. Use this at end-of-day wrap to produce a
+              complete digital camera-report package in one click.
+            </Typography>
+            <CtaButton label="Eksporter rapport" action="export-report" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Export All — ZIP download progress indicator',
       },
@@ -732,12 +784,15 @@ const STEPS: Step[] = [
       {
         heading: 'Changing or viewing your role',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            Your current role is shown in the <strong>Settings</strong> panel (gear icon
-            at the bottom of the left column). If you believe your role is incorrectly
-            assigned, contact the project admin — roles are set from the Crew Management
-            panel, not from within Live Set Mode.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              Your current role is shown in the <strong>Settings</strong> panel (gear icon
+              at the bottom of the left column). If you believe your role is incorrectly
+              assigned, contact the project admin — roles are set from the Crew Management
+              panel, not from within Live Set Mode.
+            </Typography>
+            <CtaButton label="Se tilganger" action="view-permissions" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Settings panel — role label highlighted',
       },
@@ -795,6 +850,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Sjekk offline-kø" action="check-offline-outbox" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Sync failure banner with retry options',
@@ -878,13 +934,16 @@ const STEPS: Step[] = [
       {
         heading: 'Reconnection behaviour',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            The WebSocket client uses exponential back-off reconnection (100 ms → 1 s →
-            5 s → 30 s cap). While disconnected the system falls back to HTTP polling.
-            On reconnecting, a state snapshot is fetched from the server to close any
-            gap in takes or notes that occurred while offline — so no data is lost even
-            if a tablet briefly drops signal on set.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              The WebSocket client uses exponential back-off reconnection (100 ms → 1 s →
+              5 s → 30 s cap). While disconnected the system falls back to HTTP polling.
+              On reconnecting, a state snapshot is fetched from the server to close any
+              gap in takes or notes that occurred while offline — so no data is lost even
+              if a tablet briefly drops signal on set.
+            </Typography>
+            <CtaButton label="Se tilkoblede" action="view-presence" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Reconnecting indicator with Polling fallback chip',
       },
@@ -924,13 +983,15 @@ const STEPS: Step[] = [
               across browser sessions — you do not need to re-configure when you return
               to the same tablet the next day.
             </Callout>
+            <CtaButton label="Åpne innstillinger" action="open-settings" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Settings panel — 4 toggle rows',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -938,6 +999,7 @@ interface LiveSetModeGuideProps {
   open: boolean;
   onClose: () => void;
   initialStepId?: string;
+  onAction?: (action: string) => void;
 }
 
 const ACCENT = '#F97316';
@@ -946,6 +1008,7 @@ export const LiveSetModeGuide: React.FC<LiveSetModeGuideProps> = ({
   open,
   onClose,
   initialStepId,
+  onAction,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -953,9 +1016,10 @@ export const LiveSetModeGuide: React.FC<LiveSetModeGuideProps> = ({
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig = getGuideConfig('live-set-mode');
   const activeIds   = getActiveStepIds('live-set-mode');
+  const steps = buildSteps(onAction);
   const visibleSteps = activeIds.length > 0
-    ? (activeIds.map(id => STEPS.find(s => s.id === id)).filter(Boolean) as Step[])
-    : STEPS;
+    ? (activeIds.map(id => steps.find(s => s.id === id)).filter(Boolean) as Step[])
+    : steps;
 
   const initialIndex = initialStepId
     ? Math.max(0, visibleSteps.findIndex((s) => s.id === initialStepId))

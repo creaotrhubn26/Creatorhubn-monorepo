@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -626,6 +627,7 @@ export default function SplitSheetEditor({
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
       <Stack spacing={{ xs: 2.5, sm: 3, md: 3.5, lg: 4, xl: 4.5 }}>
+        <ContextualNudgeBanner context="split-sheets" accentColor="#06b6d4" />
         {/* Basic Information */}
         <Card sx={{ borderRadius: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>
           <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>

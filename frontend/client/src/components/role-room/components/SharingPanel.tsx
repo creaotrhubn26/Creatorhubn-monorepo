@@ -1,4 +1,5 @@
 import React, { useId, useMemo } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -169,6 +170,7 @@ export function SharingPanel({
       aria-labelledby={titleId}
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%' }}
     >
+      <ContextualNudgeBanner context="sharing" accentColor="#06b6d4" />
       {/* Header with Icon and Title */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

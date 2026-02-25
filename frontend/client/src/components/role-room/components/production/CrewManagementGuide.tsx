@@ -272,9 +272,49 @@ function DoodCell({ code }: { code: string }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#00d4ff',
+        borderColor: 'rgba(0,212,255,0.4)',
+        bgcolor: 'rgba(0,212,255,0.06)',
+        '&:hover': {
+          borderColor: '#00d4ff',
+          bgcolor: 'rgba(0,212,255,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   // ── 1. Overview ──────────────────────────────────────────────────────────
   {
     id: 'overview',
@@ -334,6 +374,7 @@ const STEPS: Step[] = [
               {' '}badge appears in the header when one or more crew members have
               scheduling conflicts across shoot days.
             </Callout>
+            <CtaButton label="Åpne teamoversikt" action="open-crew-overview" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Annotated layout — sidebar / crew grid / header toolbar / stats bar',
@@ -399,6 +440,7 @@ const STEPS: Step[] = [
               💡 Invited members still show on the DOOD board so you can plan around
               them while waiting for confirmation.
             </Callout>
+            <CtaButton label="Legg til teammedlem" action="add-crew-member" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Invite crew dialog — name, role, email, and phone fields',
@@ -444,6 +486,7 @@ const STEPS: Step[] = [
               Lighting is amber, Post is violet, and so on — making cards visually
               scannable.
             </Callout>
+            <CtaButton label="Filtrer etter avdeling" action="filter-department" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Department sidebar with Camera selected — grid shows only camera crew',
@@ -504,6 +547,7 @@ const STEPS: Step[] = [
               💡 Table view is ideal for large crews (20 + members) when you need to
               compare rates or scan statuses quickly without scrolling a card grid.
             </Callout>
+            <CtaButton label="Se teamkort" action="view-crew-cards" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Table view — sortable columns with status and rate visible',
@@ -574,6 +618,7 @@ const STEPS: Step[] = [
               Filters stack — you can combine Status + Department + Role + Search + Available
               Now all at the same time.
             </Callout>
+            <CtaButton label="Søk i teamet" action="search-crew" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Role filter panel open — Cinematographer selected',
@@ -639,6 +684,7 @@ const STEPS: Step[] = [
               Deletion is permanent. All shoot-day assignments and DOOD data for
               deleted members are also removed.
             </Callout>
+            <CtaButton label="Velg flere" action="select-bulk" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Bulk action bar — Status dropdown open with Confirmed option highlighted',
@@ -712,6 +758,7 @@ const STEPS: Step[] = [
               💡 The DOOD overview is the standard industry report shared with
               production managers and unions showing each crew member's contracted days.
             </Callout>
+            <CtaButton label="Åpne DOOD-oversikt" action="open-dood" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'DOOD Overview drawer — full grid with all crew × all shoot days',
@@ -754,6 +801,7 @@ const STEPS: Step[] = [
               <strong>CallSheetGenerator</strong> and supports PDF export — click
               the print / download button inside the drawer.
             </Callout>
+            <CtaButton label="Generer callsheet" action="generate-callsheet" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Callsheet Generator drawer — day 1 pre-filled with crew and scenes',
@@ -829,13 +877,15 @@ const STEPS: Step[] = [
               and syncs them the next time a network connection is detected. A banner
               shows the number of pending actions.
             </Callout>
+            <CtaButton label="Åpne kostnadsberegner" action="open-cost-calculator" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Exported CSV open in spreadsheet — name, role, status, rate columns',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -844,9 +894,11 @@ export interface CrewManagementGuideProps {
   onClose: () => void;
   /** If provided the guide opens directly to this step id. */
   initialStepId?: string;
+  /** Callback fired when a CTA button is clicked. */
+  onAction?: (action: string) => void;
 }
 
-export function CrewManagementGuide({ open, onClose, initialStepId }: CrewManagementGuideProps) {
+export function CrewManagementGuide({ open, onClose, initialStepId, onAction }: CrewManagementGuideProps) {
   const theme   = useTheme();
   const isNarrow = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -854,9 +906,10 @@ export function CrewManagementGuide({ open, onClose, initialStepId }: CrewManage
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig  = getGuideConfig('crew-management');
   const activeIds    = getActiveStepIds('crew-management');
+  const steps = buildSteps(onAction);
   const visibleSteps = activeIds.length > 0
-    ? (activeIds.map(id => STEPS.find(s => s.id === id)).filter(Boolean) as Step[])
-    : STEPS;
+    ? (activeIds.map(id => steps.find(s => s.id === id)).filter(Boolean) as Step[])
+    : steps;
 
   const [activeStepId, setActiveStepId] = useState(initialStepId ?? visibleSteps[0].id);
   const contentRef = useRef<HTMLDivElement | null>(null);

@@ -1,4 +1,5 @@
 import React, { useState, useId, useMemo, useEffect, memo } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -891,6 +892,8 @@ function RoleManagementPanelInner({
       aria-labelledby={panelTitleId}
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
     >
+      <ContextualNudgeBanner context="roles" accentColor="#f97316" />
+
       {/* Header - Responsive */}
       <Box
         sx={{

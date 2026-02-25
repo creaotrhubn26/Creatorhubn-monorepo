@@ -1,4 +1,5 @@
 import { useState, useEffect, type FC } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -119,8 +120,85 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
     },
   };
 
+  // Responsive card avatar sizing based on breakpoints
+  const avatarSize = isMobile ? 40 : isTablet ? 48 : 56;
+
+  // Upload CSV to pool
+  const handleUploadCSV = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        let entries: { name: string; email?: string; phone?: string; tags?: string[] }[] = [];
+        if (file.name.endsWith('.json')) {
+          entries = JSON.parse(text);
+        } else {
+          // Simple CSV: name,email,phone,tags
+          const lines = text.split('\n').filter(l => l.trim());
+          const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+          entries = lines.slice(1).map(line => {
+            const cols = line.split(',').map(c => c.trim());
+            const row: Record<string, string> = {};
+            header.forEach((h, i) => { row[h] = cols[i] || ''; });
+            return {
+              name: row['name'] || row['navn'] || '',
+              email: row['email'] || row['epost'] || undefined,
+              phone: row['phone'] || row['telefon'] || undefined,
+              tags: row['tags'] ? row['tags'].split(';').map(t => t.trim()) : undefined,
+            };
+          }).filter(e => e.name);
+        }
+        let imported = 0;
+        for (const entry of entries) {
+          const added = await candidatePoolService.saveToPool({
+            name: entry.name,
+            contactInfo: { email: entry.email, phone: entry.phone },
+            tags: entry.tags || [],
+          });
+          if (added) imported++;
+        }
+        if (imported > 0) {
+          await loadPoolCandidates();
+        }
+      } catch (error) {
+        console.error('CSV import failed:', error);
+      }
+    };
+    input.click();
+  };
+
+  // Add a candidate manually to the pool
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+
+  const handleAddToPool = async () => {
+    if (!newName.trim()) return;
+    const added = await candidatePoolService.saveToPool({
+      name: newName.trim(),
+      contactInfo: {
+        email: newEmail.trim() || undefined,
+        phone: newPhone.trim() || undefined,
+      },
+      tags: [],
+    });
+    if (added) {
+      setAddDialogOpen(false);
+      setNewName('');
+      setNewEmail('');
+      setNewPhone('');
+      await loadPoolCandidates();
+    }
+  };
+
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
+      <ContextualNudgeBanner context="casting" accentColor="#00d4ff" />
       <Box sx={{ 
         display: 'flex', 
         flexDirection: { xs: 'column', sm: 'row' },
@@ -149,6 +227,37 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
           />
         </Typography>
 
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => setAddDialogOpen(true)}
+            sx={{
+              color: '#10b981',
+              borderColor: 'rgba(16,185,129,0.4)',
+              border: '1px solid',
+              fontSize: isMobile ? '0.75rem' : '0.8125rem',
+              '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
+            }}
+          >
+            {isMobile ? 'Legg til' : 'Legg til kandidat'}
+          </Button>
+          <Button
+            size="small"
+            startIcon={<UploadIcon />}
+            onClick={handleUploadCSV}
+            sx={{
+              color: '#8b5cf6',
+              borderColor: 'rgba(139,92,246,0.4)',
+              border: '1px solid',
+              fontSize: isMobile ? '0.75rem' : '0.8125rem',
+              '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+            }}
+          >
+            {isMobile ? 'Importer' : 'Importer CSV'}
+          </Button>
+        </Box>
+
         <TextField
           placeholder="Søk i kandidatpool..."
           size="small"
@@ -160,6 +269,13 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                 <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
               </InputAdornment>
             ),
+            endAdornment: searchQuery ? (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                  <CloseIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </InputAdornment>
+            ) : null,
           }}
           sx={{
             width: { xs: '100%', sm: 300 },
@@ -218,8 +334,8 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                   <Avatar
                     src={candidate.photos?.[0]}
                     sx={{ 
-                      width: 56, 
-                      height: 56, 
+                      width: avatarSize, 
+                      height: avatarSize, 
                       bgcolor: 'rgba(0,212,255,0.2)',
                       color: '#00d4ff',
                     }}
@@ -414,6 +530,94 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
             }}
           >
             Importer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add-to-pool dialog */}
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1a1a2e',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: { xs: '90vw', sm: 400 },
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Legg til kandidat i pool
+          <IconButton size="small" onClick={() => setAddDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.5)' }}>
+            <CloseIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+          <TextField
+            label="Navn"
+            fullWidth
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            required
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+              },
+              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
+            }}
+          />
+          <TextField
+            label="E-post"
+            fullWidth
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+              },
+              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
+            }}
+          />
+          <TextField
+            label="Telefon"
+            fullWidth
+            value={newPhone}
+            onChange={(e) => setNewPhone(e.target.value)}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                '&.Mui-focused fieldset': { borderColor: '#00d4ff' },
+              },
+              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+          <Button onClick={() => setAddDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleAddToPool}
+            disabled={!newName.trim()}
+            startIcon={<AddIcon />}
+            sx={{
+              bgcolor: '#10b981',
+              color: '#fff',
+              '&:hover': { bgcolor: '#059669' },
+              '&.Mui-disabled': { bgcolor: 'rgba(16,185,129,0.3)', color: 'rgba(255,255,255,0.5)' },
+            }}
+          >
+            Legg til
           </Button>
         </DialogActions>
       </Dialog>

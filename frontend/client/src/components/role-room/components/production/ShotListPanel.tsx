@@ -20,6 +20,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useReducer, useEffect } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import { Box, useMediaQuery, useTheme } from '@mui/material';
 
 // ── Modules ──────────────────────────────────────────────────────────────────
@@ -372,6 +373,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <ContextualNudgeBanner context="shot-list" accentColor="#8b5cf6" />
 
       {/* ── A) Top App Bar ── */}
       <ShotListTopBar
@@ -488,6 +490,12 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
       <ShotListGuide
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
       />
     </Box>
   );

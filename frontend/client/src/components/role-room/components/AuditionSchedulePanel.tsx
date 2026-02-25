@@ -1,5 +1,6 @@
 import { useState, useReducer, useId, useMemo, useEffect, useCallback, useRef, memo } from 'react';
 import React from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -913,6 +914,8 @@ function AuditionSchedulePanelInner({
       aria-labelledby={titleId}
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%' }}
     >
+      <ContextualNudgeBanner context="auditions" accentColor="#14b8a6" />
+
       {/* ── Header ─────────────────────────────────────────── */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -2565,7 +2568,16 @@ function AuditionSchedulePanelInner({
       />
 
       {/* Audition Planner guide */}
-      <AuditionGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <AuditionGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
+      />
 
     </Box>
   );

@@ -4,7 +4,7 @@
  * Provides Apple Pencil integration with pressure, tilt, and gesture support
  */
 
-import { useRef, useEffect, RefObject } from 'react';
+import { useRef, useEffect, useCallback, useState, RefObject } from 'react';
 
 // =============================================================================
 // Types
@@ -22,11 +22,19 @@ export interface PencilPoint {
 }
 
 export interface PencilStroke {
+  /** Unique identifier for selection, undo, serialization */
+  id: string;
+  /** Deterministic seed derived at stroke start for replay */
+  seed: number;
+  /** Which layer this stroke belongs to */
+  layerId: string;
   points: PencilPoint[];
   inputType: InputType;
   color: string;
   width: number;
   opacity: number;
+  /** Snapshot of brush settings used when stroke was drawn */
+  brushSettings?: Record<string, unknown>;
 }
 
 export interface ApplePencilCallbacks {
@@ -73,8 +81,12 @@ export const useApplePencil = (
   config: ApplePencilConfig = {}
 ): UseApplePencilReturn => {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const currentStroke = useRef<PencilStroke | null>(null);
-  const state = useRef<ApplePencilState>({
+  const currentStrokeRef = useRef<PencilStroke | null>(null);
+  /** Monotonic counter for deterministic stroke IDs within a session */
+  const strokeCounter = useRef(0);
+
+  // B-1 fix: Use React state so changes trigger re-renders for JSX consumers
+  const [pencilState, setPencilState] = useState<ApplePencilState>({
     isDrawing: false,
     isHovering: false,
     currentInputType: null,
@@ -82,15 +94,36 @@ export const useApplePencil = (
     isActive: false,
     currentPressure: 0,
   });
+  // Internal ref mirrors state for use inside event handlers without stale closures
+  const stateRef = useRef(pencilState);
+  stateRef.current = pencilState;
 
-  const getInputType = (event: PointerEvent): InputType => {
+  // P-1 fix: Store callbacks in a ref so the effect dependency is stable
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
+
+  const configRef = useRef(config);
+  configRef.current = config;
+
+  // P-5 fix: Cache bounding rect, invalidate on resize/scroll
+  const rectCacheRef = useRef<{ rect: DOMRect; ts: number } | null>(null);
+  const getCachedRect = useCallback((canvas: HTMLCanvasElement): DOMRect => {
+    const now = Date.now();
+    // Refresh every 500ms or on first call
+    if (!rectCacheRef.current || now - rectCacheRef.current.ts > 500) {
+      rectCacheRef.current = { rect: canvas.getBoundingClientRect(), ts: now };
+    }
+    return rectCacheRef.current!.rect;
+  }, []);
+
+  const getInputType = useCallback((event: PointerEvent): InputType => {
     if (event.pointerType === 'pen') return 'pen';
     if (event.pointerType === 'touch') return 'touch';
     return 'mouse';
-  };
+  }, []);
 
-  const createPoint = (event: PointerEvent, canvas: HTMLCanvasElement): PencilPoint => {
-    const rect = canvas.getBoundingClientRect();
+  const createPoint = useCallback((event: PointerEvent, canvas: HTMLCanvasElement): PencilPoint => {
+    const rect = getCachedRect(canvas);
     return {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
@@ -99,74 +132,133 @@ export const useApplePencil = (
       tiltY: event.tiltY || 0,
       timestamp: Date.now(),
     };
-  };
+  }, [getCachedRect]);
+
+  // Invalidate rect cache on resize/scroll
+  useEffect(() => {
+    const invalidate = () => { rectCacheRef.current = null; };
+    window.addEventListener('resize', invalidate);
+    window.addEventListener('scroll', invalidate, true);
+    return () => {
+      window.removeEventListener('resize', invalidate);
+      window.removeEventListener('scroll', invalidate, true);
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
 
+    // B-4 fix: Check palm rejection to ignore non-pencil input
+    const shouldReject = (event: PointerEvent): boolean => {
+      const mode = configRef.current.palmRejection;
+      if (mode === 'pencil-only' && event.pointerType !== 'pen') return true;
+      if (mode === 'smart' && event.pointerType === 'touch') {
+        // In smart mode, reject touches when a pen is connected
+        if (stateRef.current.isPencilConnected) return true;
+      }
+      return false;
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
+      if (shouldReject(event)) return;
       event.preventDefault();
       const inputType = getInputType(event);
       const point = createPoint(event, canvas);
-      
-      state.current.isDrawing = true;
-      state.current.isActive = true;
-      state.current.currentInputType = inputType;
-      state.current.currentPressure = point.pressure;
-      state.current.isPencilConnected = inputType === 'pen';
-      
-      currentStroke.current = {
+
+      const newState: ApplePencilState = {
+        isDrawing: true,
+        isActive: true,
+        isHovering: false,
+        currentInputType: inputType,
+        currentPressure: point.pressure,
+        isPencilConnected: inputType === 'pen' || stateRef.current.isPencilConnected,
+      };
+      setPencilState(newState);
+
+      currentStrokeRef.current = {
+        id: `stroke-${Date.now()}-${++strokeCounter.current}`,
+        seed: (point.x * 73856093 ^ point.y * 19349663 ^ point.timestamp) >>> 0,
+        layerId: 'default',
         points: [point],
         inputType,
         color: '#000000',
         width: 2,
         opacity: 1,
       };
-      
-      callbacks.onStrokeStart?.(point, inputType);
+
+      callbacksRef.current.onStrokeStart?.(point, inputType);
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (shouldReject(event)) return;
       event.preventDefault();
       const point = createPoint(event, canvas);
       const inputType = getInputType(event);
 
-      if (state.current.isDrawing && currentStroke.current) {
-        currentStroke.current.points.push(point);
-        state.current.currentPressure = point.pressure;
-        callbacks.onStrokeMove?.(point, inputType);
+      if (stateRef.current.isDrawing && currentStrokeRef.current) {
+        currentStrokeRef.current.points.push(point);
+        // Throttle state updates — only update pressure (avoids re-render flood)
+        setPencilState(prev => prev.currentPressure === point.pressure ? prev : { ...prev, currentPressure: point.pressure });
+        callbacksRef.current.onStrokeMove?.(point, inputType);
       } else {
-        // Hover (Pencil 2 feature)
-        if (inputType === 'pen' && !state.current.isDrawing) {
-          if (!state.current.isHovering) {
-            state.current.isHovering = true;
-            callbacks.onHoverStart?.(point);
+        // B-5 fix: Check enableHover config
+        if (configRef.current.enableHover !== false && inputType === 'pen' && !stateRef.current.isDrawing) {
+          if (!stateRef.current.isHovering) {
+            setPencilState(prev => ({ ...prev, isHovering: true }));
+            callbacksRef.current.onHoverStart?.(point);
           } else {
-            callbacks.onHoverMove?.(point);
+            callbacksRef.current.onHoverMove?.(point);
           }
         }
       }
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
-      event.preventDefault();
+    // B-3 fix: Finish stroke regardless of where pointer lifts
+    const finishStroke = (event: PointerEvent) => {
       const inputType = getInputType(event);
-      
-      if (state.current.isDrawing && currentStroke.current) {
-        callbacks.onStrokeEnd?.(currentStroke.current, inputType);
-        currentStroke.current = null;
-        state.current.isDrawing = false;
-        state.current.isActive = false;
-        state.current.currentInputType = null;
-        state.current.currentPressure = 0;
+
+      if (stateRef.current.isDrawing && currentStrokeRef.current) {
+        callbacksRef.current.onStrokeEnd?.(currentStrokeRef.current, inputType);
+        currentStrokeRef.current = null;
+        setPencilState(prev => ({
+          ...prev,
+          isDrawing: false,
+          isActive: false,
+          currentInputType: null,
+          currentPressure: 0,
+        }));
       }
     };
 
+    const handlePointerUp = (event: PointerEvent) => {
+      event.preventDefault();
+      finishStroke(event);
+    };
+
+    // B-2 fix: Handle pointercancel (palm, system alert, etc.)
+    const handlePointerCancel = (event: PointerEvent) => {
+      finishStroke(event);
+    };
+
     const handlePointerLeave = () => {
-      if (state.current.isHovering) {
-        state.current.isHovering = false;
-        callbacks.onHoverEnd?.();
+      if (stateRef.current.isHovering) {
+        setPencilState(prev => ({ ...prev, isHovering: false }));
+        callbacksRef.current.onHoverEnd?.();
+      }
+    };
+
+    // Double-tap detection (B-5 fix: check enableDoubleTap config)
+    let lastTapTime = 0;
+    const handleDoubleTap = (event: PointerEvent) => {
+      if (configRef.current.enableDoubleTap === false) return;
+      if (event.pointerType !== 'pen') return;
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        callbacksRef.current.onDoubleTap?.();
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
       }
     };
 
@@ -174,28 +266,38 @@ export const useApplePencil = (
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointercancel', handlePointerCancel);  // B-2
     canvas.addEventListener('pointerleave', handlePointerLeave);
+    canvas.addEventListener('pointerdown', handleDoubleTap);
+    // B-3 fix: Listen for pointerup on window to catch lifts outside canvas
+    window.addEventListener('pointerup', handlePointerUp);
 
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown);
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointercancel', handlePointerCancel);
       canvas.removeEventListener('pointerleave', handlePointerLeave);
+      canvas.removeEventListener('pointerdown', handleDoubleTap);
+      window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [callbacks]);
+  // P-1 fix: No dependency on `callbacks` — we use callbacksRef which is always stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getInputType, createPoint]);
 
-  const getStrokeWidth = (pressure: number, baseWidth: number): number => {
+  const getStrokeWidth = useCallback((pressure: number, baseWidth: number): number => {
     return baseWidth * (0.5 + pressure * 0.5);
-  };
+  }, []);
 
-  const getOpacity = (pressure: number, baseOpacity: number): number => {
+  const getOpacity = useCallback((pressure: number, baseOpacity: number): number => {
     return baseOpacity * (0.3 + pressure * 0.7);
-  };
+  }, []);
 
   return {
     ref,
-    state: state.current,
-    currentStroke: currentStroke.current,
+    // B-1 fix: Return React state (reactive) instead of ref.current (stale)
+    state: pencilState,
+    currentStroke: currentStrokeRef.current,
     getStrokeWidth,
     getOpacity,
   };

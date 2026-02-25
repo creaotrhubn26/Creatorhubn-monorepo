@@ -2,6 +2,7 @@
 // ProductionNotesPanel — per-scene, draft/saved, autosave
 // ============================================
 import { useState, useEffect, useRef, useCallback, memo, type FC } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -182,6 +183,7 @@ const ProductionNotesPanel: FC<ProductionNotesPanelProps> = memo(function Produc
 
   return (
     <Box sx={{ p: 3, borderBottom: '1px solid #252d3d' }}>
+      <ContextualNudgeBanner context="production-notes" accentColor="#f59e0b" />
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', letterSpacing: 0.5 }}>
           {readThroughMode ? 'READ THROUGH NOTES' : 'PRODUCTION NOTES'}

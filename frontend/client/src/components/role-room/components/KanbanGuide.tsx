@@ -209,11 +209,51 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#84cc16',
+        borderColor: 'rgba(132,204,22,0.4)',
+        bgcolor: 'rgba(132,204,22,0.06)',
+        '&:hover': {
+          borderColor: '#84cc16',
+          bgcolor: 'rgba(132,204,22,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
 const ACCENT = '#84cc16';
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   // ── 1. Overview ──────────────────────────────────────────────────────────
   {
     id: 'overview',
@@ -267,6 +307,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Åpne Kanban-tavle" action="open-kanban-board" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Kanban toolbar — all controls labelled',
@@ -320,6 +361,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Se statuskolonner" action="view-columns" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Column headers — big count, label(n) format, colour borders',
@@ -357,6 +399,7 @@ const STEPS: Step[] = [
               Add Candidate buttons are hidden. Contact the Casting Director or Producer
               to add candidates.
             </Callout>
+            <CtaButton label="Legg til kandidat" action="add-candidate" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Column with top and bottom Add Candidate buttons visible',
@@ -398,6 +441,7 @@ const STEPS: Step[] = [
               access (e.g., Director, Photographer, Client). Only Casting Directors,
               Producers, and Admins can move cards.
             </Callout>
+            <CtaButton label="Prøv dra og slipp" action="try-drag-drop" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Card being dragged between Shortlist and Selected columns',
@@ -444,6 +488,7 @@ const STEPS: Step[] = [
               Filters apply live as you type — there is no need to press Enter.
               The column counts update to reflect only the filtered candidates.
             </Callout>
+            <CtaButton label="Søk kandidater" action="search-candidates" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Toolbar search field and role dropdown in use — filtered columns',
@@ -503,6 +548,7 @@ const STEPS: Step[] = [
               <strong>Delete is permanent</strong> — deleted candidates cannot be
               recovered. Always double-check your selection before confirming.
             </Callout>
+            <CtaButton label="Velg flere kandidater" action="select-bulk-candidates" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Bulk Action Bar visible at bottom — 3 cards selected across columns',
@@ -561,6 +607,7 @@ const STEPS: Step[] = [
               active role with the same icon and colour from the login screen.
               Hover the chip to see a description of your permissions.
             </Callout>
+            <CtaButton label="Se rolletilganger" action="view-role-access" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Role badge chip in Kanban toolbar — Director view with limited columns',
@@ -615,6 +662,7 @@ const STEPS: Step[] = [
               dialog will show any options. Go to the <strong>Auditions</strong> tab
               to create slots first.
             </Callout>
+            <CtaButton label="Tilknytt audition" action="assign-audition-event" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Assign Audition Event dialog — candidate selected, event list shown',
@@ -662,13 +710,15 @@ const STEPS: Step[] = [
               click the <strong>↺ Refresh</strong> icon button to manually pull the
               latest data from the server.
             </Callout>
+            <CtaButton label="Se tilkoblingsstatus" action="view-realtime-status" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Kanban toolbar — green realtime dot and refresh button',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Guide ID ─────────────────────────────────────────────────────────────────
 
@@ -679,11 +729,13 @@ const GUIDE_ID = 'kanban' as const;
 interface KanbanGuideProps {
   open: boolean;
   onClose: () => void;
+  initialStepId?: string;
+  onAction?: (action: string) => void;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function KanbanGuide({ open, onClose }: KanbanGuideProps) {
+function KanbanGuide({ open, onClose, initialStepId, onAction }: KanbanGuideProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeStepIndex, setActiveStepIndex] = useState(0);
@@ -693,7 +745,8 @@ function KanbanGuide({ open, onClose }: KanbanGuideProps) {
   const guideConfig = getGuideConfig(GUIDE_ID);
   const activeStepIds = getActiveStepIds(GUIDE_ID);
 
-  const visibleSteps: Step[] = STEPS.filter(s =>
+  const steps = buildSteps(onAction);
+  const visibleSteps: Step[] = steps.filter(s =>
     activeStepIds === null || activeStepIds.includes(s.id)
   ).map(s => {
     const override = getStepOverride(GUIDE_ID, s.id);

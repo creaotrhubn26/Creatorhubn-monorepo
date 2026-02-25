@@ -12,6 +12,7 @@
  */
 
 import { memo, useState, useEffect, useRef, useCallback, type FC, type ElementType } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -1142,6 +1143,8 @@ function LiveSetModeInner({ projectName, shootingDay, initialScene, onExit }: Li
         bgcolor: '#08080f', position: 'relative', overflow: 'hidden',
       }}
     >
+      <ContextualNudgeBanner context="live-set" accentColor="#ef4444" />
+
       {/* ── CUT flash overlay ── */}
       {flashVisible && (
         <Box

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -121,6 +122,7 @@ export const ProductionToolsPanel: React.FC<ProductionToolsPanelProps> = ({
       flexDirection: 'column',
       bgcolor: 'background.default',
     }}>
+      <ContextualNudgeBanner context="production-tools" accentColor="#3b82f6" />
       {/* Header */}
       <Paper 
         sx={{ 

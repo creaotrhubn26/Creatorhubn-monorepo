@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -37,10 +37,13 @@ import {
   Navigation as NavigationIcon,
   OpenInNew as OpenInNewIcon,
   Refresh as RefreshIcon,
+  Save as SaveIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { Location } from '../models/casting';
 import { externalDataService } from '@/services/ExternalDataService';
+import { LocationAnalysisGuide } from './LocationAnalysisGuide';
 
 interface LocationAnalysisDialogProps {
   open: boolean;
@@ -52,18 +55,7 @@ interface LocationAnalysisDialogProps {
 // Helper function to open maps navigation
 const openMapsNavigation = (lat: number, lng: number) => {
   const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-  const appleMapsUrl = `https://maps.apple.com/?daddr=${lat},${lng}`;
-  
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isAndroid = /Android/.test(navigator.userAgent);
-  
-  if (isIOS) {
-    window.open(appleMapsUrl, '_blank');
-  } else if (isAndroid) {
-    window.open(`google.navigation:q=${lat},${lng}`, '_blank');
-  } else {
-    window.open(googleMapsUrl, '_blank');
-  }
+  window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
 };
 
 // Reusable Parking/Charging Spot List Item Component
@@ -186,13 +178,20 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   const [analysis, setAnalysis] = useState<Location['propertyAnalysis'] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedForLocation, setHasLoadedForLocation] = useState<string | null>(null);
+  const [analysisDirty, setAnalysisDirty] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const requestIdRef = useRef(0);
 
   const loadAnalysisForProperty = useCallback(async (propertyId: string) => {
+    const currentRequestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     
     try {
       const propertyAnalysis = await externalDataService.analyzeProperty(propertyId);
+      
+      // Stale response guard — discard if a newer request was issued
+      if (currentRequestId !== requestIdRef.current) return;
       
       const analysisData: Location['propertyAnalysis'] = {
         photographySpots: propertyAnalysis.photographySpots,
@@ -202,23 +201,28 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       };
       
       setAnalysis(analysisData);
-      if (onAnalysisComplete) {
-        onAnalysisComplete(analysisData);
-      }
+      setAnalysisDirty(true);
     } catch (err) {
+      if (currentRequestId !== requestIdRef.current) return;
       console.error('Error loading property analysis:', err);
       setError('Kunne ikke laste lokasjonsanalyse');
     } finally {
-      setLoading(false);
+      if (currentRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [onAnalysisComplete]);
+  }, []);
 
   const loadPropertyFromAddress = useCallback(async (address: string) => {
+    const currentRequestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     
     try {
       const addressData = await externalDataService.getKartverketAddress(address);
+      // Stale response guard
+      if (currentRequestId !== requestIdRef.current) return;
+      
       if (addressData.propertyId) {
         await loadAnalysisForProperty(addressData.propertyId);
       } else {
@@ -226,6 +230,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         setLoading(false);
       }
     } catch (err) {
+      if (currentRequestId !== requestIdRef.current) return;
       console.error('Error loading property from address:', err);
       setError('Kunne ikke laste lokasjonsdata');
       setLoading(false);
@@ -257,26 +262,29 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     }
   }, [open, location?.propertyId, location?.address, hasLoadedForLocation, loadAnalysisForProperty, loadPropertyFromAddress]);
 
-  // Manual refresh function
+  // Manual refresh — reset state and let the useEffect re-trigger the load
   const handleRefresh = useCallback(() => {
-    const locationKey = location?.propertyId || location?.address || null;
-    if (locationKey) {
-      setHasLoadedForLocation(null); // Reset to allow reload
-      if (location?.propertyId) {
-        loadAnalysisForProperty(location.propertyId);
-        setHasLoadedForLocation(locationKey);
-      } else if (location?.address) {
-        loadPropertyFromAddress(location.address);
-        setHasLoadedForLocation(locationKey);
-      }
-    }
-  }, [location?.propertyId, location?.address, loadAnalysisForProperty, loadPropertyFromAddress]);
+    setAnalysis(null);
+    setAnalysisDirty(false);
+    setError(null);
+    setHasLoadedForLocation(null);
+  }, []);
 
   const handleClose = useCallback(() => {
     setAnalysis(null);
     setError(null);
+    setAnalysisDirty(false);
+    requestIdRef.current++; // invalidate any in-flight requests
     onClose();
   }, [onClose]);
+
+  // Explicit save — only persists when user clicks the button
+  const handleSaveAnalysis = useCallback(() => {
+    if (analysis && onAnalysisComplete) {
+      onAnalysisComplete(analysis);
+      setAnalysisDirty(false);
+    }
+  }, [analysis, onAnalysisComplete]);
 
   // Memoize computed values
   const hasAnalysisData = useMemo(() => analysis !== null, [analysis]);
@@ -285,6 +293,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   if (!location) return null;
 
   return (
+    <>
     <Dialog
       open={open}
       onClose={handleClose}
@@ -322,18 +331,32 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               </Typography>
             </Box>
           </Box>
-          <IconButton 
-            onClick={handleClose} 
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)',
-              minWidth: 44,
-              minHeight: 44,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-            aria-label="Lukk dialog"
-          >
-            <CloseIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <IconButton
+              onClick={() => setGuideOpen(true)}
+              sx={{
+                color: 'rgba(255,255,255,0.7)',
+                minWidth: 44,
+                minHeight: 44,
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+              }}
+              aria-label="Åpne guide for lokasjonsanalyse"
+            >
+              <HelpIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
+            </IconButton>
+            <IconButton 
+              onClick={handleClose} 
+              sx={{ 
+                color: 'rgba(255,255,255,0.87)',
+                minWidth: 44,
+                minHeight: 44,
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+              }}
+              aria-label="Lukk dialog"
+            >
+              <CloseIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
+            </IconButton>
+          </Box>
         </Box>
       </DialogTitle>
       <DialogContent sx={{ 
@@ -396,6 +419,80 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
           </Alert>
         ) : hasAnalysisData ? (
           <Stack spacing={{ xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }}>
+            {/* Location Detail Header */}
+            <Card sx={{
+              borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 },
+              bgcolor: 'rgba(0,212,255,0.05)',
+              border: '1px solid rgba(0,212,255,0.2)',
+            }}>
+              <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1.5 }}>
+                  <Box sx={{ flex: 1, minWidth: 200 }}>
+                    {location.propertyId && (
+                      <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 600, mb: 0.5, letterSpacing: '0.5px' }}>
+                        Eiendoms-ID: {location.propertyId}
+                      </Typography>
+                    )}
+                    <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', mb: 1 }}>
+                      Sist oppdatert: {new Date(location.updatedAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </Typography>
+                    {location.website && (
+                      <Box
+                        component="a"
+                        href={location.website.startsWith('http') ? location.website : `https://${location.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          color: '#00d4ff',
+                          fontSize: '0.85rem',
+                          textDecoration: 'none',
+                          mb: 1,
+                          '&:hover': { textDecoration: 'underline' },
+                        }}
+                      >
+                        <OpenInNewIcon sx={{ fontSize: 14 }} />
+                        {location.website}
+                      </Box>
+                    )}
+                    {location.description && (
+                      <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', lineHeight: 1.6, mt: 0.5 }}>
+                        {location.description}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {location.status && (
+                      <Chip
+                        label={
+                          location.status === 'approved' ? 'Godkjent' :
+                          location.status === 'rejected' ? 'Avvist' : 'Vurderes'
+                        }
+                        size="small"
+                        sx={{
+                          bgcolor: `${
+                            location.status === 'approved' ? '#4caf50' :
+                            location.status === 'rejected' ? '#f44336' : '#ff9800'
+                          }20`,
+                          color: location.status === 'approved' ? '#4caf50' :
+                                 location.status === 'rejected' ? '#f44336' : '#ff9800',
+                          fontWeight: 700,
+                          fontSize: '0.75rem',
+                          height: 26,
+                          border: `1px solid ${
+                            location.status === 'approved' ? '#4caf50' :
+                            location.status === 'rejected' ? '#f44336' : '#ff9800'
+                          }40`,
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+
             {/* Photography Spots */}
             <Card sx={{ 
               borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 }, 
@@ -1144,6 +1241,28 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         bgcolor: '#1c2128',
       }}>
         <Button 
+          onClick={handleRefresh}
+          disabled={loading}
+          startIcon={<RefreshIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
+          variant="outlined"
+          sx={{ 
+            color: '#00d4ff',
+            borderColor: 'rgba(0,212,255,0.3)',
+            fontWeight: 600,
+            fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+            px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+            py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+            minHeight: 44,
+            mr: 'auto',
+            '&:hover': { 
+              bgcolor: 'rgba(0,212,255,0.1)',
+              borderColor: 'rgba(0,212,255,0.5)',
+            },
+          }}
+        >
+          Oppdater
+        </Button>
+        <Button 
           onClick={handleClose} 
           variant="outlined"
           sx={{ 
@@ -1162,7 +1281,41 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         >
           Lukk
         </Button>
+        {analysisDirty && (
+          <Button 
+            onClick={handleSaveAnalysis}
+            variant="contained"
+            startIcon={<SaveIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
+            sx={{ 
+              bgcolor: '#4caf50',
+              color: '#fff',
+              fontWeight: 600,
+              fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+              px: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 },
+              py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+              minHeight: 44,
+              '&:hover': { bgcolor: '#43a047' },
+            }}
+          >
+            Lagre analyse
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
+    <LocationAnalysisGuide
+      open={guideOpen}
+      onClose={() => setGuideOpen(false)}
+      onAction={(action) => {
+        setGuideOpen(false);
+        switch (action) {
+          case 'run-analysis':
+          case 'refresh-analysis':
+            handleRefresh();
+            break;
+          // scroll-* actions simply close the guide so user can see the section
+        }
+      }}
+    />
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -25,6 +25,8 @@ import {
   MenuItem,
   Tooltip,
   LinearProgress,
+  Autocomplete,
+  CircularProgress,
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -49,6 +51,13 @@ import {
   Security,
   Search,
   Inventory,
+  Delete,
+  Edit,
+  FlightTakeoff,
+  SdCard,
+  BatteryChargingFull,
+  Wifi,
+  Architecture,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
@@ -58,7 +67,7 @@ import EquipmentCatalogBrowser from './EquipmentCatalogBrowser';
 
 interface EquipmentManagementProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
-  userId: string
+  userId: string;
 }
 
 interface Equipment {
@@ -81,7 +90,16 @@ interface Equipment {
   lastUsed?: string;
   totalShots?: number;
   totalHours?: number;
-  location?: string
+  location?: string;
+}
+
+interface CatalogItem {
+  id: number;
+  name: string;
+  category: string;
+  brand: string;
+  model: string;
+  type?: string;
 }
 
 interface FirmwareUpdate {
@@ -101,20 +119,47 @@ interface FirmwareUpdate {
     photographerRecommendation?: string;
     videographerRecommendation?: string;
     riskLevel: string;
-};
+  };
 }
 
-const EQUIPMENT_TYPES = {
-  camera: { icon: CameraAlt, label: 'Kameraer', color: '#FF6B35' },
-  lens: { icon: Lens, label: 'Objektiver', color: '#9C27B0' },
-  audio: { icon: Headphones, label: 'Lyd', color: '#FF5722' },
-  lighting: { icon: FlashOn, label: 'Lys', color: '#FFC107' },
-  computer: { icon: Computer, label: 'Datautstyr', color: '#2196F3' },
-  accessory: { icon: Extension, label: 'Tilbehør', color: '#4CAF50' },
-  audio_interface: { icon: Headphones, label: 'Lydkort', color: '#E91E63' },
-  synthesizer: { icon: LibraryMusic, label: 'Synthesizere', color: '#673AB7' },
-  controller: { icon: Settings, label: 'Kontrollere', color: '#009688' },
-  software: { icon: Computer, label: 'Programvare', color: '#607D8B' },
+const ICON_MAP: Record<string, typeof CameraAlt> = {
+  camera: CameraAlt,
+  lens: Lens,
+  audio: Headphones,
+  lighting: FlashOn,
+  computer: Computer,
+  accessory: Extension,
+  audio_interface: Headphones,
+  synthesizer: LibraryMusic,
+  controller: Settings,
+  software: Computer,
+  drone: FlightTakeoff,
+  stabilizer: Videocam,
+  monitor: Computer,
+  media: SdCard,
+  power: BatteryChargingFull,
+  wireless_video: Wifi,
+  support: Architecture,
+};
+
+const EQUIPMENT_TYPES: Record<string, { icon: typeof CameraAlt; label: string; color: string }> = {
+  camera:          { icon: CameraAlt,            label: 'Kameraer',        color: '#FF6B35' },
+  lens:            { icon: Lens,                 label: 'Objektiver',      color: '#9C27B0' },
+  audio:           { icon: Headphones,           label: 'Lyd',             color: '#FF5722' },
+  lighting:        { icon: FlashOn,              label: 'Lys',             color: '#FFC107' },
+  drone:           { icon: FlightTakeoff,        label: 'Droner',          color: '#00BCD4' },
+  stabilizer:      { icon: Videocam,             label: 'Stabilisatorer',  color: '#795548' },
+  monitor:         { icon: Computer,             label: 'Monitorer',       color: '#3F51B5' },
+  media:           { icon: SdCard,               label: 'Media/Lagring',   color: '#8BC34A' },
+  power:           { icon: BatteryChargingFull,  label: 'Strøm/Batteri',   color: '#FF9800' },
+  wireless_video:  { icon: Wifi,                 label: 'Trådløs Video',   color: '#E91E63' },
+  support:         { icon: Architecture,         label: 'Stativ/Rigg',     color: '#607D8B' },
+  computer:        { icon: Computer,             label: 'Datautstyr',      color: '#2196F3' },
+  accessory:       { icon: Extension,            label: 'Tilbehør',        color: '#4CAF50' },
+  software:        { icon: Computer,             label: 'Programvare',     color: '#607D8B' },
+  audio_interface: { icon: Headphones,           label: 'Lydkort',         color: '#E91E63' },
+  synthesizer:     { icon: LibraryMusic,         label: 'Synthesizere',    color: '#673AB7' },
+  controller:      { icon: Settings,             label: 'Kontrollere',     color: '#009688' },
 };
 
 const CONDITION_COLORS = {
@@ -137,49 +182,117 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
   const [activeTab, setActiveTab] = useState(0);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const queryClient = useQueryClient();
+
+  // ── Add‑Equipment form state ──
+  const [newBrand, setNewBrand] = useState('');
+  const [newModel, setNewModel] = useState('');
+  const [newCategory, setNewCategory] = useState('camera');
+  const [newCondition, setNewCondition] = useState('good');
+  const [newSerial, setNewSerial] = useState('');
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogResults, setCatalogResults] = useState<CatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
 
   // Theming system
   const theming = useTheming(profession);
 
   const professionColor = PROFESSION_COLORS[profession];
 
-  // Fetch user equipment
+  // ── Catalog autocomplete search ──
+  useEffect(() => {
+    if (!catalogSearch || catalogSearch.length < 2) {
+      setCatalogResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setCatalogLoading(true);
+      try {
+        const resp = await apiRequest(`/api/equipment/v2/library/search?q=${encodeURIComponent(catalogSearch)}&limit=15`);
+        setCatalogResults(resp?.data || []);
+      } catch {
+        setCatalogResults([]);
+      }
+      setCatalogLoading(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [catalogSearch]);
+
+  // ── Fetch user equipment (v2 endpoint) ──
   const { data: equipment = [], isLoading: equipmentLoading } = useQuery({
-    queryKey: [ '/api/equipment/user,', userId],
-    queryFn: () => apiRequest(`/api/equipment/user/${userId}`),
+    queryKey: ['/api/equipment/v2/user', userId],
+    queryFn: () => apiRequest(`/api/equipment/v2/user/${userId}`),
   });
 
-  // Fetch equipment statistics
+  // ── Fetch equipment statistics ──
   const { data: stats } = useQuery({
-    queryKey: ['/api/equipment/stats,', userId],
-    queryFn: () => apiRequest(`/api/equipment/stats/${userId}`),
+    queryKey: ['/api/equipment/v2/stats', userId],
+    queryFn: () => apiRequest(`/api/equipment/v2/stats/${userId}`),
   });
 
-  // Fetch firmware updates
+  // ── Fetch firmware updates ──
   const { data: firmwareUpdates = [] } = useQuery({
-    queryKey: ['/api/equipment/firmware-updates', userId],
-    queryFn: () => apiRequest(`/api/equipment/firmware-updates/${userId}`),
+    queryKey: ['/api/equipment/v2/firmware-updates', userId],
+    queryFn: () => apiRequest(`/api/equipment/v2/firmware-updates/${userId}`),
   });
 
-  // Check firmware update mutation
+  // ── Create equipment mutation ──
+  const createMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiRequest('/api/equipment/v2', { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/v2/user', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/v2/stats', userId] });
+      setAddEquipmentOpen(false);
+      setNewBrand(''); setNewModel(''); setNewCategory('camera'); setNewCondition('good'); setNewSerial('');
+    },
+  });
+
+  // ── Delete equipment mutation ──
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest(`/api/equipment/v2/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/v2/user', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/v2/stats', userId] });
+      setDeleteConfirmId(null);
+    },
+  });
+
+  // ── Check firmware mutation ──
   const checkFirmwareMutation = useMutation({
     mutationFn: (equipmentId: number) =>
-      apiRequest(`/api/equipment/check-firmware/${equipmentId}`, {
-        method: 'POST',
-      }),
+      apiRequest(`/api/equipment/v2/check-firmware/${equipmentId}`, { method: 'POST' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/equipment/user', userId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['/api/equipment/firmware-updates', userId],
-      });
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/v2/user', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment/v2/firmware-updates', userId] });
     },
   });
 
   const getEquipmentsByType = (type: string) => {
     return equipment.filter((eq: Equipment) => eq.equipmentType === type);
+  };
+
+  const handleAddFromCatalog = (item: CatalogItem) => {
+    setNewBrand(item.brand);
+    setNewModel(item.model);
+    setNewCategory(item.category);
+    setCatalogSearch('');
+    setCatalogResults([]);
+  };
+
+  const handleSubmitEquipment = () => {
+    if (!newBrand || !newModel) return;
+    createMutation.mutate({
+      userId,
+      profession,
+      brand: newBrand,
+      model: newModel,
+      category: newCategory,
+      condition: newCondition,
+      serialNumber: newSerial || undefined,
+    });
   };
 
   const getBenefitsForProfession = (update: FirmwareUpdate) => {
@@ -211,16 +324,18 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
     const Icon = equipmentType?.icon || Extension;
 
     return (
+      <Grid item xs={12} sm={6} md={4} key={eq.id}>
       <MuiCard
-        key={eq.id}
         sx={{
           height: '100%',
           cursor: 'pointer',
-          transition: 'all 0.3s ease', '&:hover': {
+          transition: 'all 0.3s ease',
+          '&:hover': {
             transform: 'translateY(-4px)',
             boxShadow: 4,
           },
-          border: eq.firmwareUpdateAvailable ? `2px solid ${professionColor}` : '1px solid #e0e0e0'}}
+          border: eq.firmwareUpdateAvailable ? `2px solid ${professionColor}` : '1px solid #e0e0e0',
+        }}
         onClick={() => setSelectedEquipment(eq)}
       >
         <CardContent sx={theming.getThemedCardSx()}>
@@ -247,6 +362,15 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
                 <Update sx={{ color: professionColor }} />
               </Badge>
             )}
+            <Tooltip title="Slett utstyr">
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(eq.id); }}
+                sx={{ ml: 0.5, color: '#999', '&:hover': { color: '#f44336' } }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
@@ -312,6 +436,7 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
           )}
         </CardContent>
       </MuiCard>
+      </Grid>
     );
   };
 
@@ -415,7 +540,7 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
                         startIcon={<Download />}
                         sx={{ bgcolor: professionColor }}
                         size="small"
-                        onClick={() => window.open(update.firmwareUpdate.downloadUrl'_blank')}
+                        onClick={() => window.open(update.firmwareUpdate.downloadUrl, '_blank')}
                       >
                         Last ned
                       </Button>
@@ -485,7 +610,7 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
             <MuiCard>
               <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                 <Typography variant="h4" sx={{ color: professionColor }}>
-                  {stats.totalEquipment}
+                  {stats.totalEquipment || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Totalt utstyr
@@ -497,10 +622,10 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
             <MuiCard>
               <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                 <Typography variant="h4" sx={{ color: '#FF5722' }}>
-                  {stats.firmwareUpdatesAvailable}
+                  {stats.firmware?.tracked || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Firmware-oppdateringer
+                  Firmware-sporet
                 </Typography>
               </CardContent>
             </MuiCard>
@@ -509,14 +634,10 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
             <MuiCard>
               <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                 <Typography variant="h4" sx={{ color: '#4CAF50' }}>
-                  {stats.totalValue?.toLocaleString('no-NO', {
-                    style: 'currency',
-                    currency: 'NOK',
-                    maximumFractionDigits: 0,
-                  }) || '0 kr'}
+                  {Object.keys(stats.byCategory || {}).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Total verdi
+                  Kategorier
                 </Typography>
               </CardContent>
             </MuiCard>
@@ -525,10 +646,10 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
             <MuiCard>
               <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                 <Typography variant="h4" sx={{ color: '#FF9800' }}>
-                  {stats.needsService}
+                  {stats.maintenanceDueSoon || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Trenger service
+                  Service snart
                 </Typography>
               </CardContent>
             </MuiCard>
@@ -637,13 +758,160 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
           position: 'fixed',
           bottom: 24,
           right: 24,
-          bgcolor: professionColor'&:hover': {
+          bgcolor: professionColor,
+          '&:hover': {
             bgcolor: professionColor,
             opacity: 0.9,
-          }}}
+          },
+        }}
       >
         Legg til utstyr
       </Button>
+
+      {/* ── Add Equipment Dialog with Catalog Autocomplete ── */}
+      <Dialog open={addEquipmentOpen} onClose={() => setAddEquipmentOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Legg til utstyr</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Catalog search / autocomplete */}
+            <Autocomplete
+              freeSolo
+              options={catalogResults}
+              getOptionLabel={(option) =>
+                typeof option === 'string' ? option : `${option.brand} ${option.model}`
+              }
+              renderOption={(props, option) => (
+                <li {...props} key={typeof option === 'string' ? option : option.id}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {typeof option === 'string' ? option : `${option.brand} ${option.model}`}
+                    </Typography>
+                    {typeof option !== 'string' && (
+                      <Typography variant="caption" color="text.secondary">
+                        {EQUIPMENT_TYPES[option.category]?.label || option.category}
+                        {option.type ? ` · ${option.type}` : ''}
+                      </Typography>
+                    )}
+                  </Box>
+                </li>
+              )}
+              inputValue={catalogSearch}
+              onInputChange={(_e, value) => setCatalogSearch(value)}
+              onChange={(_e, value) => {
+                if (value && typeof value !== 'string') {
+                  handleAddFromCatalog(value);
+                }
+              }}
+              loading={catalogLoading}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Søk i utstyrskatalog (1 620+ produkter)"
+                  placeholder="f.eks. Canon R5, Sony FX6, DJI RS 4..."
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {catalogLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+            />
+
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+              Velg fra katalogen over, eller fyll inn manuelt under
+            </Typography>
+
+            {/* Manual fields */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="Merke"
+                value={newBrand}
+                onChange={(e) => setNewBrand(e.target.value)}
+                required
+                fullWidth
+              />
+              <TextField
+                label="Modell"
+                value={newModel}
+                onChange={(e) => setNewModel(e.target.value)}
+                required
+                fullWidth
+              />
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth>
+                <InputLabel>Kategori</InputLabel>
+                <Select
+                  value={newCategory}
+                  label="Kategori"
+                  onChange={(e) => setNewCategory(e.target.value)}
+                >
+                  {Object.entries(EQUIPMENT_TYPES).map(([key, meta]) => (
+                    <MenuItem key={key} value={key}>{meta.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Tilstand</InputLabel>
+                <Select
+                  value={newCondition}
+                  label="Tilstand"
+                  onChange={(e) => setNewCondition(e.target.value)}
+                >
+                  <MenuItem value="excellent">Utmerket</MenuItem>
+                  <MenuItem value="good">God</MenuItem>
+                  <MenuItem value="fair">Brukbar</MenuItem>
+                  <MenuItem value="poor">Dårlig</MenuItem>
+                  <MenuItem value="needs_repair">Trenger reparasjon</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
+            <TextField
+              label="Serienummer (valgfritt)"
+              value={newSerial}
+              onChange={(e) => setNewSerial(e.target.value)}
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddEquipmentOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitEquipment}
+            disabled={!newBrand || !newModel || createMutation.isPending}
+            sx={{ bgcolor: professionColor }}
+          >
+            {createMutation.isPending ? 'Legger til...' : 'Legg til'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Delete Confirmation Dialog ── */}
+      <Dialog open={deleteConfirmId !== null} onClose={() => setDeleteConfirmId(null)}>
+        <DialogTitle>Slett utstyr?</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil fjerne dette utstyret fra listen din?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmId(null)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? 'Sletter...' : 'Slett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -344,6 +345,7 @@ export const TableReadPanel: React.FC<TableReadPanelProps> = ({
         overflow: 'hidden',
       }}
     >
+      <ContextualNudgeBanner context="table-read" accentColor="#f59e0b" />
       {/* Header */}
       <Paper
         elevation={0}

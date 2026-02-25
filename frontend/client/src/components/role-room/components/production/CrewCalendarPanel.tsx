@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -1624,7 +1625,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
         bgcolor: '#0f0f1a' 
       }}
     >
-      {/* ================================================================== */}
+      <ContextualNudgeBanner context="crew-calendar" accentColor="#f59e0b" />}
       {/* MOBILE DRAWER SIDEBAR */}
       {/* ================================================================== */}
       {(isMobile || isTablet) && (

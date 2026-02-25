@@ -31,16 +31,34 @@ import MovieIcon from '@mui/icons-material/Movie';
 import CancelIcon from '@mui/icons-material/Cancel';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import StarIcon from '@mui/icons-material/Star';
-import type { WorkflowStatus } from '../services/castingApiService';
+import type { WorkflowStatus } from '../casting/domain/castingTypes';
+import {
+  WORKFLOW_STATUS_LABELS,
+  WORKFLOW_STATUS_COLORS,
+  getWorkflowStatusMeta,
+  getCandidateStatusMeta,
+} from '../casting/domain/castingTypes';
+import {
+  transitionWorkflowStatus,
+  getAllowedWorkflowTransitions,
+  type WorkflowTransitionContext,
+} from '../casting/domain/workflowEngine';
+
+// Re-export for consumers that may need the helper via this file
+export { getAllowedWorkflowTransitions };
+
+// Re-export domain helpers so consumers can import from this file or from casting/
+export { getWorkflowStatusMeta, getCandidateStatusMeta };
+export type { WorkflowStatus };
 
 const WORKFLOW_STEPS: { status: WorkflowStatus; label: string; icon: ReactNode; color: string }[] = [
-  { status: 'pending', label: 'Venter', icon: <PersonSearchIcon />, color: '#9ca3af' },
-  { status: 'auditioned', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
-  { status: 'selected', label: 'Valgt', icon: <CheckCircleIcon />, color: '#10b981' },
-  { status: 'offer_sent', label: 'Tilbud sendt', icon: <LocalOfferIcon />, color: '#3b82f6' },
-  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: '#8b5cf6' },
-  { status: 'contracted', label: 'Kontrakt', icon: <DescriptionIcon />, color: '#06b6d4' },
-  { status: 'production', label: 'Produksjon', icon: <MovieIcon />, color: '#ec4899' },
+  { status: 'pending', label: WORKFLOW_STATUS_LABELS.pending, icon: <PersonSearchIcon />, color: WORKFLOW_STATUS_COLORS.pending },
+  { status: 'auditioned', label: WORKFLOW_STATUS_LABELS.auditioned, icon: <TheatersIcon />, color: WORKFLOW_STATUS_COLORS.auditioned },
+  { status: 'selected', label: WORKFLOW_STATUS_LABELS.selected, icon: <CheckCircleIcon />, color: WORKFLOW_STATUS_COLORS.selected },
+  { status: 'offer_sent', label: WORKFLOW_STATUS_LABELS.offer_sent, icon: <LocalOfferIcon />, color: WORKFLOW_STATUS_COLORS.offer_sent },
+  { status: 'confirmed', label: WORKFLOW_STATUS_LABELS.confirmed, icon: <HandshakeIcon />, color: WORKFLOW_STATUS_COLORS.confirmed },
+  { status: 'contracted', label: WORKFLOW_STATUS_LABELS.contracted, icon: <DescriptionIcon />, color: WORKFLOW_STATUS_COLORS.contracted },
+  { status: 'production', label: WORKFLOW_STATUS_LABELS.production, icon: <MovieIcon />, color: WORKFLOW_STATUS_COLORS.production },
 ];
 
 const ColorlibConnector = styled(StepConnector)(({ theme }) => ({
@@ -60,7 +78,7 @@ const ColorlibConnector = styled(StepConnector)(({ theme }) => ({
   [`& .${stepConnectorClasses.line}`]: {
     height: 3,
     border: 0,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)',
     borderRadius: 1,
   },
 }));
@@ -116,6 +134,16 @@ export const CandidateWorkflowStatus: FC<CandidateWorkflowStatusProps> = ({
   const isDeclined = currentStatus === 'declined';
   const activeStep = isDeclined ? -1 : WORKFLOW_STEPS.findIndex(s => s.status === currentStatus);
 
+  // Build the list of allowed transitions from the current status
+  const transitionContext: WorkflowTransitionContext = {
+    hasAudition: currentStatus !== 'pending',
+    hasRating: (auditionRating ?? 0) > 0,
+  };
+  const allowedTransitions = getAllowedWorkflowTransitions(
+    isDeclined ? 'pending' : currentStatus,
+    transitionContext,
+  );
+
   const handleMenuOpen = (event: MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -125,6 +153,16 @@ export const CandidateWorkflowStatus: FC<CandidateWorkflowStatusProps> = ({
   };
 
   const handleStatusSelect = (status: WorkflowStatus) => {
+    // Validate transition via workflow engine
+    const context: WorkflowTransitionContext = {
+      hasAudition: currentStatus !== 'pending',
+      hasRating: (auditionRating ?? 0) > 0,
+    };
+    const result = transitionWorkflowStatus(currentStatus === 'declined' ? 'pending' : currentStatus, status, context);
+    if (!result.ok) {
+      console.warn('[WorkflowEngine]', result.reason);
+      // Still allow the transition — the engine logs a warning but UI remains flexible
+    }
     onStatusChange(candidateId, status);
     handleMenuClose();
   };
@@ -186,22 +224,35 @@ export const CandidateWorkflowStatus: FC<CandidateWorkflowStatusProps> = ({
           </IconButton>
         </Tooltip>
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose} sx={{ zIndex: 1400 }}>
-          {WORKFLOW_STEPS.map((step) => (
+          {WORKFLOW_STEPS.map((step) => {
+            const trans = allowedTransitions.find(t => t.status === step.status);
+            const isAllowed = step.status === currentStatus || !trans || trans.allowed;
+            return (
             <MenuItem
               key={step.status}
               onClick={() => handleStatusSelect(step.status)}
               selected={step.status === currentStatus}
+              disabled={!isAllowed}
               sx={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
                 '&.Mui-selected': { bgcolor: `${step.color}20` },
+                '&.Mui-disabled': { opacity: 0.45 },
               }}
             >
               <Box sx={{ color: step.color }}>{step.icon}</Box>
-              <Typography>{step.label}</Typography>
+              <Box>
+                <Typography>{step.label}</Typography>
+                {!isAllowed && trans?.reason && (
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', display: 'block' }}>
+                    {trans.reason}
+                  </Typography>
+                )}
+              </Box>
             </MenuItem>
-          ))}
+            );
+          })}
           <MenuItem
             onClick={() => handleStatusSelect('declined' as WorkflowStatus)}
             sx={{ color: '#ef4444' }}
@@ -362,16 +413,18 @@ export const WorkflowStatusBadge: FC<{
   );
 };
 
+/**
+ * @deprecated Use `getWorkflowStatusMeta(status).color` from `casting/domain/castingTypes` instead.
+ */
 export const getWorkflowStatusColor = (status: WorkflowStatus | 'declined'): string => {
-  if (status === 'declined') return '#ef4444';
-  const step = WORKFLOW_STEPS.find(s => s.status === status);
-  return step?.color || '#9ca3af';
+  return getWorkflowStatusMeta(status).color;
 };
 
+/**
+ * @deprecated Use `getWorkflowStatusMeta(status).label` from `casting/domain/castingTypes` instead.
+ */
 export const getWorkflowStatusLabel = (status: WorkflowStatus | 'declined'): string => {
-  if (status === 'declined') return 'Avslått';
-  const step = WORKFLOW_STEPS.find(s => s.status === status);
-  return step?.label || 'Ukjent';
+  return getWorkflowStatusMeta(status).label;
 };
 
 export default CandidateWorkflowStatus;

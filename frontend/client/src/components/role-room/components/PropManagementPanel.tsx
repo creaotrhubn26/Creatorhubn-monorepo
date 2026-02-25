@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useId } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -800,6 +801,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       aria-labelledby="prop-panel-title"
       sx={{ p: { xs: 2, sm: 3, md: containerPadding } }}
     >
+      <ContextualNudgeBanner context="props" accentColor="#a855f7" />
+
       {/* Header - Responsive */}
       <Box
         sx={{

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -509,6 +510,7 @@ export default function SplitSheetPortalView({
 
   return (
     <Box sx={{ px: { xs: 1, sm: 1.5, md: 2, lg: 2.5, xl: 3 } }}>
+      <ContextualNudgeBanner context="split-sheets" accentColor="#06b6d4" />
       <Typography variant="h5" gutterBottom sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 }, color: brandColor, display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 1.25, lg: 1.5, xl: 1.75 }, fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }}>
         <SplitSheetIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.5rem', lg: '1.625rem', xl: '1.75rem' } }} /> Mine Split Sheets
       </Typography>

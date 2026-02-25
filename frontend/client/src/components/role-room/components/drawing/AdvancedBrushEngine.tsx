@@ -12,6 +12,34 @@
 import { PencilPoint } from '../../hooks/useApplePencil';
 
 // =============================================================================
+// Seeded RNG — deterministic per-stroke randomness
+// =============================================================================
+
+/** mulberry32: fast 32-bit seeded PRNG returning 0-1 */
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Simple string/number hash → 32-bit integer for seeding */
+function hashSeed(...values: (string | number)[]): number {
+  let h = 0x811c9dc5;
+  for (const v of values) {
+    const s = String(v);
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+  }
+  return h >>> 0;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -171,19 +199,29 @@ export class AdvancedBrushEngine {
   private ctx: CanvasRenderingContext2D;
   private config: BrushConfig;
   private lastPoint: PencilPoint | null = null;
-  private strokeBuffer: ImageData | null = null;
+  /** Per-stroke seeded PRNG — deterministic strokes for replay & undo */
+  private rng: () => number = Math.random;
+  private strokeId = 0;
+  /** Smoothed velocity (px/ms) used for velocity-based width modulation */
+  private velocity = 0;
   
   constructor(ctx: CanvasRenderingContext2D, config: BrushConfig = DEFAULT_BRUSH_CONFIG) {
     this.ctx = ctx;
     this.config = { ...DEFAULT_BRUSH_CONFIG, ...config };
   }
 
+  /**
+   * Apply partial config. When `type` changes, preset defaults fill in only
+   * the fields that the caller did NOT explicitly provide — so user tweaks
+   * (opacity, size, colour …) are preserved.
+   */
   setConfig(config: Partial<BrushConfig>) {
-    this.config = { ...this.config, ...config };
-    // Apply brush preset if type changed
-    if (config.type) {
+    if (config.type && config.type !== this.config.type) {
       const preset = BRUSH_PRESETS[config.type];
-      this.config = { ...this.config, ...preset };
+      // Preset fills gaps; explicit caller keys win
+      this.config = { ...this.config, ...preset, ...config };
+    } else {
+      this.config = { ...this.config, ...config };
     }
   }
 
@@ -193,12 +231,10 @@ export class AdvancedBrushEngine {
 
   startStroke(point: PencilPoint) {
     this.lastPoint = point;
-    // Capture canvas state for watercolor blending
-    if (this.config.type === 'watercolor') {
-      this.strokeBuffer = this.ctx.getImageData(
-        0, 0, this.ctx.canvas.width, this.ctx.canvas.height
-      );
-    }
+    this.strokeId++;
+    this.velocity = 0;
+    // Seed the RNG from the stroke id + start position so playback is identical
+    this.rng = mulberry32(hashSeed(this.strokeId, point.x, point.y, point.timestamp ?? 0));
   }
 
   continueStroke(point: PencilPoint) {
@@ -207,24 +243,37 @@ export class AdvancedBrushEngine {
       return;
     }
 
+    // Compute instantaneous velocity (px/ms) for width modulation
+    const dt = (point.timestamp ?? 0) - (this.lastPoint.timestamp ?? 0);
+    const segDist = Math.hypot(point.x - this.lastPoint.x, point.y - this.lastPoint.y);
+    if (dt > 0) {
+      const instantVel = segDist / dt;
+      // Exponential smoothing (α=0.3) keeps transitions natural
+      this.velocity = this.velocity * 0.7 + instantVel * 0.3;
+    }
+
+    // Velocity factor: fast strokes → thinner (factor < 1), slow → wider (factor ≈ 1)
+    // Clamped to [0.4, 1.2] so lines never vanish or explode
+    const velocityFactor = Math.max(0.4, Math.min(1.2, 1.0 - this.velocity * 0.15));
+
     switch (this.config.type) {
       case 'pencil':
-        this.drawPencilStroke(this.lastPoint, point);
+        this.drawPencilStroke(this.lastPoint, point, velocityFactor);
         break;
       case 'pen':
-        this.drawPenStroke(this.lastPoint, point);
+        this.drawPenStroke(this.lastPoint, point, velocityFactor);
         break;
       case 'marker':
         this.drawMarkerStroke(this.lastPoint, point);
         break;
       case 'brush':
-        this.drawBristleBrush(this.lastPoint, point);
+        this.drawBristleBrush(this.lastPoint, point, velocityFactor);
         break;
       case 'watercolor':
         this.drawWatercolorStroke(this.lastPoint, point);
         break;
       case 'ink':
-        this.drawInkStroke(this.lastPoint, point);
+        this.drawInkStroke(this.lastPoint, point, velocityFactor);
         break;
       case 'highlighter':
         this.drawHighlighterStroke(this.lastPoint, point);
@@ -239,34 +288,34 @@ export class AdvancedBrushEngine {
 
   endStroke() {
     this.lastPoint = null;
-    this.strokeBuffer = null;
   }
 
   // =========================================================================
   // Pencil - Textured with grain
   // =========================================================================
   
-  private drawPencilStroke(from: PencilPoint, to: PencilPoint) {
+  private drawPencilStroke(from: PencilPoint, to: PencilPoint, velocityFactor: number = 1) {
     const { size, color, opacity, grain, pressureSensitivity } = this.config;
     const rgb = hexToRgb(color);
     
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const steps = Math.max(1, Math.ceil(dist / 2));
     
+    this.ctx.save();
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const x = from.x + (to.x - from.x) * t;
       const y = from.y + (to.y - from.y) * t;
       const pressure = from.pressure + (to.pressure - from.pressure) * t;
       
-      const strokeSize = size * (0.3 + pressure * 0.7 * pressureSensitivity);
+      const strokeSize = size * (0.3 + pressure * 0.7 * pressureSensitivity) * velocityFactor;
       const strokeOpacity = opacity * (0.5 + pressure * 0.5);
       
       // Draw multiple particles for pencil texture
       const particles = Math.ceil(strokeSize * 2);
       for (let p = 0; p < particles; p++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * strokeSize * 0.5;
+        const angle = this.rng() * Math.PI * 2;
+        const radius = this.rng() * strokeSize * 0.5;
         const px = x + Math.cos(angle) * radius;
         const py = y + Math.sin(angle) * radius;
         
@@ -278,22 +327,24 @@ export class AdvancedBrushEngine {
         
         this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
         this.ctx.beginPath();
-        this.ctx.arc(px, py, 0.5 + Math.random() * 0.5, 0, Math.PI * 2);
+        this.ctx.arc(px, py, 0.5 + this.rng() * 0.5, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
+    this.ctx.restore();
   }
 
   // =========================================================================
   // Pen - Smooth technical pen
   // =========================================================================
   
-  private drawPenStroke(from: PencilPoint, to: PencilPoint) {
+  private drawPenStroke(from: PencilPoint, to: PencilPoint, velocityFactor: number = 1) {
     const { size, color, opacity, pressureSensitivity } = this.config;
     
     const pressure = (from.pressure + to.pressure) / 2;
-    const strokeWidth = size * (0.5 + pressure * 0.5 * pressureSensitivity);
+    const strokeWidth = size * (0.5 + pressure * 0.5 * pressureSensitivity) * velocityFactor;
     
+    this.ctx.save();
     this.ctx.strokeStyle = color;
     this.ctx.globalAlpha = opacity;
     this.ctx.lineWidth = strokeWidth;
@@ -304,8 +355,7 @@ export class AdvancedBrushEngine {
     this.ctx.moveTo(from.x, from.y);
     this.ctx.lineTo(to.x, to.y);
     this.ctx.stroke();
-    
-    this.ctx.globalAlpha = 1;
+    this.ctx.restore();
   }
 
   // =========================================================================
@@ -343,26 +393,25 @@ export class AdvancedBrushEngine {
       this.ctx.fill();
       this.ctx.restore();
     }
-    
-    this.ctx.globalAlpha = 1;
   }
 
   // =========================================================================
   // Bristle Brush - Multiple bristle strands
   // =========================================================================
   
-  private drawBristleBrush(from: PencilPoint, to: PencilPoint) {
-    const { size, color, opacity, pressureSensitivity, tiltSensitivity } = this.config;
+  private drawBristleBrush(from: PencilPoint, to: PencilPoint, velocityFactor: number = 1) {
+    const { size, color, opacity, pressureSensitivity } = this.config;
     const rgb = hexToRgb(color);
     
     const pressure = (from.pressure + to.pressure) / 2;
     const bristleCount = Math.ceil(size * 1.5);
-    const spread = size * (1 + (1 - pressure) * 0.5);
+    const spread = size * (1 + (1 - pressure) * 0.5) * velocityFactor;
     
     // Direction of stroke
     const angle = Math.atan2(to.y - from.y, to.x - from.x);
     const perpAngle = angle + Math.PI / 2;
     
+    this.ctx.save();
     for (let b = 0; b < bristleCount; b++) {
       // Offset each bristle
       const offset = ((b / bristleCount) - 0.5) * spread;
@@ -385,11 +434,51 @@ export class AdvancedBrushEngine {
       this.ctx.lineTo(toX, toY);
       this.ctx.stroke();
     }
+    this.ctx.restore();
   }
 
   // =========================================================================
-  // Watercolor - Wet blending with edge darkening
+  // Watercolor - Wet-on-wet blending with edge darkening & pigment mixing
   // =========================================================================
+
+  /**
+   * Convert RGB (0-255) to HSL (h:0-360, s:0-1, l:0-1)
+   */
+  private static rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return [0, 0, l];
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h = 0;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+    return [h * 360, s, l];
+  }
+
+  /**
+   * Convert HSL back to RGB (0-255)
+   */
+  private static hslToRgb(h: number, s: number, l: number): [number, number, number] {
+    h /= 360;
+    if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+    const hue2rgb = (p2: number, q2: number, t: number) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p2 + (q2 - p2) * 6 * t;
+      if (t < 1/2) return q2;
+      if (t < 2/3) return p2 + (q2 - p2) * (2/3 - t) * 6;
+      return p2;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [
+      Math.round(hue2rgb(p, q, h + 1/3) * 255),
+      Math.round(hue2rgb(p, q, h) * 255),
+      Math.round(hue2rgb(p, q, h - 1/3) * 255),
+    ];
+  }
   
   private drawWatercolorStroke(from: PencilPoint, to: PencilPoint) {
     const { size, color, opacity, wetness, hardness, pressureSensitivity } = this.config;
@@ -400,53 +489,126 @@ export class AdvancedBrushEngine {
     
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const steps = Math.max(1, Math.ceil(dist / 4));
+
+    // Region for pixel readback (wet-on-wet blending)
+    const regionX = Math.max(0, Math.floor(Math.min(from.x, to.x) - strokeSize - 2));
+    const regionY = Math.max(0, Math.floor(Math.min(from.y, to.y) - strokeSize - 2));
+    const regionW = Math.min(
+      Math.ceil(Math.abs(to.x - from.x) + strokeSize * 2 + 4),
+      (this.ctx.canvas.width - regionX)
+    );
+    const regionH = Math.min(
+      Math.ceil(Math.abs(to.y - from.y) + strokeSize * 2 + 4),
+      (this.ctx.canvas.height - regionY)
+    );
+
+    // Read existing pixels for wet-on-wet colour mixing
+    let imageData: ImageData | null = null;
+    if (wetness > 0.2 && regionW > 0 && regionH > 0) {
+      try {
+        imageData = this.ctx.getImageData(regionX, regionY, regionW, regionH);
+      } catch {
+        // Canvas may be tainted — fall back to overlay-only mode
+        imageData = null;
+      }
+    }
     
+    this.ctx.save();
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const x = from.x + (to.x - from.x) * t;
       const y = from.y + (to.y - from.y) * t;
       
-      // Create soft radial gradient for watercolor blob
+      // Flow variation from seeded noise
+      const flowNoise = smoothNoise(x, y, 20) * wetness * strokeSize * 0.3;
+      const blobX = x + flowNoise * (this.rng() - 0.5);
+      const blobY = y + flowNoise * (this.rng() - 0.5);
+      const blobRx = strokeSize * (0.8 + this.rng() * 0.4);
+      const blobRy = strokeSize * (0.8 + this.rng() * 0.4);
+      const blobRot = this.rng() * Math.PI;
+
+      // ── Wet-on-wet: sample centre pixel, mix in HSL ──
+      let mr = rgb.r, mg = rgb.g, mb = rgb.b;
+      if (imageData && wetness > 0.2) {
+        const px = Math.round(blobX) - regionX;
+        const py = Math.round(blobY) - regionY;
+        if (px >= 0 && px < regionW && py >= 0 && py < regionH) {
+          const idx = (py * regionW + px) * 4;
+          const existA = imageData.data[idx + 3];
+          if (existA > 10) {  // only blend if existing paint is visible
+            const existR = imageData.data[idx];
+            const existG = imageData.data[idx + 1];
+            const existB = imageData.data[idx + 2];
+            const [h1, s1, l1] = AdvancedBrushEngine.rgbToHsl(mr, mg, mb);
+            const [h2, s2, l2] = AdvancedBrushEngine.rgbToHsl(existR, existG, existB);
+            const blendAmt = wetness * 0.5;   // how much existing paint "bleeds in"
+            // Weighted hue average (circular)
+            let hDiff = h2 - h1;
+            if (hDiff > 180) hDiff -= 360;
+            if (hDiff < -180) hDiff += 360;
+            const mh = (h1 + hDiff * blendAmt + 360) % 360;
+            const ms = s1 + (s2 - s1) * blendAmt;
+            const ml = l1 + (l2 - l1) * blendAmt * 0.3; // lightness mixes less aggressively
+            [mr, mg, mb] = AdvancedBrushEngine.hslToRgb(mh, ms, ml);
+          }
+        }
+      }
+
+      // ── Radial gradient blob with edge darkening ──
       const gradient = this.ctx.createRadialGradient(
-        x, y, 0,
-        x, y, strokeSize
+        blobX, blobY, 0,
+        blobX, blobY, blobRx
       );
       
-      // Watercolor edge darkening effect
       const edgeDarkening = 1 - hardness * 0.3;
-      gradient.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},${opacity * 0.1})`);
-      gradient.addColorStop(0.5, `rgba(${rgb.r},${rgb.g},${rgb.b},${opacity * 0.15})`);
-      gradient.addColorStop(0.8, `rgba(${rgb.r * edgeDarkening},${rgb.g * edgeDarkening},${rgb.b * edgeDarkening},${opacity * 0.2})`);
-      gradient.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
-      
-      // Add some randomness to simulate water flow
-      const flowNoise = smoothNoise(x, y, 20) * wetness * strokeSize * 0.3;
+      gradient.addColorStop(0, `rgba(${mr},${mg},${mb},${opacity * 0.1})`);
+      gradient.addColorStop(0.5, `rgba(${mr},${mg},${mb},${opacity * 0.15})`);
+      gradient.addColorStop(0.8, `rgba(${Math.round(mr * edgeDarkening)},${Math.round(mg * edgeDarkening)},${Math.round(mb * edgeDarkening)},${opacity * 0.2})`);
+      gradient.addColorStop(1, `rgba(${mr},${mg},${mb},0)`);
       
       this.ctx.fillStyle = gradient;
       this.ctx.beginPath();
-      this.ctx.ellipse(
-        x + flowNoise * (Math.random() - 0.5),
-        y + flowNoise * (Math.random() - 0.5),
-        strokeSize * (0.8 + Math.random() * 0.4),
-        strokeSize * (0.8 + Math.random() * 0.4),
-        Math.random() * Math.PI,
-        0, Math.PI * 2
-      );
+      this.ctx.ellipse(blobX, blobY, blobRx, blobRy, blobRot, 0, Math.PI * 2);
       this.ctx.fill();
     }
+
+    // ── Paper texture absorption: lighten areas with low density ──
+    if (wetness > 0.4 && imageData && regionW > 0 && regionH > 0) {
+      try {
+        const outData = this.ctx.getImageData(regionX, regionY, regionW, regionH);
+        const d = outData.data;
+        const texScale = 6;
+        for (let py = 0; py < regionH; py += 2) {
+          for (let px = 0; px < regionW; px += 2) {
+            const idx = (py * regionW + px) * 4;
+            if (d[idx + 3] < 10) continue;
+            const tex = noise2D((regionX + px) / texScale, (regionY + py) / texScale) * wetness * 0.15;
+            d[idx]     = Math.min(255, d[idx]     + tex * 30);
+            d[idx + 1] = Math.min(255, d[idx + 1] + tex * 30);
+            d[idx + 2] = Math.min(255, d[idx + 2] + tex * 30);
+          }
+        }
+        this.ctx.putImageData(outData, regionX, regionY);
+      } catch {
+        // tainted — skip texture pass
+      }
+    }
+
+    this.ctx.restore();
   }
 
   // =========================================================================
   // Ink - Smooth with slight feathering
   // =========================================================================
   
-  private drawInkStroke(from: PencilPoint, to: PencilPoint) {
+  private drawInkStroke(from: PencilPoint, to: PencilPoint, velocityFactor: number = 1) {
     const { size, color, opacity, pressureSensitivity, wetness } = this.config;
     const rgb = hexToRgb(color);
     
     const pressure = (from.pressure + to.pressure) / 2;
-    const strokeWidth = size * (0.3 + pressure * 0.7 * pressureSensitivity);
+    const strokeWidth = size * (0.3 + pressure * 0.7 * pressureSensitivity) * velocityFactor;
     
+    this.ctx.save();
     // Main stroke
     this.ctx.strokeStyle = color;
     this.ctx.globalAlpha = opacity;
@@ -471,8 +633,7 @@ export class AdvancedBrushEngine {
         this.ctx.stroke();
       }
     }
-    
-    this.ctx.globalAlpha = 1;
+    this.ctx.restore();
   }
 
   // =========================================================================
@@ -534,8 +695,9 @@ export class AdvancedBrushEngine {
   renderStroke(ctx: CanvasRenderingContext2D, points: PencilPoint[], settings?: Partial<BrushConfig>) {
     if (points.length < 2) return;
 
-    // Temporarily switch context
+    // Temporarily switch context — save & restore to avoid leaking state
     const originalCtx = this.ctx;
+    const originalConfig = { ...this.config };
     this.ctx = ctx;
     
     // Apply settings if provided
@@ -550,20 +712,22 @@ export class AdvancedBrushEngine {
     }
     this.endStroke();
 
-    // Restore original context
+    // Restore original context and config
     this.ctx = originalCtx;
+    this.config = originalConfig;
   }
 
   /**
-   * Create an engine instance without requiring a canvas context
-   * Useful for deferred rendering
+   * Create an engine instance without requiring a canvas context.
+   * SSR-safe: returns null when `document` is unavailable.
    */
-  static createDeferred(config: Partial<BrushConfig> = {}): AdvancedBrushEngine {
-    // Create a temporary canvas for initialization
+  static createDeferred(config: Partial<BrushConfig> = {}): AdvancedBrushEngine | null {
+    if (typeof document === 'undefined') return null;
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = 1;
     tempCanvas.height = 1;
-    const ctx = tempCanvas.getContext('2d')!;
+    const ctx = tempCanvas.getContext('2d');
+    if (!ctx) return null;
     return new AdvancedBrushEngine(ctx, { ...DEFAULT_BRUSH_CONFIG, ...config });
   }
 }

@@ -199,9 +199,49 @@ function Key({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#6366f1',
+        borderColor: 'rgba(99,102,241,0.4)',
+        bgcolor: 'rgba(99,102,241,0.06)',
+        '&:hover': {
+          borderColor: '#6366f1',
+          bgcolor: 'rgba(99,102,241,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Steps ─────────────────────────────────────────────────────────────────────
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   {
     id: 'overview',
     label: 'Overview',
@@ -253,6 +293,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Åpne manusredigerer" action="open-screenplay-editor" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Three-zone layout diagram',
@@ -340,6 +381,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Se Fountain-elementer" action="view-fountain-elements" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Each element type highlighted in the editor',
@@ -440,6 +482,7 @@ const STEPS: Step[] = [
               Navigate suggestions with <Key>↑</Key> <Key>↓</Key> and confirm with{' '}
               <Key>Enter</Key> or <Key>Tab</Key>. Press <Key>Escape</Key> to dismiss.
             </Typography>
+            <CtaButton label="Vis hurtigtaster" action="show-keyboard-shortcuts" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Autocomplete dropdown for character names',
@@ -477,12 +520,15 @@ const STEPS: Step[] = [
       {
         heading: 'Database scenes vs. parsed scenes',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            The navigator works in two modes. When <code>scenes</code> props are provided
-            (from the database — e.g., the Troll project), they display alongside parsed
-            scenes. When no database scenes exist, the navigator parses the script text
-            directly. Both modes update in real time as you type.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              The navigator works in two modes. When <code>scenes</code> props are provided
+              (from the database — e.g., the Troll project), they display alongside parsed
+              scenes. When no database scenes exist, the navigator parses the script text
+              directly. Both modes update in real time as you type.
+            </Typography>
+            <CtaButton label="Åpne sceneliste" action="open-scene-navigator" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Navigator showing both database and parsed scenes',
       },
@@ -695,6 +741,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Åpne Beat Board" action="open-beat-board" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Dramaturgical analysis panel open with warning cards + Room Mode full-screen view',
@@ -724,6 +771,7 @@ const STEPS: Step[] = [
               restricted access will see a "permission required" message instead of the
               controls.
             </Callout>
+            <CtaButton label="Start bordlesing" action="start-table-read" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Table Read panel playing with current line highlighted',
@@ -768,13 +816,16 @@ const STEPS: Step[] = [
       {
         heading: 'Grammar Check',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            The <strong>Grammar</strong> panel checks action lines and dialogue for common
-            writing issues: passive voice, repeated words, missing punctuation, and overlong
-            sentences. Results link back to the line in the editor. Toggle it from the
-            right-panel button group (<SpellcheckIcon sx={{ fontSize: 14, verticalAlign: 'middle' }} />{' '}
-            spellcheck icon).
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              The <strong>Grammar</strong> panel checks action lines and dialogue for common
+              writing issues: passive voice, repeated words, missing punctuation, and overlong
+              sentences. Results link back to the line in the editor. Toggle it from the
+              right-panel button group (<SpellcheckIcon sx={{ fontSize: 14, verticalAlign: 'middle' }} />{' '}
+              spellcheck icon).
+            </Typography>
+            <CtaButton label="Kjør analyse" action="run-analysis" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Grammar Check panel with flagged issues',
       },
@@ -834,6 +885,7 @@ const STEPS: Step[] = [
                 </Box>
               ))}
             </Box>
+            <CtaButton label="Administrer låsing" action="manage-lock-state" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Read-only editor with locked badge visible',
@@ -888,6 +940,7 @@ const STEPS: Step[] = [
               In fullscreen the background changes to a dark navy (<code>#1a1a2e</code>)
               for reduced eye strain during long writing sessions.
             </Callout>
+            <CtaButton label="Eksporter manus" action="export-screenplay" onAction={onAction} />
           </>
         ),
         screenshotLabel: 'Fullscreen writing mode with minimal chrome',
@@ -923,18 +976,22 @@ const STEPS: Step[] = [
       {
         heading: 'Story Structure panel',
         body: (
-          <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
-            The <strong>Story Structure</strong> panel maps your scenes onto classic
-            three-act (or custom) structure frameworks. It colour-codes the beat
-            cards by act and shows where plot points fall relative to the overall
-            page count. Switch to it via the Timeline icon in the right-panel group.
-          </Typography>
+          <>
+            <Typography variant="body2" sx={{ lineHeight: 1.8 }}>
+              The <strong>Story Structure</strong> panel maps your scenes onto classic
+              three-act (or custom) structure frameworks. It colour-codes the beat
+              cards by act and shows where plot points fall relative to the overall
+              page count. Switch to it via the Timeline icon in the right-panel group.
+            </Typography>
+            <CtaButton label="Åpne storyboard" action="open-storyboard" onAction={onAction} />
+          </>
         ),
         screenshotLabel: 'Story Structure panel showing three-act beat mapping',
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -942,12 +999,14 @@ interface ScreenplayGuideProps {
   open: boolean;
   onClose: () => void;
   initialStepId?: string;
+  onAction?: (action: string) => void;
 }
 
 export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
   open,
   onClose,
   initialStepId,
+  onAction,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -955,9 +1014,10 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig  = getGuideConfig('screenplay');
   const activeIds    = getActiveStepIds('screenplay');
+  const steps = buildSteps(onAction);
   const visibleSteps = activeIds.length > 0
-    ? (activeIds.map(id => STEPS.find(s => s.id === id)).filter(Boolean) as Step[])
-    : STEPS;
+    ? (activeIds.map(id => steps.find(s => s.id === id)).filter(Boolean) as Step[])
+    : steps;
 
   const initialIndex = initialStepId
     ? Math.max(0, visibleSteps.findIndex((s) => s.id === initialStepId))

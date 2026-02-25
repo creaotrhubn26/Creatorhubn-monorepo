@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useId } from 'react';
+import React, { useState, useMemo, useEffect, useId, useCallback, useRef } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -63,6 +64,17 @@ import {
   Save as SaveIcon,
   Explore as ExploreIcon,
   Group as GroupIcon,
+  Wifi as WifiIcon,
+  Undo as UndoIcon,
+  Replay as RetryIcon,
+  CheckCircle as ApprovedIcon,
+  HourglassEmpty as EvaluatingIcon,
+  Block as RejectedIcon,
+  PictureAsPdf as PdfIcon,
+  EventAvailable as AssignEventIcon,
+  Label as StatusIcon,
+  Link as LinkIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import { 
@@ -79,6 +91,8 @@ import { Location } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisDialog } from './LocationAnalysisDialog';
+import { LocationManagementGuide } from './LocationManagementGuide';
+import { LocationAnalysisGuide } from './LocationAnalysisGuide';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
@@ -94,9 +108,32 @@ const focusVisibleStyles = {
   },
 };
 
+// HTML escape utility for safe export content
+const escapeHtml = (text: string): string => {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+};
+
 type SortField = 'name' | 'type' | 'capacity' | 'scenes';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
+type LocationStatus = Location['status'];
+type CategoryFilter = Location['type'] | 'all';
+type StatusFilter = 'all' | 'evaluating' | 'approved' | 'rejected';
+
+/** Tracks a bulk-delete operation so users can undo / retry */
+interface BulkDeleteRecord {
+  id: string;
+  timestamp: number;
+  deleted: Location[];
+  failed: Location[];
+}
 
 interface LocationManagementPanelProps {
   projectId: string;
@@ -138,12 +175,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [analysisGuideOpen, setAnalysisGuideOpen] = useState(false);
   const [selectedLocationForAnalysis, setSelectedLocationForAnalysis] = useState<Location | null>(null);
   const [validatingAddress, setValidatingAddress] = useState(false);
 
   // Search, filter, sort state
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<Location['type'] | 'all'>('all');
+  const [filterType, setFilterType] = useState<CategoryFilter>('all');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -158,6 +197,28 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   
   const FAVORITES_NAMESPACE = 'virtualStudio_locationFavorites';
+  const favoritesSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Refs for keyboard shortcut handlers (avoids stale closures)
+  const handleOpenDialogFnRef = useRef<(location?: Location) => void>(() => {});
+  const handleExportFnRef = useRef<() => void>(() => {});
+  const handleCloseDialogFnRef = useRef<() => void>(() => {});
+
+  // Bulk delete confirmation dialog state
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+
+  // Categories sidebar: status filter
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [showCategoriesSidebar, setShowCategoriesSidebar] = useState(!isMobile);
+
+  // Bulk-delete undo history (most recent first)
+  const [bulkDeleteHistory, setBulkDeleteHistory] = useState<BulkDeleteRecord[]>([]);
+
+  // Bulk "Set Status" dialog
+  const [setStatusDialogOpen, setSetStatusDialogOpen] = useState(false);
+
+  // Debounced-save indicator
+  const [favoritesSaving, setFavoritesSaving] = useState(false);
 
   // Load favorites from database (with settings cache fallback)
   useEffect(() => {
@@ -200,6 +261,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     name: '',
     address: '',
     type: 'indoor',
+    status: 'evaluating',
+    description: '',
+    website: '',
     capacity: undefined,
     facilities: [],
     availability: {},
@@ -213,9 +277,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
   // Responsive padding
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
 
-  // Save favorites to database and settings cache
+  // Save favorites to database and settings cache (debounced)
   useEffect(() => {
-    const saveFavorites = async () => {
+    if (!favoritesLoaded) return;
+
+    if (favoritesSaveTimerRef.current) {
+      clearTimeout(favoritesSaveTimerRef.current);
+    }
+
+    favoritesSaveTimerRef.current = setTimeout(async () => {
+      setFavoritesSaving(true);
       const values = [...favorites];
       await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
       try {
@@ -224,9 +295,14 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       } catch (error) {
         console.warn('Database save failed:', error);
       }
+      setFavoritesSaving(false);
+    }, 500);
+
+    return () => {
+      if (favoritesSaveTimerRef.current) {
+        clearTimeout(favoritesSaveTimerRef.current);
+      }
     };
-    if (!favoritesLoaded) return;
-    saveFavorites();
   }, [favorites, projectId, favoritesLoaded]);
 
   const getTypeLabel = (type: Location['type']): string => {
@@ -263,6 +339,42 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     return labels[facility] || facility;
   };
 
+  const getStatusLabel = (status: LocationStatus | undefined): string => {
+    const labels: Record<string, string> = {
+      evaluating: 'Vurderes',
+      approved: 'Godkjent',
+      rejected: 'Avvist',
+    };
+    return status ? (labels[status] || status) : 'Vurderes';
+  };
+
+  const getStatusColor = (status: LocationStatus | undefined): string => {
+    const colors: Record<string, string> = {
+      evaluating: '#ff9800',
+      approved: '#4caf50',
+      rejected: '#f44336',
+    };
+    return status ? (colors[status] || '#ff9800') : '#ff9800';
+  };
+
+  const getStatusIcon = (status: LocationStatus | undefined) => {
+    switch (status) {
+      case 'approved': return <ApprovedIcon sx={{ fontSize: 14 }} />;
+      case 'rejected': return <RejectedIcon sx={{ fontSize: 14 }} />;
+      default: return <EvaluatingIcon sx={{ fontSize: 14 }} />;
+    }
+  };
+
+  const getFacilityIcon = (facility: string) => {
+    switch (facility) {
+      case 'wifi': return <WifiIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }} />;
+      case 'parking': return <Typography sx={{ fontSize: 12 }}>🅿️</Typography>;
+      case 'power': return <Typography sx={{ fontSize: 12 }}>⚡</Typography>;
+      case 'catering': return <Typography sx={{ fontSize: 12 }}>🍽️</Typography>;
+      default: return null;
+    }
+  };
+
   // Filter and sort locations
   const filteredAndSortedLocations = useMemo(() => {
     let result = [...locations];
@@ -273,15 +385,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       result = result.filter(
         (loc) =>
           loc.name.toLowerCase().includes(query) ||
-          loc.address.toLowerCase().includes(query) ||
+          (loc.address ?? '').toLowerCase().includes(query) ||
           getTypeLabel(loc.type).toLowerCase().includes(query) ||
-          (loc.notes && loc.notes.toLowerCase().includes(query))
+          (loc.notes && loc.notes.toLowerCase().includes(query)) ||
+          (loc.description && loc.description.toLowerCase().includes(query))
       );
     }
 
     // Type filter
     if (filterType !== 'all') {
       result = result.filter((loc) => loc.type === filterType);
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      result = result.filter((loc) => (loc.status || 'evaluating') === statusFilter);
     }
 
     // Sort - favorites first
@@ -309,7 +427,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     });
 
     return result;
-  }, [locations, searchQuery, filterType, sortField, sortDirection, favorites]);
+  }, [locations, searchQuery, filterType, statusFilter, sortField, sortDirection, favorites]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -318,31 +436,40 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       return acc;
     }, {} as Record<string, number>);
 
+    const statusCount = locations.reduce((acc, loc) => {
+      const s = loc.status || 'evaluating';
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
     const totalCapacity = locations.reduce((sum, loc) => sum + (loc.capacity || 0), 0);
     const withCoordinates = locations.filter((loc) => loc.coordinates).length;
+    const assessed = locations.filter((loc) => loc.status === 'approved' || loc.status === 'rejected').length;
 
     return {
       total: locations.length,
       typeCount,
+      statusCount,
       totalCapacity,
       withCoordinates,
       favorites: favorites.size,
+      assessed,
     };
   }, [locations, favorites]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — use refs to avoid stale closures
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
-        handleOpenDialog();
+        handleOpenDialogFnRef.current();
       }
       if (e.ctrlKey && e.key === 'e') {
         e.preventDefault();
-        handleExportCSV();
+        handleExportFnRef.current();
       }
       if (e.key === 'Escape' && dialogOpen) {
-        handleCloseDialog();
+        handleCloseDialogFnRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -360,6 +487,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         name: '',
         address: '',
         type: 'indoor',
+        status: 'evaluating',
+        description: '',
+        website: '',
         capacity: undefined,
         facilities: [],
         availability: {},
@@ -385,10 +515,13 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       const location: Location = editingLocation
         ? { ...editingLocation, ...formData, updatedAt: new Date().toISOString() }
         : {
-            id: `location-${Date.now()}`,
+            id: crypto.randomUUID(),
             name: formData.name || '',
             address: formData.address || '',
             type: formData.type || 'indoor',
+            status: formData.status || 'evaluating',
+            description: formData.description,
+            website: formData.website,
             capacity: formData.capacity,
             facilities: formData.facilities || [],
             availability: formData.availability || {},
@@ -402,8 +535,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           };
 
       await castingService.saveLocation(projectId, location);
-      const locs = await castingService.getLocations(projectId);
-      setLocations(Array.isArray(locs) ? locs : []);
+      // Optimistic update — add/replace locally without full refetch
+      setLocations((prev) => {
+        const idx = prev.findIndex((l) => l.id === location.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = location;
+          return next;
+        }
+        return [...prev, location];
+      });
 
       // Show success notification
       if (editingLocation) {
@@ -455,16 +596,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     }
   };
 
-  const handleSort = (field: SortField) => {
+  const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection('asc');
     }
-  };
+  }, [sortField, sortDirection]);
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = useCallback((id: string) => {
     const newFavorites = new Set(favorites);
     if (newFavorites.has(id)) {
       newFavorites.delete(id);
@@ -472,23 +613,23 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       newFavorites.add(id);
     }
     setFavorites(newFavorites);
-  };
+  }, [favorites]);
 
-  const handleCopyAddress = async (address: string, id: string) => {
+  const handleCopyAddress = useCallback(async (address: string, id: string) => {
     await navigator.clipboard.writeText(address);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
-  };
+  }, []);
 
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     if (selectedIds.size === filteredAndSortedLocations.length) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(filteredAndSortedLocations.map((l) => l.id)));
     }
-  };
+  }, [selectedIds.size, filteredAndSortedLocations]);
 
-  const handleToggleSelect = (id: string) => {
+  const handleToggleSelect = useCallback((id: string) => {
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
       newSelected.delete(id);
@@ -496,23 +637,58 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
+  }, [selectedIds]);
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleteConfirmOpen(true);
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (window.confirm(`Er du sikker på at du vil slette \${selectedIds.size} lokasjon(er)?`)) {
-      try {
-        for (const id of selectedIds) {
-          await castingService.deleteLocation(projectId, id);
-        }
+  const handleBulkDeleteConfirm = async () => {
+    setBulkDeleteConfirmOpen(false);
+    const idsToDelete = [...selectedIds];
+    const locationsToDelete = locations.filter((loc) => idsToDelete.includes(loc.id));
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((id) => castingService.deleteLocation(projectId, id))
+      );
+      const succeededLocs: Location[] = [];
+      const failedLocs: Location[] = [];
+      idsToDelete.forEach((id, i) => {
+        const loc = locationsToDelete.find((l) => l.id === id);
+        if (!loc) return;
+        if (results[i].status === 'fulfilled') succeededLocs.push(loc);
+        else failedLocs.push(loc);
+      });
+
+      // Optimistic: remove succeeded from local state
+      const succeededIds = new Set(succeededLocs.map((l) => l.id));
+      setLocations((prev) => prev.filter((loc) => !succeededIds.has(loc.id)));
+      setSelectedIds(new Set());
+
+      // Store undo record
+      if (succeededLocs.length > 0 || failedLocs.length > 0) {
+        setBulkDeleteHistory((prev) => [{
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          deleted: succeededLocs,
+          failed: failedLocs,
+        }, ...prev].slice(0, 20)); // keep last 20
+      }
+
+      if (failedLocs.length > 0) {
+        showError(`${failedLocs.length} av ${idsToDelete.length} lokasjoner kunne ikke slettes`);
+        // Refetch to reconcile state
         const locs = await castingService.getLocations(projectId);
         setLocations(Array.isArray(locs) ? locs : []);
-        setSelectedIds(new Set());
-        if (onUpdate) onUpdate();
-      } catch (error) {
-        console.error('Error deleting locations:', error);
-        showError('Feil ved sletting av lokasjoner');
+      } else {
+        showSuccess(`${succeededLocs.length} lokasjon${succeededLocs.length !== 1 ? 'er' : ''} slettet`);
       }
+
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error deleting locations:', error);
+      showError('Feil ved sletting av lokasjoner');
     }
   };
 
@@ -520,14 +696,15 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     try {
       const newLocation: Location = {
         ...location,
-        id: `location-\${Date.now()}`,
+        id: crypto.randomUUID(),
         name: `\${location.name} (kopi)`,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       await castingService.saveLocation(projectId, newLocation);
-      const locs = await castingService.getLocations(projectId);
-      setLocations(Array.isArray(locs) ? locs : []);
+      // Optimistic update
+      setLocations((prev) => [...prev, newLocation]);
+      showSuccess(`📋 ${location.name} duplisert`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error duplicating location:', error);
@@ -535,11 +712,127 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     }
   };
 
-  const handleExportCSV = async () => {
+  /** Undo the last N bulk-delete operations */
+  const handleUndoBulkDelete = async (count: number) => {
+    const toUndo = bulkDeleteHistory.slice(0, count);
+    const allToRestore = toUndo.flatMap((r) => r.deleted);
+    try {
+      await Promise.allSettled(
+        allToRestore.map((loc) => castingService.saveLocation(projectId, loc))
+      );
+      setLocations((prev) => [...prev, ...allToRestore]);
+      setBulkDeleteHistory((prev) => prev.slice(count));
+      showSuccess(`↩️ ${allToRestore.length} lokasjon${allToRestore.length !== 1 ? 'er' : ''} gjenopprettet`);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error undoing bulk delete:', error);
+      showError('Feil ved gjenoppretting');
+    }
+  };
+
+  /** Retry failed deletions from the most recent batch */
+  const handleRetryFailed = async () => {
+    const latest = bulkDeleteHistory[0];
+    if (!latest || latest.failed.length === 0) return;
+    try {
+      const results = await Promise.allSettled(
+        latest.failed.map((loc) => castingService.deleteLocation(projectId, loc.id))
+      );
+      const nowSucceeded = latest.failed.filter((_, i) => results[i].status === 'fulfilled');
+      const stillFailed = latest.failed.filter((_, i) => results[i].status === 'rejected');
+
+      if (nowSucceeded.length > 0) {
+        const succeededIds = new Set(nowSucceeded.map((l) => l.id));
+        setLocations((prev) => prev.filter((loc) => !succeededIds.has(loc.id)));
+      }
+      setBulkDeleteHistory((prev) => {
+        const next = [...prev];
+        next[0] = { ...next[0], deleted: [...next[0].deleted, ...nowSucceeded], failed: stillFailed };
+        return next;
+      });
+      if (stillFailed.length === 0) {
+        showSuccess('Alle mislykkede slettinger fullført');
+      } else {
+        showError(`${stillFailed.length} sletting${stillFailed.length !== 1 ? 'er' : ''} feilet igjen`);
+      }
+    } catch (error) {
+      console.error('Error retrying failed deletes:', error);
+      showError('Feil ved ny forsøk');
+    }
+  };
+
+  /** Set status for all selected locations */
+  const handleBulkSetStatus = async (newStatus: NonNullable<LocationStatus>) => {
+    setSetStatusDialogOpen(false);
+    const idsToUpdate = [...selectedIds];
+    try {
+      const updatedLocations = locations.map((loc) => {
+        if (idsToUpdate.includes(loc.id)) {
+          return { ...loc, status: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return loc;
+      });
+      const locsToSave = updatedLocations.filter((loc) => idsToUpdate.includes(loc.id));
+      await Promise.allSettled(
+        locsToSave.map((loc) => castingService.saveLocation(projectId, loc))
+      );
+      setLocations(updatedLocations);
+      setSelectedIds(new Set());
+      showSuccess(`${idsToUpdate.length} lokasjon${idsToUpdate.length !== 1 ? 'er' : ''} satt til "${getStatusLabel(newStatus)}"`);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      showError('Feil ved statusoppdatering');
+    }
+  };
+
+  /** Total deletions across all history records */
+  const totalDeletedInHistory = useMemo(
+    () => bulkDeleteHistory.reduce((sum, r) => sum + r.deleted.length, 0),
+    [bulkDeleteHistory]
+  );
+  const totalFailedInHistory = useMemo(
+    () => bulkDeleteHistory.length > 0 ? bulkDeleteHistory[0].failed.length : 0,
+    [bulkDeleteHistory]
+  );
+
+  const handleAssignToEvent = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const selectedLocations = locations.filter((l) => selectedIds.has(l.id));
+    const names = selectedLocations.map((l) => l.name).join(', ');
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
-        alert('Prosjekt ikke funnet');
+        showError('Prosjekt ikke funnet');
+        return;
+      }
+      // Assign selected locations to the project's next scheduled event
+      const updated = locations.map((loc) => {
+        if (!selectedIds.has(loc.id)) return loc;
+        const existingScenes = loc.assignedScenes || [];
+        const projectScene = `event-${project.id}`;
+        if (existingScenes.includes(projectScene)) return loc;
+        return { ...loc, assignedScenes: [...existingScenes, projectScene] };
+      });
+      setLocations(updated);
+      // Persist each updated location
+      for (const loc of updated.filter((l) => selectedIds.has(l.id))) {
+        await castingService.updateLocation(projectId, loc.id, loc);
+      }
+      showSuccess(`${selectedLocations.length} lokasjon(er) tilknyttet hendelse: ${names}`);
+      setSelectedIds(new Set());
+      onUpdate?.();
+    } catch (error) {
+      console.error('Error assigning locations to event:', error);
+      showError('Kunne ikke tilknytte lokasjoner til hendelse');
+    }
+  }, [selectedIds, locations, projectId, showSuccess, showError, onUpdate]);
+
+  const handleExportPrint = async () => {
+    try {
+      const project = await castingService.getProject(projectId);
+      if (!project) {
+        showError('Prosjekt ikke funnet');
         return;
       }
 
@@ -547,7 +840,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        showError('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
         return;
       }
 
@@ -559,7 +852,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       }, 250);
     } catch (error) {
       console.error('Error exporting locations:', error);
-      alert('Kunne ikke eksportere lokasjoner');
+      showError('Kunne ikke eksportere lokasjoner');
     }
   };
 
@@ -585,7 +878,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${project.name} - Lokasjoner</title>
+  <title>${escapeHtml(project.name || '')} - Lokasjoner</title>
   <style>
     @page { margin: 0; counter-increment: page; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -637,7 +930,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     <div class="header">
       <div class="title">
         ${locationIconSVG}
-        ${project.name} - Lokasjoner
+        ${escapeHtml(project.name || '')} - Lokasjoner
       </div>
       <div class="subtitle">Eksportert: ${dateStr}</div>
     </div>
@@ -682,17 +975,17 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           </thead>
           <tbody>
             ${locations.map((loc) => {
-              const facilities = (loc.facilities || []).map(getFacilityLabel).join(', ') || '-';
-              const notes = loc.notes || '-';
+              const facilities = (loc.facilities || []).map((f: string) => escapeHtml(getFacilityLabel(f))).join(', ') || '-';
+              const notes = escapeHtml(loc.notes || '-');
               const contactInfo = loc.contactInfo ? 
-                (loc.contactInfo.name ? `Kontakt: ${loc.contactInfo.name}` : '') +
-                (loc.contactInfo.phone ? (loc.contactInfo.name ? ' | ' : '') + `Tel: ${loc.contactInfo.phone}` : '') +
-                (loc.contactInfo.email ? (loc.contactInfo.name || loc.contactInfo.phone ? ' | ' : '') + `E-post: ${loc.contactInfo.email}` : '')
+                (loc.contactInfo.name ? `Kontakt: ${escapeHtml(loc.contactInfo.name)}` : '') +
+                (loc.contactInfo.phone ? (loc.contactInfo.name ? ' | ' : '') + `Tel: ${escapeHtml(loc.contactInfo.phone)}` : '') +
+                (loc.contactInfo.email ? (loc.contactInfo.name || loc.contactInfo.phone ? ' | ' : '') + `E-post: ${escapeHtml(loc.contactInfo.email)}` : '')
                 : '';
-              const addressWithContact = contactInfo ? `${loc.address || '-'}<br><small style="color: #64748b;">${contactInfo}</small>` : (loc.address || '-');
+              const addressWithContact = contactInfo ? `${escapeHtml(loc.address || '-')}<br><small style="color: #64748b;">${contactInfo}</small>` : escapeHtml(loc.address || '-');
               return `<tr>
-              <td><strong>${loc.name}</strong></td>
-              <td>${getTypeLabel(loc.type)}</td>
+              <td><strong>${escapeHtml(loc.name)}</strong></td>
+              <td>${escapeHtml(getTypeLabel(loc.type))}</td>
               <td>${addressWithContact}</td>
               <td>${loc.capacity?.toString() || '-'}</td>
               <td style="font-size: 13px;">${facilities}</td>
@@ -707,9 +1000,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     </div>
     <div class="footer">
       <div class="footer-left">
-        <span>${project.name}</span>
+        <span>${escapeHtml(project.name || '')}</span>
         <span>|</span>
-        <span>ID: ${project.id.substring(0, 8)}</span>
+        <span>ID: ${escapeHtml(project.id?.substring(0, 8) || '')}</span>
       </div>
       <div class="footer-right">
         <span class="page-number">Side </span>
@@ -722,7 +1015,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 </html>`;
   };
 
-  const toggleCardExpanded = (id: string) => {
+  const toggleCardExpanded = useCallback((id: string) => {
     const newExpanded = new Set(expandedCards);
     if (newExpanded.has(id)) {
       newExpanded.delete(id);
@@ -730,7 +1023,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       newExpanded.add(id);
     }
     setExpandedCards(newExpanded);
-  };
+  }, [expandedCards]);
 
   const handleFacilityToggle = (facility: string) => {
     const currentFacilities = formData.facilities || [];
@@ -789,8 +1082,12 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           updatedAt: new Date().toISOString(),
         };
         await castingService.saveLocation(projectId, updatedLocation);
-        const locs = await castingService.getLocations(projectId);
-        setLocations(Array.isArray(locs) ? locs : []);
+        // Optimistic update
+        setLocations((prev) => prev.map((loc) =>
+          loc.id === updatedLocation.id ? updatedLocation : loc
+        ));
+        setSelectedLocationForAnalysis(updatedLocation);
+        showSuccess(`✅ Analyse lagret for ${selectedLocationForAnalysis.name}`);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error saving location analysis:', error);
@@ -799,12 +1096,19 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     }
   };
 
+  // Keep keyboard-shortcut refs in sync with latest handler versions
+  handleOpenDialogFnRef.current = handleOpenDialog;
+  handleExportFnRef.current = handleExportPrint;
+  handleCloseDialogFnRef.current = handleCloseDialog;
+
   return (
     <Box
       component="section"
       aria-labelledby="location-panel-title"
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
     >
+      <ContextualNudgeBanner context="locations" accentColor="#06b6d4" />
+
       {/* Header - Responsive */}
       <Box
         sx={{
@@ -897,11 +1201,31 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             justifyContent: { xs: 'space-between', sm: 'flex-end' },
           }}
         >
-          <Tooltip title="Eksporter til CSV (Ctrl+E)">
+          <Tooltip title="Åpne guide">
             <Button
               variant="outlined"
-              onClick={handleExportCSV}
-              aria-label="Eksporter lokasjoner til CSV"
+              onClick={() => setGuideOpen(true)}
+              aria-label="Åpne guide for lokasjonsadministrasjon"
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: 'rgba(255,255,255,0.7)',
+                borderColor: 'rgba(255,255,255,0.2)',
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
+                py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                ...focusVisibleStyles,
+              }}
+            >
+              <HelpIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Skriv ut lokasjoner (Ctrl+E)">
+            <Button
+              variant="outlined"
+              onClick={handleExportPrint}
+              aria-label="Skriv ut lokasjoner"
               startIcon={<ExportIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -914,7 +1238,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 ...focusVisibleStyles,
               }}
             >
-              {!isMobile && 'Eksporter'}
+              {isDesktop ? 'Skriv ut lokasjoner' : !isMobile ? 'Skriv ut' : null}
             </Button>
           </Tooltip>
 
@@ -957,7 +1281,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 '&:hover': { bgcolor: '#43a047' },
               }}
             >
-              {isMobile ? '' : 'Legg til'}
+              {isMobile ? '' : isTablet ? 'Legg til' : 'Legg til lokasjon'}
             </Button>
           </Tooltip>
         </Box>
@@ -1014,7 +1338,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Favoritter</Typography>
           </Box>
-          {!isMobile && Object.entries(stats.typeCount).slice(0, 3).map(([type, count]) => (
+          <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+              <AssessmentIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#00bcd4' }} />
+            </Box>
+            <Typography variant="h4" sx={{ color: '#00bcd4', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+              {stats.assessed}
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Vurdert</Typography>
+          </Box>
+          {!isMobile && Object.entries(stats.typeCount).slice(0, isTablet ? 2 : isDesktop ? 4 : 3).map(([type, count]) => (
             <Box key={type} sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
               <Typography variant="h5" sx={{ color: getTypeColor(type as Location['type']), fontWeight: 600, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
                 {count}
@@ -1064,6 +1397,24 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         />
 
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
+          <Tooltip title="Vis/skjul kategorier">
+            <Button
+              variant={showCategoriesSidebar ? 'contained' : 'outlined'}
+              onClick={() => setShowCategoriesSidebar(!showCategoriesSidebar)}
+              aria-pressed={showCategoriesSidebar}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                bgcolor: showCategoriesSidebar ? 'rgba(76,175,80,0.2)' : 'transparent',
+                color: showCategoriesSidebar ? '#4caf50' : 'rgba(255,255,255,0.7)',
+                borderColor: showCategoriesSidebar ? '#4caf50' : 'rgba(255,255,255,0.2)',
+                ...focusVisibleStyles,
+              }}
+            >
+              <StatusIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+            </Button>
+          </Tooltip>
+
           <Tooltip title="Vis/skjul filtre">
             <Button
               variant={showFilters ? 'contained' : 'outlined'}
@@ -1206,7 +1557,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
       </Collapse>
 
       {/* Results count */}
-      {(searchQuery || filterType !== 'all') && (
+      {(searchQuery || filterType !== 'all' || statusFilter !== 'all') && (
         <Alert
           severity="info"
           sx={{
@@ -1220,7 +1571,186 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         </Alert>
       )}
 
-      {/* Empty state */}
+      {/* Main content: Sidebar + Cards/Table */}
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        {/* Categories Sidebar */}
+        <Collapse in={showCategoriesSidebar} orientation="horizontal" sx={{ flexShrink: 0 }}>
+          <Box
+            sx={{
+              width: { xs: 180, sm: 200, md: 210, lg: 220, xl: 250 },
+              bgcolor: 'rgba(255,255,255,0.03)',
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.08)',
+              p: 1.5,
+              position: 'sticky',
+              top: 16,
+              maxHeight: 'calc(100vh - 200px)',
+              overflowY: 'auto',
+            }}
+            role="navigation"
+            aria-label="Kategorier"
+          >
+            <Typography
+              sx={{
+                color: 'rgba(255,255,255,0.5)',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                mb: 1,
+                px: 1,
+              }}
+            >
+              Type
+            </Typography>
+            {/* All types */}
+            <Box
+              component="button"
+              onClick={() => setFilterType('all')}
+              sx={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                px: 1.5,
+                py: 1,
+                mb: 0.5,
+                borderRadius: 1.5,
+                border: 'none',
+                cursor: 'pointer',
+                bgcolor: filterType === 'all' ? 'rgba(76,175,80,0.2)' : 'transparent',
+                color: filterType === 'all' ? '#81c784' : 'rgba(255,255,255,0.8)',
+                fontWeight: filterType === 'all' ? 700 : 500,
+                fontSize: '0.85rem',
+                transition: 'all 0.15s ease',
+                '&:hover': { bgcolor: 'rgba(76,175,80,0.12)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              <span>Alle</span>
+              <Chip label={stats.total} size="small" sx={{ height: 20, fontSize: '0.7rem', bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }} />
+            </Box>
+            {locationTypes.map((type) => (
+              <Box
+                key={type}
+                component="button"
+                onClick={() => setFilterType(type)}
+                sx={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  px: 1.5,
+                  py: 1,
+                  mb: 0.5,
+                  borderRadius: 1.5,
+                  border: 'none',
+                  cursor: 'pointer',
+                  bgcolor: filterType === type ? `${getTypeColor(type)}25` : 'transparent',
+                  color: filterType === type ? getTypeColor(type) : 'rgba(255,255,255,0.8)',
+                  fontWeight: filterType === type ? 700 : 500,
+                  fontSize: '0.85rem',
+                  transition: 'all 0.15s ease',
+                  '&:hover': { bgcolor: `${getTypeColor(type)}15` },
+                  ...focusVisibleStyles,
+                }}
+              >
+                <span>{getTypeLabel(type)}</span>
+                <Chip
+                  label={stats.typeCount[type] || 0}
+                  size="small"
+                  sx={{ height: 20, fontSize: '0.7rem', bgcolor: `${getTypeColor(type)}25`, color: getTypeColor(type) }}
+                />
+              </Box>
+            ))}
+
+            <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+            <Typography
+              sx={{
+                color: 'rgba(255,255,255,0.5)',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                mb: 1,
+                px: 1,
+              }}
+            >
+              Status
+            </Typography>
+            {/* Status filters */}
+            {(['all', 'evaluating', 'approved', 'rejected'] as StatusFilter[]).map((s) => {
+              const statusLabels: Record<StatusFilter, string> = { all: 'Alle statuser', evaluating: 'Vurderes', approved: 'Godkjent', rejected: 'Avvist' };
+              const statusColors: Record<StatusFilter, string> = { all: '#fff', evaluating: '#ff9800', approved: '#4caf50', rejected: '#f44336' };
+              const count = s === 'all' ? stats.total : (stats.statusCount[s] || 0);
+              return (
+                <Box
+                  key={s}
+                  component="button"
+                  onClick={() => setStatusFilter(s)}
+                  sx={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    px: 1.5,
+                    py: 1,
+                    mb: 0.5,
+                    borderRadius: 1.5,
+                    border: 'none',
+                    cursor: 'pointer',
+                    bgcolor: statusFilter === s ? `${statusColors[s]}20` : 'transparent',
+                    color: statusFilter === s ? statusColors[s] : 'rgba(255,255,255,0.8)',
+                    fontWeight: statusFilter === s ? 700 : 500,
+                    fontSize: '0.85rem',
+                    transition: 'all 0.15s ease',
+                    '&:hover': { bgcolor: `${statusColors[s]}12` },
+                    ...focusVisibleStyles,
+                  }}
+                >
+                  <span>{statusLabels[s]}</span>
+                  <Chip label={count} size="small" sx={{ height: 20, fontSize: '0.7rem', bgcolor: `${statusColors[s]}20`, color: statusColors[s] }} />
+                </Box>
+              );
+            })}
+
+            <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+            <Typography
+              sx={{
+                color: 'rgba(255,255,255,0.5)',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                mb: 1,
+                px: 1,
+              }}
+            >
+              Favoritter
+            </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.5,
+                py: 1,
+                borderRadius: 1.5,
+                bgcolor: 'rgba(255,193,7,0.08)',
+              }}
+            >
+              <StarIcon sx={{ fontSize: 16, color: '#ffc107' }} />
+              <Typography sx={{ color: '#ffc107', fontSize: '0.85rem', fontWeight: 600 }}>
+                {stats.favorites}
+              </Typography>
+            </Box>
+          </Box>
+        </Collapse>
+
+        {/* Main content area */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
       {locations.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={locationPng}
@@ -1499,6 +2029,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                               }}
                             />
                           )}
+                          {/* Status chip */}
+                          <Chip
+                            icon={getStatusIcon(location.status)}
+                            label={getStatusLabel(location.status)}
+                            size="small"
+                            sx={{
+                              bgcolor: `${getStatusColor(location.status)}20`,
+                              color: getStatusColor(location.status),
+                              fontWeight: 600,
+                              fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' },
+                              height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
+                              border: `1px solid ${getStatusColor(location.status)}40`,
+                              '& .MuiChip-icon': { color: `${getStatusColor(location.status)} !important`, ml: 0.5 },
+                            }}
+                          />
                         </Box>
                       </Box>
                     </Box>
@@ -1518,6 +2063,64 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 </Box>
 
                 <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  {/* Phone & Facility Icons — visible on card face */}
+                  {(location.contactInfo?.phone || (location.facilities && location.facilities.length > 0)) && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        mb: 1.5,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {location.contactInfo?.phone && (
+                        <Chip
+                          icon={<PhoneIcon sx={{ fontSize: 14, color: '#a78bfa !important' }} />}
+                          label={location.contactInfo.phone}
+                          size="small"
+                          component="a"
+                          href={`tel:${location.contactInfo.phone}`}
+                          clickable
+                          sx={{
+                            bgcolor: 'rgba(139,92,246,0.12)',
+                            color: '#a78bfa',
+                            fontSize: '0.75rem',
+                            height: 26,
+                            border: '1px solid rgba(139,92,246,0.3)',
+                            '&:hover': { bgcolor: 'rgba(139,92,246,0.2)' },
+                          }}
+                        />
+                      )}
+                      {location.facilities?.slice(0, 3).map((f) => {
+                        const icon = getFacilityIcon(f);
+                        return icon ? (
+                          <Tooltip key={f} title={getFacilityLabel(f)}>
+                            <Box
+                              sx={{
+                                width: 26,
+                                height: 26,
+                                borderRadius: 1,
+                                bgcolor: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              {icon}
+                            </Box>
+                          </Tooltip>
+                        ) : null;
+                      })}
+                      {location.facilities && location.facilities.length > 3 && (
+                        <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
+                          +{location.facilities.length - 3}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+
                   {/* Address Info Card */}
                   {location.address && (
                     <Box
@@ -1978,8 +2581,217 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           })}
         </Grid>
       )}
+        </Box>{/* end main content area */}
+      </Box>{/* end sidebar + content flex */}
 
-      {/* Location Analysis Dialog */}
+      {/* Bottom Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <Box
+          sx={{
+            position: 'sticky',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            mt: 2,
+            p: { xs: 1.5, sm: 2 },
+            bgcolor: 'rgba(28,33,40,0.95)',
+            backdropFilter: 'blur(12px)',
+            borderRadius: 2,
+            border: '1px solid rgba(76,175,80,0.3)',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: { xs: 1, sm: 1.5, md: 2 },
+            flexWrap: 'wrap',
+            zIndex: 10,
+          }}
+          role="toolbar"
+          aria-label="Massehandlinger"
+        >
+          <Button
+            variant="text"
+            onClick={handleSelectAll}
+            sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'none', ...focusVisibleStyles }}
+          >
+            {selectedIds.size === filteredAndSortedLocations.length
+              ? 'Fjern alle'
+              : `Velg alle ${filteredAndSortedLocations.length}`}
+          </Button>
+
+          <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(255,255,255,0.15)', mx: 0.5 }} />
+
+          <Tooltip title="Sett status på valgte">
+            <Button
+              variant="outlined"
+              onClick={() => setSetStatusDialogOpen(true)}
+              startIcon={<StatusIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                color: '#ff9800',
+                borderColor: 'rgba(255,152,0,0.4)',
+                fontSize: '0.85rem',
+                textTransform: 'none',
+                minHeight: 40,
+                ...focusVisibleStyles,
+                '&:hover': { borderColor: '#ff9800', bgcolor: 'rgba(255,152,0,0.1)' },
+              }}
+            >
+              Sett status
+            </Button>
+          </Tooltip>
+
+          <Tooltip title={`Fjern ${selectedIds.size} valgte`}>
+            <Button
+              variant="outlined"
+              onClick={handleBulkDelete}
+              startIcon={<DeleteIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                color: '#f44336',
+                borderColor: 'rgba(244,67,54,0.4)',
+                fontSize: '0.85rem',
+                textTransform: 'none',
+                minHeight: 40,
+                ...focusVisibleStyles,
+                '&:hover': { borderColor: '#f44336', bgcolor: 'rgba(244,67,54,0.1)' },
+              }}
+            >
+              Fjern {selectedIds.size}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Tilknytt valgte til hendelse">
+            <Button
+              variant="outlined"
+              onClick={handleAssignToEvent}
+              startIcon={<AssignEventIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                color: '#ab47bc',
+                borderColor: 'rgba(171,71,188,0.4)',
+                fontSize: '0.85rem',
+                textTransform: 'none',
+                minHeight: 40,
+                ...focusVisibleStyles,
+                '&:hover': { borderColor: '#ab47bc', bgcolor: 'rgba(171,71,188,0.1)' },
+              }}
+            >
+              Tilknytt hendelse
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Eksporter valgte som PDF">
+            <Button
+              variant="outlined"
+              onClick={handleExportPrint}
+              startIcon={<PdfIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                color: '#2196f3',
+                borderColor: 'rgba(33,150,243,0.4)',
+                fontSize: '0.85rem',
+                textTransform: 'none',
+                minHeight: 40,
+                ...focusVisibleStyles,
+                '&:hover': { borderColor: '#2196f3', bgcolor: 'rgba(33,150,243,0.1)' },
+              }}
+            >
+              Eksporter PDF
+            </Button>
+          </Tooltip>
+
+          <Box sx={{ ml: 'auto' }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>
+              {selectedIds.size} valgt
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
+      {/* Footer Status Indicators */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: { xs: 1.5, sm: 2, md: 3 },
+          mt: 2,
+          px: 1,
+          py: 1,
+          flexWrap: 'wrap',
+        }}
+      >
+        {/* Safe PDF Exports indicator */}
+        <Tooltip title="Alle eksporter bruker HTML-escaping for sikkerhet">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4caf50' }} />
+            <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.3px' }}>
+              Sikre PDF-eksporter
+            </Typography>
+          </Box>
+        </Tooltip>
+
+        {/* Debounced Favorite Saving indicator */}
+        <Tooltip title="Favoritter lagres med 500ms debounce">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: favoritesSaving ? '#ff9800' : '#4caf50' }} />
+            <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.3px' }}>
+              {favoritesSaving ? 'Lagrer...' : 'Debounced favorittlagring'}
+            </Typography>
+          </Box>
+        </Tooltip>
+
+        {/* Robust Bulk Deletes with undo */}
+        <Tooltip title="Bulk-slettinger med angre/prøv igjen">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: totalFailedInHistory > 0 ? '#f44336' : '#4caf50' }} />
+            <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.3px' }}>
+              Robuste masseslettinger
+            </Typography>
+          </Box>
+        </Tooltip>
+
+        {/* React Runtime Version */}
+        <Tooltip title={`React v${React.version} – Concurrent features aktiv`}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#61dafb' }} />
+            <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.3px' }}>
+              React {React.version}
+            </Typography>
+          </Box>
+        </Tooltip>
+
+        {/* Undo / Retry controls — only when there is history */}
+        {bulkDeleteHistory.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: { sm: 'auto' } }}>
+            {bulkDeleteHistory.length > 0 && (
+              <Button
+                size="small"
+                onClick={() => handleUndoBulkDelete(1)}
+                startIcon={<UndoIcon sx={{ fontSize: 14 }} />}
+                sx={{ color: '#ff9800', fontSize: '0.7rem', textTransform: 'none', minHeight: 28, px: 1, ...focusVisibleStyles }}
+              >
+                Angre siste ({bulkDeleteHistory[0].deleted.length})
+              </Button>
+            )}
+            {bulkDeleteHistory.length > 1 && (
+              <Button
+                size="small"
+                onClick={() => handleUndoBulkDelete(bulkDeleteHistory.length)}
+                startIcon={<UndoIcon sx={{ fontSize: 14 }} />}
+                sx={{ color: '#ff9800', fontSize: '0.7rem', textTransform: 'none', minHeight: 28, px: 1, ...focusVisibleStyles }}
+              >
+                Angre alle ({totalDeletedInHistory})
+              </Button>
+            )}
+            {totalFailedInHistory > 0 && (
+              <Button
+                size="small"
+                onClick={handleRetryFailed}
+                startIcon={<RetryIcon sx={{ fontSize: 14 }} />}
+                sx={{ color: '#f44336', fontSize: '0.7rem', textTransform: 'none', minHeight: 28, px: 1, ...focusVisibleStyles }}
+              >
+                Prøv igjen ({totalFailedInHistory})
+              </Button>
+            )}
+          </Box>
+        )}
+      </Box>
       <LocationAnalysisDialog
         open={analysisDialogOpen}
         location={selectedLocationForAnalysis}
@@ -1989,6 +2801,55 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         }}
         onAnalysisComplete={handleAnalysisComplete}
       />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: '#1c2128',
+              color: '#fff',
+              borderRadius: 2,
+              border: '1px solid rgba(255,68,68,0.3)',
+              maxWidth: 420,
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          Bekreft sletting
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, pb: 2 }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            Er du sikker på at du vil slette {selectedIds.size} lokasjon{selectedIds.size !== 1 ? 'er' : ''}?
+            Denne handlingen kan ikke angres.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <Button
+            onClick={() => setBulkDeleteConfirmOpen(false)}
+            sx={{ color: 'rgba(255,255,255,0.87)', minHeight: 44 }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleBulkDeleteConfirm}
+            startIcon={<DeleteIcon />}
+            sx={{
+              bgcolor: '#ff4444',
+              color: '#fff',
+              fontWeight: 600,
+              minHeight: 44,
+              '&:hover': { bgcolor: '#cc0000' },
+            }}
+          >
+            Slett {selectedIds.size} lokasjon{selectedIds.size !== 1 ? 'er' : ''}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Undo Delete Snackbar */}
       <Snackbar
@@ -2203,6 +3064,108 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               </Select>
             </FormControl>
 
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Status</InputLabel>
+              <Select
+                value={formData.status || 'evaluating'}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as NonNullable<LocationStatus> })}
+                label="Status"
+                MenuProps={{
+                  sx: { zIndex: 100001 },
+                  slotProps: {
+                    paper: {
+                      sx: {
+                        bgcolor: '#1c2128',
+                        color: '#fff',
+                        maxHeight: 300,
+                        '& .MuiMenuItem-root': {
+                          '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' },
+                          '&.Mui-selected': { bgcolor: 'rgba(76,175,80,0.2)' },
+                        },
+                      },
+                    },
+                  },
+                }}
+                sx={{
+                  color: '#fff',
+                  minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '& .MuiSelect-select': {
+                    py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                  },
+                }}
+              >
+                <MenuItem value="evaluating" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: 44 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <EvaluatingIcon sx={{ fontSize: 18, color: '#ff9800' }} />
+                    Vurderes
+                  </Box>
+                </MenuItem>
+                <MenuItem value="approved" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: 44 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ApprovedIcon sx={{ fontSize: 18, color: '#4caf50' }} />
+                    Godkjent
+                  </Box>
+                </MenuItem>
+                <MenuItem value="rejected" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: 44 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <RejectedIcon sx={{ fontSize: 18, color: '#f44336' }} />
+                    Avvist
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Beskrivelse"
+              fullWidth
+              multiline
+              rows={2}
+              value={formData.description || ''}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#fff',
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(255,255,255,0.87)',
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                },
+              }}
+            />
+
+            <TextField
+              label="Nettside"
+              fullWidth
+              value={formData.website || ''}
+              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LinkIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#fff',
+                  minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '& input': {
+                    py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                  },
+                },
+                '& .MuiInputLabel-root': {
+                  color: 'rgba(255,255,255,0.87)',
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                },
+              }}
+            />
+
             <TextField
               label="Kapasitet"
               fullWidth
@@ -2288,6 +3251,13 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               fullWidth
               value={formData.contactInfo?.phone || ''}
               onChange={(e) => setFormData({ ...formData, contactInfo: { ...formData.contactInfo, phone: e.target.value } })}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <CustomPhoneIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+              }}
               sx={{
                 '& .MuiOutlinedInput-root': { 
                   color: '#fff', 
@@ -2312,6 +3282,13 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               rows={3}
               value={formData.notes || ''}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <NotesIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, alignSelf: 'flex-start', mt: 1 }} />
+                  </InputAdornment>
+                ),
+              }}
               sx={{
                 '& .MuiOutlinedInput-root': { 
                   color: '#fff',
@@ -2376,6 +3353,89 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Set Status Dialog */}
+      <Dialog
+        open={setStatusDialogOpen}
+        onClose={() => setSetStatusDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1c2128',
+            color: '#fff',
+            borderRadius: 2,
+            minWidth: 300,
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          Sett status for {selectedIds.size} lokasjon{selectedIds.size !== 1 ? 'er' : ''}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, bgcolor: '#1c2128' }}>
+          <Stack spacing={1.5} sx={{ pt: 1 }}>
+            {(['evaluating', 'approved', 'rejected'] as const).map((s) => (
+              <Button
+                key={s}
+                variant="outlined"
+                fullWidth
+                onClick={() => handleBulkSetStatus(s)}
+                startIcon={getStatusIcon(s)}
+                sx={{
+                  color: getStatusColor(s),
+                  borderColor: `${getStatusColor(s)}40`,
+                  justifyContent: 'flex-start',
+                  textTransform: 'none',
+                  fontSize: '0.95rem',
+                  py: 1.5,
+                  '&:hover': { borderColor: getStatusColor(s), bgcolor: `${getStatusColor(s)}15` },
+                  ...focusVisibleStyles,
+                }}
+              >
+                {getStatusLabel(s)}
+              </Button>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, bgcolor: '#1c2128' }}>
+          <Button
+            onClick={() => setSetStatusDialogOpen(false)}
+            sx={{ color: 'rgba(255,255,255,0.87)', ...focusVisibleStyles }}
+          >
+            Avbryt
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Guide dialogs */}
+      <LocationManagementGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            case 'toggle-stats':       setShowStats(s => !s); break;
+            case 'open-add-dialog':    handleOpenDialog(); break;
+            case 'switch-grid':        setViewMode('grid'); break;
+            case 'switch-table':       setViewMode('table'); break;
+            case 'show-categories':    setShowCategoriesSidebar(true); break;
+            case 'open-filters':       setShowFilters(true); break;
+            case 'toggle-favorite':    { const first = locations[0]; if (first) toggleFavorite(first.id); break; }
+            case 'select-all':         handleSelectAll(); break;
+            case 'filter-evaluating':  setStatusFilter('evaluating'); setShowCategoriesSidebar(true); break;
+            case 'export-pdf':         void handleExportPrint(); break;
+          }
+        }}
+      />
+      <LocationAnalysisGuide
+        open={analysisGuideOpen}
+        onClose={() => setAnalysisGuideOpen(false)}
+        onAction={(action) => {
+          setAnalysisGuideOpen(false);
+          if (action === 'run-analysis' && locations[0]) {
+            setSelectedLocationForAnalysis(locations[0]);
+            setAnalysisDialogOpen(true);
+          }
+        }}
+      />
     </Box>
   );
 }

@@ -11,7 +11,7 @@
 
 // ── Identifiers ───────────────────────────────────────────────────────────
 
-export type GuideId = 'shot-list' | 'stripboard' | 'screenplay' | 'live-set-mode' | 'crew-management' | 'audition';
+export type GuideId = 'shot-list' | 'stripboard' | 'screenplay' | 'live-set-mode' | 'crew-management' | 'audition' | 'location-management' | 'location-analysis' | 'candidate-management';
 
 // ── Per-step override ─────────────────────────────────────────────────────
 
@@ -216,6 +216,56 @@ export const GUIDE_META: GuideMeta[] = [
       { id: 'bulk-actions',     label: 'Bulk Actions',       sectionCount: 2 },
       { id: 'audition-pool',    label: 'Audition Pool',      sectionCount: 2 },
       { id: 'export-shortcuts', label: 'Export & Shortcuts', sectionCount: 2 },
+    ],
+  },
+  {
+    id: 'location-management',
+    title: 'Location Management',
+    description: '10-step walkthrough of the Location Management panel: adding locations, grid/table views, categories sidebar, statistics, bulk operations, favorites, address validation, status workflow, analysis, and export.',
+    accentColor: '#4caf50',
+    steps: [
+      { id: 'overview',           label: 'Overview',              sectionCount: 2 },
+      { id: 'adding-locations',   label: 'Adding Locations',      sectionCount: 2 },
+      { id: 'views',              label: 'Grid & Table Views',    sectionCount: 2 },
+      { id: 'categories-sidebar', label: 'Categories Sidebar',    sectionCount: 2 },
+      { id: 'search-filters',     label: 'Search & Filters',      sectionCount: 2 },
+      { id: 'statistics',         label: 'Statistics Panel',      sectionCount: 1 },
+      { id: 'favorites',          label: 'Favorites',             sectionCount: 2 },
+      { id: 'bulk-operations',    label: 'Bulk Operations',       sectionCount: 3 },
+      { id: 'status-workflow',    label: 'Status Workflow',       sectionCount: 2 },
+      { id: 'export-shortcuts',   label: 'Export & Shortcuts',    sectionCount: 2 },
+    ],
+  },
+  {
+    id: 'location-analysis',
+    title: 'Location Analysis',
+    description: '6-step walkthrough of the Location Analysis dialog: photography spots, drone restrictions, weather exposure, access analysis (parking, transit, EV charging), and saving analysis results.',
+    accentColor: '#00d4ff',
+    steps: [
+      { id: 'overview',           label: 'Overview',              sectionCount: 2 },
+      { id: 'photography-spots',  label: 'Photography Spots',     sectionCount: 2 },
+      { id: 'drone-restrictions', label: 'Drone Restrictions',    sectionCount: 2 },
+      { id: 'weather-exposure',   label: 'Weather Exposure',      sectionCount: 2 },
+      { id: 'access-analysis',    label: 'Access Analysis',       sectionCount: 3 },
+      { id: 'saving-results',     label: 'Saving Results',        sectionCount: 1 },
+    ],
+  },
+  {
+    id: 'candidate-management',
+    title: 'Candidate Management',
+    description: '10-step walkthrough of the Candidate Management panel: adding candidates, grid/table views, AI match scoring, detail sidebar, search & filters, favorites, 3D preview, pool & import, workflow status, and keyboard shortcuts.',
+    accentColor: '#10b981',
+    steps: [
+      { id: 'overview',             label: 'Overview',              sectionCount: 2 },
+      { id: 'adding-candidates',    label: 'Adding Candidates',     sectionCount: 2 },
+      { id: 'views',                label: 'Grid & Table Views',    sectionCount: 2 },
+      { id: 'ai-scoring',           label: 'AI Match Score',        sectionCount: 2 },
+      { id: 'detail-sidebar',       label: 'Detail Sidebar',        sectionCount: 2 },
+      { id: 'search-filters',       label: 'Search & Filters',      sectionCount: 2 },
+      { id: 'favorites',            label: 'Favorites',             sectionCount: 1 },
+      { id: '3d-preview',           label: '3D Preview',            sectionCount: 1 },
+      { id: 'pool-import',          label: 'Pool & Import',         sectionCount: 2 },
+      { id: 'workflow-shortcuts',   label: 'Workflow & Shortcuts',  sectionCount: 2 },
     ],
   },
 ];

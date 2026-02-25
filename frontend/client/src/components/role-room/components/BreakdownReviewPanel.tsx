@@ -1,4 +1,5 @@
 import { useState, useEffect, type FC } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -165,6 +166,7 @@ export const BreakdownReviewPanel: FC<BreakdownReviewPanelProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
+      <ContextualNudgeBanner context="breakdown" accentColor="#8b5cf6" />
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>

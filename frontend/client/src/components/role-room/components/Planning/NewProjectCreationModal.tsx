@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Card,
@@ -1988,6 +1989,7 @@ export default function NewProjectCreationModal({
   return (
     <>
       <Box sx={{ width: '100%', maxWidth: { xs: '100%', sm: 800, md: 900, lg: 1000, xl: 1200 }, mx: 'auto', p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 } }}>
+        <ContextualNudgeBanner context="project-creation" accentColor="#f59e0b" />
         {/* Title - only shown when not in The Role Room (parent dialog has its own title) */}
         {!isCastingPlanner && (
           <Box sx={{ mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5, xl: 4 } }}>

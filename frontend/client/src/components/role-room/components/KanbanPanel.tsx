@@ -1,4 +1,6 @@
 import { useState, useId, useMemo, useEffect, useCallback, type DragEvent, memo } from 'react';
+import { type CandidateStatus, CANDIDATE_STATUS_LIST } from '../casting';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -262,22 +264,10 @@ interface KanbanPanelProps {
   userRole?: string; // override: if not provided, read from useAuth().user.profession
 }
 
-type CandidateStatus = 'pending' | 'requested' | 'shortlist' | 'selected' | 'confirmed' | 'rejected';
+// CandidateStatus type + CANDIDATE_STATUS_LIST imported from ../casting (single source of truth)
 
-interface KanbanColumn {
-  status: CandidateStatus;
-  label: string;
-  color: string;
-}
-
-const KANBAN_COLUMNS: KanbanColumn[] = [
-  { status: 'pending',   label: 'Ingen status', color: '#6b7280' },
-  { status: 'requested', label: 'Forespurt',    color: '#00d4ff' },
-  { status: 'shortlist', label: 'Vurderes',     color: '#ffb800' },
-  { status: 'selected',  label: 'Valgt',        color: '#8b5cf6' },
-  { status: 'confirmed', label: 'Bekreftet',    color: '#10b981' },
-  { status: 'rejected',  label: 'Avvist',       color: '#ef4444' },
-];
+/** Alias so the rest of this file keeps working without a rename sweep. */
+const KANBAN_COLUMNS = CANDIDATE_STATUS_LIST;
 
 const STATUS_OPTIONS = KANBAN_COLUMNS.map(c => ({ value: c.status, label: c.label, color: c.color }));
 
@@ -737,6 +727,8 @@ function KanbanPanelInner({
       aria-labelledby={titleId}
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
     >
+      <ContextualNudgeBanner context="workflow" accentColor="#3b82f6" />
+
       {/* ── Compact toolbar header ─────────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <Typography id={titleId} variant="h6"
@@ -1366,7 +1358,16 @@ function KanbanPanelInner({
       )}
 
       {/* Kanban Guide */}
-      <KanbanGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <KanbanGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
+      />
     </Box>
   );
 }

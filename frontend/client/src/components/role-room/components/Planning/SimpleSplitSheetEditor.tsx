@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -99,6 +100,7 @@ export default function SimpleSplitSheetEditor({
   return (
     <Box>
       <Stack spacing={2}>
+        <ContextualNudgeBanner context="split-sheets" accentColor="#06b6d4" />
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>

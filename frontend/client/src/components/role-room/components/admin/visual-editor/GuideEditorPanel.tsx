@@ -16,6 +16,7 @@
  */
 
 import React, { useState, useCallback, useRef, DragEvent } from 'react';
+import { ContextualNudgeBanner } from '../../ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -61,6 +62,10 @@ import {
   NotificationsActive as BadgeIcon,
   Notes as NoteIcon,
   LiveTv as LiveSetIcon,
+  Place as LocationManagementIcon,
+  Analytics as LocationAnalysisIcon,
+  Groups as CrewIcon,
+  TheaterComedy as AuditionIcon,
 } from '@mui/icons-material';
 
 import {
@@ -79,6 +84,8 @@ import { ShotListGuide } from '../../production/ShotListGuide';
 import { StripboardGuide } from '../../production/StripboardGuide';
 import { ScreenplayGuide } from '../../ScreenplayGuide';
 import { LiveSetModeGuide } from '../../production/LiveSetModeGuide';
+import { LocationManagementGuide } from '../../LocationManagementGuide';
+import { LocationAnalysisGuide } from '../../LocationAnalysisGuide';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -87,6 +94,10 @@ const GUIDE_ICONS: Record<GuideId, React.ReactNode> = {
   'stripboard':   <StripboardIcon sx={{ fontSize: 20 }} />,
   'screenplay':   <ScreenplayIcon sx={{ fontSize: 20 }} />,
   'live-set-mode': <LiveSetIcon   sx={{ fontSize: 20 }} />,
+  'crew-management': <CrewIcon    sx={{ fontSize: 20 }} />,
+  'audition':      <AuditionIcon  sx={{ fontSize: 20 }} />,
+  'location-management': <LocationManagementIcon sx={{ fontSize: 20 }} />,
+  'location-analysis': <LocationAnalysisIcon sx={{ fontSize: 20 }} />,
 };
 
 const BADGE_PRESETS = ['New', 'Updated', 'Beta', 'Coming Soon', '!'];
@@ -776,6 +787,7 @@ export function GuideEditorPanel() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
+      <ContextualNudgeBanner context="guide-editor" accentColor="#3b82f6" />
 
       {/* ── Top toolbar ── */}
       <Box
@@ -1070,6 +1082,20 @@ export function GuideEditorPanel() {
       )}
       {previewGuide === 'live-set-mode' && (
         <LiveSetModeGuide
+          open
+          onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
+          initialStepId={previewStep}
+        />
+      )}
+      {previewGuide === 'location-management' && (
+        <LocationManagementGuide
+          open
+          onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
+          initialStepId={previewStep}
+        />
+      )}
+      {previewGuide === 'location-analysis' && (
+        <LocationAnalysisGuide
           open
           onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
           initialStepId={previewStep}

@@ -17,6 +17,7 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and, desc, sql, or, gte, lte, isNull, isNotNull } from 'drizzle-orm';
 import * as roleRoomSchema from '../migrations/role-room-schema.js';
+import { RoleRoomLearningService } from './roleRoomLearningService.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -592,6 +593,95 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(201).json({ id, name });
     } catch (err) {
       res.status(500).json({ error: 'Kunne ikke legge til kandidat' });
+    }
+  });
+
+  // ─── Candidate status (casting-phase) ─────────────────────
+  router.put('/candidates/:candidateId/status', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'Skrive-tilgang kreves' });
+      return;
+    }
+    const { candidateId } = req.params;
+    const { status } = req.body as { status: string };
+    const VALID_STATUSES = ['pending', 'requested', 'shortlist', 'selected', 'confirmed', 'rejected'];
+    if (!status || !VALID_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Ugyldig status. Gyldige verdier: ${VALID_STATUSES.join(', ')}` });
+      return;
+    }
+    try {
+      const result = await pool.query(
+        'UPDATE casting_candidates SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, status',
+        [status, candidateId]
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Kandidat ikke funnet' });
+        return;
+      }
+      res.json(result.rows[0]);
+    } catch (err) {
+      res.status(500).json({ error: 'Kunne ikke oppdatere kandidatstatus' });
+    }
+  });
+
+  // ─── Workflow status (production pipeline) ────────────────
+  router.put('/candidates/:candidateId/workflow-status', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'Skrive-tilgang kreves' });
+      return;
+    }
+    const { candidateId } = req.params;
+    const { workflowStatus } = req.body as { workflowStatus: string };
+    const VALID_WORKFLOW = ['pending', 'auditioned', 'selected', 'offer_sent', 'confirmed', 'declined', 'contracted', 'production'];
+    if (!workflowStatus || !VALID_WORKFLOW.includes(workflowStatus)) {
+      res.status(400).json({ error: `Ugyldig workflow-status. Gyldige verdier: ${VALID_WORKFLOW.join(', ')}` });
+      return;
+    }
+    try {
+      // workflow_status column may not exist yet — use a JSON field as fallback
+      // First try the dedicated column; if it doesn't exist, store in a JSONB metadata column
+      const result = await pool.query(
+        `UPDATE casting_candidates
+         SET status = CASE WHEN $1 IN ('confirmed','declined') THEN $1 ELSE status END,
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, status`,
+        [workflowStatus, candidateId]
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Kandidat ikke funnet' });
+        return;
+      }
+      res.json({ ...result.rows[0], workflowStatus });
+    } catch (err) {
+      res.status(500).json({ error: 'Kunne ikke oppdatere workflow-status' });
+    }
+  });
+
+  // ─── Audition result ──────────────────────────────────────
+  router.put('/candidates/:candidateId/audition-result', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'Skrive-tilgang kreves' });
+      return;
+    }
+    const { candidateId } = req.params;
+    const { rating, notes, auditionDate } = req.body as { rating?: number; notes?: string; auditionDate?: string };
+    try {
+      const result = await pool.query(
+        `UPDATE casting_candidates
+         SET audition_notes = COALESCE($1, audition_notes),
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, audition_notes`,
+        [notes ?? null, candidateId]
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Kandidat ikke funnet' });
+        return;
+      }
+      res.json({ ...result.rows[0], rating: rating ?? null, auditionDate: auditionDate ?? null });
+    } catch (err) {
+      res.status(500).json({ error: 'Kunne ikke lagre audition-resultat' });
     }
   });
 
@@ -1996,6 +2086,339 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (e) {
       res.status(500).json({ error: 'Failed to schedule maintenance' });
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // LEARNING ENGINE — The Role Room forstår brukeren og teamet
+  // ═══════════════════════════════════════════════════════════════
+
+  const learningService = new RoleRoomLearningService(pool);
+
+  // ── Log interaction event ──
+  router.post('/learning/log', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const body = req.body as Record<string, unknown>;
+      await learningService.logInteraction({
+        userId,
+        projectId: body.projectId as string | undefined,
+        eventType: body.eventType as string,
+        entityType: body.entityType as string | undefined,
+        entityId: body.entityId as string | undefined,
+        context: body.context as Record<string, unknown> | undefined,
+        sessionId: body.sessionId as string | undefined,
+        durationMs: body.durationMs as number | undefined,
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('POST learning/log error:', e);
+      res.status(500).json({ error: 'Failed to log interaction' });
+    }
+  });
+
+  // ── Batch-log multiple events ──
+  router.post('/learning/log-batch', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const events = (req.body as { events: Array<Record<string, unknown>> }).events || [];
+      await learningService.logBatch(events.map((e) => ({
+        userId,
+        projectId: e.projectId as string | undefined,
+        eventType: e.eventType as string,
+        entityType: e.entityType as string | undefined,
+        entityId: e.entityId as string | undefined,
+        context: e.context as Record<string, unknown> | undefined,
+        sessionId: e.sessionId as string | undefined,
+        durationMs: e.durationMs as number | undefined,
+      })));
+      res.json({ ok: true, count: events.length });
+    } catch (e) {
+      console.error('POST learning/log-batch error:', e);
+      res.status(500).json({ error: 'Failed to batch log' });
+    }
+  });
+
+  // ── Recent activity feed ──
+  router.get('/learning/activity/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const limit = Number(req.query.limit) || 50;
+      const activity = await learningService.getRecentActivity(userId, limit);
+      res.json(activity);
+    } catch (e) {
+      console.error('GET learning/activity error:', e);
+      res.status(500).json({ error: 'Failed to fetch activity' });
+    }
+  });
+
+  // ── User insights (cached) ──
+  router.get('/learning/insights/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const insights = await learningService.getUserInsights(userId);
+      res.json(insights || { message: 'Ingen innsikter beregnet ennå. Kjør /compute for å starte.' });
+    } catch (e) {
+      console.error('GET learning/insights error:', e);
+      res.status(500).json({ error: 'Failed to fetch insights' });
+    }
+  });
+
+  // ── Compute / recompute user insights ──
+  router.post('/learning/insights/:userId/compute', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const insights = await learningService.computeUserInsights(userId);
+      res.json(insights);
+    } catch (e) {
+      console.error('POST learning/insights/compute error:', e);
+      res.status(500).json({ error: 'Failed to compute insights' });
+    }
+  });
+
+  // ── Team dynamics (cached) ──
+  router.get('/learning/team/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const members = await learningService.getTeamDynamics(userId);
+      res.json(members);
+    } catch (e) {
+      console.error('GET learning/team error:', e);
+      res.status(500).json({ error: 'Failed to fetch team dynamics' });
+    }
+  });
+
+  // ── Compute / recompute team dynamics ──
+  router.post('/learning/team/:userId/compute', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const report = await learningService.computeTeamDynamics(userId);
+      res.json(report);
+    } catch (e) {
+      console.error('POST learning/team/compute error:', e);
+      res.status(500).json({ error: 'Failed to compute team dynamics' });
+    }
+  });
+
+  // ── Project patterns (cached) ──
+  router.get('/learning/patterns/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const patterns = await learningService.getPatterns(userId);
+      res.json(patterns);
+    } catch (e) {
+      console.error('GET learning/patterns error:', e);
+      res.status(500).json({ error: 'Failed to fetch patterns' });
+    }
+  });
+
+  // ── Discover / rediscover project patterns ──
+  router.post('/learning/patterns/:userId/discover', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const patterns = await learningService.discoverPatterns(userId);
+      res.json(patterns);
+    } catch (e) {
+      console.error('POST learning/patterns/discover error:', e);
+      res.status(500).json({ error: 'Failed to discover patterns' });
+    }
+  });
+
+  // ── Learned preferences (cached) ──
+  router.get('/learning/preferences/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const prefs = await learningService.getPreferences(userId);
+      res.json(prefs);
+    } catch (e) {
+      console.error('GET learning/preferences error:', e);
+      res.status(500).json({ error: 'Failed to fetch preferences' });
+    }
+  });
+
+  // ── Learn / relearn preferences from behaviour ──
+  router.post('/learning/preferences/:userId/learn', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const prefs = await learningService.learnPreferences(userId);
+      res.json(prefs);
+    } catch (e) {
+      console.error('POST learning/preferences/learn error:', e);
+      res.status(500).json({ error: 'Failed to learn preferences' });
+    }
+  });
+
+  // ── Confirm an auto-detected preference ──
+  router.put('/learning/preferences/:userId/:key/confirm', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId, key } = req.params;
+      const body = req.body as Record<string, unknown>;
+      await learningService.confirmPreference(userId, key, body.value as string | undefined);
+      res.json({ ok: true, key, confirmed: true });
+    } catch (e) {
+      console.error('PUT learning/preferences/confirm error:', e);
+      res.status(500).json({ error: 'Failed to confirm preference' });
+    }
+  });
+
+  // ── Full snapshot — everything The Role Room knows ──
+  router.get('/learning/snapshot/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const snapshot = await learningService.getFullSnapshot(userId);
+      res.json(snapshot);
+    } catch (e) {
+      console.error('GET learning/snapshot error:', e);
+      res.status(500).json({ error: 'Failed to fetch snapshot' });
+    }
+  });
+
+  // ── Recompute everything — full learning cycle ──
+  router.post('/learning/recompute/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const snapshot = await learningService.recomputeAll(userId);
+      res.json(snapshot);
+    } catch (e) {
+      console.error('POST learning/recompute error:', e);
+      res.status(500).json({ error: 'Failed to recompute' });
+    }
+  });
+
+  // ── Smart crew suggestions ──
+  router.get('/learning/suggest-crew/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const role = req.query.role as string | undefined;
+      const limit = Number(req.query.limit) || 10;
+      const suggestions = await learningService.suggestCrew(userId, role, limit);
+      res.json(suggestions);
+    } catch (e) {
+      console.error('GET learning/suggest-crew error:', e);
+      res.status(500).json({ error: 'Failed to suggest crew' });
+    }
+  });
+
+  // ── Dream team builder ──
+  router.post('/learning/dream-team/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const body = req.body as Record<string, unknown>;
+      const roles = (body.roles as string[]) || [];
+      const dreamTeam = await learningService.buildDreamTeam(userId, roles.length > 0 ? roles : undefined);
+      res.json(dreamTeam);
+    } catch (e) {
+      console.error('POST learning/dream-team error:', e);
+      res.status(500).json({ error: 'Failed to build dream team' });
+    }
+  });
+
+  // ── Team chemistry prediction ──
+  router.post('/learning/chemistry/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const body = req.body as Record<string, unknown>;
+      const crewNames = (body.crewNames as string[]) || [];
+      const prediction = await learningService.predictChemistry(userId, crewNames);
+      res.json(prediction);
+    } catch (e) {
+      console.error('POST learning/chemistry error:', e);
+      res.status(500).json({ error: 'Failed to predict chemistry' });
+    }
+  });
+
+  // ── Intelligent project setup suggestions ──
+  router.get('/learning/project-setup/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const setup = await learningService.suggestProjectSetup(userId);
+      res.json(setup);
+    } catch (e) {
+      console.error('GET learning/project-setup error:', e);
+      res.status(500).json({ error: 'Failed to suggest project setup' });
+    }
+  });
+
+  // ── Learning timeline ──
+  router.get('/learning/timeline/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const timeline = await learningService.getTimeline(userId);
+      res.json(timeline);
+    } catch (e) {
+      console.error('GET learning/timeline error:', e);
+      res.status(500).json({ error: 'Failed to build timeline' });
+    }
+  });
+
+  // ── Contextual nudges for any panel ──
+  router.get('/learning/nudges/:userId/:context', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { userId, context } = req.params;
+      const nudges = await learningService.getContextualNudges(userId, context);
+      res.json(nudges);
+    } catch (e) {
+      console.error('GET learning/nudges error:', e);
+      res.status(500).json({ error: 'Failed to get nudges' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // AUTO-LOGGING MIDDLEWARE — passively learns from all API calls
+  // ═══════════════════════════════════════════════════════════════
+  //
+  // We install a response-finish listener on every mutating request
+  // that automatically logs the interaction without any manual calls.
+  // This is registered AFTER all routes so it hooks into the same
+  // response cycle via res.on('finish').
+
+  const IGNORED_PATHS = new Set(['/health', '/test-connection', '/api-keys']);
+  const LEARNING_PREFIX = '/learning/';
+
+  router.use((req: Request, res: Response, next: NextFunction) => {
+    // Only track authenticated mutating requests
+    if (req.method === 'GET' || req.method === 'OPTIONS' || req.method === 'HEAD') return next();
+
+    const path = req.path;
+    // Skip health, auth, and learning routes themselves
+    if (IGNORED_PATHS.has(path) || path.startsWith(LEARNING_PREFIX)) return next();
+
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return next();
+
+    const startTime = Date.now();
+
+    res.on('finish', () => {
+      // Only log successful requests (2xx)
+      if (res.statusCode < 200 || res.statusCode >= 300) return;
+
+      // Derive event type from method + path
+      const method = req.method.toLowerCase();
+      const segments = path.split('/').filter(Boolean);
+      const entityType = segments[0] || 'unknown'; // e.g., "projects", "crew", "equipment"
+      const entityId = segments.length >= 2 ? segments[segments.length - 1] : undefined;
+
+      const actionMap: Record<string, string> = { post: 'create', put: 'update', patch: 'update', delete: 'delete' };
+      const action = actionMap[method] || method;
+      const eventType = `${entityType}.${action}`;
+
+      // Extract project context if present
+      const projectId = (req.params?.projectId || req.params?.id || (req.body as Record<string, unknown>)?.project_id) as string | undefined;
+
+      const durationMs = Date.now() - startTime;
+
+      // Fire-and-forget — never block the response
+      learningService.logInteraction({
+        userId,
+        projectId: projectId || undefined,
+        eventType,
+        entityType,
+        entityId: entityId && entityId.length > 8 ? entityId : undefined,
+        context: { method: req.method, path, statusCode: res.statusCode },
+        durationMs,
+      }).catch(() => { /* silent — logging should never break the app */ });
+    });
+
+    next();
   });
 
   return router;

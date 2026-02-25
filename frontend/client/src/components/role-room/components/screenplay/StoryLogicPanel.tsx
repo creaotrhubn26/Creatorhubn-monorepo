@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -1409,6 +1410,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
 
   return (
     <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
+      <ContextualNudgeBanner context="story-logic" accentColor="#ec4899" />
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>

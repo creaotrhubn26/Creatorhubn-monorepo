@@ -1,4 +1,5 @@
 import { useState, useEffect, type FC } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -127,6 +128,7 @@ export const AuditionPoolPanel: FC<AuditionPoolPanelProps> = ({
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
+      <ContextualNudgeBanner context="audition-pool" accentColor="#14b8a6" />
       <Box sx={{ 
         display: 'flex', 
         flexDirection: { xs: 'column', sm: 'row' },

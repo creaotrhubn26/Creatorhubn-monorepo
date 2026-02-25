@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { ContextualNudgeBanner } from '../../ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -698,6 +699,8 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
   
   return (
     <Box sx={{ p: 2 }}>
+      <ContextualNudgeBanner context="storyboard-templates" accentColor="#f59e0b" />
+
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
         <Typography variant="subtitle1" fontWeight={600}>

@@ -93,6 +93,8 @@ export interface DrawingState {
   brushConfig: BrushConfig;
   shapeStyle: ShapeStyle;
   textStyle: TextStyle;
+  textAnnotations: TextAnnotation[];
+  selectedAnnotationId: string | null;
   symmetrySettings: SymmetrySettings;
   pressureCurve: PressureCurve;
   onionSkinSettings: OnionSkinSettings;
@@ -175,6 +177,8 @@ export const DEFAULT_DRAWING_STATE: DrawingState = {
   brushConfig: DEFAULT_BRUSH_CONFIG,
   shapeStyle: DEFAULT_SHAPE_STYLE,
   textStyle: DEFAULT_TEXT_STYLE,
+  textAnnotations: [],
+  selectedAnnotationId: null,
   symmetrySettings: DEFAULT_SYMMETRY_SETTINGS,
   pressureCurve: DEFAULT_PRESSURE_CURVE,
   onionSkinSettings: DEFAULT_ONION_SKIN_SETTINGS,
@@ -548,7 +552,10 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
           <BrushLibrary
             currentConfig={state.brushConfig}
             onBrushSelect={handleBrushSelect}
-            onSaveCurrentBrush={() => {}}
+            onSaveCurrentBrush={() => {
+              // Notify state that brush was saved — keep current config active
+              onStateChange({ brushConfig: state.brushConfig });
+            }}
           />
         </Collapse>
 
@@ -600,11 +607,27 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         </SectionHeader>
         <Collapse in={expandedSections.text}>
           <TextAnnotationsToolbar
-            annotations={[]}
-            selectedId={null}
-            onAnnotationsChange={() => {}}
-            onSelectedChange={() => {}}
-            onAddText={() => {}}
+            annotations={state.textAnnotations}
+            selectedId={state.selectedAnnotationId}
+            onAnnotationsChange={(annotations: TextAnnotation[]) => onStateChange({ textAnnotations: annotations })}
+            onSelectedChange={(id: string | null) => onStateChange({ selectedAnnotationId: id })}
+            onAddText={() => {
+              const newAnnotation: TextAnnotation = {
+                id: `text-${Date.now()}`,
+                text: 'New text',
+                x: 100,
+                y: 100,
+                width: 200,
+                height: 40,
+                rotation: 0,
+                style: state.textStyle,
+              };
+              onStateChange({
+                textAnnotations: [...state.textAnnotations, newAnnotation],
+                selectedAnnotationId: newAnnotation.id,
+                activeTool: 'text',
+              });
+            }}
             style={state.textStyle}
             onStyleChange={(style: Partial<TextStyle>) => onStateChange({ textStyle: { ...state.textStyle, ...style } })}
           />
@@ -629,7 +652,10 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
             onCopy={onCopy}
             onPaste={onPaste}
             onDelete={onDelete}
-            onSelectAll={() => {}}
+            onSelectAll={() => {
+              const allIds = strokes.map((s) => s.id).filter((id): id is string => Boolean(id));
+              onStateChange({ selectedStrokeIds: allIds, selectionMode: 'lasso' });
+            }}
             onDeselectAll={() => onStateChange({ selectedStrokeIds: [] })}
             canPaste={false}
             hasSelection={state.selectedStrokeIds.length > 0}
@@ -651,8 +677,8 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
           <SymmetryMode
             settings={state.symmetrySettings}
             onSettingsChange={(settings: Partial<SymmetrySettings>) => onStateChange({ symmetrySettings: { ...state.symmetrySettings, ...settings } as SymmetrySettings })}
-            canvasWidth={800}
-            canvasHeight={600}
+            canvasWidth={canvas?.width || 800}
+            canvasHeight={canvas?.height || 600}
           />
         </Collapse>
       </TabPanel>

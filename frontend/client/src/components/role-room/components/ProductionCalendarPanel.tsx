@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -452,6 +453,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
 
   return (
     <Box>
+      <ContextualNudgeBanner context="calendar" accentColor="#10b981" />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
           <CalendarMonthIcon sx={{ color: '#10b981' }} />

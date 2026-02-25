@@ -41,6 +41,7 @@ import {
 import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
+import { LearningNudgeCard } from './LearningNudgeCard';
 
 const KanbanPanelLazy = lazy(() =>
   import('./KanbanPanel').then(m => ({ default: m.KanbanPanel }))
@@ -494,7 +495,16 @@ function DashboardPanelInner({
         </Box>
       </Box>
 
-      <DashboardGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <DashboardGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
+      />
 
       {/* Statistics Cards */}
       <Grid container spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }} sx={{ mb: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
@@ -541,6 +551,9 @@ function DashboardPanelInner({
           </Grid>
         ))}
       </Grid>
+
+      {/* Learning Intelligence Nudges */}
+      <LearningNudgeCard />
 
       {/* Casting Progress Card */}
       {candidates.length > 0 && (

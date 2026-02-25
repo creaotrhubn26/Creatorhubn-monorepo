@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspense, Fragment, type ChangeEvent, type ReactNode, type ReactElement } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import { useShotListRealTime } from '../hooks/useShotListRealTime';
 import { useToast } from './ToastStack';
 import jsPDF from 'jspdf';
@@ -2381,6 +2382,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       sx={{ p: { xs: 2, sm: 3, md: containerPadding } }}
     >
       {/* Header - Responsive */}
+      <ContextualNudgeBanner context="shot-list" accentColor="#8b5cf6" />
       <Box
         sx={{
           display: 'flex',

@@ -13,6 +13,7 @@
  */
 
 import { useState, useMemo, useCallback, type FC, type ReactNode } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -186,6 +187,7 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
         overflow: 'hidden',
       }}
     >
+      <ContextualNudgeBanner context="story-structure" accentColor="#ec4899" />
       {/* Header */}
       <Paper
         elevation={0}

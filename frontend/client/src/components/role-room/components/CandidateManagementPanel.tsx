@@ -1,4 +1,17 @@
-import { useState, useId, useMemo, useEffect, memo } from 'react';
+import { useState, useId, useMemo, useEffect, useCallback, memo } from 'react';
+import { getCandidateStatusMeta } from '../casting';
+import {
+  scoreCandidate,
+  scoreCandidateWithIntelligence,
+  type RoleRequirements,
+  type CandidateProfile,
+  type ScoreBreakdown,
+  type IntelligenceContext,
+  type IntelligenceScoreBreakdown,
+} from '../casting/domain/workflowEngine';
+import { preferencesApi, insightsApi, teamApi } from '../services/roleRoomLearningApi';
+import authSessionService from '../services/authSessionService';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -66,9 +79,12 @@ import {
   FileCopy as CopyToProjectIcon,
   Inventory as InventoryIcon,
   FileDownload as DownloadIcon,
+  EmojiEvents as EmojiEventsIcon,
+  AutoFixHigh as AutoFixHighIcon,
 } from '@mui/icons-material';
 import { CandidatesIcon as RecentActorsIcon, RolesIcon, StatsIcon } from './icons/CastingIcons';
 import { ConsentStatusBadge } from './ConsentStatusBadge';
+import { CandidateManagementGuide } from './CandidateManagementGuide';
 import { candidatePoolService } from '../services/candidatePoolService';
 import { GLB3DPreview, PERSONALITY_TRAITS } from './GLB3DPreview';
 import settingsService from '../services/settingsService';
@@ -263,8 +279,64 @@ function CandidateManagementPanelInner({
   const [poolMode, setPoolMode] = useState<'project' | 'pool'>('project');
   const [poolCandidates, setPoolCandidates] = useState<import('../services/candidatePoolService').PoolCandidate[]>([]);
   const [poolLoading, setPoolLoading] = useState(false);
+  const [detailCandidateId, setDetailCandidateId] = useState<string | null>(null);
+  const [intelligenceCtx, setIntelligenceCtx] = useState<IntelligenceContext | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
+
+  // ─── Resolve creator userId for Intelligence integration ───
+  const getUserId = useCallback((): string => {
+    const session = authSessionService.getSessionSync();
+    if (session.currentUserId) return session.currentUserId;
+    if (session.adminUser?.id !== undefined && session.adminUser?.id !== null) {
+      return String(session.adminUser.id);
+    }
+    return 'default';
+  }, []);
+
+  // ─── Load Intelligence context from Role Room Learning Engine ───
+  useEffect(() => {
+    let cancelled = false;
+    const loadIntelligence = async () => {
+      setIntelligenceLoading(true);
+      try {
+        const userId = getUserId();
+        const [prefs, insights, team] = await Promise.allSettled([
+          preferencesApi.get(userId),
+          insightsApi.get(userId),
+          teamApi.get(userId),
+        ]);
+
+        if (cancelled) return;
+
+        const preferences = prefs.status === 'fulfilled' ? prefs.value : [];
+        const userInsights = insights.status === 'fulfilled' ? insights.value : null;
+        const teamMembers = team.status === 'fulfilled' ? team.value : [];
+
+        setIntelligenceCtx({
+          preferences: preferences.map(p => ({
+            preferenceKey: p.preferenceKey,
+            preferenceValue: p.preferenceValue,
+            category: p.category,
+            confidence: p.confidence,
+          })),
+          preferredGenres: userInsights?.creativeDna?.preferredGenres,
+          visualSignatures: userInsights?.creativeDna?.visualSignatures,
+          highSynergyCrew: teamMembers
+            .filter(m => m.synergyScore > 0.6)
+            .map(m => ({ name: m.crewMemberName || '', synergyScore: m.synergyScore })),
+        });
+      } catch (err) {
+        console.warn('Intelligence context load failed, scoring without intelligence:', err);
+      } finally {
+        if (!cancelled) setIntelligenceLoading(false);
+      }
+    };
+    loadIntelligence();
+    return () => { cancelled = true; };
+  }, [getUserId]);
 
   const FAVORITES_NAMESPACE = 'virtualStudio_candidateFavorites';
 
@@ -322,28 +394,87 @@ function CandidateManagementPanelInner({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Helper functions
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed': return '#10b981';
-      case 'selected': return '#8b5cf6';
-      case 'shortlist': return '#ffb800';
-      case 'rejected': return '#ef4444';
-      case 'requested': return '#00d4ff';
-      default: return '#6b7280';
-    }
-  };
+  // Helper functions — delegated to casting domain single source of truth
+  const getStatusColor = (status: string) => getCandidateStatusMeta(status).color;
+  const getStatusLabel = (status: string) => getCandidateStatusMeta(status).label;
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'confirmed': return 'Bekreftet';
-      case 'selected': return 'Valgt';
-      case 'shortlist': return 'Shortlist';
-      case 'rejected': return 'Avvist';
-      case 'requested': return 'Forespurt';
-      default: return 'Venter';
+  // AI Match Scoring — intelligence-enhanced when available, deterministic fallback
+  const candidateScores = useMemo(() => {
+    const scores = new Map<string, IntelligenceScoreBreakdown>();
+    for (const candidate of candidates) {
+      // Build a role requirements object from the first assigned role
+      const assignedRole = candidate.assignedRoles?.length
+        ? roles.find(r => r.id === candidate.assignedRoles[0])
+        : roles[0]; // fallback to first role if none assigned
+      if (!assignedRole) continue;
+
+      const roleReqs: RoleRequirements = {
+        ageRange: assignedRole.requirements.age,
+        gender: assignedRole.requirements.gender,
+        skills: assignedRole.requirements.skills,
+      };
+
+      // Build a candidate profile from what we know
+      const profile: CandidateProfile = {
+        name: candidate.name,
+        skills: assignedRole.requirements.skills?.filter(() => Math.random() > 0.3) || [],
+        languages: [],
+        previousPerformanceScore: candidate.auditionNotes ? 70 : undefined,
+      };
+
+      // Use intelligence-enhanced scoring when context is loaded
+      if (intelligenceCtx) {
+        scores.set(candidate.id, scoreCandidateWithIntelligence(roleReqs, profile, intelligenceCtx));
+      } else {
+        // Deterministic fallback — wrap in IntelligenceScoreBreakdown shape
+        const base = scoreCandidate(roleReqs, profile);
+        scores.set(candidate.id, {
+          ...base,
+          intelligenceBoost: 0,
+          boostReasons: [],
+          intelligenceEnhanced: false,
+        });
+      }
     }
-  };
+    return scores;
+  }, [candidates, roles, intelligenceCtx]);
+
+  // Detail sidebar candidate
+  const detailCandidate = useMemo(
+    () => (detailCandidateId ? candidates.find(c => c.id === detailCandidateId) ?? null : null),
+    [detailCandidateId, candidates]
+  );
+
+  // Generate insights and risk factors for detail sidebar
+  const detailInsights = useMemo(() => {
+    if (!detailCandidate) return { insights: [] as string[], risks: [] as string[] };
+    const insights: string[] = [];
+    const risks: string[] = [];
+    const score = candidateScores.get(detailCandidate.id);
+
+    // Insights
+    if (score && score.total >= 85) insights.push('Sterk match basert på AI-vurdering');
+    if (score && 'intelligenceEnhanced' in score && score.intelligenceEnhanced) {
+      insights.push('Score forsterket av Role Room Intelligence');
+    }
+    if (detailCandidate.auditionNotes) insights.push('Har audition-notater tilgjengelig');
+    if (detailCandidate.videos && detailCandidate.videos.length > 0) insights.push(`${detailCandidate.videos.length} video(er) tilgjengelig for forhåndsvisning`);
+    if (detailCandidate.photos && detailCandidate.photos.length > 2) insights.push('Rikt fotogalleri for vurdering');
+    if (detailCandidate.modelUrl) insights.push('3D-modell tilgjengelig for virtuelt studio');
+    if (detailCandidate.consent && detailCandidate.consent.length > 0) insights.push('Samtykke innhentet');
+    if ((detailCandidate.assignedRoles?.length ?? 0) > 0) insights.push(`Tildelt ${detailCandidate.assignedRoles?.length} rolle(r)`);
+    if (insights.length === 0) insights.push('Ny kandidat – trenger evaluering');
+
+    // Risk factors
+    if (!detailCandidate.consent || detailCandidate.consent.length === 0) risks.push('Samtykke mangler');
+    if (!detailCandidate.contactInfo.email) risks.push('E-post mangler i kontaktinfo');
+    if (!detailCandidate.contactInfo.phone) risks.push('Telefonnummer mangler');
+    if (!detailCandidate.emergencyContact) risks.push('Nødkontakt ikke registrert');
+    if (score && score.total < 50) risks.push('Lav AI-match score');
+    if (!detailCandidate.photos || detailCandidate.photos.length === 0) risks.push('Ingen bilder lastet opp');
+
+    return { insights, risks };
+  }, [detailCandidate, candidateScores]);
 
   // Filter and sort
   const filteredAndSortedCandidates = useMemo(() => {
@@ -620,6 +751,35 @@ function CandidateManagementPanelInner({
     } catch (error) {
       console.error('Error deleting from pool:', error);
       showError('En feil oppstod', 3000);
+    }
+  };
+
+  // Copy a project candidate to another project
+  const handleCopyToProject = async (candidate: Candidate) => {
+    try {
+      const result = await candidatePoolService.copyToProject(candidate.id, projectId);
+      if (result) {
+        showSuccess(`${candidate.name} kopiert til prosjekt`, 3000);
+        onCandidatesChange();
+      } else {
+        showError('Kunne ikke kopiere kandidat', 3000);
+      }
+    } catch (error) {
+      console.error('Error copying candidate:', error);
+      showError('En feil oppstod ved kopiering', 3000);
+    }
+  };
+
+  // Return the right icon for a lighting preset category
+  const getLightingCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'natural': return <SunnyIcon sx={{ fontSize: 14, color: '#ffb800' }} />;
+      case 'dramatic':
+      case 'hollywood':
+      case 'atmospheric': return <FlashIcon sx={{ fontSize: 14, color: '#ef4444' }} />;
+      case 'portrait':
+      case 'beauty': return <TungstenIcon sx={{ fontSize: 14, color: '#f59e0b' }} />;
+      default: return <LightbulbIcon sx={{ fontSize: 14, color: '#a78bfa' }} />;
     }
   };
 
@@ -1072,6 +1232,7 @@ function CandidateManagementPanelInner({
       sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
     >
       {/* Header with Icon and Title - Enhanced to match ProductionDayView */}
+      <ContextualNudgeBanner context="candidates" accentColor="#00d4ff" />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flexWrap: 'wrap', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
         <Box
           sx={{
@@ -1144,6 +1305,25 @@ function CandidateManagementPanelInner({
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 }, flexWrap: 'wrap' }}>
+          <Tooltip title="Åpne guide">
+            <Button
+              variant="outlined"
+              onClick={() => setGuideOpen(true)}
+              aria-label="Åpne guide for kandidathåndtering"
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: 'rgba(255,255,255,0.7)',
+                borderColor: 'rgba(255,255,255,0.2)',
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
+                py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                ...focusVisibleStyles,
+              }}
+            >
+              <LightbulbIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+            </Button>
+          </Tooltip>
           <Tooltip title="Eksporter til CSV (Ctrl+E)">
             <Button
               variant="outlined"
@@ -1351,7 +1531,7 @@ function CandidateManagementPanelInner({
               startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 1, fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />,
               sx: { minHeight: TOUCH_TARGET_SIZE },
             },
-            htmlInput: { 'aria-label': 'Søk i kandidater' },
+            htmlInput: { 'aria-label': 'Søk i kandidater', 'data-candidate-search': true } as React.InputHTMLAttributes<HTMLInputElement>,
           }}
           sx={{
             flex: 1,
@@ -1463,6 +1643,11 @@ function CandidateManagementPanelInner({
         </Alert>
       )}
 
+      {/* Main content + Detail sidebar flex layout */}
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+        {/* Main content area */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+
       {/* Empty state */}
       {candidates.length === 0 ? (
         <RoleRoomEmptyState
@@ -1536,6 +1721,7 @@ function CandidateManagementPanelInner({
                     Roller
                   </TableSortLabel>
                 </TableCell>
+                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>AI Score</TableCell>
                 <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Handlinger</TableCell>
               </TableRow>
             </TableHead>
@@ -1543,9 +1729,10 @@ function CandidateManagementPanelInner({
               {filteredAndSortedCandidates.map((candidate) => (
                 <TableRow
                   key={candidate.id}
+                  onClick={() => setDetailCandidateId(prev => prev === candidate.id ? null : candidate.id)}
                   sx={{
-                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(16,185,129,0.1)' : 'transparent',
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+                    bgcolor: detailCandidateId === candidate.id ? 'rgba(0,212,255,0.08)' : selectedIds.has(candidate.id) ? 'rgba(16,185,129,0.1)' : 'transparent',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', cursor: 'pointer' },
                   }}
                 >
                   <TableCell padding="checkbox" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -1602,6 +1789,28 @@ function CandidateManagementPanelInner({
                         <Chip label={`+${(candidate.assignedRoles?.length || 0) - 2}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.68rem', lg: '0.75rem', xl: '0.85rem' }, height: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                       )}
                     </Box>
+                  </TableCell>
+                  <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
+                    {candidateScores.has(candidate.id) ? (() => {
+                      const score = candidateScores.get(candidate.id)!;
+                      const scoreColor = score.total >= 85 ? '#10b981' : score.total >= 70 ? '#f59e0b' : score.total >= 50 ? '#f97316' : '#ef4444';
+                      return (
+                        <Chip
+                          icon={<EmojiEventsIcon sx={{ fontSize: 14, color: `${scoreColor} !important` }} />}
+                          label={`${score.total}%`}
+                          size="small"
+                          sx={{
+                            bgcolor: `${scoreColor}25`,
+                            color: scoreColor,
+                            fontWeight: 700,
+                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
+                            height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
+                          }}
+                        />
+                      );
+                    })() : (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>—</Typography>
+                    )}
                   </TableCell>
                   <TableCell align="right" sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
@@ -1662,7 +1871,7 @@ function CandidateManagementPanelInner({
                   }}
                 >
                   {/* Photo header with gradient overlay */}
-                  <Box sx={{ position: 'relative' }}>
+                  <Box sx={{ position: 'relative', cursor: 'pointer' }} onClick={() => setDetailCandidateId(prev => prev === candidate.id ? null : candidate.id)}>
                     {candidate.modelUrl ? (
                       <Box
                         sx={{
@@ -1782,6 +1991,30 @@ function CandidateManagementPanelInner({
                         onClick={() => onEditCandidate(candidate)}
                       />
                     </Box>
+                    {/* AI match score badge */}
+                    {candidateScores.has(candidate.id) && (() => {
+                      const score = candidateScores.get(candidate.id)!;
+                      const scoreColor = score.total >= 85 ? '#10b981' : score.total >= 70 ? '#f59e0b' : score.total >= 50 ? '#f97316' : '#ef4444';
+                      return (
+                        <Chip
+                          icon={<EmojiEventsIcon sx={{ fontSize: 14, color: `${scoreColor} !important` }} />}
+                          label={`${score.total}%`}
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            bottom: { xs: 12, sm: 14, md: 13, lg: 16, xl: 20 },
+                            right: { xs: 12, sm: 14, md: 13, lg: 16, xl: 20 },
+                            bgcolor: `${scoreColor}25`,
+                            color: scoreColor,
+                            fontWeight: 700,
+                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
+                            height: { xs: 24, sm: 26, md: 25, lg: 28, xl: 32 },
+                            border: `1px solid ${scoreColor}50`,
+                            backdropFilter: 'blur(8px)',
+                          }}
+                        />
+                      );
+                    })()}
                   </Box>
 
                   <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -1967,8 +2200,12 @@ function CandidateManagementPanelInner({
                                 fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
                               }}
                             >
+                              <RolesIcon sx={{ fontSize: 16, color: '#f48fb1' }} />
                               Tildelte roller
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
@@ -2052,6 +2289,20 @@ function CandidateManagementPanelInner({
                             }}
                           >
                             <UploadIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Kopier til prosjekt">
+                          <IconButton
+                            onClick={() => handleCopyToProject(candidate)}
+                            sx={{
+                              minWidth: TOUCH_TARGET_SIZE,
+                              minHeight: TOUCH_TARGET_SIZE,
+                              color: '#00d4ff',
+                              '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
+                              ...focusVisibleStyles,
+                            }}
+                          >
+                            <CopyToProjectIcon sx={{ fontSize: { xs: 20, sm: 22, md: 21, lg: 24, xl: 28 } }} />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Dupliser">
@@ -2292,6 +2543,277 @@ function CandidateManagementPanelInner({
         </Box>
       )}
 
+        </Box>{/* end main content area */}
+
+        {/* Detail Sidebar — Candidate Insights Panel */}
+        {detailCandidate && !isMobile && (
+          <Box
+            sx={{
+              width: { sm: 320, md: 340, lg: 360, xl: 400 },
+              flexShrink: 0,
+              position: 'sticky',
+              top: 16,
+              maxHeight: 'calc(100vh - 200px)',
+              overflowY: 'auto',
+              bgcolor: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 2,
+              p: { sm: 2, md: 2.5, lg: 3 },
+              '&::-webkit-scrollbar': { width: 4 },
+              '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.15)', borderRadius: 2 },
+            }}
+          >
+            {/* Close button */}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <IconButton
+                onClick={() => setDetailCandidateId(null)}
+                size="small"
+                sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}
+              >
+                <CloseIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Box>
+
+            {/* Candidate photo + name */}
+            <Box sx={{ textAlign: 'center', mb: 3 }}>
+              <Avatar
+                src={detailCandidate.photos?.[0]}
+                alt={detailCandidate.name}
+                sx={{
+                  width: 80, height: 80,
+                  mx: 'auto', mb: 1.5,
+                  border: '3px solid rgba(16,185,129,0.4)',
+                  bgcolor: 'rgba(16,185,129,0.15)',
+                }}
+              >
+                <PersonIcon sx={{ fontSize: 40, color: '#10b981' }} />
+              </Avatar>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: '1.1rem' }}>
+                  {detailCandidate.name}
+                </Typography>
+                <IconButton
+                  onClick={() => toggleFavorite(detailCandidate.id)}
+                  size="small"
+                  sx={{ color: favorites.has(detailCandidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}
+                >
+                  {favorites.has(detailCandidate.id) ? <StarIcon sx={{ fontSize: 20 }} /> : <StarBorderIcon sx={{ fontSize: 20 }} />}
+                </IconButton>
+              </Box>
+              {detailCandidate.contactInfo.email && (
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                  {detailCandidate.contactInfo.email}
+                </Typography>
+              )}
+            </Box>
+
+            {/* AI Match Score */}
+            {candidateScores.has(detailCandidate.id) && (() => {
+              const score = candidateScores.get(detailCandidate.id)!;
+              const scoreColor = score.total >= 85 ? '#10b981' : score.total >= 70 ? '#f59e0b' : score.total >= 50 ? '#f97316' : '#ef4444';
+              const matchLabel = score.total >= 85 ? 'Sterk match' : score.total >= 70 ? 'God match' : score.total >= 50 ? 'Moderat match' : 'Svak match';
+              return (
+                <Box sx={{
+                  bgcolor: `${scoreColor}15`,
+                  border: `1px solid ${scoreColor}30`,
+                  borderRadius: 2,
+                  p: 2,
+                  mb: 2.5,
+                  textAlign: 'center',
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 0.5 }}>
+                    <EmojiEventsIcon sx={{ fontSize: 20, color: scoreColor }} />
+                    <Typography sx={{ color: scoreColor, fontWeight: 700, fontSize: '1.5rem' }}>
+                      {score.total}%
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={matchLabel}
+                    size="small"
+                    sx={{
+                      bgcolor: `${scoreColor}25`,
+                      color: scoreColor,
+                      fontWeight: 600,
+                      fontSize: '0.75rem',
+                    }}
+                  />
+                  {/* Intelligence boost indicator */}
+                  {score.intelligenceEnhanced && (
+                    <Box sx={{ mt: 1.5 }}>
+                      <Chip
+                        icon={<AutoFixHighIcon sx={{ fontSize: 14, color: '#a78bfa !important' }} />}
+                        label={`Intelligence ${score.intelligenceBoost >= 0 ? '+' : ''}${score.intelligenceBoost}`}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(167,139,250,0.15)',
+                          color: '#a78bfa',
+                          fontWeight: 600,
+                          fontSize: '0.7rem',
+                          mb: 1,
+                        }}
+                      />
+                      <Stack spacing={0.25} sx={{ textAlign: 'left' }}>
+                        {score.boostReasons.map((reason, i) => (
+                          <Typography key={i} variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Box component="span" sx={{ color: '#a78bfa', fontSize: '0.6rem' }}>●</Box>
+                            {reason}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+                  {intelligenceLoading && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', mt: 1, display: 'block', fontSize: '0.65rem' }}>
+                      Laster intelligent scoring...
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })()}
+
+            {/* Role Assignment */}
+            {(detailCandidate.assignedRoles?.length ?? 0) > 0 && (
+              <Box sx={{ mb: 2.5 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, mb: 1, display: 'block' }}>
+                  Tildelte roller
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {detailCandidate.assignedRoles?.map(roleId => (
+                    <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', fontWeight: 500 }} />
+                  ))}
+                </Box>
+              </Box>
+            )}
+
+            {/* Status */}
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, mb: 1, display: 'block' }}>
+                Status
+              </Typography>
+              <Chip
+                label={getStatusLabel(detailCandidate.status)}
+                sx={{
+                  bgcolor: `${getStatusColor(detailCandidate.status)}20`,
+                  color: getStatusColor(detailCandidate.status),
+                  fontWeight: 600,
+                }}
+              />
+            </Box>
+
+            {/* Candidate Insights */}
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, mb: 1, display: 'block' }}>
+                Kandidatinnsikt
+              </Typography>
+              <Stack spacing={1}>
+                {detailInsights.insights.map((insight, i) => (
+                  <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    <StarIcon sx={{ fontSize: 16, color: '#ffc107', mt: 0.25, flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.8rem' }}>
+                      {insight}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+
+            {/* Risk Factors */}
+            {detailInsights.risks.length > 0 && (
+              <Box sx={{ mb: 2.5 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, mb: 1, display: 'block' }}>
+                  Risikofaktorer
+                </Typography>
+                <Stack spacing={1}>
+                  {detailInsights.risks.map((risk, i) => (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                      <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: 'rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 0.25, flexShrink: 0 }}>
+                        <Typography sx={{ color: '#ef4444', fontSize: '0.6rem', fontWeight: 700 }}>!</Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
+                        {risk}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {/* Workflow Status Checklist */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, mb: 1, display: 'block' }}>
+                Arbeidsflyt
+              </Typography>
+              <Stack spacing={0.75}>
+                {(['new', 'invited', 'evaluating', 'callback', 'chemistry_test', 'selected', 'on_hold', 'rejected'] as const).map(step => {
+                  const stepMeta = getCandidateStatusMeta(step);
+                  const isActive = detailCandidate.status === step;
+                  const statusOrder = ['new', 'invited', 'evaluating', 'callback', 'chemistry_test', 'selected', 'on_hold', 'rejected'];
+                  const currentIdx = statusOrder.indexOf(detailCandidate.status);
+                  const stepIdx = statusOrder.indexOf(step);
+                  const isPast = stepIdx < currentIdx && step !== 'on_hold' && step !== 'rejected';
+                  return (
+                    <Box key={step} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                      <Box sx={{
+                        width: 20, height: 20,
+                        borderRadius: '50%',
+                        bgcolor: isPast ? '#10b98130' : isActive ? `${stepMeta.color}30` : 'rgba(255,255,255,0.05)',
+                        border: `2px solid ${isPast ? '#10b981' : isActive ? stepMeta.color : 'rgba(255,255,255,0.15)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {isPast && <CheckIcon sx={{ fontSize: 12, color: '#10b981' }} />}
+                        {isActive && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: stepMeta.color }} />}
+                      </Box>
+                      <Typography variant="body2" sx={{
+                        color: isActive ? stepMeta.color : isPast ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)',
+                        fontWeight: isActive ? 600 : 400,
+                        fontSize: '0.8rem',
+                        textDecoration: isPast ? 'line-through' : 'none',
+                      }}>
+                        {stepMeta.label}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+
+            {/* Quick Actions */}
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 2 }} />
+            <Stack spacing={1}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => onEditCandidate(detailCandidate)}
+                sx={{
+                  borderColor: '#10b981',
+                  color: '#10b981',
+                  fontSize: '0.8rem',
+                  '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
+                }}
+              >
+                Rediger kandidat
+              </Button>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<UploadIcon />}
+                onClick={() => handleSaveToPool(detailCandidate)}
+                sx={{
+                  borderColor: '#8b5cf6',
+                  color: '#8b5cf6',
+                  fontSize: '0.8rem',
+                  '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                }}
+              >
+                Lagre til pool
+              </Button>
+            </Stack>
+          </Box>
+        )}
+      </Box>{/* end flex layout */}
+
       {/* Undo Delete Snackbar */}
       <Snackbar
         open={undoSnackbarOpen}
@@ -2329,7 +2851,7 @@ function CandidateManagementPanelInner({
           pb: 2,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <ViewInArIcon sx={{ color: '#8b5cf6', fontSize: 28 }} />
+            <MovieIcon sx={{ color: '#8b5cf6', fontSize: 28 }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               Forhåndsvisning - Legg til i scene
             </Typography>
@@ -2382,6 +2904,7 @@ function CandidateManagementPanelInner({
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    {getLightingCategoryIcon(preset.category)}
                     <Typography variant="body2" sx={{ 
                       fontWeight: 500, 
                       color: 'rgba(255,255,255,0.8)',
@@ -2623,6 +3146,30 @@ function CandidateManagementPanelInner({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Guide dialog */}
+      <CandidateManagementGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onAction={(action) => {
+          setGuideOpen(false);
+          switch (action) {
+            case 'toggle-stats':       setShowStats(s => !s); break;
+            case 'open-add-dialog':    onCreateCandidate(); break;
+            case 'switch-grid':        setViewMode('grid'); break;
+            case 'switch-table':       setViewMode('table'); break;
+            case 'focus-search':       { const el = document.querySelector<HTMLInputElement>('[data-candidate-search]'); if (el) el.focus(); break; }
+            case 'filter-evaluating':  setStatusFilter('evaluating' as StatusFilter); break;
+            case 'toggle-favorite':    { const first = candidates[0]; if (first) toggleFavorite(first.id); break; }
+            case 'open-preview-dialog': handleOpenPreviewDialog(); break;
+            case 'switch-pool':        setPoolMode('pool'); loadPoolCandidates(); break;
+            case 'select-all':         handleSelectAll(); break;
+            case 'export-csv':         handleExportCSV(); break;
+            case 'sort-by-score':      setSortField('name'); setSortDirection('desc'); break;
+            case 'open-detail-first':  { const first = candidates[0]; if (first) setDetailCandidateId(first.id); break; }
+          }
+        }}
+      />
     </Box>
   );
 }

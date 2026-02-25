@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -41,7 +42,6 @@ import {
   ImageListItem,
   ImageListItemBar,
   Divider,
-  Rating,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -88,17 +88,8 @@ import {
   WifiOff as OfflineIcon,
   Sync as SyncIcon,
   AssignmentLate as MissingItemIcon,
-  TrendingUp as TrendingUpIcon,
-  Update as UpdateIcon,
-  Newspaper as NewspaperIcon,
-  AttachMoney as AttachMoneyIcon,
 } from '@mui/icons-material';
 import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import { useQuery } from '@tanstack/react-query';
-import EquipmentCatalogBrowser, { type CatalogEquipment } from '../../equipment/EquipmentCatalogBrowser';
-import FirmwareManagementInterface from '../../equipment/FirmwareManagementInterface';
-import { useAuth } from '../../../hooks/use-auth';
-import { apiRequest } from '../../../lib/queryClient';
 import { 
   Equipment, 
   equipmentApi, 
@@ -133,49 +124,7 @@ const focusVisibleStyles = {
 
 type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity';
 type SortDirection = 'asc' | 'desc';
-type ViewMode = 'grid' | 'table';
-
-// ── Bridge: data shapes from external database APIs ───────────────────────────
-interface GearNewsArticle {
-  title: string;
-  summary?: string;
-  category?: string;
-  brand?: string;
-  url?: string;
-  rating?: number;
-  price?: string;
-  isNew?: boolean;
-  isTrending?: boolean;
-}
-interface GearNewsResponse {
-  success?: boolean;
-  data?: GearNewsArticle[];
-}
-interface MarketEquipmentItem {
-  id: string;
-  brand: string;
-  model: string;
-  category: string;
-  currentPrice?: string;
-  msrp?: string;
-  availability?: string;
-  photographerRating?: string;
-  videographerRating?: string;
-  sourceUrl?: string;
-}
-interface LensItem {
-  id: string;
-  brand: string;
-  model: string;
-  focalLength?: string;
-  aperture?: string;
-  mount?: string;
-  lensType?: string;
-  imageStabilization?: boolean;
-  weatherSealing?: boolean;
-  weight?: string;
-  currentPrice?: string;
-}
+type ViewMode = 'grid' | 'table' | 'gallery';
 
 const STATUS_LABELS: Record<string, string> = {
   available: 'Tilgjengelig',
@@ -222,13 +171,29 @@ const DEFAULT_CATEGORY_OPTIONS = [
 ];
 
 import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
+import {
+  findFirmwareForEquipment,
+  lookupFirmware,
+  syncFirmwareCatalog,
+  addCommunityFirmwareEntry,
+  checkFirmwareBatchV2,
+  isScrapeBlocked,
+  type FirmwareEntry,
+  type FirmwareCheckStatus,
+} from '../services/firmwareKnowledgeBase';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import equipPng from './icons/Keep/roleroom_equip.png';
+import { EquipmentPanelProvider } from './EquipmentPanelContext';
+import { EquipmentPanelDialogs } from './EquipmentPanelDialogs';
+import { SceneEquipmentAdvisor } from './SceneEquipmentAdvisor';
+import { EquipmentIntelligence } from './EquipmentIntelligence';
 
 interface EquipmentManagementPanelProps {
   projectId: string;
   onUpdate?: () => void;
 }
+
+type FirmwareUpdateMatch = FirmwareCheckStatus;
 
 export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManagementPanelProps) {
   const theme = useTheme();
@@ -268,6 +233,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     imageUrl: '',
     status: 'available' as Equipment['status'],
     isGlobal: false, // If true, equipment is available across all projects
+    firmwareCurrent: '',
+    firmwareAutoCheckEnabled: true,
   });
 
   // Image picker state
@@ -298,6 +265,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [selectedEquipmentBookings, setSelectedEquipmentBookings] = useState<Equipment | null>(null);
   const [bookings, setBookings] = useState<EquipmentBooking[]>([]);
   const [availability, setAvailability] = useState<EquipmentAvailability[]>([]);
+
+  const [firmwareChecking, setFirmwareChecking] = useState(false);
+  const [firmwareCheckedAt, setFirmwareCheckedAt] = useState<string | null>(null);
+  const [firmwareUpdatesByEquipmentId, setFirmwareUpdatesByEquipmentId] = useState<Record<string, FirmwareUpdateMatch>>({});
+  const [firmwareUnmatchedCount, setFirmwareUnmatchedCount] = useState(0);
 
   const [templates, setTemplates] = useState<EquipmentTemplate[]>([]);
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
@@ -340,41 +312,6 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<'delete' | 'status' | 'assign'>('delete');
   const [bulkNewStatus, setBulkNewStatus] = useState<Equipment['status']>('available');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-
-  // Catalog bridge — browse manufacturer catalog and import items into this project
-  const { user } = useAuth();
-  const [catalogBridgeOpen, setCatalogBridgeOpen] = useState(false);
-  // Active sub-tab inside the catalog bridge dialog (0=catalog, 1=news, 2=market, 3=lenses)
-  const [catalogDialogTab, setCatalogDialogTab] = useState(0);
-  // Firmware panel — manage firmware updates for this project's equipment
-  const [firmwarePanelOpen, setFirmwarePanelOpen] = useState(false);
-
-  // ── External database data: gear news, market prices, lens database ──────────
-  const { data: gearNewsRaw, isLoading: gearNewsLoading } = useQuery<GearNewsResponse>({
-    queryKey: ['/api/gear-news', 'videographer'],
-    queryFn: () => apiRequest('/api/gear-news?profession=videographer') as Promise<GearNewsResponse>,
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-  const gearNewsArticles: GearNewsArticle[] = gearNewsRaw?.data ?? [];
-
-  const { data: marketRaw, isLoading: marketPricesLoading } = useQuery<MarketEquipmentItem[]>({
-    queryKey: ['/api/equipment/market-prices', 'videographer'],
-    queryFn: () => apiRequest('/api/equipment/market-prices?profession=videographer') as Promise<MarketEquipmentItem[]>,
-    staleTime: 60 * 60 * 1000,
-    retry: 1,
-  });
-  const marketItems: MarketEquipmentItem[] = Array.isArray(marketRaw) ? marketRaw : [];
-
-  const { data: lensRaw, isLoading: lensDbLoading } = useQuery<LensItem[]>({
-    queryKey: ['/api/equipment/lenses', 'videographer'],
-    queryFn: () => apiRequest('/api/equipment/lenses?profession=videographer') as Promise<LensItem[]>,
-    staleTime: 60 * 60 * 1000,
-    retry: 1,
-  });
-  const lensItems: LensItem[] = Array.isArray(lensRaw) ? lensRaw : [];
   
   // History/audit log
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -392,7 +329,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [selectedEquipmentMaintenance, setSelectedEquipmentMaintenance] = useState<Equipment | null>(null);
   const [maintenanceForm, setMaintenanceForm] = useState({
     scheduledDate: '',
-    type: 'routine' as 'routine' | 'repair' | 'calibration' | 'cleaning',
+    type: 'routine' as 'routine' | 'repair' | 'inspection' | 'calibration' | 'cleaning',
     notes: '',
     reminderDays: 7,
   });
@@ -446,6 +383,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [offlineOutboxOpen, setOfflineOutboxOpen] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState<OfflineEntry[]>([]);
+
+  // ── Quick preview dialog ──
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewEquipment, setPreviewEquipment] = useState<Equipment | null>(null);
+  const handlePreviewEquipment = (eq: Equipment) => {
+    setPreviewEquipment(eq);
+    setPreviewOpen(true);
+  };
 
   const handleAddCustomCategory = async () => {
     const trimmedName = newCategoryName.trim();
@@ -557,7 +502,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  const loadVendorLinks = async () => {
+  const loadVendorLinks = useCallback(async () => {
     try {
       const [links, categories] = await Promise.all([
         vendorLinksApi.getAll(selectedVendorCategory === 'all' ? undefined : selectedVendorCategory),
@@ -568,13 +513,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     } catch (error) {
       console.error('Error loading vendor links:', error);
     }
-  };
-
-  // Re-fetch vendor links whenever the category filter changes
-  useEffect(() => {
-    loadVendorLinks();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVendorCategory]);
+
+  useEffect(() => {
+    if (!shopDialogOpen) return;
+    loadVendorLinks();
+  }, [shopDialogOpen, loadVendorLinks]);
 
   // Image search functions - Multi-source search via backend proxies (no keys in client)
   const searchImages = useCallback(async (query: string) => {
@@ -775,6 +719,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     reader.onload = () => {
       const dataUrl = reader.result as string;
       setFormData({ ...formData, imageUrl: dataUrl });
+      setTempImageUrl(dataUrl);
       setImagePickerOpen(false);
     };
     reader.readAsDataURL(file);
@@ -782,6 +727,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   const handleSelectSearchImage = (imageUrl: string) => {
     setFormData({ ...formData, imageUrl });
+    setTempImageUrl(imageUrl);
     setImagePickerOpen(false);
     setImageSearchResults([]);
     setImageSearchQuery('');
@@ -877,13 +823,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   };
 
   const handleOpenShopDialog = () => {
-    loadVendorLinks();
+    setSelectedVendorCategory('all');
     setShopDialogOpen(true);
   };
 
   const handleOpenDialog = (eq?: Equipment) => {
     if (eq) {
       setEditingEquipment(eq);
+      setTempImageUrl(eq.image_url || '');
       setFormData({
         name: eq.name || '',
         description: eq.description || '',
@@ -897,10 +844,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         notes: eq.notes || '',
         imageUrl: eq.image_url || '',
         status: eq.status || 'available',
-        isGlobal: eq.is_global || !eq.project_id, // Global if no project_id or is_global flag
+        isGlobal: eq.is_global || !eq.project_id,
+        firmwareCurrent: eq.firmware_current || '',
+        firmwareAutoCheckEnabled: eq.firmware_auto_check_enabled ?? true,
       });
     } else {
       setEditingEquipment(null);
+      setTempImageUrl('');
       setFormData({
         name: '',
         description: '',
@@ -915,93 +865,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         imageUrl: '',
         status: 'available',
         isGlobal: false,
+        firmwareCurrent: '',
+        firmwareAutoCheckEnabled: true,
       });
       setFormErrors({}); // Clear validation errors
     }
-    setDialogOpen(true);
-  };
-
-  /** Import a catalog item into the project: pre-fills the add-dialog with the
-   *  catalog data so the user only needs to confirm / add a serial number. */
-  const handleImportFromCatalog = (item: CatalogEquipment) => {
-    setCatalogBridgeOpen(false);
-    setEditingEquipment(null);
-    setFormErrors({});
-    setFormData({
-      name: [item.brand, item.model].filter(Boolean).join(' ') || '',
-      description: item.description || '',
-      category: item.category || '',
-      brand: item.brand || '',
-      model: item.model || '',
-      serialNumber: '',
-      quantity: 1,
-      condition: 'good',
-      primaryLocationId: '',
-      notes: item.specifications
-        ? Object.entries(item.specifications)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join('\n')
-        : '',
-      imageUrl: item.imageUrl || (item.images?.[0] ?? ''),
-      status: 'available',
-      isGlobal: false,
-    });
-    setDialogOpen(true);
-  };
-
-  /** Import a market-price item into the project's add-dialog */
-  const handleImportFromMarket = (item: MarketEquipmentItem) => {
-    setCatalogBridgeOpen(false);
-    setEditingEquipment(null);
-    setFormErrors({});
-    setFormData({
-      name: [item.brand, item.model].filter(Boolean).join(' ') || '',
-      description: '',
-      category: item.category || '',
-      brand: item.brand || '',
-      model: item.model || '',
-      serialNumber: '',
-      quantity: 1,
-      condition: 'good',
-      primaryLocationId: '',
-      notes: item.currentPrice
-        ? `Markedspris: ${parseFloat(item.currentPrice).toLocaleString('nb-NO')} kr`
-        : '',
-      imageUrl: '',
-      status: 'available',
-      isGlobal: false,
-    });
-    setDialogOpen(true);
-  };
-
-  /** Import a lens database item into the project's add-dialog */
-  const handleImportFromLens = (lens: LensItem) => {
-    setCatalogBridgeOpen(false);
-    setEditingEquipment(null);
-    setFormErrors({});
-    setFormData({
-      name: [lens.brand, lens.model].filter(Boolean).join(' ') || '',
-      description: [lens.focalLength, lens.aperture, lens.mount].filter(Boolean).join(' · ') || '',
-      category: 'lenses',
-      brand: lens.brand || '',
-      model: lens.model || '',
-      serialNumber: '',
-      quantity: 1,
-      condition: 'good',
-      primaryLocationId: '',
-      notes: [
-        lens.focalLength && `Brennvidde: ${lens.focalLength}`,
-        lens.aperture && `Blender: ${lens.aperture}`,
-        lens.mount && `Fatning: ${lens.mount}`,
-        lens.lensType && `Type: ${lens.lensType}`,
-        lens.weight && `Vekt: ${lens.weight}`,
-        lens.imageStabilization && 'Bildestabilisering: Ja',
-        lens.weatherSealing && 'Værtetting: Ja',
-      ].filter(Boolean).join('\n'),
-      imageUrl: '',
-      status: 'available',
-      isGlobal: false,
-    });
     setDialogOpen(true);
   };
 
@@ -1027,6 +895,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       status: formData.status,
       project_id: formData.isGlobal ? undefined : projectId, // undefined = global equipment
       is_global: formData.isGlobal,
+      firmware_current: formData.firmwareCurrent || undefined,
+      firmware_auto_check_enabled: formData.firmwareAutoCheckEnabled,
     } satisfies Partial<Equipment>;
 
     try {
@@ -1040,11 +910,81 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       setDialogOpen(false);
       loadEquipment();
       onUpdate?.();
+
+      // ── Auto-publish firmware to shared catalog ──────────────
+      // If the saved equipment has brand+model and we have firmware
+      // info in the built-in KB, push it to the backend so all
+      // users see it in the community catalog.
+      if (payload.brand?.trim() && payload.model?.trim()) {
+        const match = lookupFirmware(payload.brand, payload.model);
+        if (match) {
+          addCommunityFirmwareEntry(match).catch(() => { /* silent */ });
+        }
+      }
     } catch (error) {
       console.error('Error saving equipment:', error);
       showError('Kunne ikke lagre utstyr');
     }
   };
+
+  const checkFirmwareUpdates = useCallback(async () => {
+    const candidates = equipment.filter(eq => (eq.brand || '').trim() && (eq.model || '').trim());
+    if (candidates.length === 0) {
+      showError('Ingen utstyr med merke og modell for firmware-søk');
+      return;
+    }
+
+    setFirmwareChecking(true);
+    try {
+      // ── 0. Sync community catalog from backend first ──────────
+      await syncFirmwareCatalog();
+
+      // ── 1. Use v2 batch check API (handles track-key matching) ──
+      const batchItems = candidates.map(eq => ({
+        equipmentId: eq.id,
+        brand: eq.brand || '',
+        model: eq.model || '',
+        currentVersion: eq.firmware_current || undefined,
+      }));
+
+      const results = await checkFirmwareBatchV2(batchItems);
+
+      setFirmwareUpdatesByEquipmentId(results);
+      setFirmwareCheckedAt(new Date().toISOString());
+
+      // ── 2. Count statuses ────────────────────────────────────
+      const statuses = Object.values(results);
+      const updateCount = statuses.filter(s => s.status === 'update-available').length;
+      const unknownCount = statuses.filter(s => s.status === 'unknown' || s.status === 'needs-mapping').length;
+      const upToDateCount = statuses.filter(s => s.status === 'up-to-date').length;
+
+      setFirmwareUnmatchedCount(unknownCount);
+
+      // ── 3. Auto-push matched firmware to community catalog ───
+      const localMatches = findFirmwareForEquipment(
+        candidates.map(eq => ({ id: eq.id, brand: eq.brand, model: eq.model }))
+      );
+      for (const [, entry] of Object.entries(localMatches) as [string, FirmwareEntry][]) {
+        addCommunityFirmwareEntry(entry).catch(() => { /* silent */ });
+      }
+
+      if (updateCount > 0) {
+        const msg = `Fant ${updateCount} firmware-oppdatering${updateCount === 1 ? '' : 'er'}`;
+        const upMsg = upToDateCount > 0 ? ` · ${upToDateCount} oppdatert` : '';
+        const unmatchedMsg = unknownCount > 0 ? ` · ${unknownCount} uten firmware-info` : '';
+        showSuccess(msg + upMsg + unmatchedMsg);
+      } else if (upToDateCount > 0) {
+        showSuccess(`Alt utstyr er oppdatert (${upToDateCount} sjekket)`);
+      } else {
+        showSuccess('Ingen firmware-informasjon funnet');
+      }
+    } catch (error) {
+      console.error('Firmware check error:', error);
+      showError('Kunne ikke finne firmware-oppdateringer');
+    } finally {
+      setFirmwareChecking(false);
+    }
+  }, [equipment, showError, showSuccess]);
 
   const handleOpenAssign = (eq: Equipment) => {
     setSelectedEquipmentForAssign(eq);
@@ -1119,6 +1059,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   // 2. Duplicate equipment
   const handleDuplicate = (eq: Equipment) => {
     setEditingEquipment(null);
+    setTempImageUrl(eq.image_url || '');
     setFormData({
       name: `${eq.name} (kopi)`,
       description: eq.description || '',
@@ -1133,6 +1074,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       imageUrl: eq.image_url || '',
       status: 'available', // Reset status for new item
       isGlobal: eq.is_global || false, // Preserve global status
+      firmwareCurrent: eq.firmware_current || '',
+      firmwareAutoCheckEnabled: eq.firmware_auto_check_enabled ?? true,
     });
     setDialogOpen(true);
     showSuccess('Utstyr duplisert - rediger og lagre');
@@ -1349,59 +1292,22 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  // 6. History/audit log — real API data
-  const handleOpenHistory = async (eq: Equipment) => {
+  // 6. History/audit log (mock data - would connect to real API)
+  const handleOpenHistory = (eq: Equipment) => {
     setSelectedEquipmentHistory(eq);
-    setHistoryDialogOpen(true);
-    // Seed with a static creation entry immediately
-    const creationEntry = {
-      id: 'create-0',
-      action: 'Opprettet',
-      user: 'System',
-      timestamp: eq.created_at || new Date().toISOString(),
-      details: 'Utstyr lagt til i katalogen',
-    };
-    setEquipmentHistory([creationEntry]);
-    try {
-      const checkouts = await equipmentCheckoutApi.getAll(projectId || '', eq.id);
-      const checkoutEntries = checkouts.flatMap(c => {
-        const entries = [
-          {
-            id: `checkout-${c.id}`,
-            action: 'Utlevert',
-            user: c.checked_out_by || 'Ukjent',
-            timestamp: c.checked_out_at,
-            details: `Utlevert til ${c.checked_out_to}${c.purpose ? ' — ' + c.purpose : ''}`,
-          },
-        ];
-        if (c.checked_in_at) {
-          entries.push({
-            id: `checkin-${c.id}`,
-            action: 'Innlevert',
-            user: c.checked_out_to || 'Ukjent',
-            timestamp: c.checked_in_at,
-            details: `Innlevert${c.condition_on_return ? ', tilstand: ' + c.condition_on_return : ''}${c.notes ? ' — ' + c.notes : ''}`,
-          });
-        }
-        return entries;
-      });
-      // Add current assignee entries from equipment assignees array
-      const assignEntries = (eq.assignees || []).map((a, i) => ({
+    // Mock history data - in production, fetch from API
+    setEquipmentHistory([
+      { id: '1', action: 'Opprettet', user: 'System', timestamp: eq.created_at || new Date().toISOString(), details: 'Utstyr lagt til i katalogen' },
+      { id: '2', action: 'Status endret', user: 'Bruker', timestamp: new Date().toISOString(), details: `Status satt til ${STATUS_LABELS[eq.status || 'available']}` },
+      ...(eq.assignees?.map((a, i) => ({
         id: `assign-${i}`,
         action: 'Tilordnet',
         user: 'Bruker',
-        timestamp: eq.updated_at || new Date().toISOString(),
+        timestamp: new Date().toISOString(),
         details: `Tilordnet til ${getCrewName(a.crew_id)}`,
-      }));
-      // Sort all entries chronologically (oldest first)
-      const allEntries = [creationEntry, ...checkoutEntries, ...assignEntries].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-      setEquipmentHistory(allEntries);
-    } catch (err) {
-      console.error('Error loading equipment history:', err);
-      // Fall back to static creation entry already set above
-    }
+      })) || []),
+    ]);
+    setHistoryDialogOpen(true);
   };
 
   // 7. Maintenance scheduling
@@ -1733,6 +1639,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       reader.onload = () => {
         const dataUrl = reader.result as string;
         setFormData({ ...formData, imageUrl: dataUrl });
+        setTempImageUrl(dataUrl);
       };
       reader.readAsDataURL(file);
     }
@@ -1781,28 +1688,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   // Categories for filter dropdown: combines equipment categories + custom categories
   const categories = useMemo(() => {
-    const equipmentCats = new Set(equipment.map(eq => eq.category).filter(Boolean));
+    const equipmentCats = new Set(equipment.map(eq => eq.category).filter((c): c is string => Boolean(c)));
     const allCats = new Set([...equipmentCats, ...customCategories]);
     return Array.from(allCats).sort();
   }, [equipment, customCategories]);
-
-  // Per-category item counts for sidebar
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const eq of equipment) {
-      const cat = eq.category || 'Annet';
-      counts[cat] = (counts[cat] || 0) + 1;
-    }
-    return counts;
-  }, [equipment]);
-
-  // Items assigned/checked-out today
-  const assignedToday = useMemo(() => {
-    const today = new Date().toDateString();
-    return equipment.filter(eq =>
-      eq.assignedTo && eq.updatedAt && new Date(eq.updatedAt as string).toDateString() === today
-    ).length;
-  }, [equipment]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1853,10 +1742,122 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     return colorMap[category?.toLowerCase() || 'default'] || colorMap.default;
   };
 
+  // ── Context value for child components (dialogs, views) ──
+  const contextValue = {
+    projectId,
+    isMobile, isTablet, isDesktop,
+    showSuccess, showError,
+    dialogTitleId,
+    equipment, loading,
+    searchQuery, setSearchQuery,
+    categoryFilter, setCategoryFilter,
+    statusFilter, setStatusFilter,
+    viewMode, setViewMode,
+    sortField, sortDirection,
+    filterOpen, setFilterOpen,
+    filteredEquipment, allCategories,
+    dialogOpen, setDialogOpen,
+    editingEquipment, formData, setFormData, formErrors,
+    handleOpenDialog, handleSave, validateForm,
+    imagePickerOpen, setImagePickerOpen,
+    imagePickerTab, setImagePickerTab,
+    imageSearchQuery, setImageSearchQuery,
+    imageSearchResults, imageSearchLoading,
+    searchImages, handleFileUpload, handleSelectSearchImage,
+    tempImageUrl, setTempImageUrl, fileInputRef,
+    crewMembers, locations,
+    assignDialogOpen, setAssignDialogOpen,
+    selectedEquipmentForAssign, selectedCrewId, setSelectedCrewId,
+    handleOpenAssign, handleAssign, handleUnassign,
+    bookingsDialogOpen, setBookingsDialogOpen,
+    selectedEquipmentBookings, bookings, availability,
+    handleOpenBookings,
+    createBookingDialogOpen, setCreateBookingDialogOpen,
+    bookingForm, setBookingForm,
+    handleOpenCreateBooking, handleCreateBooking,
+    bookingConflicts, conflictChecking,
+    checkBookingConflicts,
+    firmwareChecking, firmwareCheckedAt,
+    firmwareUpdatesByEquipmentId, firmwareUnmatchedCount,
+    checkFirmwareUpdates,
+    templates, templatesDialogOpen, setTemplatesDialogOpen,
+    templateFormOpen, setTemplateFormOpen,
+    editingTemplate, setEditingTemplate,
+    templateFormData, setTemplateFormData,
+    handleApplyTemplate, handleSaveTemplate,
+    handleDeleteTemplate, handleCreateTemplateFromEquipment,
+    shopDialogOpen, setShopDialogOpen,
+    vendorLinks, vendorCategories,
+    selectedVendorCategory, setSelectedVendorCategory,
+    handleOpenShopDialog,
+    newCategoryDialogOpen, setNewCategoryDialogOpen,
+    newCategoryName, setNewCategoryName,
+    handleAddCustomCategory, handleRemoveCustomCategory, customCategories,
+    deleteDialogOpen, setDeleteDialogOpen,
+    equipmentToDelete, handleDeleteClick, handleConfirmDelete,
+    selectedEquipmentIds, bulkActionDialogOpen, setBulkActionDialogOpen,
+    bulkActionType, setBulkActionType,
+    bulkNewStatus, setBulkNewStatus,
+    bulkAssignCrewId, setBulkAssignCrewId,
+    toggleSelectEquipment, toggleSelectAll,
+    handleBulkAction, handleConfirmBulkAction,
+    historyDialogOpen, setHistoryDialogOpen,
+    selectedEquipmentHistory, equipmentHistory, handleOpenHistory,
+    maintenanceDialogOpen, setMaintenanceDialogOpen,
+    selectedEquipmentMaintenance, maintenanceForm, setMaintenanceForm,
+    handleOpenMaintenance, handleScheduleMaintenance,
+    maintenanceItems, missingItems,
+    handleDuplicate,
+    handleExportCSV, handleImportCSV, handleDownloadGearList,
+    generateQRCode, handlePrintQR,
+    handleSort,
+    checkoutDialogOpen, setCheckoutDialogOpen,
+    checkoutEquipment, checkoutForm, setCheckoutForm,
+    handleOpenCheckout, handleConfirmCheckout,
+    checkinDialogOpen, setCheckinDialogOpen,
+    checkinEquipment, checkinForm, setCheckinForm,
+    handleOpenCheckin, handleConfirmCheckin,
+    reportsDialogOpen, setReportsDialogOpen,
+    reportsTab, setReportsTab,
+    isOnline, offlineQueueCount,
+    offlineOutboxOpen, setOfflineOutboxOpen,
+    offlineQueue, handleSyncOfflineQueue, persistOfflineQueue,
+    isDragging, dropZoneRef,
+    handleDragEnter, handleDragLeave, handleDragOver, handleDrop,
+    activeCheckouts,
+    previewOpen, setPreviewOpen, previewEquipment, handlePreviewEquipment,
+    getCategoryColor, getCrewName, getLocationName, categories,
+    loadEquipment,
+  };
+
   return (
-    <Box sx={{ p: containerPadding }}>
+    <EquipmentPanelProvider value={contextValue}>
+    <Box
+      ref={dropZoneRef}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      sx={{ p: containerPadding, position: 'relative' }}
+    >
+      {/* Drag‑and‑drop overlay */}
+      {isDragging && (
+        <Box sx={{
+          position: 'absolute', inset: 0, zIndex: 100,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+          bgcolor: 'rgba(147,51,234,0.15)', backdropFilter: 'blur(4px)',
+          border: '3px dashed #9333ea', borderRadius: 4,
+        }}>
+          <CloudUploadIcon sx={{ fontSize: 64, color: '#c084fc' }} />
+          <Typography variant="h6" sx={{ color: '#c084fc', fontWeight: 700 }}>
+            Slipp bilde for å laste opp
+          </Typography>
+        </Box>
+      )}
       {loading && <LinearProgress sx={{ mb: 2, bgcolor: 'rgba(147,51,234,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#9333ea' } }} />}
-      
+
+      <ContextualNudgeBanner context="equipment" accentColor="#9333ea" />
+
       {/* Header with gradient background */}
       <Box sx={{ 
         display: 'flex', 
@@ -1926,19 +1927,26 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               <FilterIcon sx={{ color: filterOpen ? '#9333ea' : 'inherit' }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title={viewMode === 'grid' ? 'Tabellvisning' : 'Rutenettvisning'}>
-            <IconButton
-              onClick={() => setViewMode(viewMode === 'grid' ? 'table' : 'grid')}
-              sx={{ 
-                ...focusVisibleStyles, 
-                minWidth: TOUCH_TARGET_SIZE, 
+          <Tooltip title={viewMode === 'grid' ? 'Tabellvisning' : viewMode === 'table' ? 'Gallerivisning' : 'Rutenettvisning'}>
+            <Tabs
+              value={viewMode}
+              onChange={(_e, v: ViewMode) => setViewMode(v)}
+              sx={{
                 minHeight: TOUCH_TARGET_SIZE,
-                bgcolor: 'rgba(255,255,255,0.05)',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+                '& .MuiTab-root': {
+                  minHeight: TOUCH_TARGET_SIZE,
+                  minWidth: TOUCH_TARGET_SIZE,
+                  p: 0.5,
+                  color: 'rgba(255,255,255,0.6)',
+                  '&.Mui-selected': { color: '#c084fc' },
+                },
+                '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
               }}
             >
-              {viewMode === 'grid' ? <TableViewIcon /> : <GridViewIcon />}
-            </IconButton>
+              <Tab value="grid" icon={<GridViewIcon sx={{ fontSize: 20 }} />} aria-label="Rutenett" />
+              <Tab value="table" icon={<TableViewIcon sx={{ fontSize: 20 }} />} aria-label="Tabell" />
+              <Tab value="gallery" icon={<PhotoLibraryIcon sx={{ fontSize: 20 }} />} aria-label="Galleri" />
+            </Tabs>
           </Tooltip>
           <Button
             variant="contained"
@@ -1975,38 +1983,6 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               Maler
             </Button>
           </Tooltip>
-          <Tooltip title="Bla i produsent-katalog og importer utstyr til prosjektet">
-            <Button
-              variant="outlined"
-              startIcon={<SearchIcon />}
-              onClick={() => setCatalogBridgeOpen(true)}
-              sx={{
-                borderColor: '#9333ea',
-                color: '#9333ea',
-                minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#c084fc', bgcolor: 'rgba(147,51,234,0.1)' },
-                ...focusVisibleStyles,
-              }}
-            >
-              Katalog
-            </Button>
-          </Tooltip>
-          <Tooltip title="Administrer fastvare-oppdateringer for prosjektets utstyr">
-            <Button
-              variant="outlined"
-              startIcon={<SyncIcon />}
-              onClick={() => setFirmwarePanelOpen(true)}
-              sx={{
-                borderColor: '#2196f3',
-                color: '#2196f3',
-                minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#64b5f6', bgcolor: 'rgba(33,150,243,0.1)' },
-                ...focusVisibleStyles,
-              }}
-            >
-              Fastvare
-            </Button>
-          </Tooltip>
           <Tooltip title="Rapporter">
             <Button
               variant="outlined"
@@ -2023,6 +1999,35 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               Rapporter
             </Button>
           </Tooltip>
+          <Tooltip title={firmwareCheckedAt ? `Sist sjekket: ${new Date(firmwareCheckedAt).toLocaleString('nb-NO')}` : 'Sjekk firmware-oppdateringer'}>
+            <Button
+              variant="outlined"
+              startIcon={firmwareChecking ? <CircularProgress size={16} sx={{ color: '#ff9800' }} /> : <RefreshIcon />}
+              onClick={checkFirmwareUpdates}
+              disabled={firmwareChecking}
+              sx={{
+                borderColor: '#ff9800',
+                color: '#ff9800',
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { borderColor: '#ffb74d', bgcolor: 'rgba(255,152,0,0.1)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              {firmwareChecking
+                ? 'Sjekker firmware...'
+                : `Firmware${Object.keys(firmwareUpdatesByEquipmentId).length > 0 ? ` (${Object.keys(firmwareUpdatesByEquipmentId).length})` : ''}`}
+            </Button>
+          </Tooltip>
+          {firmwareUnmatchedCount > 0 && (
+            <Tooltip title={`${firmwareUnmatchedCount} utstyr uten firmware-info i katalogen. Legg til firmware-versjon manuelt for å dele med alle brukere.`}>
+              <Chip
+                icon={<WarningIcon />}
+                label={`${firmwareUnmatchedCount} mangler firmware`}
+                size="small"
+                sx={{ bgcolor: 'rgba(255,152,0,0.15)', color: '#ffb74d', borderColor: '#ff9800', border: '1px solid' }}
+              />
+            </Tooltip>
+          )}
           {offlineQueueCount > 0 && (
             <Tooltip title={isOnline ? `${offlineQueueCount} ventende operasjoner — klikk for å synkronisere` : `Offline — ${offlineQueueCount} operasjoner i kø`}>
               <Button
@@ -2121,6 +2126,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <Button
               size="small"
               onClick={toggleSelectAll}
+              startIcon={<SelectAllIcon />}
               sx={{ color: 'rgba(255,255,255,0.87)' }}
             >
               {selectedEquipmentIds.size === filteredEquipment.length ? 'Fjern alle' : 'Velg alle'}
@@ -2133,14 +2139,6 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               sx={{ color: '#9333ea', '&:hover': { bgcolor: 'rgba(147,51,234,0.15)' } }}
             >
               Endre status
-            </Button>
-            <Button
-              size="small"
-              startIcon={<CalendarTodayIcon />}
-              onClick={() => handleBulkAction('assign')}
-              sx={{ color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.15)' } }}
-            >
-              Tilordne dag
             </Button>
             <Button
               size="small"
@@ -2158,6 +2156,22 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             >
               Slett valgte
             </Button>
+            <Button
+              size="small"
+              startIcon={<PlaylistAddIcon />}
+              onClick={handleCreateTemplateFromEquipment}
+              sx={{ color: '#4caf50', '&:hover': { bgcolor: 'rgba(76,175,80,0.15)' } }}
+            >
+              Lag mal
+            </Button>
+            <Button
+              size="small"
+              startIcon={<SaveIcon />}
+              onClick={handleExportCSV}
+              sx={{ color: '#64b5f6', '&:hover': { bgcolor: 'rgba(100,181,246,0.15)' } }}
+            >
+              Eksporter utvalg
+            </Button>
             <IconButton
               size="small"
               onClick={() => setSelectedEquipmentIds(new Set())}
@@ -2169,244 +2183,62 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         )}
       </Box>
 
-      {/* Compact Stats Bar */}
+      {/* Quick Stats Bar */}
       {equipment.length > 0 && (
-        <Box sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          mb: 2,
-          px: 1,
+        <Box sx={{ 
+          display: 'flex', 
+          gap: 2, 
+          mb: 3, 
           flexWrap: 'wrap',
         }}>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 700, fontSize: '0.85rem' }}>
-            {equipment.reduce((s, e) => s + (e.quantity || 1), 0)} totalt
-          </Typography>
-          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }}>
-            Viser {filteredEquipment.length}
-          </Typography>
-          {assignedToday > 0 && (
-            <>
-              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
-              <Typography variant="body2" sx={{ color: '#4caf50', fontSize: '0.85rem', fontWeight: 600 }}>
-                {assignedToday} tildelt i dag
-              </Typography>
-            </>
-          )}
-          {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
-            <>
-              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>·</Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem' }}>
-                Filtrert fra {equipment.length}
-              </Typography>
-            </>
-          )}
-          <Box sx={{ flex: 1 }} />
-          <Tooltip title={sidebarOpen ? 'Skjul kategoriliste' : 'Vis kategoriliste'}>
-            <IconButton
-              size="small"
-              onClick={() => setSidebarOpen(prev => !prev)}
+          {[
+            { label: 'Tilgjengelig', value: equipment.filter(e => e.status === 'available').length, color: '#4caf50' },
+            { label: 'I bruk', value: equipment.filter(e => e.status === 'in_use').length, color: '#2196f3' },
+            { label: 'Vedlikehold', value: equipment.filter(e => e.status === 'maintenance').length, color: '#9333ea' },
+            { label: 'Totalt', value: equipment.reduce((sum, e) => sum + (e.quantity || 1), 0), color: '#9c27b0' },
+          ].map((stat) => (
+            <Box
+              key={stat.label}
               sx={{
-                color: sidebarOpen ? '#9333ea' : 'rgba(255,255,255,0.5)',
-                bgcolor: sidebarOpen ? 'rgba(147,51,234,0.12)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(147,51,234,0.15)' },
-                borderRadius: 1,
-                p: 0.5,
+                flex: '1 1 auto',
+                minWidth: 120,
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: `${stat.color}10`,
+                border: `1px solid ${stat.color}30`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                transition: 'all 0.2s',
+                cursor: 'default',
+                '&:hover': {
+                  bgcolor: `${stat.color}20`,
+                  transform: 'translateY(-1px)',
+                },
               }}
             >
-              <FilterIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
+              <Box sx={{ 
+                width: 40, 
+                height: 40, 
+                borderRadius: '50%', 
+                bgcolor: `${stat.color}20`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <Typography variant="h5" sx={{ color: stat.color, fontWeight: 700 }}>
+                  {stat.value}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>
+                  {stat.label}
+                </Typography>
+              </Box>
+            </Box>
+          ))}
         </Box>
       )}
-
-      {/* Sidebar + Main content row */}
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-        {/* ── Category Sidebar ── */}
-        {!isMobile && sidebarOpen && equipment.length > 0 && (
-          <Box sx={{
-            width: 220,
-            flexShrink: 0,
-            bgcolor: 'rgba(0,0,0,0.25)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: 3,
-            p: 1.5,
-            position: 'sticky',
-            top: 16,
-          }}>
-            <Typography variant="overline" sx={{
-              color: 'rgba(255,255,255,0.4)',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              letterSpacing: '0.12em',
-              px: 1,
-              display: 'block',
-              mb: 1,
-            }}>
-              Kategorier
-            </Typography>
-
-            {/* All equipment row */}
-            <Box
-              onClick={() => setCategoryFilter('all')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                px: 1,
-                py: 0.75,
-                borderRadius: 1.5,
-                cursor: 'pointer',
-                bgcolor: categoryFilter === 'all' ? 'rgba(147,51,234,0.18)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
-                transition: 'background 0.15s',
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BuildIcon sx={{ fontSize: 15, color: categoryFilter === 'all' ? '#9333ea' : 'rgba(255,255,255,0.5)' }} />
-                <Typography variant="body2" sx={{ color: categoryFilter === 'all' ? '#c084fc' : 'rgba(255,255,255,0.8)', fontWeight: categoryFilter === 'all' ? 700 : 400, fontSize: '0.82rem' }}>
-                  Alle
-                </Typography>
-              </Box>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem' }}>
-                {equipment.length}
-              </Typography>
-            </Box>
-
-            {/* Per-category rows */}
-            {categories.map(cat => {
-              const count = categoryCounts[cat] || 0;
-              const isExpanded = expandedCategories.has(cat);
-              const isActive = categoryFilter === cat;
-              return (
-                <Box key={cat}>
-                  <Box
-                    onClick={() => {
-                      setCategoryFilter(isActive ? 'all' : cat);
-                      setExpandedCategories(prev => {
-                        const next = new Set(prev);
-                        isExpanded ? next.delete(cat) : next.add(cat);
-                        return next;
-                      });
-                    }}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      px: 1,
-                      py: 0.75,
-                      borderRadius: 1.5,
-                      cursor: 'pointer',
-                      bgcolor: isActive ? 'rgba(147,51,234,0.18)' : 'transparent',
-                      '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' },
-                      transition: 'background 0.15s',
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(cat), flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.8)', fontWeight: isActive ? 700 : 400, fontSize: '0.82rem' }}>
-                        {cat}
-                      </Typography>
-                    </Box>
-                    <Typography variant="caption" sx={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)', fontSize: '0.72rem', fontWeight: isActive ? 700 : 400 }}>
-                      {count}
-                    </Typography>
-                  </Box>
-
-                  {/* Expanded: show first 5 items in this category */}
-                  {isExpanded && (
-                    <Box sx={{ pl: 2.5, pb: 0.5 }}>
-                      {equipment
-                        .filter(e => e.category === cat)
-                        .slice(0, 5)
-                        .map(e => (
-                          <Box
-                            key={e.id}
-                            onClick={(ev) => { ev.stopPropagation(); handleOpenDialog(e); }}
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 0.75,
-                              py: 0.4,
-                              px: 0.5,
-                              borderRadius: 1,
-                              cursor: 'pointer',
-                              '&:hover': { bgcolor: 'rgba(147,51,234,0.08)' },
-                            }}
-                          >
-                            <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: getCategoryColor(cat), flexShrink: 0 }} />
-                            <Typography
-                              variant="caption"
-                              sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                            >
-                              {e.name}
-                            </Typography>
-                          </Box>
-                        ))}
-                      {equipment.filter(e => e.category === cat).length > 5 && (
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', pl: 0.5 }}>
-                          +{equipment.filter(e => e.category === cat).length - 5} til
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
-                </Box>
-              );
-            })}
-
-            <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.07)' }} />
-
-            {/* Maintenance shortcut */}
-            <Box
-              onClick={() => setStatusFilter('maintenance')}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                px: 1,
-                py: 0.75,
-                borderRadius: 1.5,
-                cursor: 'pointer',
-                bgcolor: statusFilter === 'maintenance' ? 'rgba(255,152,0,0.15)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(255,152,0,0.1)' },
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <WarningIcon sx={{ fontSize: 15, color: '#ff9800' }} />
-                <Typography variant="body2" sx={{ color: statusFilter === 'maintenance' ? '#ffb74d' : 'rgba(255,255,255,0.7)', fontSize: '0.82rem' }}>
-                  Vedlikehold
-                </Typography>
-              </Box>
-              <Typography variant="caption" sx={{ color: 'rgba(255,152,0,0.7)', fontSize: '0.72rem' }}>
-                {equipment.filter(e => e.status === 'maintenance').length}
-              </Typography>
-            </Box>
-
-            {/* Help / Tips */}
-            <Box
-              onClick={() => setFilterOpen(true)}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 1,
-                py: 0.75,
-                borderRadius: 1.5,
-                cursor: 'pointer',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-              }}
-            >
-              <BookmarkIcon sx={{ fontSize: 15, color: 'rgba(255,255,255,0.4)' }} />
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.82rem' }}>
-                Hjelp &amp; filter
-              </Typography>
-            </Box>
-          </Box>
-        )}
-
-        {/* ── Main content column ── */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
 
       <Collapse in={filterOpen}>
         <Box sx={{ 
@@ -2525,47 +2357,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         </Box>
       </Collapse>
 
-      {/* Active filter chips */}
-      {(searchQuery || categoryFilter !== 'all' || statusFilter !== 'all') && (
-        <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          {searchQuery && (
-            <Chip
-              label={`Søk: "${searchQuery}"`}
-              size="small"
-              onDelete={() => setSearchQuery('')}
-              sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', borderColor: 'rgba(147,51,234,0.3)', border: '1px solid' }}
-            />
-          )}
-          {categoryFilter !== 'all' && (
-            <Chip
-              label={`Kategori: ${categoryFilter}`}
-              size="small"
-              icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(categoryFilter), ml: '8px !important' }} />}
-              onDelete={() => setCategoryFilter('all')}
-              sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', borderColor: 'rgba(147,51,234,0.3)', border: '1px solid' }}
-            />
-          )}
-          {statusFilter !== 'all' && (
-            <Chip
-              label={STATUS_LABELS[statusFilter as keyof typeof STATUS_LABELS] ?? statusFilter}
-              size="small"
-              onDelete={() => setStatusFilter('all')}
-              sx={{ bgcolor: `${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9333ea'}20`, color: STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#c084fc', border: `1px solid ${STATUS_COLORS[statusFilter as keyof typeof STATUS_COLORS] ?? '#9333ea'}40` }}
-            />
-          )}
-          <Chip
-            label="Nullstill"
-            size="small"
-            onClick={() => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); }}
-            sx={{ bgcolor: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.15)', border: '1px solid', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }, cursor: 'pointer' }}
-          />
-        </Box>
-      )}
-
       {viewMode === 'grid' ? (
         <Grid container spacing={2.5}>
           {filteredEquipment.length === 0 ? (
-            <Grid size={{ xs: 12 }}>
+            <Grid xs={12}>
               <RoleRoomEmptyState
                 iconSrc={equipPng}
                 title="Ingen utstyr funnet"
@@ -2579,7 +2374,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Grid>
           ) : (
             filteredEquipment.map((eq, index) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={eq.id}>
+            <Grid xs={12} sm={6} md={4} lg={3} key={eq.id}>
               <Grow in timeout={200 + index * 50}>
               <Card sx={{
                 bgcolor: 'rgba(28, 33, 40, 0.8)',
@@ -2658,9 +2453,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      gap: 1,
                       borderBottom: '1px solid rgba(255,255,255,0.05)',
                       position: 'relative',
                     }}>
+                      <ImageIcon sx={{ fontSize: 36, color: getCategoryColor(eq.category), opacity: 0.3 }} />
                       <BuildIcon sx={{ fontSize: 48, color: getCategoryColor(eq.category), opacity: 0.5 }} />
                     </Box>
                   )}
@@ -2724,6 +2521,17 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       />
                     </Tooltip>
                   )}
+                  {!eq.is_global && eq.project_id && (
+                    <Tooltip title="Prosjekt-spesifikt utstyr">
+                      <LockIcon sx={{
+                        position: 'absolute',
+                        bottom: 12,
+                        left: 12,
+                        fontSize: 16,
+                        color: 'rgba(255,255,255,0.4)',
+                      }} />
+                    </Tooltip>
+                  )}
                 </Box>
                 
                 <CardContent sx={{ flex: 1, p: 2 }}>
@@ -2744,11 +2552,29 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   {eq.brand && (
                     <Typography variant="body2" sx={{ 
                       color: 'rgba(255,255,255,0.87)', 
-                      mb: 1.5,
+                      mb: 0.5,
                       fontSize: '0.8rem',
                     }}>
                       {eq.brand} {eq.model && `• ${eq.model}`}
                     </Typography>
+                  )}
+
+                  {/* Serial number with copy button */}
+                  {eq.serial_number && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', fontFamily: 'monospace' }}>
+                        SN: {eq.serial_number}
+                      </Typography>
+                      <Tooltip title="Kopier serienummer">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(eq.serial_number || ''); showSuccess('Serienummer kopiert'); }}
+                          sx={{ p: 0.25, color: 'rgba(255,255,255,0.4)', '&:hover': { color: '#9333ea' } }}
+                        >
+                          <CopyIcon sx={{ fontSize: 12 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   )}
                   
                   <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
@@ -2766,19 +2592,79 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       />
                     )}
                     <Chip
+                      icon={eq.condition === 'excellent' ? <StarIcon sx={{ fontSize: '14px !important' }} /> : undefined}
                       label={CONDITION_LABELS[eq.condition] || eq.condition}
                       size="small"
                       sx={{
-                        bgcolor: `${CONDITION_COLORS[eq.condition]}20` || 'rgba(100,100,100,0.2)',
+                        bgcolor: `${(CONDITION_COLORS[eq.condition] || '#999')}20`,
                         color: CONDITION_COLORS[eq.condition] || '#999',
                         fontSize: '0.7rem',
                         fontWeight: 600,
                         border: `1px solid ${CONDITION_COLORS[eq.condition]}40`,
+                        '& .MuiChip-icon': { color: CONDITION_COLORS[eq.condition] || '#999' },
                       }}
                     />
+                    {eq.status === 'retired' && (
+                      <Chip
+                        icon={<BlockIcon sx={{ fontSize: '14px !important' }} />}
+                        label="Utfaset"
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(158,158,158,0.15)',
+                          color: '#9e9e9e',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          border: '1px solid rgba(158,158,158,0.3)',
+                          '& .MuiChip-icon': { color: '#9e9e9e' },
+                        }}
+                      />
+                    )}
+                    {firmwareUpdatesByEquipmentId[eq.id] && (() => {
+                      const fw = firmwareUpdatesByEquipmentId[eq.id];
+                      const statusConfig = {
+                        'up-to-date': { icon: <CheckCircleIcon sx={{ fontSize: 14 }} />, label: 'Oppdatert', bg: 'rgba(76,175,80,0.2)', color: '#66bb6a', border: 'rgba(76,175,80,0.4)' },
+                        'update-available': { icon: <WarningIcon sx={{ fontSize: 14 }} />, label: `FW ${fw.latestVersion || 'ny'}`, bg: 'rgba(255,152,0,0.2)', color: '#ffb74d', border: 'rgba(255,152,0,0.4)' },
+                        'unknown': { icon: <OfflineIcon sx={{ fontSize: 14 }} />, label: 'Ukjent', bg: 'rgba(158,158,158,0.2)', color: '#bdbdbd', border: 'rgba(158,158,158,0.4)' },
+                        'needs-mapping': { icon: <MissingItemIcon sx={{ fontSize: 14 }} />, label: 'Trenger kobling', bg: 'rgba(156,39,176,0.2)', color: '#ce93d8', border: 'rgba(156,39,176,0.4)' },
+                      }[fw.status] || { icon: null, label: 'Firmware', bg: 'rgba(158,158,158,0.2)', color: '#bdbdbd', border: 'rgba(158,158,158,0.4)' };
+                      const tooltipText = fw.status === 'update-available'
+                        ? `Oppdatering: v${fw.latestVersion} (${fw.severity || 'recommended'})`
+                        : fw.status === 'up-to-date'
+                        ? `Firmware v${fw.currentVersion || fw.latestVersion} er oppdatert`
+                        : fw.status === 'needs-mapping'
+                        ? 'Kunne ikke matche modell – klikk for å koble'
+                        : fw.message || 'Ingen firmware-informasjon';
+                      return (
+                        <Tooltip title={tooltipText}>
+                          <Chip
+                            icon={statusConfig.icon}
+                            label={statusConfig.label}
+                            size="small"
+                            sx={{
+                              bgcolor: statusConfig.bg,
+                              color: statusConfig.color,
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              border: `1px solid ${statusConfig.border}`,
+                            }}
+                          />
+                        </Tooltip>
+                      );
+                    })()}
+                    {firmwareUpdatesByEquipmentId[eq.id]?.downloadUrl && (
+                      <Tooltip title={isScrapeBlocked(eq.brand || '') ? 'Åpne produsentens nedlastingsside' : 'Last ned firmware'}>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => { e.stopPropagation(); window.open(firmwareUpdatesByEquipmentId[eq.id].downloadUrl, '_blank'); }}
+                          sx={{ p: 0.25, color: '#64b5f6' }}
+                        >
+                          <OpenInNewIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </Stack>
                   
-                  {eq.location_name && (
+                  {(eq.location_name || (eq.primary_location_id && getLocationName(eq.primary_location_id))) && (
                     <Box sx={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -2791,11 +2677,47 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     }}>
                       <LocationIcon sx={{ fontSize: 16, color: '#64b5f6' }} />
                       <Typography variant="body2" sx={{ color: '#90caf9', fontSize: '0.75rem' }}>
-                        {eq.location_name}
+                        {eq.location_name || getLocationName(eq.primary_location_id || '')}
                       </Typography>
                     </Box>
                   )}
                   
+                  {/* Date info indicator */}
+                  {eq.created_at && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
+                      <CalendarTodayIcon sx={{ fontSize: 14, color: 'rgba(255,255,255,0.4)' }} />
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>
+                        Lagt til: {new Date(eq.created_at).toLocaleDateString('nb-NO')}
+                        {eq.updated_at && eq.updated_at !== eq.created_at
+                          ? ` • Oppdatert: ${new Date(eq.updated_at).toLocaleDateString('nb-NO')}`
+                          : ''}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Firmware download link indicator */}
+                  {firmwareUpdatesByEquipmentId[eq.id]?.downloadUrl && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
+                      <LinkIcon sx={{ fontSize: 14, color: '#64b5f6' }} />
+                      <Typography
+                        variant="caption"
+                        component="a"
+                        href={firmwareUpdatesByEquipmentId[eq.id].downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                        sx={{
+                          color: '#64b5f6',
+                          fontSize: '0.7rem',
+                          textDecoration: 'none',
+                          '&:hover': { textDecoration: 'underline' },
+                        }}
+                      >
+                        Firmware nedlasting
+                      </Typography>
+                    </Box>
+                  )}
+
                   {eq.assignees && eq.assignees.length > 0 && (
                     <Box sx={{ mt: 'auto' }}>
                       <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
@@ -2981,6 +2903,97 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Grid>
           )))}
         </Grid>
+      ) : viewMode === 'gallery' ? (
+        /* Gallery view using ImageList for visual browsing */
+        <ImageList
+          cols={isDesktop ? 4 : isTablet ? 3 : isMobile ? 1 : 2}
+          gap={16}
+          sx={{ mt: 0, overflow: 'visible' }}
+        >
+          {filteredEquipment.length === 0 ? (
+            <ImageListItem cols={isDesktop ? 4 : isTablet ? 3 : isMobile ? 1 : 2}>
+              <RoleRoomEmptyState
+                iconSrc={equipPng}
+                title="Ingen utstyr funnet"
+                subtitle={searchQuery || categoryFilter !== 'all' || statusFilter !== 'all'
+                  ? 'Prøv å endre søkekriteriene'
+                  : 'Legg til ditt første utstyr for å komme i gang'}
+                color="#9333ea"
+                buttonLabel="Legg til utstyr"
+                onAction={() => handleOpenDialog()}
+              />
+            </ImageListItem>
+          ) : (
+            filteredEquipment.map((eq) => (
+              <ImageListItem
+                key={eq.id}
+                onClick={() => handlePreviewEquipment(eq)}
+                sx={{
+                  cursor: 'pointer',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  border: selectedEquipmentIds.has(eq.id)
+                    ? '2px solid #9333ea'
+                    : '1px solid rgba(255,255,255,0.08)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    borderColor: 'rgba(147,51,234,0.5)',
+                    transform: 'scale(1.02)',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                  },
+                }}
+              >
+                {eq.image_url ? (
+                  <img
+                    src={eq.image_url}
+                    alt={eq.name}
+                    loading="lazy"
+                    style={{ height: 220, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <Box sx={{
+                    height: 220,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: `${getCategoryColor(eq.category)}15`,
+                  }}>
+                    <BuildIcon sx={{ fontSize: 64, color: getCategoryColor(eq.category), opacity: 0.4 }} />
+                  </Box>
+                )}
+                <ImageListItemBar
+                  title={eq.name}
+                  subtitle={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      {eq.brand && (
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                          {eq.brand} {eq.model && `• ${eq.model}`}
+                        </Typography>
+                      )}
+                      <Box sx={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        bgcolor: STATUS_COLORS[eq.status] || '#666',
+                        flexShrink: 0,
+                      }} />
+                    </Box>
+                  }
+                  actionIcon={
+                    <IconButton
+                      onClick={(e) => { e.stopPropagation(); handleOpenDialog(eq); }}
+                      sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#c084fc' } }}
+                    >
+                      <EditIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  }
+                  sx={{
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%)',
+                    '& .MuiImageListItemBar-title': { fontWeight: 600, fontSize: '0.9rem' },
+                  }}
+                />
+              </ImageListItem>
+            ))
+          )}
+        </ImageList>
       ) : (
         <TableContainer component={Paper} sx={{ 
           bgcolor: 'rgba(28, 33, 40, 0.8)', 
@@ -3035,6 +3048,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               {filteredEquipment.map((eq, index) => (
                 <TableRow 
                   key={eq.id} 
+                  aria-label={`Utstyrsrad ${index + 1}`}
                   sx={{ 
                     transition: 'all 0.2s',
                     '&:hover': { bgcolor: 'rgba(147,51,234,0.05)' },
@@ -3095,16 +3109,35 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     {eq.brand || eq.model ? `${eq.brand || ''} ${eq.model || ''}`.trim() : '-'}
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <Chip
-                      label={STATUS_LABELS[eq.status] || eq.status}
-                      size="small"
-                      sx={{ 
-                        bgcolor: `${STATUS_COLORS[eq.status]}20`, 
-                        color: STATUS_COLORS[eq.status], 
-                        fontWeight: 600,
-                        border: `1px solid ${STATUS_COLORS[eq.status]}40`,
-                      }}
-                    />
+                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                      <Chip
+                        label={STATUS_LABELS[eq.status] || eq.status}
+                        size="small"
+                        sx={{ 
+                          bgcolor: `${STATUS_COLORS[eq.status]}20`, 
+                          color: STATUS_COLORS[eq.status], 
+                          fontWeight: 600,
+                          border: `1px solid ${STATUS_COLORS[eq.status]}40`,
+                        }}
+                      />
+                      {firmwareUpdatesByEquipmentId[eq.id] && (() => {
+                        const fw = firmwareUpdatesByEquipmentId[eq.id];
+                        const cfg = {
+                          'up-to-date': { icon: <CheckCircleIcon sx={{ fontSize: 14 }} />, label: 'FW OK', bg: 'rgba(76,175,80,0.2)', color: '#66bb6a', border: 'rgba(76,175,80,0.4)' },
+                          'update-available': { icon: <WarningIcon sx={{ fontSize: 14 }} />, label: `FW ${fw.latestVersion || 'ny'}`, bg: 'rgba(255,152,0,0.2)', color: '#ffb74d', border: 'rgba(255,152,0,0.4)' },
+                          'unknown': { icon: <OfflineIcon sx={{ fontSize: 14 }} />, label: 'FW ?', bg: 'rgba(158,158,158,0.2)', color: '#bdbdbd', border: 'rgba(158,158,158,0.4)' },
+                          'needs-mapping': { icon: <MissingItemIcon sx={{ fontSize: 14 }} />, label: 'Koble', bg: 'rgba(156,39,176,0.2)', color: '#ce93d8', border: 'rgba(156,39,176,0.4)' },
+                        }[fw.status] || { icon: null, label: 'FW', bg: 'rgba(158,158,158,0.2)', color: '#bdbdbd', border: 'rgba(158,158,158,0.4)' };
+                        return (
+                          <Chip
+                            icon={cfg.icon}
+                            label={cfg.label}
+                            size="small"
+                            sx={{ bgcolor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}
+                          />
+                        );
+                      })()}
+                    </Stack>
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <Chip
@@ -3130,10 +3163,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     />
                   </TableCell>
                   <TableCell sx={{ color: 'rgba(255,255,255,0.87)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    {eq.location_name ? (
+                    {(eq.location_name || (eq.primary_location_id && getLocationName(eq.primary_location_id))) ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <LocationIcon sx={{ fontSize: 14, color: '#64b5f6' }} />
-                        <Typography variant="body2" sx={{ color: '#90caf9' }}>{eq.location_name}</Typography>
+                        <Typography variant="body2" sx={{ color: '#90caf9' }}>
+                          {eq.location_name || getLocationName(eq.primary_location_id || '')}
+                        </Typography>
                       </Box>
                     ) : '-'}
                   </TableCell>
@@ -3221,3252 +3256,148 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         </TableContainer>
       )}
 
-        </Box>{/* end main content column */}
-      </Box>{/* end sidebar + main row */}
+      {/* Scene Equipment Advisor */}
+      <Divider sx={{ my: 4 }} />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+        <MovieIcon sx={{ fontSize: 24, color: '#c084fc' }} />
+        <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.1rem' }}>
+          Scene-utstyrsrådgiver
+        </Typography>
+      </Box>
+      <SceneEquipmentAdvisor projectId={projectId} />
 
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            overflow: 'hidden',
-          } 
-        }}
-      >
-        <DialogTitle id={dialogTitleId} sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(109,40,217,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
-            }}>
-              <BuildIcon sx={{ color: '#fff', fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                {editingEquipment ? 'Rediger utstyr' : 'Legg til nytt utstyr'}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                {editingEquipment ? 'Oppdater informasjon om utstyret' : 'Fyll inn detaljer for det nye utstyret'}
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton 
-            onClick={() => setDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2, px: 3 }}>
-          <Grid container spacing={2.5}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="Navn *"
-                value={formData.name}
-                onChange={(e) => {
-                  setFormData({ ...formData, name: e.target.value });
-                  if (formErrors.name) setFormErrors({ ...formErrors, name: '' });
-                }}
-                error={!!formErrors.name}
-                helperText={formErrors.name}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: formErrors.name ? '#f44336' : 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: formErrors.name ? '#f44336' : '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: formErrors.name ? '#f44336' : 'rgba(255,255,255,0.6)' },
-                  '& .MuiFormHelperText-root': { color: '#f44336' },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kategori</InputLabel>
-                <Select
-                  value={formData.category}
-                  onChange={(e) => {
-                    if (e.target.value === '__add_new__') {
-                      setNewCategoryDialogOpen(true);
-                    } else {
-                      setFormData({ ...formData, category: e.target.value });
-                    }
-                  }}
-                  label="Kategori"
-                  sx={{ 
-                    color: '#fff', 
-                    bgcolor: 'rgba(0,0,0,0.2)',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                  }}
-                  MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)', maxHeight: 350 } }
-                  }}
-                >
-                  {allCategories.map(cat => (
-                    <MenuItem key={cat} value={cat}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: getCategoryColor(cat) }} />
-                          {cat}
-                        </Box>
-                        {customCategories.includes(cat) && (
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveCustomCategory(cat);
-                            }}
-                            sx={{ 
-                              p: 0.5, 
-                              color: 'rgba(255,255,255,0.87)', 
-                              '&:hover': { color: '#f44336' } 
-                            }}
-                          >
-                            <CloseIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        )}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                  <Divider sx={{ my: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
-                  <MenuItem value="__add_new__" sx={{ color: '#4caf50' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <AddIcon sx={{ fontSize: 18 }} />
-                      Legg til ny kategori...
-                    </Box>
-                  </MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="Merke"
-                value={formData.brand}
-                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="Modell"
-                value={formData.model}
-                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="Serienummer"
-                value={formData.serialNumber}
-                onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Antall"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                inputProps={{ min: 1 }}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Status</InputLabel>
-                <Select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as Equipment['status'] })}
-                  label="Status"
-                  sx={{ 
-                    color: '#fff', 
-                    bgcolor: 'rgba(0,0,0,0.2)',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                  }}
-                  MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
-                  }}
-                >
-                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                    <MenuItem key={value} value={value}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: STATUS_COLORS[value] }} />
-                        {label}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilstand</InputLabel>
-                <Select
-                  value={formData.condition}
-                  onChange={(e) => setFormData({ ...formData, condition: e.target.value as Equipment['condition'] })}
-                  label="Tilstand"
-                  sx={{ 
-                    color: '#fff', 
-                    bgcolor: 'rgba(0,0,0,0.2)',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                  }}
-                  MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
-                  }}
-                >
-                  {Object.entries(CONDITION_LABELS).map(([value, label]) => (
-                    <MenuItem key={value} value={value}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: CONDITION_COLORS[value] }} />
-                        {label}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth>
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lagerlokasjon</InputLabel>
-                <Select
-                  value={formData.primaryLocationId}
-                  onChange={(e) => setFormData({ ...formData, primaryLocationId: e.target.value })}
-                  label="Lagerlokasjon"
-                  sx={{ 
-                    color: '#fff', 
-                    bgcolor: 'rgba(0,0,0,0.2)',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                  }}
-                  MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
-                  }}
-                >
-                  <MenuItem value="">Ingen</MenuItem>
-                  {locations.map(loc => (
-                    <MenuItem key={loc.id} value={loc.id}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <LocationIcon sx={{ fontSize: 16, color: '#64b5f6' }} />
-                        {loc.name}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Beskrivelse"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                multiline
-                rows={2}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Notater"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                multiline
-                rows={2}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Grid>
-            
-            {/* Global Equipment Toggle */}
-            <Grid size={{ xs: 12 }}>
-              <Box sx={{ 
-                p: 2, 
-                borderRadius: 2, 
-                bgcolor: formData.isGlobal ? 'rgba(33,150,243,0.1)' : 'rgba(0,0,0,0.2)',
-                border: formData.isGlobal ? '1px solid rgba(33,150,243,0.3)' : '1px solid rgba(255,255,255,0.08)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                transition: 'all 0.2s',
-              }}>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>
-                    Globalt utstyr
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {formData.isGlobal 
-                      ? 'Tilgjengelig i alle prosjekter' 
-                      : 'Kun tilknyttet dette prosjektet'}
-                  </Typography>
-                </Box>
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 1,
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setFormData({ ...formData, isGlobal: !formData.isGlobal })}
-                >
-                  <Typography variant="body2" sx={{ color: formData.isGlobal ? '#2196f3' : 'rgba(255,255,255,0.5)' }}>
-                    {formData.isGlobal ? 'Ja' : 'Nei'}
-                  </Typography>
-                  <Box sx={{
-                    width: 48,
-                    height: 26,
-                    borderRadius: 13,
-                    bgcolor: formData.isGlobal ? '#2196f3' : 'rgba(255,255,255,0.2)',
-                    position: 'relative',
-                    transition: 'all 0.2s',
-                    cursor: 'pointer',
-                  }}>
-                    <Box sx={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
-                      bgcolor: '#fff',
-                      position: 'absolute',
-                      top: 2,
-                      left: formData.isGlobal ? 24 : 2,
-                      transition: 'all 0.2s',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                    }} />
-                  </Box>
-                </Box>
-              </Box>
-            </Grid>
-            
-            {/* Image Picker Section with Drag & Drop */}
-            <Grid size={{ xs: 12 }}>
-              <Box 
-                ref={dropZoneRef}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                sx={{ 
-                  p: 2, 
-                  borderRadius: 2, 
-                  bgcolor: isDragging ? 'rgba(147,51,234,0.1)' : 'rgba(0,0,0,0.2)',
-                  border: isDragging ? '2px dashed #9333ea' : '1px solid rgba(255,255,255,0.08)',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 1.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  Utstyrsbilde
-                  {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#9333ea', color: '#fff', fontSize: '0.7rem' }} />}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-                  {/* Image Preview */}
-                  <Box sx={{
-                    width: 140,
-                    height: 100,
-                    bgcolor: 'rgba(255,255,255,0.03)',
-                    borderRadius: 2,
-                    border: isDragging ? '2px solid #9333ea' : '2px dashed rgba(255,255,255,0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      borderColor: 'rgba(147,51,234,0.3)',
-                    },
-                  }}>
-                    {formData.imageUrl ? (
-                      <img
-                        src={formData.imageUrl}
-                        alt="Preview"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={(e) => { (e.target as HTMLImageElement).src = ''; }}
-                      />
-                    ) : (
-                    <ImageIcon sx={{ fontSize: 32, color: 'rgba(255,255,255,0.2)' }} />
-                    )}
-                  </Box>
-                
-                  {/* Image Actions */}
-                  <Stack spacing={1.5} sx={{ flex: 1 }}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<SearchIcon />}
-                      onClick={() => {
-                        setImagePickerOpen(true);
-                        setImagePickerTab(0);
-                        setImageSearchQuery(formData.name || formData.category || '');
-                      }}
-                      sx={{ 
-                        borderColor: 'rgba(147,51,234,0.5)', 
-                        color: '#9333ea',
-                        borderRadius: 2,
-                        py: 1,
-                        justifyContent: 'flex-start',
-                        '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
-                      }}
-                    >
-                      Søk bilder
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<CloudUploadIcon />}
-                      onClick={() => fileInputRef.current?.click()}
-                      sx={{ 
-                        borderColor: 'rgba(76,175,80,0.5)', 
-                        color: '#4caf50',
-                        borderRadius: 2,
-                        py: 1,
-                        justifyContent: 'flex-start',
-                        '&:hover': { borderColor: '#4caf50', bgcolor: 'rgba(76,175,80,0.1)' },
-                      }}
-                    >
-                      Last opp fil
-                    </Button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={handleFileUpload}
-                    />
-                    <TextField
-                      size="small"
-                      placeholder="Eller lim inn bilde-URL..."
-                      value={formData.imageUrl}
-                      onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <LinkIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 18 }} />
-                          </InputAdornment>
-                        ),
-                        endAdornment: formData.imageUrl && (
-                          <InputAdornment position="end">
-                            <IconButton
-                              size="small"
-                              onClick={() => setFormData({ ...formData, imageUrl: '' })}
-                              sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#f44336' } }}
-                            >
-                              <CloseIcon sx={{ fontSize: 16 }} />
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ 
-                        '& .MuiOutlinedInput-root': { 
-                          bgcolor: 'rgba(0,0,0,0.2)', 
-                          color: '#fff',
-                          borderRadius: 2,
-                          '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                          '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                        },
-                      }}
-                    />
-                  </Stack>
-                </Box>
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5, 
-          px: 3,
-          gap: 1.5,
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
-        }}>
-          <Button
-            onClick={() => setDialogOpen(false)}
-            startIcon={<CancelIcon />}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              minHeight: TOUCH_TARGET_SIZE, 
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-              ...focusVisibleStyles,
-            }}
-          >
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleSave}
-            variant="contained"
-            startIcon={<SaveIcon />}
-            sx={{
-              background: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
-              color: '#000',
-              fontWeight: 700,
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 4,
-              boxShadow: '0 4px 14px rgba(147,51,234,0.3)',
-              '&:hover': { 
-                background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)',
-                boxShadow: '0 6px 20px rgba(147,51,234,0.4)',
-              },
-              ...focusVisibleStyles,
-            }}
-          >
-            {editingEquipment ? 'Oppdater' : 'Lagre'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Equipment Intelligence Engines */}
+      <Divider sx={{ my: 4 }} />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+        <CalendarTodayIcon sx={{ fontSize: 24, color: '#c084fc' }} />
+        <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.1rem' }}>
+          Utstyrsintelligens
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#64748b', ml: 1 }}>
+          Prediktiv analyse · Kompatibilitet · Vektsimulering · Stilprofil
+        </Typography>
+      </Box>
+      <EquipmentIntelligence projectId={projectId} />
 
+      {/* Quick Preview Dialog */}
       <Dialog
-        open={assignDialogOpen}
-        onClose={() => setAssignDialogOpen(false)}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
         maxWidth="sm"
         fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(28, 33, 40, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(147,51,234,0.2)',
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            overflow: 'hidden',
-          } 
+          },
         }}
       >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(33,150,243,0.3)',
-            }}>
-              <PersonIcon sx={{ color: '#fff', fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                Tilordne utstyrsansvarlig
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Velg hvem som skal ha ansvar for utstyret
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton 
-            onClick={() => setAssignDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2, px: 3 }}>
-          <Box sx={{ 
-            p: 2, 
-            mb: 2.5, 
-            borderRadius: 2, 
-            bgcolor: 'rgba(33,150,243,0.08)',
-            border: '1px solid rgba(33,150,243,0.2)',
-          }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-              Valgt utstyr: <strong style={{ color: '#fff' }}>{selectedEquipmentForAssign?.name}</strong>
-            </Typography>
-          </Box>
-          <FormControl fullWidth>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Velg teammedlem</InputLabel>
-            <Select
-              value={selectedCrewId}
-              onChange={(e) => setSelectedCrewId(e.target.value)}
-              label="Velg teammedlem"
-              sx={{ 
-                color: '#fff', 
-                bgcolor: 'rgba(0,0,0,0.2)',
-                borderRadius: 2,
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(33,150,243,0.3)' },
-              }}
-              MenuProps={{
-                PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
-              }}
-            >
-              {crewMembers.map(crew => (
-                <MenuItem key={crew.id} value={crew.id}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box sx={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      bgcolor: 'rgba(33,150,243,0.2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      <PersonIcon sx={{ fontSize: 16, color: '#2196f3' }} />
-                    </Box>
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>{crew.name}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>{crew.role}</Typography>
-                    </Box>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5, 
-          px: 3,
-          gap: 1.5,
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
-        }}>
-          <Button
-            onClick={() => setAssignDialogOpen(false)}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-            }}
-          >
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleAssign}
-            variant="contained"
-            disabled={!selectedCrewId}
-            sx={{
-              background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+        {previewEquipment && (
+          <>
+            <DialogTitle sx={{
               color: '#fff',
               fontWeight: 700,
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 4,
-              boxShadow: '0 4px 14px rgba(33,150,243,0.3)',
-              '&:hover': { 
-                background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)',
-                boxShadow: '0 6px 20px rgba(33,150,243,0.4)',
-              },
-              '&.Mui-disabled': {
-                bgcolor: 'rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.87)',
-              },
-            }}
-          >
-            Tilordne
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={bookingsDialogOpen}
-        onClose={() => setBookingsDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            overflow: 'hidden',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76,175,80,0.3)',
+              gap: 1.5,
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
             }}>
-              <ScheduleIcon sx={{ color: '#fff', fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                Bookinger
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                {selectedEquipmentBookings?.name}
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton 
-            onClick={() => setBookingsDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2, px: 3 }}>
-          {bookings.length === 0 && availability.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 5, color: 'rgba(255,255,255,0.87)' }}>
-              <Box sx={{
-                width: 72,
-                height: 72,
-                borderRadius: '50%',
-                bgcolor: 'rgba(76,175,80,0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mx: 'auto',
-                mb: 2,
-              }}>
-                <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50' }} />
-              </Box>
-              <Typography sx={{ fontWeight: 500 }}>Ingen aktive bookinger eller blokkeringer</Typography>
-              <Typography variant="body2" sx={{ mt: 0.5 }}>Dette utstyret er tilgjengelig for booking</Typography>
-            </Box>
-          ) : (
-            <Stack spacing={2}>
-              {bookings.map(booking => (
-                <Box key={booking.id} sx={{ 
-                  p: 2.5, 
-                  bgcolor: 'rgba(33, 150, 243, 0.08)', 
+              <BuildIcon sx={{ color: '#9333ea' }} />
+              {previewEquipment.name}
+            </DialogTitle>
+            <DialogContent sx={{ mt: 2 }}>
+              {previewEquipment.image_url && (
+                <Box sx={{
+                  mb: 2,
                   borderRadius: 2,
-                  border: '1px solid rgba(33, 150, 243, 0.2)',
-                  transition: 'all 0.2s',
-                  '&:hover': { bgcolor: 'rgba(33, 150, 243, 0.12)' },
+                  overflow: 'hidden',
+                  border: '1px solid rgba(255,255,255,0.1)',
                 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography sx={{ fontWeight: 600 }}>
-                      {booking.purpose || 'Booking'}
-                    </Typography>
-                    <Chip
-                      label={booking.status}
-                      size="small"
-                      sx={{ 
-                        bgcolor: booking.status === 'confirmed' ? '#4caf50' : '#9333ea',
-                        color: '#fff',
-                        fontWeight: 600,
-                        borderRadius: 1.5,
-                      }}
-                    />
-                  </Box>
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
-                    {booking.start_date} - {booking.end_date}
-                  </Typography>
+                  <img
+                    src={previewEquipment.image_url}
+                    alt={previewEquipment.name}
+                    style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }}
+                  />
                 </Box>
-              ))}
-              {availability.map(avail => (
-                <Box key={avail.id} sx={{ 
-                  p: 2.5, 
-                  bgcolor: avail.status === 'service' ? 'rgba(147, 51, 234, 0.08)' : 'rgba(244, 67, 54, 0.08)', 
-                  borderRadius: 2,
-                  border: `1px solid ${avail.status === 'service' ? 'rgba(147, 51, 234, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
-                  transition: 'all 0.2s',
-                  '&:hover': { 
-                    bgcolor: avail.status === 'service' ? 'rgba(147, 51, 234, 0.12)' : 'rgba(244, 67, 54, 0.12)',
-                  },
-                }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {avail.status === 'service' ? (
-                        <WarningIcon sx={{ color: '#9333ea' }} />
-                      ) : (
-                        <BlockIcon sx={{ color: '#f44336' }} />
-                      )}
-                      <Typography sx={{ fontWeight: 600 }}>
-                        {avail.status === 'service' ? 'Service' : 'Utilgjengelig'}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
-                    {avail.start_date} - {avail.end_date}
-                  </Typography>
-                  {avail.reason && (
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 0.5 }}>
-                      Grunn: {avail.reason}
-                    </Typography>
-                  )}
-                </Box>
-              ))}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5, 
-          px: 3,
-          justifyContent: 'space-between',
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
-        }}>
-          <Button
-            startIcon={<AddIcon />}
-            onClick={handleOpenCreateBooking}
-            sx={{ 
-              color: '#2196f3',
-              borderRadius: 2,
-              '&:hover': { bgcolor: 'rgba(33,150,243,0.1)' },
-            }}
-          >
-            Ny booking
-          </Button>
-          <Button
-            onClick={() => setBookingsDialogOpen(false)}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-            }}
-          >
-            Lukk
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={templatesDialogOpen}
-        onClose={() => setTemplatesDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            overflow: 'hidden',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76,175,80,0.3)',
-            }}>
-              <BookmarkIcon sx={{ color: '#fff', fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Utstyrs-maler</Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Forhåndsdefinerte utstyrssett
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton 
-            onClick={() => setTemplatesDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2, px: 3 }}>
-          {templates.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 5, color: 'rgba(255,255,255,0.87)' }}>
-              <Box sx={{
-                width: 72,
-                height: 72,
-                borderRadius: '50%',
-                bgcolor: 'rgba(76,175,80,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mx: 'auto',
-                mb: 2,
-              }}>
-                <BookmarkIcon sx={{ fontSize: 36, opacity: 0.5 }} />
-              </Box>
-              <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 600 }}>Ingen maler ennå</Typography>
-              <Typography variant="body2" sx={{ mb: 3 }}>
-                {selectedEquipmentIds.size > 0 
-                  ? `${selectedEquipmentIds.size} utstyr valgt - klikk for å lage mal` 
-                  : 'Velg utstyr med checkboxer, eller lag mal fra alt'}
-              </Typography>
-              {equipment.length > 0 && (
-                <Button
-                  variant="outlined"
-                  startIcon={<CopyIcon />}
-                  onClick={handleCreateTemplateFromEquipment}
-                  sx={{ 
-                    borderColor: 'rgba(76,175,80,0.5)', 
-                    color: '#4caf50',
-                    borderRadius: 2,
-                    '&:hover': { borderColor: '#4caf50', bgcolor: 'rgba(76,175,80,0.1)' },
-                  }}
-                >
-                  {selectedEquipmentIds.size > 0 
-                    ? `Lag mal fra ${selectedEquipmentIds.size} valgte` 
-                    : 'Lag mal fra alt utstyr'}
-                </Button>
               )}
-            </Box>
-          ) : (
-            <Stack spacing={2}>
-              {templates.map(template => (
-                <Card key={template.id} sx={{ 
-                  bgcolor: template.is_global ? 'rgba(33,150,243,0.08)' : 'rgba(0,0,0,0.2)', 
-                  border: template.is_global 
-                    ? '1px solid rgba(33,150,243,0.3)' 
-                    : '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 2,
-                  transition: 'all 0.2s',
-                  '&:hover': { 
-                    bgcolor: template.is_global ? 'rgba(33,150,243,0.12)' : 'rgba(0,0,0,0.3)',
-                    borderColor: template.is_global ? 'rgba(33,150,243,0.5)' : 'rgba(76,175,80,0.3)',
-                  },
-                }}>
-                  <CardContent sx={{ p: 2.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                      <Box>
-                        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {template.is_global && (
-                            <Tooltip title="Global mal - tilgjengelig i alle prosjekter">
-                              <PublicIcon sx={{ color: '#2196f3', fontSize: 20 }} />
-                            </Tooltip>
-                          )}
-                          {template.name}
-                          {template.is_default && (
-                            <StarIcon sx={{ color: '#9333ea', fontSize: 18 }} />
-                          )}
-                        </Typography>
-                        {template.description && (
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 0.5 }}>
-                            {template.description}
-                          </Typography>
-                        )}
-                        {/* Show project association info */}
-                        <Typography variant="caption" sx={{ 
-                          color: template.is_global ? '#2196f3' : 'rgba(255,255,255,0.4)', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: 0.5,
-                          mt: 0.5,
-                        }}>
-                          {template.is_global ? (
-                            <>
-                              <PublicIcon sx={{ fontSize: 12 }} />
-                              Tilgjengelig i alle prosjekter
-                            </>
-                          ) : (
-                            <>
-                              <LockIcon sx={{ fontSize: 12 }} />
-                              Kun dette prosjektet
-                            </>
-                          )}
-                        </Typography>
-                      </Box>
-                      <Chip 
-                        label={`${template.item_count || 0} elementer`} 
-                        size="small" 
-                        sx={{ 
-                          bgcolor: 'rgba(76,175,80,0.15)', 
-                          color: '#4caf50',
-                          fontWeight: 600,
-                          borderRadius: 1.5,
-                        }} 
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-                      {template.is_global && (
-                        <Chip 
-                          icon={<PublicIcon sx={{ fontSize: '14px !important' }} />} 
-                          label="Global" 
-                          size="small" 
-                          sx={{ 
-                            bgcolor: 'rgba(33,150,243,0.15)', 
-                            color: '#2196f3',
-                            borderRadius: 1,
-                            '& .MuiChip-icon': { color: '#2196f3' },
-                          }} 
-                        />
-                      )}
-                      {template.category && (
-                        <Chip label={template.category} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.87)', borderRadius: 1 }} />
-                      )}
-                      {template.use_case && (
-                        <Chip label={template.use_case} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.87)', borderRadius: 1 }} />
-                      )}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1.5, mt: 2 }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<PlaylistAddIcon />}
-                        onClick={() => handleApplyTemplate(template.id)}
-                        sx={{ 
-                          background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-                          color: '#fff', 
-                          borderRadius: 1.5,
-                          fontWeight: 600,
-                          '&:hover': { background: 'linear-gradient(135deg, #66bb6a 0%, #4caf50 100%)' },
-                        }}
-                      >
-                        Bruk mal
-                      </Button>
-                      <IconButton 
-                        size="small" 
-                        onClick={() => handleDeleteTemplate(template.id)}
-                        sx={{ 
-                          color: 'rgba(244,67,54,0.7)',
-                          '&:hover': { color: '#f44336', bgcolor: 'rgba(244,67,54,0.1)' },
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Box>
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5, 
-          px: 3,
-          justifyContent: 'space-between',
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
-        }}>
-          {equipment.length > 0 && (
-            <Button
-              startIcon={<CopyIcon />}
-              onClick={handleCreateTemplateFromEquipment}
-              sx={{ 
-                color: '#4caf50',
-                borderRadius: 2,
-                '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' },
-              }}
-            >
-              {selectedEquipmentIds.size > 0 
-                ? `Lag mal fra ${selectedEquipmentIds.size} valgte` 
-                : 'Lag mal fra alt utstyr'}
-            </Button>
-          )}
-          <Button
-            onClick={() => setTemplatesDialogOpen(false)}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-            }}
-          >
-            Lukk
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Template Form Dialog - for creating/editing templates */}
-      <Dialog
-        open={templateFormOpen}
-        onClose={() => setTemplateFormOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <BookmarkIcon sx={{ color: '#fff', fontSize: 24 }} />
-          </Box>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {editingTemplate ? 'Rediger mal' : 'Opprett mal'}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-              {templateFormData.items.length} elementer
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Stack spacing={2.5}>
-            <TextField
-              label="Navn på mal"
-              value={templateFormData.name}
-              onChange={e => setTemplateFormData(prev => ({ ...prev, name: e.target.value }))}
-              fullWidth
-              required
-              sx={{ 
-                '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)' },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                '& .MuiOutlinedInput-input': { color: '#fff' },
-              }}
-            />
-            <TextField
-              label="Beskrivelse"
-              value={templateFormData.description}
-              onChange={e => setTemplateFormData(prev => ({ ...prev, description: e.target.value }))}
-              fullWidth
-              multiline
-              rows={2}
-              sx={{ 
-                '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)' },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                '& .MuiOutlinedInput-input': { color: '#fff' },
-              }}
-            />
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 6 }}>
-                <TextField
-                  label="Kategori"
-                  value={templateFormData.category}
-                  onChange={e => setTemplateFormData(prev => ({ ...prev, category: e.target.value }))}
-                  fullWidth
-                  sx={{ 
-                    '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)' },
-                    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiOutlinedInput-input': { color: '#fff' },
-                  }}
-                />
-              </Grid>
-              <Grid size={{ xs: 6 }}>
-                <TextField
-                  label="Bruksområde"
-                  value={templateFormData.use_case}
-                  onChange={e => setTemplateFormData(prev => ({ ...prev, use_case: e.target.value }))}
-                  fullWidth
-                  sx={{ 
-                    '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)' },
-                    '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                    '& .MuiOutlinedInput-input': { color: '#fff' },
-                  }}
-                />
-              </Grid>
-            </Grid>
-
-            {/* Global template toggle */}
-            <Box 
-              onClick={() => setTemplateFormData(prev => ({ ...prev, is_global: !prev.is_global }))}
-              sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between',
-                p: 2,
-                borderRadius: 2,
-                bgcolor: templateFormData.is_global ? 'rgba(33,150,243,0.1)' : 'rgba(255,255,255,0.03)',
-                border: templateFormData.is_global 
-                  ? '1px solid rgba(33,150,243,0.4)' 
-                  : '1px solid rgba(255,255,255,0.1)',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                '&:hover': { 
-                  borderColor: templateFormData.is_global 
-                    ? 'rgba(33,150,243,0.6)' 
-                    : 'rgba(255,255,255,0.2)',
-                },
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 2,
-                  bgcolor: templateFormData.is_global ? 'rgba(33,150,243,0.2)' : 'rgba(255,255,255,0.05)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  {templateFormData.is_global ? (
-                    <PublicIcon sx={{ color: '#2196f3' }} />
-                  ) : (
-                    <LockIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
-                  )}
-                </Box>
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: templateFormData.is_global ? '#2196f3' : '#fff' }}>
-                    {templateFormData.is_global ? 'Global mal' : 'Prosjekt-mal'}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {templateFormData.is_global 
-                      ? 'Tilgjengelig i alle prosjekter' 
-                      : 'Kun tilgjengelig i dette prosjektet'}
-                  </Typography>
-                </Box>
-              </Box>
-              <Box sx={{
-                width: 50,
-                height: 26,
-                borderRadius: 13,
-                bgcolor: templateFormData.is_global ? '#2196f3' : 'rgba(255,255,255,0.2)',
-                position: 'relative',
-                transition: 'all 0.2s',
-              }}>
-                <Box sx={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: '50%',
-                  bgcolor: '#fff',
-                  position: 'absolute',
-                  top: 2,
-                  left: templateFormData.is_global ? 26 : 2,
-                  transition: 'all 0.2s',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                }} />
-              </Box>
-            </Box>
-
-            {/* Preview of items */}
-            {templateFormData.items.length > 0 && (
-              <Box sx={{ 
-                bgcolor: 'rgba(0,0,0,0.2)', 
-                borderRadius: 2, 
-                p: 2,
-                maxHeight: 200,
-                overflow: 'auto',
-              }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-                  Inkluderte elementer:
-                </Typography>
-                {templateFormData.items.map((item, idx) => (
-                  <Chip
-                    key={idx}
-                    label={item.name}
-                    size="small"
-                    sx={{ 
-                      m: 0.5, 
-                      bgcolor: 'rgba(76,175,80,0.15)', 
-                      color: '#4caf50',
-                      borderRadius: 1,
-                    }}
-                  />
-                ))}
-              </Box>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5,
-          gap: 1,
-        }}>
-          <Button
-            onClick={() => setTemplateFormOpen(false)}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              borderRadius: 2,
-              px: 3,
-            }}
-          >
-            Avbryt
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSaveTemplate}
-            disabled={!templateFormData.name.trim()}
-            sx={{ 
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              borderRadius: 2,
-              px: 3,
-              fontWeight: 600,
-            }}
-          >
-            {editingTemplate ? 'Oppdater mal' : 'Opprett mal'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={shopDialogOpen}
-        onClose={() => setShopDialogOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            overflow: 'hidden',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(33,150,243,0.3)',
-            }}>
-              <ShoppingCartIcon sx={{ color: '#fff', fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Kjøp utstyr via foto.no</Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Norges ledende utstyrsleverandør
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton 
-            onClick={() => setShopDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2, px: 3 }}>
-          <Box sx={{ 
-            textAlign: 'center', 
-            py: 5,
-            background: 'linear-gradient(135deg, rgba(33,150,243,0.08) 0%, rgba(33,150,243,0.03) 100%)',
-            borderRadius: 2,
-            border: '1px solid rgba(33,150,243,0.15)',
-          }}>
-            <Box sx={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              bgcolor: 'rgba(33,150,243,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mx: 'auto',
-              mb: 2,
-            }}>
-              <ShoppingCartIcon sx={{ fontSize: 40, color: '#2196f3' }} />
-            </Box>
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-              Bygg nytt lager via foto.no
-            </Typography>
-            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 4, maxWidth: 500, mx: 'auto' }}>
-              Norges ledende leverandør av foto- og videoutstyr. 
-              Finn alt du trenger for profesjonell produksjon.
-            </Typography>
-            <Stack spacing={1.5} sx={{ maxWidth: 320, mx: 'auto' }}>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/foto/kamera', '_blank')}
-                sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-                  color: '#fff', 
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
-                }}
-              >
-                Kameraer
-              </Button>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/foto/foto-tilbehor/belysning', '_blank')}
-                sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-                  color: '#fff', 
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
-                }}
-              >
-                Lys og belysning
-              </Button>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/video', '_blank')}
-                sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-                  color: '#fff', 
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
-                }}
-              >
-                Videoutstyr
-              </Button>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/lyd', '_blank')}
-                sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-                  color: '#fff', 
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
-                }}
-              >
-                Lydopptak
-              </Button>
-              <Button
-                variant="outlined"
-                size="large"
-                startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no', '_blank')}
-                sx={{ 
-                  borderColor: 'rgba(33,150,243,0.5)', 
-                  color: '#2196f3', 
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  '&:hover': { borderColor: '#2196f3', bgcolor: 'rgba(33,150,243,0.1)' } 
-                }}
-              >
-                Alle kategorier
-              </Button>
-            </Stack>
-          </Box>
-
-          {/* Category filter chips */}
-          {vendorCategories.length > 0 && (
-            <Box sx={{ mt: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Chip
-                label="Alle"
-                size="small"
-                onClick={() => setSelectedVendorCategory('all')}
-                sx={{
-                  bgcolor: selectedVendorCategory === 'all' ? '#2196f3' : 'rgba(33,150,243,0.12)',
-                  color: selectedVendorCategory === 'all' ? '#fff' : '#2196f3',
-                  fontWeight: selectedVendorCategory === 'all' ? 700 : 400,
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: selectedVendorCategory === 'all' ? '#1976d2' : 'rgba(33,150,243,0.25)' },
-                }}
-              />
-              {vendorCategories.map(vc => (
-                <Chip
-                  key={vc.category}
-                  label={`${vc.category} (${vc.count})`}
-                  size="small"
-                  onClick={() => setSelectedVendorCategory(vc.category)}
-                  sx={{
-                    bgcolor: selectedVendorCategory === vc.category ? '#2196f3' : 'rgba(33,150,243,0.12)',
-                    color: selectedVendorCategory === vc.category ? '#fff' : '#2196f3',
-                    fontWeight: selectedVendorCategory === vc.category ? 700 : 400,
-                    cursor: 'pointer',
-                    '&:hover': { bgcolor: selectedVendorCategory === vc.category ? '#1976d2' : 'rgba(33,150,243,0.25)' },
-                  }}
-                />
-              ))}
-            </Box>
-          )}
-
-          {vendorLinks.length > 0 && (
-            <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 2 }}>
-                Anbefalte produkter
-              </Typography>
-              <Grid container spacing={2}>
-                {vendorLinks.filter(l => l.is_recommended).map(link => (
-                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={link.id}>
-                    <Card 
-                      sx={{ 
-                        bgcolor: 'rgba(255,255,255,0.05)', 
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        cursor: 'pointer',
-                        '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' }
-                      }}
-                      onClick={() => window.open(link.affiliate_url || link.product_url, '_blank')}
-                    >
-                      <CardContent>
-                        <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>
-                          {link.product_name}
-                        </Typography>
-                        {link.description && (
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
-                            {link.description}
-                          </Typography>
-                        )}
-                        {link.price && (
-                          <Typography variant="h6" sx={{ color: '#4caf50', mt: 1, fontWeight: 700 }}>
-                            kr {link.price.toLocaleString('nb-NO')},-
-                          </Typography>
-                        )}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                          <Chip label={link.category} size="small" sx={{ bgcolor: 'rgba(33,150,243,0.2)', color: '#2196f3' }} />
-                          <OpenInNewIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.87)' }} />
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5, 
-          px: 3,
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
-        }}>
-          <Button
-            onClick={() => setShopDialogOpen(false)}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-            }}
-          >
-            Lukk
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* New Category Dialog */}
-      <Dialog
-        open={newCategoryDialogOpen}
-        onClose={() => {
-          setNewCategoryDialogOpen(false);
-          setNewCategoryName('');
-        }}
-        maxWidth="xs"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76,175,80,0.3)',
-            }}>
-              <AddIcon sx={{ color: '#fff', fontSize: 22 }} />
-            </Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Ny kategori
-            </Typography>
-          </Box>
-          <IconButton 
-            onClick={() => setNewCategoryDialogOpen(false)}
-            sx={{ 
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2, px: 3 }}>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            Egendefinerte kategorier lagres lokalt og er tilgjengelige for dette prosjektet.
-          </Typography>
-          <TextField
-            fullWidth
-            label="Kategorinavn"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newCategoryName.trim()) {
-                handleAddCustomCategory();
-              }
-            }}
-            autoFocus
-            placeholder="F.eks. Drone, Greenscreen..."
-            sx={{ 
-              '& .MuiOutlinedInput-root': { 
-                bgcolor: 'rgba(0,0,0,0.2)', 
-                color: '#fff',
-                borderRadius: 2,
-                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(76,175,80,0.3)' },
-                '&.Mui-focused fieldset': { borderColor: '#4caf50' },
-              },
-              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-            }}
-          />
-          {customCategories.length > 0 && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-                Dine egendefinerte kategorier:
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {customCategories.map(cat => (
-                  <Chip
-                    key={cat}
-                    label={cat}
-                    size="small"
-                    onDelete={() => handleRemoveCustomCategory(cat)}
-                    sx={{ 
-                      bgcolor: 'rgba(76,175,80,0.15)', 
-                      color: '#4caf50',
-                      '& .MuiChip-deleteIcon': { color: 'rgba(76,175,80,0.5)', '&:hover': { color: '#f44336' } },
-                    }}
-                  />
-                ))}
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5, 
-          px: 3,
-          gap: 1.5,
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
-        }}>
-          <Button
-            onClick={() => {
-              setNewCategoryDialogOpen(false);
-              setNewCategoryName('');
-            }}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
-            }}
-          >
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleAddCustomCategory}
-            variant="contained"
-            disabled={!newCategoryName.trim() || allCategories.includes(newCategoryName.trim())}
-            sx={{
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              color: '#fff',
-              fontWeight: 700,
-              borderRadius: 2,
-              px: 3,
-              boxShadow: '0 4px 14px rgba(76,175,80,0.3)',
-              '&:hover': { 
-                background: 'linear-gradient(135deg, #66bb6a 0%, #4caf50 100%)',
-              },
-              '&.Mui-disabled': {
-                bgcolor: 'rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.87)',
-              },
-            }}
-          >
-            Legg til
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Image Picker Dialog */}
-      <Dialog
-        open={imagePickerOpen}
-        onClose={() => {
-          setImagePickerOpen(false);
-          setImageSearchResults([]);
-          setImageSearchQuery('');
-        }}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3, 
-            minHeight: 500,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            overflow: 'hidden',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(156,39,176,0.15) 0%, rgba(142,36,170,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9c27b0 0%, #8e24aa 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(156,39,176,0.3)',
-            }}>
-              <PhotoLibraryIcon sx={{ color: '#fff', fontSize: 24 }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                Velg bilde for utstyr
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Søk i flere kilder eller last opp
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton 
-            onClick={() => setImagePickerOpen(false)}
-            sx={{ 
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
-          <Tabs
-            value={imagePickerTab}
-            onChange={(_, v) => setImagePickerTab(v)}
-            sx={{
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
-              px: 2,
-              '& .MuiTab-root': { color: 'rgba(255,255,255,0.87)' },
-              '& .Mui-selected': { color: '#9333ea' },
-              '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
-            }}
-          >
-            <Tab icon={<SearchIcon />} label="Søk bilder" iconPosition="start" />
-            <Tab icon={<MovieIcon />} label="Filmreferanser" iconPosition="start" />
-            <Tab icon={<LinkIcon />} label="Lim inn URL" iconPosition="start" />
-          </Tabs>
-          
-          <Box sx={{ p: 2 }}>
-            {/* Search Input — hidden when URL tab is active */}
-            {imagePickerTab < 2 && (
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <TextField
-                fullWidth
-                placeholder={imagePickerTab === 0 ? "Søk etter utstyr, props, rekvisitter..." : "Søk film for referansebilder..."}
-                value={imageSearchQuery}
-                onChange={(e) => setImageSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && searchImages(imagePickerTab === 1 ? imageSearchQuery + ' cinema film' : imageSearchQuery)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(255,255,255,0.05)', 
-                    color: '#fff',
-                  } 
-                }}
-              />
-              <Button
-                variant="contained"
-                onClick={() => searchImages(imagePickerTab === 1 ? imageSearchQuery + ' cinema film' : imageSearchQuery)}
-                disabled={imageSearchLoading || !imageSearchQuery.trim()}
-                sx={{ 
-                  bgcolor: '#9333ea', 
-                  color: '#000',
-                  minWidth: 100,
-                  '&:hover': { bgcolor: '#6d28d9' },
-                }}
-              >
-                {imageSearchLoading ? <CircularProgress size={20} /> : 'Søk'}
-              </Button>
-            </Box>
-            )}
-            
-            {/* Quick Search Suggestions — content differs by tab */}
-            {imagePickerTab < 2 && (
-            <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-              {(imagePickerTab === 0
-                ? ['Kamera', 'Lys', 'Stativ', 'Mikrofon', 'Drone', 'Generator', 'Film props', 'Studio equipment']
-                : ['Cinematography', 'Film noir', 'Scene design', 'Location scouting', 'Production design', 'Set lighting', 'Behind scenes', 'Film crew']
-              ).map((term) => (
-                <Chip
-                  key={term}
-                  label={term}
-                  size="small"
-                  onClick={() => {
-                    setImageSearchQuery(term);
-                    searchImages(imagePickerTab === 1 ? term + ' cinema film' : term);
-                  }}
-                  sx={{ 
-                    bgcolor: 'rgba(255,255,255,0.1)', 
-                    color: '#fff',
-                    cursor: 'pointer',
-                    '&:hover': { bgcolor: 'rgba(147,51,234,0.2)' },
-                  }}
-                />
-              ))}
-            </Box>
-            )}
-
-            {/* URL paste tab */}
-            {imagePickerTab === 2 && (
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField
-                  fullWidth
-                  placeholder="Lim inn bilde-URL her, f.eks. https://example.com/bilde.jpg"
-                  value={tempImageUrl}
-                  onChange={(e) => setTempImageUrl(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LinkIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: 'rgba(255,255,255,0.05)',
-                      color: '#fff',
-                    },
-                  }}
-                />
-                {tempImageUrl && (
-                  <Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mb: 1, display: 'block' }}>
-                      Forhåndsvisning
+              <Stack spacing={1.5}>
+                {previewEquipment.brand && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>Merke / Modell</Typography>
+                    <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                      {previewEquipment.brand} {previewEquipment.model && `• ${previewEquipment.model}`}
                     </Typography>
-                    <Box
-                      component="img"
-                      src={tempImageUrl}
-                      alt="Forhåndsvisning"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      sx={{
-                        width: '100%',
-                        maxHeight: 240,
-                        objectFit: 'contain',
-                        borderRadius: 1,
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        bgcolor: 'rgba(0,0,0,0.3)',
-                      }}
-                    />
                   </Box>
                 )}
-                <Button
-                  variant="contained"
-                  disabled={!tempImageUrl.trim()}
-                  onClick={() => {
-                    if (tempImageUrl.trim()) {
-                      handleSelectSearchImage(tempImageUrl.trim());
-                      setTempImageUrl('');
-                    }
-                  }}
-                  sx={{ bgcolor: '#9333ea', color: '#fff', '&:hover': { bgcolor: '#6d28d9' }, alignSelf: 'flex-start' }}
-                >
-                  Bruk bilde
-                </Button>
+                {previewEquipment.serial_number && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>Serienummer</Typography>
+                    <Typography variant="body2" sx={{ color: '#fff', fontFamily: 'monospace' }}>{previewEquipment.serial_number}</Typography>
+                  </Box>
+                )}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>Status</Typography>
+                  <Chip label={STATUS_LABELS[previewEquipment.status] || previewEquipment.status} size="small" sx={{ bgcolor: STATUS_COLORS[previewEquipment.status], color: '#fff', fontWeight: 600 }} />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>Tilstand</Typography>
+                  <Chip
+                    icon={previewEquipment.condition === 'excellent' ? <StarIcon sx={{ fontSize: '14px !important' }} /> : undefined}
+                    label={CONDITION_LABELS[previewEquipment.condition] || previewEquipment.condition}
+                    size="small"
+                    sx={{
+                      bgcolor: `${CONDITION_COLORS[previewEquipment.condition]}20`,
+                      color: CONDITION_COLORS[previewEquipment.condition],
+                      fontWeight: 600,
+                      '& .MuiChip-icon': { color: CONDITION_COLORS[previewEquipment.condition] },
+                    }}
+                  />
+                </Box>
+                {previewEquipment.category && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>Kategori</Typography>
+                    <Typography variant="body2" sx={{ color: '#c084fc', fontWeight: 600 }}>{previewEquipment.category}</Typography>
+                  </Box>
+                )}
+                {previewEquipment.notes && (
+                  <Box>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', mb: 0.5 }}>Notater</Typography>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', whiteSpace: 'pre-wrap' }}>
+                      {previewEquipment.notes}
+                    </Typography>
+                  </Box>
+                )}
+                {previewEquipment.firmware_current && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>Firmware</Typography>
+                    <Typography variant="body2" sx={{ color: '#66bb6a', fontFamily: 'monospace' }}>v{previewEquipment.firmware_current}</Typography>
+                  </Box>
+                )}
               </Stack>
-            )}
-            
-            {/* Search Results */}
-            {imageSearchLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4, flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <CircularProgress sx={{ color: '#9333ea' }} />
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                  Søker i Pexels, Pixabay, Unsplash, Openverse, Wikimedia...
-                </Typography>
-              </Box>
-            ) : imageSearchResults.length > 0 ? (
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {imageSearchResults.length} bilder funnet • Klikk for å velge
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                    {[
-                      { name: 'pexels', color: '#05bc9e', label: 'Pexels' },
-                      { name: 'pixabay', color: '#27a955', label: 'Pixabay' },
-                      { name: 'unsplash', color: '#2196f3', label: 'Unsplash' },
-                      { name: 'openverse', color: '#9c27b0', label: 'Openverse' },
-                      { name: 'wikimedia', color: '#3e85ba', label: 'Wikimedia' },
-                      { name: 'shotcafe', color: '#9333ea', label: 'shot.cafe' },
-                    ].filter(s => imageSearchResults.some(r => r.source === s.name))
-                    .map(s => (
-                      <Box
-                        key={s.name}
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                          px: 0.5,
-                          py: 0.25,
-                          borderRadius: 0.5,
-                          bgcolor: `${s.color}22`,
-                        }}
-                      >
-                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: s.color }} />
-                        <Typography variant="caption" sx={{ color: s.color, fontSize: '9px', fontWeight: 600 }}>
-                          {s.label} ({imageSearchResults.filter(r => r.source === s.name).length})
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-                <ImageList cols={isMobile ? 2 : isTablet ? 3 : 4} gap={8} sx={{ maxHeight: 350 }}>
-                  {imageSearchResults.map((img) => (
-                    <ImageListItem 
-                      key={img.id}
-                      sx={{ 
-                        cursor: 'pointer',
-                        borderRadius: 1,
-                        overflow: 'hidden',
-                        border: '2px solid transparent',
-                        transition: 'all 0.2s',
-                        '&:hover': { 
-                          border: '2px solid #9333ea',
-                          transform: 'scale(1.02)',
-                        },
-                      }}
-                      onClick={() => handleSelectSearchImage(img.url)}
-                    >
-                      <img
-                        src={img.thumbnailUrl}
-                        alt={img.description || 'Search result'}
-                        loading="lazy"
-                        style={{ height: 120, objectFit: 'cover' }}
-                        onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-image.png'; }}
-                      />
-                      <ImageListItemBar
-                        subtitle={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Typography variant="caption" sx={{ 
-                              textTransform: 'capitalize',
-                              bgcolor: 
-                                img.source === 'unsplash' ? 'rgba(33,150,243,0.4)' : 
-                                img.source === 'pexels' ? 'rgba(5,188,158,0.4)' :
-                                img.source === 'pixabay' ? 'rgba(39,169,85,0.4)' :
-                                img.source === 'openverse' ? 'rgba(156,39,176,0.4)' :
-                                img.source === 'wikimedia' ? 'rgba(62,133,186,0.4)' :
-                                img.source === 'shotcafe' ? 'rgba(147,51,234,0.4)' :
-                                'rgba(100,100,100,0.4)',
-                              px: 0.5,
-                              borderRadius: 0.5,
-                              fontSize: '9px',
-                              fontWeight: 600,
-                            }}>
-                              {img.source === 'shotcafe' ? 'shot.cafe' : img.source}
-                            </Typography>
-                            {img.photographer && (
-                              <Typography variant="caption" sx={{ opacity: 0.7, ml: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '9px' }}>
-                                {img.photographer}
-                              </Typography>
-                            )}
-                          </Box>
-                        }
-                        sx={{
-                          background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-                          '& .MuiImageListItemBar-title': { fontSize: 12 },
-                        }}
-                      />
-                    </ImageListItem>
-                  ))}
-                </ImageList>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1, display: 'block', textAlign: 'center' }}>
-                  Bilder fra Unsplash & shot.cafe • Kun for intern referanse
-                </Typography>
-              </Box>
-            ) : (
-              <Box sx={{ 
-                textAlign: 'center', 
-                py: 6, 
-                color: 'rgba(255,255,255,0.87)',
-              }}>
-                <PhotoLibraryIcon sx={{ fontSize: 48, mb: 2, opacity: 0.3 }} />
-                <Typography variant="body1">
-                  Søk etter bilder av utstyr og rekvisitter
-                </Typography>
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Resultater fra Unsplash og shot.cafe
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
-          <Button
-            onClick={() => {
-              setImagePickerOpen(false);
-              setImageSearchResults([]);
-            }}
-            sx={{ color: 'rgba(255,255,255,0.87)' }}
-          >
-            Avbryt
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,77,77,0.3)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            maxWidth: 400,
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(244,67,54,0.3)',
-          }}>
-            <DeleteIcon sx={{ color: '#fff', fontSize: 24 }} />
-          </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Bekreft sletting</Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Typography>
-            Er du sikker på at du vil slette <strong>"{equipmentToDelete?.name}"</strong>?
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
-            Denne handlingen kan ikke angres.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: 2.5,
-          gap: 1,
-        }}>
-          <Button
-            onClick={() => setDeleteDialogOpen(false)}
-            sx={{ 
-              color: 'rgba(255,255,255,0.87)', 
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 3,
-            }}
-          >
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleConfirmDelete}
-            variant="contained"
-            sx={{ 
-              bgcolor: '#f44336',
-              minHeight: TOUCH_TARGET_SIZE,
-              borderRadius: 2,
-              px: 3,
-              '&:hover': { bgcolor: '#d32f2f' },
-            }}
-          >
-            Slett
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Bulk Action Dialog */}
-      <Dialog
-        open={bulkActionDialogOpen}
-        onClose={() => setBulkActionDialogOpen(false)}
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-            maxWidth: 450,
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: bulkActionType === 'delete' 
-            ? 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)'
-            : 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(245,124,0,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: bulkActionType === 'delete'
-              ? 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)'
-              : 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            {bulkActionType === 'delete' ? <DeleteIcon /> : <EditIcon />}
-          </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {bulkActionType === 'delete' ? 'Slett valgt utstyr' : 
-             bulkActionType === 'status' ? 'Endre status' : 'Tilordne utstyr'}
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Typography sx={{ mb: 2 }}>
-            {selectedEquipmentIds.size} utstyr valgt
-          </Typography>
-          {bulkActionType === 'status' && (
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Ny status</InputLabel>
-              <Select
-                value={bulkNewStatus}
-                onChange={(e) => setBulkNewStatus(e.target.value)}
-                label="Ny status"
-                sx={{ 
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                }}
+            </DialogContent>
+            <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.08)', px: 3, py: 1.5 }}>
+              <Button
+                onClick={() => { setPreviewOpen(false); handleOpenDialog(previewEquipment); }}
+                startIcon={<EditIcon />}
+                sx={{ color: '#c084fc' }}
               >
-                {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                  <MenuItem key={value} value={value}>{label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-          {bulkActionType === 'assign' && (
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilordne til</InputLabel>
-              <Select
-                value={bulkAssignCrewId}
-                onChange={(e) => setBulkAssignCrewId(e.target.value)}
-                label="Tilordne til"
-                sx={{ 
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                }}
-              >
-                {crewMembers.map((crew) => (
-                  <MenuItem key={crew.id} value={crew.id}>{crew.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-          {bulkActionType === 'delete' && (
-            <Typography variant="body2" sx={{ color: 'rgba(255,77,77,0.8)' }}>
-              Denne handlingen kan ikke angres!
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setBulkActionDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleConfirmBulkAction}
-            variant="contained"
-            sx={{ 
-              bgcolor: bulkActionType === 'delete' ? '#f44336' : '#9333ea',
-              '&:hover': { bgcolor: bulkActionType === 'delete' ? '#d32f2f' : '#6d28d9' },
-            }}
-          >
-            Bekreft
-          </Button>
-        </DialogActions>
+                Rediger
+              </Button>
+              <Button onClick={() => setPreviewOpen(false)} sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                Lukk
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
-      {/* History Dialog */}
-      <Dialog
-        open={historyDialogOpen}
-        onClose={() => setHistoryDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(156,39,176,0.15) 0%, rgba(142,36,170,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9c27b0 0%, #8e24aa 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <HistoryIcon sx={{ color: '#fff' }} />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>Historikk</Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                {selectedEquipmentHistory?.name}
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton onClick={() => setHistoryDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Stack spacing={2}>
-            {equipmentHistory.map((entry) => (
-              <Box key={entry.id} sx={{ 
-                p: 2, 
-                bgcolor: 'rgba(255,255,255,0.03)', 
-                borderRadius: 2,
-                borderLeft: '3px solid #9c27b0',
-              }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{entry.action}</Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    {new Date(entry.timestamp).toLocaleString('nb-NO')}
-                  </Typography>
-                </Box>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>{entry.details}</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>av {entry.user}</Typography>
-              </Box>
-            ))}
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
-          <Button onClick={() => setHistoryDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Maintenance Dialog */}
-      <Dialog
-        open={maintenanceDialogOpen}
-        onClose={() => setMaintenanceDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(0,150,136,0.15) 0%, rgba(0,137,123,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #009688 0%, #00897b 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <BuildIcon sx={{ color: '#fff' }} />
-          </Box>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Planlegg vedlikehold</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-              {selectedEquipmentMaintenance?.name}
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Stack spacing={3}>
-            <TextField
-              label="Dato"
-              type="date"
-              value={maintenanceForm.scheduledDate}
-              onChange={(e) => setMaintenanceForm({ ...maintenanceForm, scheduledDate: e.target.value })}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-              }}
-            />
-            <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Type vedlikehold</InputLabel>
-              <Select
-                value={maintenanceForm.type}
-                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, type: e.target.value })}
-                label="Type vedlikehold"
-                sx={{ 
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                }}
-              >
-                <MenuItem value="routine">Rutinemessig vedlikehold</MenuItem>
-                <MenuItem value="repair">Reparasjon</MenuItem>
-                <MenuItem value="inspection">Inspeksjon</MenuItem>
-                <MenuItem value="calibration">Kalibrering</MenuItem>
-                <MenuItem value="cleaning">Rengjøring</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              label="Notater"
-              value={maintenanceForm.notes}
-              onChange={(e) => setMaintenanceForm({ ...maintenanceForm, notes: e.target.value })}
-              multiline
-              rows={3}
-              fullWidth
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-              }}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setMaintenanceDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleScheduleMaintenance}
-            variant="contained"
-            sx={{ bgcolor: '#009688', '&:hover': { bgcolor: '#00897b' } }}
-          >
-            Planlegg
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Create Booking Dialog */}
-      <Dialog
-        open={createBookingDialogOpen}
-        onClose={() => setCreateBookingDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        TransitionComponent={Grow}
-        PaperProps={{ 
-          sx: { 
-            bgcolor: '#1c2128', 
-            color: '#fff', 
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <CalendarTodayIcon sx={{ color: '#fff' }} />
-          </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Ny booking</Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Stack spacing={3}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField
-                label="Startdato"
-                type="date"
-                value={bookingForm.startDate}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setBookingForm(f => ({ ...f, startDate: v }));
-                  checkBookingConflicts(v, bookingForm.endDate);
-                }}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    bgcolor: 'rgba(255,255,255,0.05)',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-              <TextField
-                label="Sluttdato"
-                type="date"
-                value={bookingForm.endDate}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setBookingForm(f => ({ ...f, endDate: v }));
-                  checkBookingConflicts(bookingForm.startDate, v);
-                }}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    bgcolor: 'rgba(255,255,255,0.05)',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-                }}
-              />
-            </Box>
-            {conflictChecking && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'rgba(255,255,255,0.6)' }}>
-                <CircularProgress size={14} sx={{ color: 'inherit' }} />
-                <Typography variant="caption">Sjekker konflikter…</Typography>
-              </Box>
-            )}
-            {!conflictChecking && bookingConflicts.length > 0 && (
-              <Box sx={{
-                p: 2, borderRadius: 2,
-                bgcolor: 'rgba(147,51,234,0.12)',
-                border: '1px solid rgba(147,51,234,0.4)',
-                display: 'flex', alignItems: 'flex-start', gap: 1.5,
-              }}>
-                <WarningIcon sx={{ color: '#9333ea', mt: 0.25, flexShrink: 0 }} />
-                <Box>
-                  <Typography variant="body2" sx={{ color: '#c084fc', fontWeight: 600 }}>
-                    {bookingConflicts.length} konflikt{bookingConflicts.length > 1 ? 'er' : ''} funnet
-                  </Typography>
-                  {bookingConflicts.map(c => (
-                    <Typography key={c.id} variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', display: 'block' }}>
-                      {c.type === 'booking' ? `Booking: ${c.purpose ?? ''}` : c.reason ?? c.type} ({c.start_date} – {c.end_date})
-                    </Typography>
-                  ))}
-                </Box>
-              </Box>
-            )}
-            <TextField
-              label="Formål"
-              value={bookingForm.purpose}
-              onChange={(e) => setBookingForm({ ...bookingForm, purpose: e.target.value })}
-              fullWidth
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-              }}
-            />
-            <TextField
-              label="Notater"
-              value={bookingForm.notes}
-              onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
-              multiline
-              rows={2}
-              fullWidth
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  bgcolor: 'rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
-              }}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCreateBookingDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-            Avbryt
-          </Button>
-          <Button
-            onClick={handleCreateBooking}
-            variant="contained"
-            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}
-          >
-            Opprett booking
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Check-out Dialog ─────────────────────────── */}
-      <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #2196f3, #1565c0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckOutIcon sx={{ color: '#fff' }} />
-          </Box>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Sjekk ut utstyr</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkoutEquipment?.name}</Typography>
-          </Box>
-          <IconButton onClick={() => setCheckoutDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Stack spacing={2.5}>
-            <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Sjekkes ut til *</InputLabel>
-              <Select value={checkoutForm.crewId} onChange={(e) => setCheckoutForm(f => ({ ...f, crewId: e.target.value }))} label="Sjekkes ut til *"
-                sx={{ bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}>
-                {crewMembers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Antall" type="number" inputProps={{ min: 1, max: checkoutEquipment?.quantity ?? 99 }}
-              value={checkoutForm.quantity}
-              onChange={(e) => setCheckoutForm(f => ({ ...f, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
-              fullWidth
-              sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }}
-            />
-            <TextField label="Formål" value={checkoutForm.purpose} onChange={(e) => setCheckoutForm(f => ({ ...f, purpose: e.target.value }))} fullWidth
-              sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
-            {!isOnline && (
-              <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(147,51,234,0.1)', border: '1px solid rgba(147,51,234,0.3)', display: 'flex', gap: 1, alignItems: 'center' }}>
-                <OfflineIcon sx={{ color: '#9333ea', fontSize: 18 }} />
-                <Typography variant="caption" sx={{ color: '#c084fc' }}>Du er offline — operasjonen lagres i kø og synkroniseres automatisk</Typography>
-              </Box>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCheckoutDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
-          <Button onClick={handleConfirmCheckout} variant="contained" disabled={!checkoutForm.crewId}
-            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
-            {isOnline ? 'Sjekk ut' : 'Legg i kø'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Check-in Dialog ──────────────────────────── */}
-      <Dialog open={checkinDialogOpen} onClose={() => setCheckinDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #4caf50, #2e7d32)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckInIcon sx={{ color: '#fff' }} />
-          </Box>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Lever inn utstyr</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkinEquipment?.name}</Typography>
-          </Box>
-          <IconButton onClick={() => setCheckinDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Stack spacing={2.5}>
-            <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilstand ved retur</InputLabel>
-              <Select value={checkinForm.condition} onChange={(e) => setCheckinForm(f => ({ ...f, condition: e.target.value as Equipment['condition'] }))} label="Tilstand ved retur"
-                sx={{ bgcolor: 'rgba(255,255,255,0.05)', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}>
-                {Object.entries(CONDITION_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <TextField label="Merknader" multiline rows={2} value={checkinForm.notes} onChange={(e) => setCheckinForm(f => ({ ...f, notes: e.target.value }))} fullWidth
-              sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCheckinDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
-          <Button onClick={handleConfirmCheckin} variant="contained" sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' } }}>Lever inn</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Reports Dialog ───────────────────────────── */}
-      <Dialog open={reportsDialogOpen} onClose={() => setReportsDialogOpen(false)} maxWidth="md" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 0 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #9c27b0, #6a1b9a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ReportIcon sx={{ color: '#fff' }} />
-          </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Rapporter</Typography>
-          <IconButton onClick={() => setReportsDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
-        </DialogTitle>
-        <Tabs value={reportsTab} onChange={(_, v) => setReportsTab(v)} sx={{ px: 3, '& .MuiTabs-indicator': { bgcolor: '#9c27b0' }, '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', '&.Mui-selected': { color: '#ce93d8' } } }}>
-          <Tab label="Utstyrsliste" />
-          <Tab label={`Manglende (${missingItems.length})`} />
-          <Tab label={`Vedlikehold / Rep. (${maintenanceItems.length})`} />
-        </Tabs>
-        <DialogContent sx={{ pt: 2 }}>
-          {reportsTab === 0 && (
-            <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
-                Fullstendig utstyrsliste for prosjektet — {equipment.length} elementer
-              </Typography>
-              <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
-                {equipment.map(eq => (
-                  <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <Chip label={STATUS_LABELS[eq.status]} size="small" sx={{ bgcolor: `${STATUS_COLORS[eq.status]}20`, color: STATUS_COLORS[eq.status], fontSize: '0.65rem', minWidth: 80 }} />
-                    <Typography variant="body2" sx={{ color: '#fff', flex: 1, fontWeight: 600 }}>{eq.name}</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.brand} {eq.model}</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', minWidth: 50 }}>×{eq.quantity}</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', minWidth: 80 }}>{getCrewName(eq.assignees?.[0]?.crew_id ?? '')}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          )}
-          {reportsTab === 1 && (
-            <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
-                Tilgjengelig utstyr uten tildelt ansvarlig — {missingItems.length} elementer
-              </Typography>
-              {missingItems.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-                  <Typography sx={{ color: '#4caf50' }}>Alt utstyr er tilordnet</Typography>
-                </Box>
-              ) : (
-                <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
-                  {missingItems.map(eq => (
-                    <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      <MissingItemIcon sx={{ color: '#9333ea', fontSize: 18, flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ color: '#fff', flex: 1, fontWeight: 600 }}>{eq.name}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.category}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>×{eq.quantity}</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          )}
-          {reportsTab === 2 && (
-            <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
-                Utstyr som trenger vedlikehold eller reparasjon — {maintenanceItems.length} elementer
-              </Typography>
-              {maintenanceItems.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-                  <Typography sx={{ color: '#4caf50' }}>Ingen vedlikeholdsoppgaver</Typography>
-                </Box>
-              ) : (
-                <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
-                  {maintenanceItems.map(eq => (
-                    <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      <WarningIcon sx={{ color: '#f44336', fontSize: 18, flexShrink: 0 }} />
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>{eq.name}</Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.notes ?? 'Ingen merknader'}</Typography>
-                      </Box>
-                      <Chip label={CONDITION_LABELS[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], fontSize: '0.65rem' }} />
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setReportsDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
-          <Button onClick={handleDownloadGearList} variant="contained" startIcon={<DownloadIcon />}
-            sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#8e24aa' } }}>
-            Last ned CSV
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Offline outbox viewer ────────────────────── */}
-      <Dialog open={offlineOutboxOpen} onClose={() => setOfflineOutboxOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #f44336, #b71c1c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <OfflineIcon sx={{ color: '#fff' }} />
-          </Box>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Offline-kø</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{offlineQueueCount} operasjon(er) venter</Typography>
-          </Box>
-          <IconButton onClick={() => setOfflineOutboxOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          {offlineQueue.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-              <Typography sx={{ color: '#4caf50' }}>Ingen ventende operasjoner</Typography>
-            </Box>
-          ) : (
-            <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
-              {offlineQueue.map(e => (
-                <Box key={e.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  {e.type === 'checkout' ? <CheckOutIcon sx={{ color: '#2196f3', fontSize: 20 }} /> : <CheckInIcon sx={{ color: '#4caf50', fontSize: 20 }} />}
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
-                      {e.type === 'checkout' ? 'Sjekk ut' : 'Lever inn'} — {e.payload.equipmentId.slice(0, 8)}…
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                      {new Date(e.ts).toLocaleString('nb-NO')}
-                    </Typography>
-                  </Box>
-                  <Chip label="Venter" size="small" sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc' }} />
-                </Box>
-              ))}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => { persistOfflineQueue([]); setOfflineOutboxOpen(false); }} sx={{ color: '#f44336' }}>Slett kø</Button>
-          <Button onClick={() => setOfflineOutboxOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
-          <Button onClick={handleSyncOfflineQueue} variant="contained" startIcon={<SyncIcon />} disabled={!isOnline}
-            sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
-            Synkroniser nå
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Catalog Bridge Dialog ─────────────────────────────────────────────
-          4 tabs: Manufacturer catalog · Gear news · Market prices · Lens DB.
-          The onAddToProject / onImportFrom* callbacks pre-fill the add-dialog.  */}
-      <Dialog
-        open={catalogBridgeOpen}
-        onClose={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }}
-        fullScreen
-        PaperProps={{ sx: { bgcolor: '#0f0f1a' } }}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#fff', pb: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SearchIcon sx={{ color: '#9333ea' }} />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Utstyr & Markeder</Typography>
-            <Chip label="Importer til prosjekt" size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc' }} />
-          </Box>
-          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} sx={{ color: 'rgba(255,255,255,0.7)' }}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-
-        {/* Sub-tab navigation */}
-        <Box sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.02)' }}>
-          <Tabs
-            value={catalogDialogTab}
-            onChange={(_, v: number) => setCatalogDialogTab(v)}
-            sx={{
-              px: 2,
-              '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', minHeight: 48, fontSize: '0.82rem' },
-              '& .Mui-selected': { color: '#9333ea' },
-              '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
-            }}
-          >
-            <Tab icon={<SearchIcon sx={{ fontSize: 16 }} />} label="Produkt-katalog" iconPosition="start" />
-            <Tab icon={<NewspaperIcon sx={{ fontSize: 16 }} />} label="Utstyrsnyheter" iconPosition="start" />
-            <Tab icon={<TrendingUpIcon sx={{ fontSize: 16 }} />} label="Markedspriser" iconPosition="start" />
-            <Tab icon={<PhotoLibraryIcon sx={{ fontSize: 16 }} />} label="Objektiver" iconPosition="start" />
-          </Tabs>
-        </Box>
-
-        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
-
-          {/* Tab 0 — Manufacturer product catalog */}
-          {catalogDialogTab === 0 && (
-            <EquipmentCatalogBrowser
-              profession="videographer"
-              userId={user?.id ? String(user.id) : 'guest'}
-              onAddToProject={handleImportFromCatalog}
-            />
-          )}
-
-          {/* Tab 1 — Gear news feed */}
-          {catalogDialogTab === 1 && (
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <NewspaperIcon sx={{ color: '#9333ea' }} />
-                Utstyrsnyheter
-              </Typography>
-              {gearNewsLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
-                  <CircularProgress sx={{ color: '#9333ea' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter nyheter...</Typography>
-                </Box>
-              ) : gearNewsArticles.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 6 }}>
-                  <NewspaperIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen nyheter tilgjengelig akkurat nå.</Typography>
-                </Box>
-              ) : (
-                <Grid container spacing={2}>
-                  {gearNewsArticles.map((article, idx) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={idx}>
-                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
-                        <CardContent sx={{ flexGrow: 1 }}>
-                          <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
-                            {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontSize: '0.7rem' }} />}
-                            {article.isNew && <Chip label="NY" size="small" color="error" sx={{ fontSize: '0.7rem' }} />}
-                            {article.isTrending && <Chip label="Trending" size="small" color="warning" sx={{ fontSize: '0.7rem' }} />}
-                          </Box>
-                          <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 1, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            {article.title}
-                          </Typography>
-                          {article.summary && (
-                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                              {article.summary}
-                            </Typography>
-                          )}
-                          {article.rating !== undefined && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                              <Rating value={article.rating / 2} precision={0.5} size="small" readOnly sx={{ '& .MuiRating-iconFilled': { color: '#9333ea' } }} />
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{article.rating}</Typography>
-                            </Box>
-                          )}
-                        </CardContent>
-                        <Box sx={{ p: 1.5, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                          {article.url && (
-                            <IconButton size="small" href={article.url} target="_blank" rel="noopener noreferrer" sx={{ color: '#9333ea' }}>
-                              <OpenInNewIcon fontSize="small" />
-                            </IconButton>
-                          )}
-                        </Box>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              )}
-            </Box>
-          )}
-
-          {/* Tab 2 — Market prices */}
-          {catalogDialogTab === 2 && (
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUpIcon sx={{ color: '#4caf50' }} />
-                Markedspriser & Sammenligning
-              </Typography>
-              {marketPricesLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
-                  <CircularProgress sx={{ color: '#4caf50' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter markedspriser...</Typography>
-                </Box>
-              ) : marketItems.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 6 }}>
-                  <AttachMoneyIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen markedsprisdata tilgjengelig.</Typography>
-                </Box>
-              ) : (
-                <>
-                  {/* Summary row */}
-                  <Grid container spacing={2} sx={{ mb: 3 }}>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(76,175,80,0.3)', borderRadius: 2 }}>
-                        <TrendingUpIcon sx={{ color: '#4caf50', mb: 1 }} />
-                        <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
-                          {marketItems.filter(i => i.availability === 'available').length}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Tilgjengelige produkter</Typography>
-                      </Paper>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(147,51,234,0.3)', borderRadius: 2 }}>
-                        <AttachMoneyIcon sx={{ color: '#9333ea', mb: 1 }} />
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                          Fra: {marketItems.length > 0 ? Math.min(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
-                          Til: {marketItems.length > 0 ? Math.max(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
-                        </Typography>
-                      </Paper>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(33,150,243,0.3)', borderRadius: 2 }}>
-                        <StarIcon sx={{ color: '#2196f3', mb: 1 }} />
-                        <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
-                          {(marketItems.reduce((acc, item) => acc + parseFloat(item.videographerRating || '0'), 0) / (marketItems.length || 1)).toFixed(1)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Gj.snitt videographer-rating</Typography>
-                      </Paper>
-                    </Grid>
-                  </Grid>
-
-                  {/* Items grid */}
-                  <Grid container spacing={2}>
-                    {marketItems.map(item => (
-                      <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
-                        <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
-                          <CardContent sx={{ flexGrow: 1 }}>
-                            <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
-                              {item.brand} {item.model}
-                            </Typography>
-                            <Chip label={item.category} size="small" sx={{ bgcolor: 'rgba(76,175,80,0.15)', color: '#4caf50', mb: 1.5, fontSize: '0.72rem' }} />
-                            <Stack spacing={0.75}>
-                              {item.currentPrice && (
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
-                                  <Typography variant="h6" sx={{ color: '#4caf50', fontWeight: 700, fontSize: '1rem' }}>
-                                    {parseFloat(item.currentPrice).toLocaleString('nb-NO')} kr
-                                  </Typography>
-                                </Box>
-                              )}
-                              {item.msrp && item.currentPrice && parseFloat(item.msrp) > parseFloat(item.currentPrice) && (
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
-                                    UVP: {parseFloat(item.msrp).toLocaleString('nb-NO')} kr
-                                  </Typography>
-                                  <Chip label={`-${Math.round((1 - parseFloat(item.currentPrice) / parseFloat(item.msrp)) * 100)}%`} size="small" color="success" sx={{ fontSize: '0.7rem' }} />
-                                </Box>
-                              )}
-                              {item.videographerRating && (
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Rating:</Typography>
-                                  <Rating value={parseFloat(item.videographerRating)} size="small" readOnly precision={0.1} sx={{ '& .MuiRating-iconFilled': { color: '#2196f3' } }} />
-                                </Box>
-                              )}
-                              {item.availability && (
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Status:</Typography>
-                                  <Chip label={item.availability} size="small" color={item.availability === 'available' ? 'success' : item.availability === 'limited' ? 'warning' : 'default'} sx={{ fontSize: '0.7rem' }} />
-                                </Box>
-                              )}
-                            </Stack>
-                          </CardContent>
-                          <Box sx={{ p: 1.5, pt: 0, display: 'flex', gap: 1 }}>
-                            {item.sourceUrl && (
-                              <IconButton size="small" href={item.sourceUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'rgba(255,255,255,0.4)' }}>
-                                <OpenInNewIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                            <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromMarket(item)}
-                              sx={{ ml: 'auto', borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>
-                              Importer
-                            </Button>
-                          </Box>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </>
-              )}
-            </Box>
-          )}
-
-          {/* Tab 3 — Lens database */}
-          {catalogDialogTab === 3 && (
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <PhotoLibraryIcon sx={{ color: '#9333ea' }} />
-                Objektiv Database
-              </Typography>
-              {lensDbLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, py: 6 }}>
-                  <CircularProgress sx={{ color: '#9333ea' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Henter objektivdatabase...</Typography>
-                </Box>
-              ) : lensItems.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 6 }}>
-                  <PhotoLibraryIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.15)', mb: 2 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen objektiver i databasen ennå.</Typography>
-                </Box>
-              ) : (
-                <Grid container spacing={2}>
-                  {lensItems.map(lens => (
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={lens.id}>
-                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
-                        <CardContent sx={{ flexGrow: 1 }}>
-                          <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
-                            {lens.brand} {lens.model}
-                          </Typography>
-                          <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
-                            {lens.focalLength && lens.aperture && (
-                              <Chip label={`${lens.focalLength} ${lens.aperture}`} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontWeight: 600, fontSize: '0.72rem' }} />
-                            )}
-                            {lens.mount && <Chip label={lens.mount} size="small" variant="outlined" sx={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.72rem' }} />}
-                            {lens.lensType && <Chip label={lens.lensType} size="small" variant="outlined" sx={{ color: 'rgba(255,255,255,0.6)', borderColor: 'rgba(255,255,255,0.2)', fontSize: '0.72rem' }} />}
-                          </Box>
-                          <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
-                          <Stack spacing={0.75}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Bildestabilisering:</Typography>
-                              <CheckCircleIcon sx={{ fontSize: 16, color: lens.imageStabilization ? '#4caf50' : 'rgba(255,255,255,0.2)' }} />
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Værtetting:</Typography>
-                              <CheckCircleIcon sx={{ fontSize: 16, color: lens.weatherSealing ? '#4caf50' : 'rgba(255,255,255,0.2)' }} />
-                            </Box>
-                            {lens.weight && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Vekt:</Typography>
-                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>{lens.weight}</Typography>
-                              </Box>
-                            )}
-                            {lens.currentPrice && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Pris:</Typography>
-                                <Typography variant="body2" sx={{ fontWeight: 700, color: '#9333ea' }}>
-                                  {parseFloat(lens.currentPrice).toLocaleString('nb-NO')} kr
-                                </Typography>
-                              </Box>
-                            )}
-                          </Stack>
-                        </CardContent>
-                        <Box sx={{ p: 1.5, pt: 0 }}>
-                          <Button size="small" fullWidth variant="outlined" startIcon={<AddIcon />} onClick={() => handleImportFromLens(lens)}
-                            sx={{ borderColor: '#9333ea', color: '#9333ea', fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(147,51,234,0.1)' } }}>
-                            Legg til i prosjekt
-                          </Button>
-                        </Box>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              )}
-            </Box>
-          )}
-
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Firmware Management Dialog ────────────────────────────────────────
-          Shows firmware update status for all equipment registered in the
-          project, reusing the standalone FirmwareManagementInterface panel.    */}
-      <Dialog
-        open={firmwarePanelOpen}
-        onClose={() => setFirmwarePanelOpen(false)}
-        fullWidth
-        maxWidth="lg"
-        PaperProps={{ sx: { bgcolor: '#0f0f1a', color: '#fff' } }}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SyncIcon sx={{ color: '#2196f3' }} />
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
-          </Box>
-          <IconButton onClick={() => setFirmwarePanelOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
-          <FirmwareManagementInterface
-            profession="videographer"
-            userId={user?.id ? String(user.id) : 'guest'}
-          />
-        </DialogContent>
-      </Dialog>
+      {/* Dialogs extracted to EquipmentPanelDialogs.tsx */}
+      <EquipmentPanelDialogs />
 
     </Box>
+    </EquipmentPanelProvider>
   );
 }
 

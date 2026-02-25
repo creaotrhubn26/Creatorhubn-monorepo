@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import { trackButtonClick, trackModalOpen } from '@/hooks/useActionTracker';
 // Import dynamic profession system
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -2283,6 +2284,7 @@ useEffect(() => {
 
   return (
     <Box sx={{ p: 3 }}>
+      <ContextualNudgeBanner context="project-setup" accentColor="#f59e0b" />
       {initialData && (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography 

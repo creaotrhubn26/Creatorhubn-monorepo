@@ -36,8 +36,6 @@ import {
   Typography,
   Popover,
   Fade,
-  ToggleButtonGroup,
-  ToggleButton,
   Badge,
   Divider,
 } from '@mui/material';
@@ -50,7 +48,6 @@ import {
   TouchApp,
   Image,
   Layers,
-  Opacity,
   BrushOutlined,
   GridOn,
   Build,
@@ -60,7 +57,6 @@ import {
   useApplePencil,
   PencilPoint,
   PencilStroke,
-  InputType,
 } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import {
@@ -68,38 +64,27 @@ import {
   ProBrushType,
   ProBrushSettings,
   DEFAULT_BRUSH_SETTINGS,
-  BrushConfig,
 } from './drawing/AdvancedBrushEngine';
 import {
   DrawingToolsPanel,
   DrawingState,
   DEFAULT_DRAWING_STATE,
-  ActiveTool,
 } from './drawing/DrawingToolsPanel';
 import {
   getMirroredPoints,
   drawSymmetryGuides,
-  SymmetrySettings,
 } from './drawing/SymmetryMode';
 import {
   evaluatePressureCurve,
-  PressureCurve,
 } from './drawing/PressureCurveEditor';
 import {
   useGestureHandler,
   GestureAction,
-  GestureSettings,
 } from './drawing/GestureShortcuts';
 import {
   getOnionFrames,
   renderOnionSkins,
-  OnionSkinSettings,
 } from './drawing/OnionSkinning';
-import {
-  drawShape,
-  ShapeType,
-  ShapeStyle,
-} from './drawing/ShapeTools';
 import {
   ExportSettings,
   ExportFrame,
@@ -109,19 +94,12 @@ import {
 } from './drawing/ExportOptions';
 import { drawGuides } from './drawing/StoryboardTemplates';
 import { DrawingLayer } from './drawing/LayersPanel';
+import { drawShape, Shape } from './drawing/ShapeTools';
+import { WebGLBrushEngine } from './drawing/WebGLBrushEngine';
 
 // =============================================================================
 // Types
 // =============================================================================
-
-export interface Layer {
-  id: string;
-  name: string;
-  visible: boolean;
-  opacity: number;
-  strokes: PencilStroke[];
-  canvas?: HTMLCanvasElement;
-}
 
 export interface ReferenceImage {
   src: string;
@@ -155,6 +133,17 @@ export interface PencilCanvasProProps {
   onReferenceImageChange?: (ref: ReferenceImage | null) => void;
   onExport?: (settings: ExportSettings, frameIndices: number[]) => Promise<void>;
 }
+
+// =============================================================================
+// Module-scope constants (hoisted from render body — P-4 fix)
+// =============================================================================
+
+const SIZE_PRESETS = [2, 4, 8, 16, 32] as const;
+
+const COLOR_PRESETS = [
+  '#000000', '#FFFFFF', '#FF5252', '#FF9800', '#FFEB3B',
+  '#4CAF50', '#2196F3', '#9C27B0', '#795548', '#607D8B',
+] as const;
 
 // =============================================================================
 // Styled Components
@@ -363,8 +352,9 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   onReferenceImageChange,
   onExport,
 }) => {
-  // Device detection
+  // Device detection — adapt UI for touch devices
   const device = useDeviceDetection();
+  const isTouchDevice = device.isMobile || device.isTablet;
   
   // Canvas refs
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -377,6 +367,18 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   
   // Brush engine
   const brushEngineRef = useRef<AdvancedBrushEngine | null>(null);
+  
+  // WebGL accelerated brush engine (optional — falls back to Canvas 2D)
+  const webglEngineRef = useRef<WebGLBrushEngine | null>(null);
+  const [useWebGL, setUseWebGL] = useState(false);
+  
+  // Cached reference image element to avoid re-creating Image per render
+  const refImageCacheRef = useRef<{ src: string; img: HTMLImageElement } | null>(null);
+  // Cached background image element
+  const bgImageCacheRef = useRef<{ src: string; img: HTMLImageElement } | null>(null);
+  
+  // Canvas transform state (zoom, pan, rotation)
+  const [canvasTransform, setCanvasTransform] = useState({ zoom: 1, panX: 0, panY: 0, rotation: 0 });
   
   // State
   const [brushSettings, setBrushSettings] = useState<ProBrushSettings>({
@@ -397,6 +399,12 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   
   // Clipboard for copy/paste
   const [clipboard, setClipboard] = useState<PencilStroke[]>([]);
+  
+  // Shape objects on the canvas
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  /** Tracks in-progress shape creation drag (startX, startY) */
+  const shapeDragRef = useRef<{ startX: number; startY: number; shapeId: string } | null>(null);
   
   // Popover anchors
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
@@ -466,6 +474,9 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       const adjustedStroke: PencilStroke = {
         ...stroke,
         points: stroke.points.map(applyPressureCurve),
+        // Snapshot brush config so replay uses the same settings
+        brushSettings: { ...brushSettings } as unknown as Record<string, unknown>,
+        layerId: drawingState.activeLayerId,
       };
       
       if (brushSettings.type === 'eraser') {
@@ -485,8 +496,10 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
             width,
             height
           );
-          const mirroredStrokes = mirroredPointSets.map((points) => ({
+          const mirroredStrokes = mirroredPointSets.map((points, i) => ({
             ...adjustedStroke,
+            id: `${adjustedStroke.id}-mirror-${i}`,
+            seed: (adjustedStroke.seed + i + 1) >>> 0,
             points,
           }));
           newStrokes = [...strokes, ...mirroredStrokes];
@@ -531,15 +544,63 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     enableDoubleTap: true,
   });
   
-  // Initialize brush engine
+  // Initialize brush engine + keep config in sync
   useEffect(() => {
     if (!brushEngineRef.current && mainCanvasRef.current) {
       const ctx = mainCanvasRef.current.getContext('2d');
       if (ctx) {
         brushEngineRef.current = new AdvancedBrushEngine(ctx, brushSettings);
       }
+    } else if (brushEngineRef.current) {
+      brushEngineRef.current.setConfig(brushSettings);
     }
   }, [brushSettings]);
+
+  // Initialize WebGL engine when available
+  useEffect(() => {
+    if (webglEngineRef.current) {
+      // Resize if dimensions changed
+      webglEngineRef.current.resize(width, height);
+      webglEngineRef.current.setConfig(brushSettings);
+      return;
+    }
+
+    const glEngine = WebGLBrushEngine.create(width, height, brushSettings);
+    if (glEngine) {
+      webglEngineRef.current = glEngine;
+      setUseWebGL(true);
+    }
+
+    return () => {
+      webglEngineRef.current?.dispose();
+      webglEngineRef.current = null;
+    };
+  // Only run on mount/unmount — resize handled above
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync brushSettings ← drawingState.brushConfig (from BrushLibrary / DrawingToolsPanel)
+  useEffect(() => {
+    setBrushSettings(prev => {
+      const next = drawingState.brushConfig;
+      // Only update if something actually changed to avoid loop
+      if (
+        prev.type === next.type &&
+        prev.size === next.size &&
+        prev.color === next.color &&
+        prev.opacity === next.opacity &&
+        prev.hardness === next.hardness &&
+        prev.flow === next.flow &&
+        prev.wetness === next.wetness &&
+        prev.grain === next.grain &&
+        prev.tiltSensitivity === next.tiltSensitivity &&
+        prev.pressureSensitivity === next.pressureSensitivity
+      ) {
+        return prev;
+      }
+      return { ...prev, ...next };
+    });
+  }, [drawingState.brushConfig]);
   
   // Merge pencil ref with container ref
   useEffect(() => {
@@ -548,7 +609,76 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     }
   }, [pencilRef]);
   
-  // Draw reference image
+  // Shape interaction — pointer handlers when active tool is 'shape'
+  useEffect(() => {
+    const canvas = mainCanvasRef.current;
+    if (!canvas || drawingState.activeTool !== 'shape' || !drawingState.activeShapeType) return;
+
+    const getCanvasPoint = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+
+    const handleShapeDown = (e: PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const pt = getCanvasPoint(e);
+      const id = `shape-${Date.now()}`;
+      const newShape: Shape = {
+        id,
+        type: drawingState.activeShapeType!,
+        x: pt.x,
+        y: pt.y,
+        width: 0,
+        height: 0,
+        rotation: 0,
+        style: { ...drawingState.shapeStyle },
+      };
+      shapeDragRef.current = { startX: pt.x, startY: pt.y, shapeId: id };
+      setShapes(prev => [...prev, newShape]);
+      setSelectedShapeId(id);
+    };
+
+    const handleShapeMove = (e: PointerEvent) => {
+      if (!shapeDragRef.current) return;
+      e.preventDefault();
+      const pt = getCanvasPoint(e);
+      const { startX, startY, shapeId } = shapeDragRef.current;
+      setShapes(prev => prev.map(s => {
+        if (s.id !== shapeId) return s;
+        return {
+          ...s,
+          x: Math.min(startX, pt.x),
+          y: Math.min(startY, pt.y),
+          width: Math.abs(pt.x - startX),
+          height: Math.abs(pt.y - startY),
+        };
+      }));
+      redrawMainCanvas();
+    };
+
+    const handleShapeUp = (e: PointerEvent) => {
+      if (!shapeDragRef.current) return;
+      e.preventDefault();
+      // Remove zero-area shapes
+      const { shapeId } = shapeDragRef.current;
+      setShapes(prev => prev.filter(s => s.id !== shapeId || (s.width > 2 && s.height > 2)));
+      shapeDragRef.current = null;
+      redrawMainCanvas();
+    };
+
+    canvas.addEventListener('pointerdown', handleShapeDown, { capture: true });
+    canvas.addEventListener('pointermove', handleShapeMove, { capture: true });
+    canvas.addEventListener('pointerup', handleShapeUp, { capture: true });
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handleShapeDown, { capture: true });
+      canvas.removeEventListener('pointermove', handleShapeMove, { capture: true });
+      canvas.removeEventListener('pointerup', handleShapeUp, { capture: true });
+    };
+  }, [drawingState.activeTool, drawingState.activeShapeType, drawingState.shapeStyle, width, height, redrawMainCanvas]);
+  
+  // Draw reference image (cached Image element to avoid re-creating per render)
   useEffect(() => {
     if (!referenceCanvasRef.current) return;
     const ctx = referenceCanvasRef.current.getContext('2d');
@@ -557,8 +687,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     ctx.clearRect(0, 0, width, height);
     
     if (referenceImage && referenceImage.visible) {
-      const img = new window.Image();
-      img.onload = () => {
+      const drawRefImage = (img: HTMLImageElement) => {
+        ctx.save();
         ctx.globalAlpha = referenceImage.opacity;
         ctx.drawImage(
           img,
@@ -567,9 +697,20 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
           referenceImage.width,
           referenceImage.height
         );
-        ctx.globalAlpha = 1;
+        ctx.restore();
       };
-      img.src = referenceImage.src;
+
+      // Reuse cached image if src unchanged
+      if (refImageCacheRef.current && refImageCacheRef.current.src === referenceImage.src) {
+        drawRefImage(refImageCacheRef.current.img);
+      } else {
+        const img = new window.Image();
+        img.onload = () => {
+          refImageCacheRef.current = { src: referenceImage.src, img };
+          drawRefImage(img);
+        };
+        img.src = referenceImage.src;
+      }
     }
   }, [referenceImage, width, height]);
   
@@ -632,9 +773,40 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     }
   }, [drawingState.symmetrySettings, drawingState.storyboardTemplate, width, height]);
   
+  // Built-in frame snapshot cache for onion skinning when no external getFrameImage is provided
+  const frameSnapshotsRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
+
+  /** Snapshot the current canvas into the frame cache */
+  const captureFrameSnapshot = useCallback(() => {
+    const src = mainCanvasRef.current;
+    if (!src) return;
+    const snapshot = document.createElement('canvas');
+    snapshot.width = src.width;
+    snapshot.height = src.height;
+    const ctx = snapshot.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(src, 0, 0);
+      frameSnapshotsRef.current.set(currentFrameIndex, snapshot);
+    }
+  }, [currentFrameIndex]);
+
+  /** Resolve frame images: prefer external prop, fallback to built-in cache */
+  const resolvedGetFrameImage = useCallback((index: number): HTMLCanvasElement | null => {
+    if (getFrameImage) return getFrameImage(index);
+    return frameSnapshotsRef.current.get(index) ?? null;
+  }, [getFrameImage]);
+
+  // Auto-capture frame snapshot after each stroke for onion skinning
+  // (only when onion skinning is enabled and no external source)
+  useEffect(() => {
+    if (drawingState.onionSkinSettings.enabled && !getFrameImage && strokes.length > 0) {
+      captureFrameSnapshot();
+    }
+  }, [strokes, drawingState.onionSkinSettings.enabled, getFrameImage, captureFrameSnapshot]);
+
   // Draw onion skinning
   useEffect(() => {
-    if (!onionCanvasRef.current || !getFrameImage) return;
+    if (!onionCanvasRef.current) return;
     const ctx = onionCanvasRef.current.getContext('2d');
     if (!ctx) return;
     
@@ -642,9 +814,9 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     
     if (drawingState.onionSkinSettings.enabled) {
       const frames = getOnionFrames(currentFrameIndex, totalFrames, drawingState.onionSkinSettings);
-      renderOnionSkins(ctx, width, height, frames, getFrameImage, drawingState.onionSkinSettings);
+      renderOnionSkins(ctx, width, height, frames, resolvedGetFrameImage, drawingState.onionSkinSettings);
     }
-  }, [drawingState.onionSkinSettings, currentFrameIndex, totalFrames, getFrameImage, width, height]);
+  }, [drawingState.onionSkinSettings, currentFrameIndex, totalFrames, resolvedGetFrameImage, width, height]);
   
   // Redraw main canvas
   const redrawMainCanvas = useCallback(() => {
@@ -655,43 +827,130 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     
     ctx.clearRect(0, 0, width, height);
     
-    // Draw background image if provided
-    if (backgroundImage) {
-      const img = new window.Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, width, height);
-        strokes.forEach(stroke => {
-          engine.renderStroke(ctx, stroke.points, brushSettings);
-        });
-      };
-      img.src = backgroundImage;
-    } else {
-      strokes.forEach(stroke => {
-        engine.renderStroke(ctx, stroke.points, brushSettings);
+    const renderContent = () => {
+      // Group strokes by layer for correct visibility/blend ordering
+      const layerMap = new Map<string, DrawingLayer>();
+      drawingState.layers.forEach(l => layerMap.set(l.id, l));
+
+      // Try GPU-accelerated path first for simple strokes (no blend modes)
+      const glEngine = webglEngineRef.current;
+      const hasComplexBlending = strokes.some(s => {
+        const layer = layerMap.get(s.layerId);
+        return layer && (layer.blendMode !== 'normal' || layer.opacity < 1);
       });
+
+      if (glEngine && !hasComplexBlending) {
+        // ── WebGL fast path ──
+        glEngine.resize(width, height);
+        glEngine.clear();
+
+        strokes.forEach(stroke => {
+          const layer = layerMap.get(stroke.layerId);
+          if (layer && !layer.visible) return;
+
+          const strokeBrush = stroke.brushSettings
+            ? (stroke.brushSettings as unknown as Partial<ProBrushSettings>)
+            : brushSettings;
+
+          glEngine.renderStroke(stroke.points, strokeBrush);
+        });
+
+        // Blit WebGL result onto the 2D canvas
+        glEngine.copyTo2D(ctx);
+      } else {
+        // ── Canvas 2D path (supports blend modes, per-layer opacity) ──
+        strokes.forEach(stroke => {
+          const layer = layerMap.get(stroke.layerId);
+          if (layer && !layer.visible) return;
+
+          const strokeBrush = stroke.brushSettings
+            ? (stroke.brushSettings as unknown as Partial<ProBrushSettings>)
+            : brushSettings;
+
+          if (layer && layer.blendMode !== 'normal') {
+            ctx.globalCompositeOperation = layer.blendMode;
+          }
+          if (layer) {
+            ctx.globalAlpha = layer.opacity;
+          }
+
+          engine.renderStroke(ctx, stroke.points, strokeBrush);
+
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
+      }
+
+      // Render shape objects on top of strokes
+      shapes.forEach(shape => {
+        drawShape(ctx, shape, shape.id === selectedShapeId);
+      });
+    };
+
+    // Draw background image if provided (cached to avoid re-creating Image)
+    if (backgroundImage) {
+      if (bgImageCacheRef.current && bgImageCacheRef.current.src === backgroundImage) {
+        ctx.drawImage(bgImageCacheRef.current.img, 0, 0, width, height);
+        renderContent();
+      } else {
+        const img = new window.Image();
+        img.onload = () => {
+          bgImageCacheRef.current = { src: backgroundImage, img };
+          ctx.drawImage(img, 0, 0, width, height);
+          renderContent();
+        };
+        img.src = backgroundImage;
+      }
+    } else {
+      renderContent();
     }
-  }, [width, height, backgroundImage, strokes, brushSettings]);
+  }, [width, height, backgroundImage, strokes, shapes, selectedShapeId, brushSettings, drawingState.layers]);
   
   // Redraw when strokes change
   useEffect(() => {
     redrawMainCanvas();
   }, [redrawMainCanvas]);
   
-  // Check if strokes intersect (for eraser)
-  const strokesIntersect = (s1: PencilStroke, s2: PencilStroke): boolean => {
+  // Check if strokes intersect (for eraser) — P-2/P-3 fix:
+  // Uses spatial grid hashing instead of O(n²) point-by-point comparison.
+  const strokesIntersect = useCallback((s1: PencilStroke, s2: PencilStroke): boolean => {
     const threshold = brushSettings.size * 3;
-    for (const p1 of s1.points) {
-      for (const p2 of s2.points) {
-        const dist = Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
-        if (dist < threshold) return true;
+    const cellSize = threshold;
+    // Build a spatial hash from the shorter stroke
+    const [gridStroke, queryStroke] = s1.points.length <= s2.points.length ? [s1, s2] : [s2, s1];
+    const grid = new Map<string, true>();
+    for (const p of gridStroke.points) {
+      const cx = Math.floor(p.x / cellSize);
+      const cy = Math.floor(p.y / cellSize);
+      // Insert into the cell and the 8 neighbours to avoid boundary misses
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          grid.set(`${cx + dx},${cy + dy}`, true);
+        }
+      }
+    }
+    // Query points against the grid — O(n)
+    for (const p of queryStroke.points) {
+      const cx = Math.floor(p.x / cellSize);
+      const cy = Math.floor(p.y / cellSize);
+      if (grid.has(`${cx},${cy}`)) {
+        // Potential hit — do precise distance check against grid stroke neighbours
+        for (const gp of gridStroke.points) {
+          const dist = Math.hypot(p.x - gp.x, p.y - gp.y);
+          if (dist < threshold) return true;
+        }
       }
     }
     return false;
-  };
+  }, [brushSettings.size]);
   
-  // Undo/Redo
+  // Undo/Redo — bounded to prevent O(n²) memory growth
+  const MAX_UNDO_DEPTH = 80;
   const saveToUndo = useCallback(() => {
-    setUndoStack(prev => [...prev, strokes]);
+    setUndoStack(prev => {
+      const next = [...prev, strokes];
+      return next.length > MAX_UNDO_DEPTH ? next.slice(next.length - MAX_UNDO_DEPTH) : next;
+    });
     setRedoStack([]);
   }, [strokes]);
   
@@ -713,13 +972,31 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     onStrokesChange?.(next);
   }, [redoStack, strokes, onStrokesChange]);
   
-  // Clipboard operations
+  // Clipboard operations — selection-aware
+
+  /** Return indices of strokes that have at least one point inside the selection bounds */
+  const getSelectedStrokeIndices = useCallback((): number[] => {
+    const bounds = drawingState.selectionBounds;
+    if (!bounds) return [];
+    const { x, y, width: bw, height: bh } = bounds;
+    return strokes.reduce<number[]>((acc, stroke, idx) => {
+      const inside = stroke.points.some(
+        p => p.x >= x && p.x <= x + bw && p.y >= y && p.y <= y + bh
+      );
+      if (inside) acc.push(idx);
+      return acc;
+    }, []);
+  }, [drawingState.selectionBounds, strokes]);
+
   const copySelection = useCallback(() => {
-    if (drawingState.selectionBounds) {
-      // Copy strokes in selection (simplified - would need actual selection logic)
+    const indices = getSelectedStrokeIndices();
+    if (indices.length > 0) {
+      setClipboard(indices.map(i => strokes[i]));
+    } else {
+      // Fallback: copy all strokes when no selection
       setClipboard([...strokes]);
     }
-  }, [drawingState.selectionBounds, strokes]);
+  }, [getSelectedStrokeIndices, strokes]);
   
   const pasteClipboard = useCallback(() => {
     if (clipboard.length > 0) {
@@ -735,19 +1012,33 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   }, [clipboard, strokes, saveToUndo, onStrokesChange]);
   
   const cutSelection = useCallback(() => {
-    copySelection();
-    // Would delete selected strokes here
-  }, [copySelection]);
+    const indices = getSelectedStrokeIndices();
+    if (indices.length > 0) {
+      saveToUndo();
+      setClipboard(indices.map(i => strokes[i]));
+      const indexSet = new Set(indices);
+      const remaining = strokes.filter((_, i) => !indexSet.has(i));
+      setStrokes(remaining);
+      onStrokesChange?.(remaining);
+    } else {
+      copySelection();
+    }
+  }, [getSelectedStrokeIndices, strokes, saveToUndo, onStrokesChange, copySelection]);
   
   const deleteSelection = useCallback(() => {
-    if (drawingState.selectionBounds) {
-      // Would delete selected strokes here
+    const indices = getSelectedStrokeIndices();
+    if (indices.length > 0) {
       saveToUndo();
+      const indexSet = new Set(indices);
+      const remaining = strokes.filter((_, i) => !indexSet.has(i));
+      setStrokes(remaining);
+      onStrokesChange?.(remaining);
+      updateDrawingState({ selectionBounds: null, selectedStrokeIds: [] });
     }
-  }, [drawingState.selectionBounds, saveToUndo]);
+  }, [getSelectedStrokeIndices, strokes, saveToUndo, onStrokesChange, updateDrawingState]);
   
   // Gesture action handler
-  const handleGestureAction = useCallback((action: GestureAction, data?: any) => {
+  const handleGestureAction = useCallback((action: GestureAction, data?: Record<string, number>) => {
     switch (action) {
       case 'undo':
         undo();
@@ -756,16 +1047,26 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
         redo();
         break;
       case 'zoom-fit':
-        // Reset zoom/pan
+        setCanvasTransform({ zoom: 1, panX: 0, panY: 0, rotation: 0 });
         break;
       case 'zoom-in':
-        // Zoom in at data.center with data.scale
+        setCanvasTransform(prev => ({
+          ...prev,
+          zoom: Math.min(prev.zoom * (data?.scale ?? 1.25), 5),
+        }));
         break;
       case 'rotate-canvas':
-        // Rotate canvas by data.angle
+        setCanvasTransform(prev => ({
+          ...prev,
+          rotation: (prev.rotation + (data?.angle ?? 0)) % 360,
+        }));
         break;
       case 'pan-canvas':
-        // Pan canvas by data.dx, data.dy
+        setCanvasTransform(prev => ({
+          ...prev,
+          panX: prev.panX + (data?.dx ?? 0),
+          panY: prev.panY + (data?.dy ?? 0),
+        }));
         break;
       case 'copy':
         copySelection();
@@ -781,6 +1082,41 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     }
   }, [undo, redo, copySelection, pasteClipboard, cutSelection]);
   
+  // K-1 fix: Keyboard shortcuts for undo/redo/copy/paste/cut/delete
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      // Ignore keyboard shortcuts when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (ctrl && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey) || (e.key === 'Z'))) {
+        e.preventDefault();
+        redo();
+      } else if (ctrl && e.key === 'c') {
+        e.preventDefault();
+        copySelection();
+      } else if (ctrl && e.key === 'v') {
+        e.preventDefault();
+        pasteClipboard();
+      } else if (ctrl && e.key === 'x') {
+        e.preventDefault();
+        cutSelection();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSelection();
+      } else if (e.key === 'Escape') {
+        updateDrawingState({ selectionBounds: null, selectedStrokeIds: [] });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, copySelection, pasteClipboard, cutSelection, deleteSelection, updateDrawingState]);
+
   // Gesture handler hook
   useGestureHandler({
     element: containerRef.current,
@@ -845,20 +1181,29 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     reader.readAsDataURL(file);
   }, [width, height, onReferenceImageChange]);
   
-  // Size presets
-  const SIZE_PRESETS = [2, 4, 8, 16, 32];
-  
-  // Color presets
-  const COLOR_PRESETS = [
-    '#000000', '#FFFFFF', '#FF5252', '#FF9800', '#FFEB3B',
-    '#4CAF50', '#2196F3', '#9C27B0', '#795548', '#607D8B',
-  ];
+  // (SIZE_PRESETS and COLOR_PRESETS hoisted to module scope for stable references)
   
   // Calculate cursor size
   const cursorSize = brushSettings.size * (0.5 + (pencilState.currentPressure || 0.5));
   
+  // P-11 fix: Memoize exportFrames to avoid array literal recreated per render
+  const exportFramesMemo = useMemo((): ExportFrame[] => {
+    if (!mainCanvasRef.current) return [];
+    return [{ index: 0, canvas: mainCanvasRef.current }];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strokes]);
+
+  // Compute CSS transform from canvasTransform state
+  const canvasTransformStyle = useMemo(() => ({
+    transform: `scale(${canvasTransform.zoom}) translate(${canvasTransform.panX}px, ${canvasTransform.panY}px) rotate(${canvasTransform.rotation}deg)`,
+    transformOrigin: 'center center',
+    transition: 'transform 0.15s ease-out',
+  }), [canvasTransform]);
+
   return (
     <CanvasContainer ref={containerRef} sx={{ width, height }}>
+      {/* Transformable canvas wrapper */}
+      <Box sx={{ position: 'absolute', inset: 0, ...canvasTransformStyle }}>
       {/* Reference image layer */}
       <ReferenceLayer
         ref={referenceCanvasRef}
@@ -905,13 +1250,14 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
         height={height}
         style={{ pointerEvents: 'none' }}
       />
+      </Box>{/* End transformable canvas wrapper */}
       
       {/* Pencil mode indicator */}
       {pencilState.isPencilConnected && (
         <Fade in={pencilState.isActive || pencilState.isHovering}>
           <PencilModeIndicator>
             <Create sx={{ fontSize: 14 }} />
-            Apple Pencil
+            Apple Pencil{useWebGL ? ' · GPU' : ''}
           </PencilModeIndicator>
         </Fade>
       )}
@@ -925,8 +1271,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
         </PressureIndicator>
       )}
       
-      {/* Hover cursor */}
-      {hoverPosition && (
+      {/* Hover cursor - hidden on touch devices where it's not useful */}
+      {hoverPosition && !isTouchDevice && (
         <HoverCursor
           sx={{
             left: hoverPosition.x,
@@ -972,7 +1318,39 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
                 />
               </Tooltip>
             ))}
+            {/* Custom size slider button */}
+            <Tooltip title="Custom size" placement="top">
+              <IconButton
+                size={isTouchDevice ? 'medium' : 'small'}
+                onClick={(e) => setSizeAnchor(e.currentTarget)}
+                sx={{ color: 'rgba(255,255,255,0.6)', ml: 0.5 }}
+              >
+                <BrushOutlined sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
           </Stack>
+          
+          {/* Size slider popover */}
+          <Popover
+            open={Boolean(sizeAnchor)}
+            anchorEl={sizeAnchor}
+            onClose={() => setSizeAnchor(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            slotProps={{ paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)', p: 2 } } }}
+          >
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1, display: 'block' }}>
+              Brush Size: {brushSettings.size.toFixed(1)}px
+            </Typography>
+            <Slider
+              value={brushSettings.size}
+              min={0.5}
+              max={100}
+              step={0.5}
+              onChange={(_e, val) => setBrushSettings((prev: ProBrushSettings) => ({ ...prev, size: val as number }))}
+              sx={{ width: 160, color: brushSettings.color }}
+            />
+          </Popover>
           
           <Divider orientation="vertical" flexItem sx={{ mx: 1, bgcolor: 'rgba(255,255,255,0.1)' }} />
           
@@ -1179,6 +1557,10 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
           onLayerDelete={(id) => {
             if (drawingState.layers.length > 1) {
               const newLayers = drawingState.layers.filter(l => l.id !== id);
+              // Remove strokes belonging to deleted layer
+              const newStrokes = strokes.filter(s => s.layerId !== id);
+              setStrokes(newStrokes);
+              onStrokesChange?.(newStrokes);
               updateDrawingState({
                 layers: newLayers,
                 activeLayerId: drawingState.activeLayerId === id ? newLayers[0].id : drawingState.activeLayerId,
@@ -1206,7 +1588,29 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
             updateDrawingState({ layers: newLayers });
           }}
           onLayerMerge={(id) => {
-            // Merge layer down logic
+            const layers = drawingState.layers;
+            const idx = layers.findIndex(l => l.id === id);
+            // Can only merge down if there's a layer below
+            if (idx <= 0) return;
+            const upper = layers[idx];
+            const lower = layers[idx - 1];
+            const merged: DrawingLayer = {
+              ...lower,
+              name: lower.name,
+              strokes: [...lower.strokes, ...upper.strokes],
+            };
+            const newLayers = layers.filter((_, i) => i !== idx);
+            newLayers[idx - 1] = merged;
+            // Re-assign upper layer's strokes to the merged layer
+            const newStrokes = strokes.map(s =>
+              s.layerId === upper.id ? { ...s, layerId: merged.id } : s
+            );
+            setStrokes(newStrokes);
+            onStrokesChange?.(newStrokes);
+            updateDrawingState({
+              layers: newLayers,
+              activeLayerId: merged.id,
+            });
           }}
           onLayerDuplicate={(id) => {
             const layer = drawingState.layers.find(l => l.id === id);
@@ -1228,11 +1632,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
           }}
           currentFrameIndex={currentFrameIndex}
           totalFrames={totalFrames}
-          getFrameImage={getFrameImage || (() => null)}
-          exportFrames={[{
-            index: 0,
-            canvas: mainCanvasRef.current!,
-          }].filter(f => f.canvas)}
+          getFrameImage={resolvedGetFrameImage}
+          exportFrames={exportFramesMemo}
           selectedFrameIndices={[0]}
           onColorPick={(color) => {
             setBrushSettings(prev => ({ ...prev, color }));

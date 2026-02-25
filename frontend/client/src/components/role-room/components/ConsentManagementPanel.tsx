@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -282,6 +283,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
 
   return (
     <Box sx={{ p: 3 }}>
+      <ContextualNudgeBanner context="consent" accentColor="#10b981" />
       {candidate && (
         <Box sx={{ mb: 3 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>

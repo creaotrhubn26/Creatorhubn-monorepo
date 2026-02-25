@@ -126,6 +126,7 @@ import {
   StoryArcTabIcon,
   SharingTabIcon,
   LiveSetTabIcon,
+  LearningTabIcon,
 } from './icons';
 
 import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
@@ -156,6 +157,7 @@ const DashboardPanel = lazy(() => import('./DashboardPanel').then(m => ({ defaul
 const AuditionSchedulePanel = lazy(() => import('./AuditionSchedulePanel').then(m => ({ default: m.AuditionSchedulePanel })));
 const SharingPanel = lazy(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazy(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
+const RoleRoomIntelligence = lazy(() => import('./RoleRoomIntelligence'));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -664,6 +666,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     { color: '#ec4899', icon: StoryArcTabIcon },
     { color: '#06b6d4', icon: SharingTabIcon },
     { color: '#ef4444', icon: LiveSetTabIcon },
+    { color: '#a855f7', icon: LearningTabIcon },
   ], [professionConfig?.color]);
 
   // Quick navigation links for SpeedDial - matching tabConfig icons and colors
@@ -2002,6 +2005,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               branding.tokens.labels.storyArcStudio,
               branding.tokens.labels.sharing,
               'Live Set',
+              'Læring',
             ];
             const tabIds = [
               'tab-oversikt',
@@ -2016,6 +2020,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               'tab-story-arc-studio',
               'tab-deling',
               'tab-live-set',
+              'tab-laering',
             ];
             const tabPanelIds = [
               'tabpanel-oversikt',
@@ -2030,6 +2035,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               'tabpanel-story-arc-studio',
               'tabpanel-deling',
               'tabpanel-live-set',
+              'tabpanel-laering',
             ];
             
             return (
@@ -2615,6 +2621,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           {storyArcView === 'main' ? (
             <Box sx={{ p: 2 }}>
               {/* Story Arc Studio Header */}
+              <ContextualNudgeBanner context="story-arc" accentColor="#ec4899" />
               <Box sx={{ mb: 3, textAlign: 'center' }}>
                 <Typography variant="h5" sx={{ 
                   fontWeight: 700, 
@@ -2837,6 +2844,10 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             shootingDay={new Date().toLocaleDateString('no-NO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             onExit={() => setActiveTab(0)}
           />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={12}>
+          <RoleRoomIntelligence userId={getUserId()} />
         </TabPanel>
         </Suspense>
         </ErrorBoundary>

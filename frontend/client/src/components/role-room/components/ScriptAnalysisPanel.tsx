@@ -8,6 +8,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -112,6 +113,8 @@ export const ScriptAnalysisPanel: React.FC<ScriptAnalysisPanelProps> = ({
         overflow: 'hidden',
       }}
     >
+      <ContextualNudgeBanner context="script" accentColor="#ec4899" />
+
       {/* Header */}
       <Paper
         elevation={0}

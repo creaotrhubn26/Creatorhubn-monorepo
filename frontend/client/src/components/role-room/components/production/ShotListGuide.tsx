@@ -192,9 +192,49 @@ function Key({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── CTA Button ──────────────────────────────────────────────────────────────
+
+function CtaButton({
+  label,
+  action,
+  onAction,
+  icon,
+}: {
+  label: string;
+  action: string;
+  onAction?: (action: string) => void;
+  icon?: React.ReactNode;
+}) {
+  if (!onAction) return null;
+  return (
+    <Button
+      size="small"
+      variant="outlined"
+      onClick={() => onAction(action)}
+      startIcon={icon}
+      sx={{
+        mt: 1.5,
+        textTransform: 'none',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        color: '#e91e63',
+        borderColor: 'rgba(233,30,99,0.4)',
+        bgcolor: 'rgba(233,30,99,0.06)',
+        '&:hover': {
+          borderColor: '#e91e63',
+          bgcolor: 'rgba(233,30,99,0.14)',
+        },
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 // ─── Step content ─────────────────────────────────────────────────────────────
 
-const STEPS: Step[] = [
+function buildSteps(onAction?: (action: string) => void): Step[] {
+  return [
   // ── 1 ─────────────────────────────────────────────────────────────────────
   {
     id: 'overview',
@@ -231,6 +271,7 @@ const STEPS: Step[] = [
                 </Typography>
               </Box>
             ))}
+            <CtaButton label="Utforsk panelet" action="explore-panel" onAction={onAction} icon={<HelpIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -300,6 +341,7 @@ const STEPS: Step[] = [
             <Callout color="#3b82f6">
               Active filters are shown in the filter bar with a filled style. The card count next to the search box updates as you filter.
             </Callout>
+            <CtaButton label="Prøv filtrering" action="try-filters" onAction={onAction} icon={<FilterIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -339,6 +381,7 @@ const STEPS: Step[] = [
             <Callout color="#22c55e">
               After creating, add shots from within the Shot List detail view (click the card to open it).
             </Callout>
+            <CtaButton label="Opprett ny shotliste" action="create-list" onAction={onAction} icon={<AddIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -386,6 +429,7 @@ const STEPS: Step[] = [
             <Callout color="#a855f7">
               The sidebar shot count is aggregated across all shot lists in the project — not just the ones visible in the current filtered grid.
             </Callout>
+            <CtaButton label="Tildel mannskap" action="assign-crew" onAction={onAction} icon={<PeopleIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -426,6 +470,7 @@ const STEPS: Step[] = [
             <Callout color="#ef4444">
               Deletion is permanent and cannot be undone. All shots inside the list are deleted along with it.
             </Callout>
+            <CtaButton label="Rediger en liste" action="edit-list" onAction={onAction} icon={<DoneIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -483,6 +528,7 @@ const STEPS: Step[] = [
                 </Typography>
               </Box>
             ))}
+            <CtaButton label="Prøv flervalg" action="try-multiselect" onAction={onAction} icon={<BatchIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -516,6 +562,7 @@ const STEPS: Step[] = [
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem', lineHeight: 1.5, mt: 1 }}>
               Keyboard users: press <Key>Space</Key> to pick up a card, then <Key>↑</Key> / <Key>↓</Key> / <Key>←</Key> / <Key>→</Key> to move it, and <Key>Space</Key> again to drop.
             </Typography>
+            <CtaButton label="Prøv dra-og-slipp" action="reorder-cards" onAction={onAction} icon={<ReorderIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -559,6 +606,7 @@ const STEPS: Step[] = [
             <Callout color="#f97316">
               PDF export is coming soon. The option is visible in the export dialog but will show a notification until PDF generation is wired up.
             </Callout>
+            <CtaButton label="Eksporter CSV" action="export-csv" onAction={onAction} icon={<ExportIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
@@ -613,12 +661,14 @@ const STEPS: Step[] = [
             <Callout color="#22c55e">
               Updates are applied directly to the in-memory cache — no network re-fetch needed. The card refreshes in under 100 ms.
             </Callout>
+            <CtaButton label="Se sanntidsstatus" action="see-realtime" onAction={onAction} icon={<RealtimeIcon sx={{ fontSize: 16 }} />} />
           </>
         ),
       },
     ],
   },
-];
+  ];
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -627,9 +677,11 @@ export interface ShotListGuideProps {
   onClose: () => void;
   /** If provided, the guide opens directly to this step. */
   initialStepId?: string;
+  /** Callback fired when a CTA button is clicked. Receives an action id string. */
+  onAction?: (action: string) => void;
 }
 
-export function ShotListGuide({ open, onClose, initialStepId }: ShotListGuideProps) {
+export function ShotListGuide({ open, onClose, initialStepId, onAction }: ShotListGuideProps) {
   const theme = useTheme();
   const isNarrow = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -637,9 +689,10 @@ export function ShotListGuide({ open, onClose, initialStepId }: ShotListGuidePro
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig  = getGuideConfig('shot-list');
   const activeIds    = getActiveStepIds('shot-list');
+  const steps = buildSteps(onAction);
   const visibleSteps = activeIds.length > 0
-    ? (activeIds.map(id => STEPS.find(s => s.id === id)).filter(Boolean) as Step[])
-    : STEPS;
+    ? (activeIds.map(id => steps.find(s => s.id === id)).filter(Boolean) as Step[])
+    : steps;
 
   const [activeStepId, setActiveStepId] = useState(initialStepId ?? visibleSteps[0].id);
   const contentRef = useRef<HTMLDivElement | null>(null);

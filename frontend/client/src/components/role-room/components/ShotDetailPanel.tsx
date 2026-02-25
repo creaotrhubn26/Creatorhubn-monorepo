@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -216,6 +217,7 @@ export const ShotDetailPanel: React.FC<ShotDetailPanelProps> = ({ scene, onUpdat
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <ContextualNudgeBanner context="shot-detail" accentColor="#8b5cf6" />
       {/* Shot Selector */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">

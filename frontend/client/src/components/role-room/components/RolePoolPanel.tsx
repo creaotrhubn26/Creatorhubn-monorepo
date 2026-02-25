@@ -1,4 +1,5 @@
 import { useState, useEffect, type FC } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -125,6 +126,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
+      <ContextualNudgeBanner context="role-pool" accentColor="#f97316" />
       <Box sx={{ 
         display: 'flex', 
         flexDirection: { xs: 'column', sm: 'row' },

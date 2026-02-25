@@ -1,4 +1,5 @@
 import { useState, useEffect, type FC, type ReactNode, type ReactElement } from 'react';
+import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
   Typography,
@@ -270,6 +271,8 @@ const OffersContractsPanel: FC<OffersContractsPanelProps> = ({
 
   return (
     <Box>
+      <ContextualNudgeBanner context="contracts" accentColor="#8b5cf6" />
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
           <LocalOfferIcon sx={{ color: '#8b5cf6' }} />

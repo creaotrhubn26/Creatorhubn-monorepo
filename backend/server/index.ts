@@ -20,6 +20,8 @@ import { createRoleRoomRouter } from './role-room-routes.js';
 import { createCommunicationRouter } from './communication-routes.js';
 import { createWebSocketServer } from './websocket-chat.js';
 import { createReferenceProxyRouter } from './reference-proxy-routes.js';
+import { createFirmwareRouter } from './firmware-routes.js';
+import { createEquipmentRouter } from './equipment-routes.js';
 import { createServer } from 'http';
 
 // Database connection
@@ -102,6 +104,12 @@ app.use('/api/role-room', createRoleRoomRouter(pool, activeSessions));
 
 // ── Reference image proxy (shot.cafe + Unsplash) ──────────
 app.use('/api', createReferenceProxyRouter());
+
+// ── Firmware Management v2 (catalog + track-key matching) ──
+app.use('/api/firmware/v2', createFirmwareRouter(pool));
+
+// ── Equipment Management v2 (full CRUD + catalog + scene intelligence) ──
+app.use('/api/equipment/v2', createEquipmentRouter(pool));
 
 // Ensure UTF-8 charset for all JSON responses (æøå support)
 app.use((req, res, next) => {
@@ -8607,6 +8615,155 @@ app.post('/api/firmware/update', async (req, res) => {
   } catch (error) {
     console.error('Firmware update error:', error);
     res.status(500).json({ error: 'Failed to apply update' });
+  }
+});
+
+// ── Community firmware catalog (shared across all users) ───────────────────
+// These /api/firmware/catalog endpoints now proxy to the new firmware_catalog
+// table via raw SQL. The v2 router at /api/firmware/v2/catalog also works.
+// Both are kept for backward compatibility.
+
+app.get('/api/firmware/catalog', async (req, res) => {
+  try {
+    // Try new firmware_catalog table first, fall back to firmware_updates
+    let rows: any[];
+    try {
+      const result = await pool.query(
+        `SELECT DISTINCT ON (manufacturer, model)
+           id, manufacturer, model, version, release_date,
+           download_url, release_notes_url, description, importance,
+           source_type, fetched_at
+         FROM firmware_catalog
+         ORDER BY manufacturer, model, release_date DESC NULLS LAST`
+      );
+      rows = result.rows;
+    } catch {
+      // firmware_catalog table doesn't exist yet — fall back to firmware_updates
+      const legacyRows = await db
+        .select()
+        .from(schema.firmwareUpdates)
+        .orderBy(schema.firmwareUpdates.brand, schema.firmwareUpdates.model);
+      rows = legacyRows.map((r) => ({
+        id: r.id, manufacturer: r.brand, model: r.model, version: r.version,
+        release_date: r.releaseDate, download_url: r.downloadUrl || r.sourceUrl,
+        release_notes_url: null, description: r.description,
+        importance: r.importance, source_type: 'manual', fetched_at: r.updatedAt,
+      }));
+    }
+
+    const entries = rows.map((r: any) => ({
+      id: r.id,
+      brand: r.manufacturer,
+      model: r.model,
+      latestVersion: r.version,
+      releaseDate: r.release_date || new Date().toISOString(),
+      importance: r.importance || 'optional',
+      description: r.description || '',
+      downloadUrl: r.download_url || '',
+      releaseNotesUrl: r.release_notes_url || '',
+      sourceType: r.source_type || 'manual',
+      aliases: [],
+    }));
+    res.json(entries);
+  } catch (error) {
+    console.error('Firmware catalog GET error:', error);
+    res.status(500).json({ error: 'Failed to load firmware catalog' });
+  }
+});
+
+app.post('/api/firmware/catalog', async (req, res) => {
+  try {
+    const { brand, manufacturer, model, latestVersion, version, releaseDate,
+            importance, description, downloadUrl, releaseNotesUrl,
+            sourceType, sourceUrl, checksum } = req.body || {};
+    const mfr = (manufacturer || brand || '').trim();
+    const mdl = (model || '').trim();
+    const ver = (version || latestVersion || '').trim();
+    if (!mfr || !mdl || !ver) {
+      res.status(400).json({ error: 'manufacturer/brand, model, and version/latestVersion are required' });
+      return;
+    }
+
+    let entry: any;
+    try {
+      // Try new firmware_catalog table
+      const result = await pool.query(
+        `INSERT INTO firmware_catalog
+           (manufacturer, model, version, release_date, download_url,
+            release_notes_url, checksum, source_type, source_url, description, importance)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (manufacturer, model, version)
+         DO UPDATE SET
+           release_date = COALESCE(EXCLUDED.release_date, firmware_catalog.release_date),
+           download_url = COALESCE(EXCLUDED.download_url, firmware_catalog.download_url),
+           release_notes_url = COALESCE(EXCLUDED.release_notes_url, firmware_catalog.release_notes_url),
+           description = COALESCE(EXCLUDED.description, firmware_catalog.description),
+           importance = EXCLUDED.importance,
+           source_type = EXCLUDED.source_type,
+           updated_at = NOW(), fetched_at = NOW()
+         RETURNING *`,
+        [mfr, mdl, ver, releaseDate || null, downloadUrl || null,
+         releaseNotesUrl || null, checksum || null,
+         sourceType || 'manual', sourceUrl || null,
+         description || null, importance || 'optional']
+      );
+      entry = result.rows[0];
+    } catch {
+      // Fallback to legacy firmware_updates
+      const existing = await db.select().from(schema.firmwareUpdates)
+        .where(and(eq(schema.firmwareUpdates.brand, mfr), eq(schema.firmwareUpdates.model, mdl)));
+      const now = new Date().toISOString();
+      if (existing.length > 0) {
+        const [updated] = await db.update(schema.firmwareUpdates)
+          .set({ version: ver, releaseDate: releaseDate || null, importance: importance || 'optional',
+                 description: description || null, downloadUrl: downloadUrl || null,
+                 isLatest: true, updatedAt: now })
+          .where(eq(schema.firmwareUpdates.id, existing[0].id)).returning();
+        entry = updated;
+      } else {
+        const [inserted] = await db.insert(schema.firmwareUpdates)
+          .values({ brand: mfr, model: mdl, version: ver, releaseDate: releaseDate || null,
+                    importance: importance || 'optional', description: description || null,
+                    downloadUrl: downloadUrl || null, isLatest: true, createdAt: now, updatedAt: now })
+          .returning();
+        entry = inserted;
+      }
+    }
+
+    res.json({
+      id: entry.id,
+      brand: entry.manufacturer || entry.brand,
+      model: entry.model,
+      latestVersion: entry.version,
+      releaseDate: entry.release_date || entry.releaseDate || entry.created_at || entry.createdAt,
+      importance: entry.importance || 'optional',
+      description: entry.description || '',
+      downloadUrl: entry.download_url || entry.downloadUrl || '',
+      releaseNotesUrl: entry.release_notes_url || '',
+    });
+  } catch (error) {
+    console.error('Firmware catalog POST error:', error);
+    res.status(500).json({ error: 'Failed to save firmware entry' });
+  }
+});
+
+app.delete('/api/firmware/catalog/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    let deleted = false;
+    try {
+      const result = await pool.query('DELETE FROM firmware_catalog WHERE id = $1 RETURNING id', [Number(id)]);
+      deleted = (result.rowCount ?? 0) > 0;
+    } catch {
+      const rows = await db.delete(schema.firmwareUpdates)
+        .where(eq(schema.firmwareUpdates.id, id)).returning();
+      deleted = rows.length > 0;
+    }
+    if (!deleted) { res.status(404).json({ error: 'Entry not found' }); return; }
+    res.json({ success: true, deleted: id });
+  } catch (error) {
+    console.error('Firmware catalog DELETE error:', error);
+    res.status(500).json({ error: 'Failed to delete firmware entry' });
   }
 });
 

@@ -58,6 +58,9 @@ export const SharingTabIcon = createRoleRoomIcon(comPng, 'Deling');
 /** Tab 11 — Live Set Mode (on-set operational tool) */
 export const LiveSetTabIcon = createRoleRoomIcon(cameraPng, 'Live Set');
 
+/** Tab 12 — Læringsmotor (Learning Intelligence) */
+export const LearningTabIcon = createRoleRoomIcon(storylogicPng, 'Læring');
+
 // ── PNG source re-exports (for RoleRoomEmptyState) ──────────────────────────
 
 export {

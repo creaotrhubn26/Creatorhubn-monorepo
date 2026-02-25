@@ -895,7 +895,16 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
       </Snackbar>
 
       {/* Screenplay Editor Guide */}
-      <ScreenplayGuide open={showGuide} onClose={() => setShowGuide(false)} />
+      <ScreenplayGuide
+        open={showGuide}
+        onClose={() => setShowGuide(false)}
+        onAction={(action) => {
+          setShowGuide(false);
+          switch (action) {
+            default: console.log('[Guide CTA]', action);
+          }
+        }}
+      />
     </Box>
   );
 };

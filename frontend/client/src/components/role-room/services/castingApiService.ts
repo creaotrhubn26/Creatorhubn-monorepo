@@ -615,6 +615,11 @@ export interface Equipment {
   assignees?: Array<{ crew_id: string; role: string }>;
   created_at?: string;
   updated_at?: string;
+
+  // Firmware management fields
+  firmware_current?: string;
+  firmware_track_key?: string;
+  firmware_auto_check_enabled?: boolean;
 }
 
 export interface EquipmentBooking {
