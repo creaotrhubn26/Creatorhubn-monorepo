@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
@@ -58,7 +58,15 @@ import {
   EquipmentConflict,
 } from '../services/castingApiService';
 import WarningIcon from '@mui/icons-material/Warning';
-import NotificationsIcon from '@mui/icons-material/Notifications';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import DesignServicesIcon from '@mui/icons-material/DesignServices';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import { castingService } from '../services/castingService';
+import {
+  PROP_DESIGN_LIBRARY_UPDATED_EVENT,
+  propDesignLibraryService,
+  PropDesignReadinessSummary,
+} from '../services/propDesignLibraryService';
 
 interface Candidate {
   id: string;
@@ -115,18 +123,58 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const [selectedCrew, setSelectedCrew] = useState<string[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'week'>('list');
   const [candidates, setCandidates] = useState<Candidate[]>(propCandidates || []);
   const [crew, setCrew] = useState<Crew[]>(propCrew || []);
   const [locations, setLocations] = useState<Location[]>(propLocations || []);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [crewConflicts, setCrewConflicts] = useState<Map<string, CrewConflict[]>>(new Map());
   const [equipmentConflicts, setEquipmentConflicts] = useState<Map<string, EquipmentConflict[]>>(new Map());
+  const [propReadiness, setPropReadiness] = useState<PropDesignReadinessSummary>({
+    totalProps: 0,
+    propsWithSketch: 0,
+    propsWithDesign: 0,
+    propsWithFinal: 0,
+    propsNeedingConcept: 0,
+  });
 
   useEffect(() => {
     loadEvents();
     loadProjectData();
   }, [projectId]);
+
+  const loadPropReadiness = useCallback(async () => {
+    try {
+      const props = await castingService.getProps(projectId);
+      const readiness = await propDesignLibraryService.getReadinessSummary(projectId, props);
+      setPropReadiness(readiness);
+    } catch (error) {
+      console.error('Failed to load prop readiness summary:', error);
+      setPropReadiness({
+        totalProps: 0,
+        propsWithSketch: 0,
+        propsWithDesign: 0,
+        propsWithFinal: 0,
+        propsNeedingConcept: 0,
+      });
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleLibraryUpdate = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail;
+      if (!detail || typeof detail !== 'object') return;
+      const detailProjectId = 'projectId' in detail ? detail.projectId : null;
+      if (detailProjectId === projectId) {
+        void loadPropReadiness();
+      }
+    };
+    window.addEventListener(PROP_DESIGN_LIBRARY_UPDATED_EVENT, handleLibraryUpdate);
+    return () => {
+      window.removeEventListener(PROP_DESIGN_LIBRARY_UPDATED_EVENT, handleLibraryUpdate);
+    };
+  }, [loadPropReadiness, projectId]);
 
   const loadEvents = async () => {
     setLoading(true);
@@ -135,7 +183,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       setEvents(eventsData.sort((a, b) => 
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       ));
-    } catch (error) {
+    } catch {
       enqueueSnackbar('Kunne ikke laste kalenderhendelser', { variant: 'error' });
     } finally {
       setLoading(false);
@@ -149,7 +197,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         try {
           const candidatesData = await candidatesApi.getAll(projectId);
           setCandidates(candidatesData.map(c => ({ id: c.id, name: c.name })));
-        } catch (e) {
+        } catch {
           console.warn('Could not load candidates from API, using props');
         }
       }
@@ -157,7 +205,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         try {
           const crewData = await crewApi.getAll(projectId);
           setCrew(crewData.map(c => ({ id: c.id, name: c.name })));
-        } catch (e) {
+        } catch {
           console.warn('Could not load crew from API, using props');
         }
       }
@@ -165,17 +213,18 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
         try {
           const locationsData = await locationsApi.getAll(projectId);
           setLocations(locationsData.map(l => ({ id: l.id, name: l.name })));
-        } catch (e) {
+        } catch {
           console.warn('Could not load locations from API, using props');
         }
       }
       try {
         const equipmentData = await equipmentApi.getAll(projectId);
         setEquipment(equipmentData);
-      } catch (e) {
+      } catch {
         console.warn('Could not load equipment from API');
         setEquipment([]);
       }
+      await loadPropReadiness();
     } catch (error) {
       console.error('Failed to load project data:', error);
     }
@@ -366,6 +415,23 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           equipmentIds: selectedEquipment,
           notes,
         });
+        if (eventId && onEventCreate) {
+          onEventCreate({
+            id: eventId,
+            project_id: projectId,
+            title,
+            description: description || undefined,
+            event_type: eventType as CalendarEvent['event_type'],
+            start_time: startTime,
+            end_time: endTime || undefined,
+            location_id: selectedLocation || undefined,
+            all_day: allDay,
+            candidate_ids: selectedCandidates,
+            crew_ids: selectedCrew,
+            equipment_ids: selectedEquipment,
+            notes: notes || undefined,
+          });
+        }
         enqueueSnackbar('Hendelse opprettet!', { variant: 'success' });
         
         if (selectedCrew.length > 0 && eventId) {
@@ -393,7 +459,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       setDialogOpen(false);
       resetForm();
       loadEvents();
-    } catch (error) {
+    } catch {
       enqueueSnackbar('Kunne ikke lagre hendelse', { variant: 'error' });
     } finally {
       setSubmitting(false);
@@ -405,28 +471,13 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       await calendarEventsApi.delete(eventId);
       enqueueSnackbar('Hendelse slettet', { variant: 'success' });
       loadEvents();
-    } catch (error) {
+    } catch {
       enqueueSnackbar('Kunne ikke slette hendelse', { variant: 'error' });
     }
   };
 
   const getEventTypeConfig = (type: string) => {
     return EVENT_TYPES.find(t => t.value === type) || EVENT_TYPES[EVENT_TYPES.length - 1];
-  };
-
-  const formatDateTime = (dateStr: string, showTime = true) => {
-    const date = new Date(dateStr);
-    const dateFormatted = date.toLocaleDateString('nb-NO', { 
-      weekday: 'short', 
-      day: 'numeric', 
-      month: 'short' 
-    });
-    if (!showTime) return dateFormatted;
-    const timeFormatted = date.toLocaleTimeString('nb-NO', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-    return `${dateFormatted} kl. ${timeFormatted}`;
   };
 
   const groupEventsByDate = () => {
@@ -484,6 +535,48 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           />
         ))}
       </Box>
+
+      {propReadiness.totalProps > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            mb: 2.5,
+            flexWrap: 'wrap',
+            p: 1.25,
+            borderRadius: 1.5,
+            bgcolor: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(148,163,184,0.2)',
+          }}
+        >
+          <Chip
+            size="small"
+            icon={<AutoFixHighIcon sx={{ fontSize: 14 }} />}
+            label={`Sketch: ${propReadiness.propsWithSketch}/${propReadiness.totalProps}`}
+            sx={{ bgcolor: 'rgba(34,211,238,0.2)', color: '#67e8f9' }}
+          />
+          <Chip
+            size="small"
+            icon={<DesignServicesIcon sx={{ fontSize: 14 }} />}
+            label={`Design: ${propReadiness.propsWithDesign}/${propReadiness.totalProps}`}
+            sx={{ bgcolor: 'rgba(129,140,248,0.2)', color: '#a5b4fc' }}
+          />
+          <Chip
+            size="small"
+            icon={<TaskAltIcon sx={{ fontSize: 14 }} />}
+            label={`Final: ${propReadiness.propsWithFinal}/${propReadiness.totalProps}`}
+            sx={{ bgcolor: 'rgba(34,197,94,0.2)', color: '#86efac' }}
+          />
+          {propReadiness.propsNeedingConcept > 0 && (
+            <Chip
+              size="small"
+              icon={<WarningIcon sx={{ fontSize: 14 }} />}
+              label={`Mangler konsept: ${propReadiness.propsNeedingConcept}`}
+              sx={{ bgcolor: 'rgba(245,158,11,0.2)', color: '#fbbf24' }}
+            />
+          )}
+        </Box>
+      )}
 
       {events.length === 0 ? (
         <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>
@@ -591,6 +684,33 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                                 {eventCrew.map(c => c.name).join(', ')}
                               </Typography>
                             </Box>
+                          )}
+
+                          {event.event_type === 'shooting' && propReadiness.totalProps > 0 && (
+                            <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                              <Chip
+                                size="small"
+                                label={`Props final ${propReadiness.propsWithFinal}/${propReadiness.totalProps}`}
+                                sx={{
+                                  bgcolor: 'rgba(34,197,94,0.18)',
+                                  color: '#86efac',
+                                  height: 22,
+                                  fontSize: 11,
+                                }}
+                              />
+                              {propReadiness.propsNeedingConcept > 0 && (
+                                <Chip
+                                  size="small"
+                                  label={`${propReadiness.propsNeedingConcept} mangler konsepter`}
+                                  sx={{
+                                    bgcolor: 'rgba(245,158,11,0.18)',
+                                    color: '#fbbf24',
+                                    height: 22,
+                                    fontSize: 11,
+                                  }}
+                                />
+                              )}
+                            </Stack>
                           )}
 
                           {event.description && (
@@ -767,6 +887,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                     {equipment.find(e => e.id === equipmentId)?.name}: {conflicts.length} konflikt(er)
                   </Typography>
                 ))}
+              </Alert>
+            )}
+
+            {eventType === 'shooting' && propReadiness.totalProps > 0 && propReadiness.propsNeedingConcept > 0 && (
+              <Alert severity="info" icon={<AutoFixHighIcon />}>
+                {propReadiness.propsNeedingConcept} rekvisitter mangler skisse/design i prop-biblioteket.
               </Alert>
             )}
 

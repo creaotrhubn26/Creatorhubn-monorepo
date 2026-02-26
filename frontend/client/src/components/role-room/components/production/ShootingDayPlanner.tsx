@@ -76,6 +76,7 @@ import {
   CrewMember,
   StripboardStrip,
 } from '../../services/productionWorkflowService';
+import ProductionCalendarPanel from '../ProductionCalendarPanel';
 
 // ============================================
 // TYPES
@@ -207,6 +208,28 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
     
     return { total, wrapped, planned, inProgress, totalPages, pagesShot };
   }, [shootingDays, strips]);
+
+  const calendarCandidates = useMemo(
+    () => cast.map(member => ({ id: member.id, name: member.name })),
+    [cast],
+  );
+
+  const calendarCrew = useMemo(
+    () => crew.map(member => ({ id: member.id, name: member.name })),
+    [crew],
+  );
+
+  const calendarLocations = useMemo(() => {
+    const unique = new Map<string, { id: string; name: string }>();
+    shootingDays.forEach((day) => {
+      const normalizedName = day.location?.trim() || `Lokasjon ${day.dayNumber}`;
+      const key = normalizedName.toLowerCase();
+      if (!unique.has(key)) {
+        unique.set(key, { id: key, name: normalizedName });
+      }
+    });
+    return Array.from(unique.values());
+  }, [shootingDays]);
 
   // Handlers
   const handleCreateDay = useCallback(async () => {
@@ -622,9 +645,17 @@ const ShootingDayPlanner: React.FC<ShootingDayPlannerProps> = ({
         {currentTab === 1 && renderDOODTable()}
         
         {currentTab === 2 && (
-          <Alert severity="info">
-            Kalendervisning kommer snart. Kobles til ProductionCalendarPanel.
-          </Alert>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Alert severity="info">
+              Kalendervisning er nå koblet til produksjonskalenderen. Hendelser her synkroniseres med resten av planleggingsflyten.
+            </Alert>
+            <ProductionCalendarPanel
+              projectId={projectId}
+              candidates={calendarCandidates}
+              crew={calendarCrew}
+              locations={calendarLocations}
+            />
+          </Box>
         )}
       </Box>
 

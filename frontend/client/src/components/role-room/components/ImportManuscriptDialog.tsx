@@ -35,6 +35,7 @@ import { useToast } from './ToastStack';
 interface ImportManuscriptDialogProps {
   open: boolean;
   onClose: () => void;
+  projectId: string;
   onImportComplete?: (exportData: ManuscriptExport) => void;
 }
 
@@ -43,6 +44,7 @@ type ImportStep = 'upload' | 'preview' | 'confirm' | 'importing';
 export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
   open,
   onClose,
+  projectId,
   onImportComplete,
 }) => {
   const { showSuccess, showError, showWarning } = useToast();
@@ -56,10 +58,14 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
 
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      showWarning('Stor fil oppdaget. Import kan ta litt tid.');
+    }
+
     setIsLoading(true);
     setErrors([]);
 
-    const result = await manuscriptService.importManuscriptFromJSON(selectedFile);
+    const result = await manuscriptService.importManuscriptFile(selectedFile, { projectId });
 
     if (result.success && result.data) {
       setFile(selectedFile);
@@ -119,13 +125,13 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Importer Manuskript fra JSON</DialogTitle>
+      <DialogTitle>Importer Manuskriptfil</DialogTitle>
       <DialogContent>
         {/* Upload Step */}
         {step === 'upload' && (
           <Stack spacing={3} sx={{ mt: 2 }}>
             <Alert severity="info" icon={<InfoIcon />}>
-              Last opp en JSON-fil eksportert fra Manuskript-systemet.
+              Last opp manuskript som JSON, Fountain, Markdown, Final Draft (FDX) eller Celtx.
             </Alert>
 
             <Paper
@@ -146,7 +152,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
             >
               <input
                 type="file"
-                accept=".json"
+                accept=".json,.fountain,.spmd,.txt,.md,.markdown,.fdx,.finaldraft,.celtx,.cxscript,.celtxxml"
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
                 disabled={isLoading}
@@ -156,11 +162,16 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                 Klikk for å velge fil eller dra fil hit
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                .json format (JSON)
+                Støttede format: .json, .fountain, .txt, .md, .fdx, .celtx
               </Typography>
             </Paper>
 
             {isLoading && <LinearProgress />}
+            {file && (
+              <Typography variant="caption" color="text.secondary">
+                Valgt fil: {file.name}
+              </Typography>
+            )}
           </Stack>
         )}
 
@@ -168,7 +179,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
         {step === 'preview' && importData && (
           <Stack spacing={3} sx={{ mt: 2 }}>
             {errors.length > 0 && (
-              <Alert severity="error">
+              <Alert severity="error" icon={<ErrorIcon />}>
                 <Typography variant="subtitle2">Feil ved validering:</Typography>
                 <ul style={{ margin: '8px 0' }}>
                   {errors.map((err, i) => (
@@ -181,7 +192,7 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
             {errors.length === 0 && (
               <>
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                  JSON-fil validert og klar for import
+                  Fil validert og klar for import
                 </Alert>
 
                 {/* Metadata */}
@@ -235,6 +246,12 @@ export const ImportManuscriptDialog: FC<ImportManuscriptDialogProps> = ({
                     </Typography>
                     <TableContainer>
                       <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Type</TableCell>
+                            <TableCell align="right">Antall</TableCell>
+                          </TableRow>
+                        </TableHead>
                         <TableBody>
                           <TableRow>
                             <TableCell>Scener</TableCell>

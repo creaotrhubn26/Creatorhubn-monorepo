@@ -1578,7 +1578,7 @@ class ScriptWordBankService {
             ? lowerText[position + wordLower.length] 
             : ' ';
           
-          const isWordBoundary = (c: string) => /[\s.,!?;:'"()\-\[\]{}]/.test(c);
+          const isWordBoundary = (c: string) => /[\s.,!?;:'"()\-{}]/.test(c) || c === '[' || c === ']';
           
           if (isWordBoundary(beforeChar) && isWordBoundary(afterChar)) {
             matches.push({
@@ -1815,8 +1815,9 @@ class ScriptWordBankService {
     ]);
 
     // Extract words from the scene
-    const words = sceneText.toLowerCase()
-      .split(/[\s.,!?;:'"()\-\[\]{}«»""''–—…]+/)
+    const tokenizedSceneText = sceneText.toLowerCase().replace(/\[/g, ' ').replace(/\]/g, ' ');
+    const words = tokenizedSceneText
+      .split(/[\s.,!?;:'"()\-{}«»–—…]+/)
       .filter(w => w.length > 3 && !stopWords.has(w));
 
     // Count word occurrences
@@ -1846,8 +1847,8 @@ class ScriptWordBankService {
         }
       });
 
-      // If word exists in incorrect category, we might want to adjust weights
-      // For now, only add truly new words
+      // If word exists in an incorrect category, weight tuning can happen separately.
+      // This pass only adds net-new vocabulary discovered from feedback.
       if (!existsInCategory) {
         // Add with a moderate weight since it's learned from user feedback
         if (this.addWord(correctPurpose, word, 'both', 0.6)) {

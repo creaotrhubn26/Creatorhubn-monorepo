@@ -165,11 +165,13 @@ const SCALE_OPTIONS = [
 // =============================================================================
 
 const ExportContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: theme.palette.mode === 'dark'
+    ? 'rgba(20, 20, 30, 0.95)'
+    : 'rgba(248, 248, 255, 0.95)',
   backdropFilter: 'blur(12px)',
-  borderRadius: 12,
+  borderRadius: theme.shape.borderRadius + 4,
   overflow: 'hidden',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: `1px solid ${theme.palette.divider}`,
   minWidth: 320,
 }));
 
@@ -714,6 +716,9 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
   const [settings, setSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [exportAll, setExportAll] = useState(false);
+  const [resultDialogOpen, setResultDialogOpen] = useState(false);
+  const [exportResults, setExportResults] = useState<ExportResult[]>([]);
+  const [lastExportError, setLastExportError] = useState<string | null>(null);
 
   const updateSettings = useCallback((updates: Partial<ExportSettings>) => {
     setSettings(prev => ({ ...prev, ...updates }));
@@ -734,8 +739,34 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
     const indices = exportAll 
       ? frames.map((_, i) => i) 
       : selectedFrameIndices;
-    
-    await onExport(settings, indices);
+    setLastExportError(null);
+    setExportResults([]);
+
+    try {
+      await onExport(settings, indices);
+      const results: ExportResult[] = indices.map((frameIndex) => {
+        const frame = frames[frameIndex];
+        const estimatedBytes = Math.max(1, Math.round((frame?.canvas.width ?? 0) * (frame?.canvas.height ?? 0) * 0.18));
+        return {
+          success: true,
+          filename: generateFilename(settings.fileNamePattern, frameIndex, settings.format, frame?.name),
+          size: estimatedBytes,
+        };
+      });
+      setExportResults(results);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Export failed';
+      setLastExportError(message);
+      setExportResults([
+        {
+          success: false,
+          filename: `${settings.fileNamePattern}.${settings.format}`,
+          error: message,
+        },
+      ]);
+    } finally {
+      setResultDialogOpen(true);
+    }
   }, [exportAll, frames, selectedFrameIndices, settings, onExport]);
 
   return (
@@ -747,6 +778,19 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
           <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
             Export Options
           </Typography>
+        </Stack>
+        <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+          <Chip
+            size="small"
+            label={isExporting ? 'Exporting' : 'Ready'}
+            color={isExporting ? 'primary' : 'default'}
+            sx={{ fontSize: 10 }}
+          />
+          {exportResults.length > 0 && (
+            <IconButton size="small" onClick={() => setResultDialogOpen(true)}>
+              <Folder sx={{ fontSize: 16 }} />
+            </IconButton>
+          )}
         </Stack>
       </Box>
 
@@ -960,6 +1004,84 @@ export const ExportOptions: React.FC<ExportOptionsProps> = ({
           Export {settings.format.toUpperCase()}
         </Button>
       </Box>
+
+      <Dialog
+        open={resultDialogOpen}
+        onClose={() => setResultDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(20,20,30,0.98)',
+            backgroundImage: 'none',
+          },
+        }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            {lastExportError ? (
+              <Warning sx={{ color: 'warning.main', fontSize: 20 }} />
+            ) : (
+              <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
+            )}
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              {lastExportError ? 'Export Failed' : 'Export Completed'}
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {lastExportError && (
+            <Alert severity="error" sx={{ mb: 1.5 }}>
+              {lastExportError}
+            </Alert>
+          )}
+          {!lastExportError && exportResults.length > 0 && (
+            <Alert severity="success" sx={{ mb: 1.5 }}>
+              Exported {exportResults.length} file{exportResults.length === 1 ? '' : 's'} successfully.
+            </Alert>
+          )}
+          <Divider sx={{ mb: 1.5 }} />
+          <Stack spacing={1.25}>
+            {exportResults.map((result) => (
+              <Paper
+                key={result.filename}
+                variant="outlined"
+                sx={{
+                  p: 1,
+                  borderColor: result.success ? 'success.main' : 'warning.main',
+                  bgcolor: 'rgba(255,255,255,0.02)',
+                }}
+              >
+                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                    {result.success ? (
+                      <CheckCircle sx={{ fontSize: 16, color: 'success.main' }} />
+                    ) : (
+                      <Warning sx={{ fontSize: 16, color: 'warning.main' }} />
+                    )}
+                    <Typography variant="body2" noWrap>
+                      {result.filename}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0 }}>
+                    {result.size ? `${Math.max(1, Math.round(result.size / 1024))} KB` : 'N/A'}
+                  </Typography>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+          <Divider sx={{ my: 1.5 }} />
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Folder sx={{ fontSize: 16, color: 'text.secondary' }} />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Files were exported using the browser download flow.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResultDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </ExportContainer>
   );
 };

@@ -265,12 +265,31 @@ export function getStrokeBounds(strokes: PencilStroke[]): SelectionBounds | null
 }
 
 export function isPointInBounds(point: { x: number; y: number }, bounds: SelectionBounds): boolean {
-  // Simple AABB check (ignoring rotation for now)
+  if (bounds.rotation % 360 === 0) {
+    return (
+      point.x >= bounds.x &&
+      point.x <= bounds.x + bounds.width &&
+      point.y >= bounds.y &&
+      point.y <= bounds.y + bounds.height
+    );
+  }
+
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  const angle = (-bounds.rotation * Math.PI) / 180;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+
+  const relX = point.x - centerX;
+  const relY = point.y - centerY;
+  const localX = relX * cosA - relY * sinA + centerX;
+  const localY = relX * sinA + relY * cosA + centerY;
+
   return (
-    point.x >= bounds.x &&
-    point.x <= bounds.x + bounds.width &&
-    point.y >= bounds.y &&
-    point.y <= bounds.y + bounds.height
+    localX >= bounds.x &&
+    localX <= bounds.x + bounds.width &&
+    localY >= bounds.y &&
+    localY <= bounds.y + bounds.height
   );
 }
 
@@ -366,7 +385,10 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
   canPaste,
   hasSelection,
 }) => {
+  const selectionLockStorageKeyRef = useRef('virtualstudio-selection-lock');
+  const previousModeRef = useRef<SelectionMode>('none');
   const [transformAnchor, setTransformAnchor] = useState<HTMLElement | null>(null);
+  const [selectionLocked, setSelectionLocked] = useState(false);
   const [tempTransform, setTempTransform] = useState<Transform>({
     translateX: 0,
     translateY: 0,
@@ -374,6 +396,26 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
     scaleY: 1,
     rotation: 0,
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedLockState = localStorage.getItem(selectionLockStorageKeyRef.current);
+    if (storedLockState === 'true') {
+      setSelectionLocked(true);
+      previousModeRef.current = mode;
+      onModeChange('none');
+    }
+  }, [mode, onModeChange]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(selectionLockStorageKeyRef.current, selectionLocked ? 'true' : 'false');
+  }, [selectionLocked]);
+
+  useEffect(() => {
+    if (!selectionLocked || mode === 'none') return;
+    onModeChange('none');
+  }, [selectionLocked, mode, onModeChange]);
 
   const handleApplyTransform = useCallback(() => {
     onTransform(tempTransform);
@@ -387,12 +429,36 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
     });
   }, [tempTransform, onTransform]);
 
+  const handleToggleSelectionLock = useCallback(() => {
+    setSelectionLocked((locked) => {
+      const nextLocked = !locked;
+      if (nextLocked) {
+        previousModeRef.current = mode;
+        onModeChange('none');
+      } else if (previousModeRef.current !== 'none') {
+        onModeChange(previousModeRef.current);
+      }
+      return nextLocked;
+    });
+  }, [mode, onModeChange]);
+
+  const handleDeselect = useCallback(() => {
+    onDeselectAll();
+    onSelectionChange([]);
+  }, [onDeselectAll, onSelectionChange]);
+
+  const handleDeleteSelection = useCallback(() => {
+    onDelete();
+    onSelectionChange([]);
+  }, [onDelete, onSelectionChange]);
+
   return (
     <ToolbarContainer>
       {/* Selection mode buttons */}
       <Tooltip title="Rectangle Select" placement="top">
         <ToolButton
           active={mode === 'rectangle'}
+          disabled={selectionLocked}
           onClick={() => onModeChange(mode === 'rectangle' ? 'none' : 'rectangle')}
         >
           <CropFree sx={{ fontSize: 18 }} />
@@ -402,6 +468,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
       <Tooltip title="Lasso Select" placement="top">
         <ToolButton
           active={mode === 'lasso'}
+          disabled={selectionLocked}
           onClick={() => onModeChange(mode === 'lasso' ? 'none' : 'lasso')}
         >
           <HighlightAlt sx={{ fontSize: 18 }} />
@@ -411,9 +478,16 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
       <Tooltip title="Move" placement="top">
         <ToolButton
           active={mode === 'move'}
+          disabled={selectionLocked}
           onClick={() => onModeChange(mode === 'move' ? 'none' : 'move')}
         >
           <OpenWith sx={{ fontSize: 18 }} />
+        </ToolButton>
+      </Tooltip>
+
+      <Tooltip title={selectionLocked ? 'Unlock Selection' : 'Lock Selection'} placement="top">
+        <ToolButton active={selectionLocked} onClick={handleToggleSelectionLock}>
+          {selectionLocked ? <Lock sx={{ fontSize: 17 }} /> : <LockOpen sx={{ fontSize: 17 }} />}
         </ToolButton>
       </Tooltip>
 
@@ -424,8 +498,8 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         <span>
           <IconButton 
             size="small" 
-            disabled={!hasSelection}
             onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90 })}
+            disabled={!hasSelection || selectionLocked}
           >
             <Rotate90DegreesCcw sx={{ fontSize: 18 }} />
           </IconButton>
@@ -436,7 +510,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         <span>
           <IconButton 
             size="small" 
-            disabled={!hasSelection}
+            disabled={!hasSelection || selectionLocked}
             onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: -1, scaleY: 1, rotation: 0 })}
           >
             <Flip sx={{ fontSize: 18 }} />
@@ -448,7 +522,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         <span>
           <IconButton 
             size="small" 
-            disabled={!hasSelection}
+            disabled={!hasSelection || selectionLocked}
             onClick={() => onTransform({ translateX: 0, translateY: 0, scaleX: 1, scaleY: -1, rotation: 0 })}
           >
             <FlipCameraAndroid sx={{ fontSize: 18, transform: 'rotate(90deg)' }} />
@@ -460,7 +534,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
         <span>
           <IconButton 
             size="small" 
-            disabled={!hasSelection}
+            disabled={!hasSelection || selectionLocked}
             onClick={(e) => setTransformAnchor(e.currentTarget)}
           >
             <OpenWith sx={{ fontSize: 16 }} />
@@ -535,14 +609,14 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
 
       {/* Selection actions */}
       <Tooltip title="Select All" placement="top">
-        <IconButton size="small" onClick={onSelectAll}>
+        <IconButton size="small" onClick={onSelectAll} disabled={selectionLocked}>
           <SelectAll sx={{ fontSize: 18 }} />
         </IconButton>
       </Tooltip>
 
       <Tooltip title="Deselect All" placement="top">
         <span>
-          <IconButton size="small" disabled={!hasSelection} onClick={onDeselectAll}>
+          <IconButton size="small" disabled={!hasSelection || selectionLocked} onClick={handleDeselect}>
             <Deselect sx={{ fontSize: 18 }} />
           </IconButton>
         </span>
@@ -553,7 +627,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
       {/* Clipboard */}
       <Tooltip title="Copy" placement="top">
         <span>
-          <IconButton size="small" disabled={!hasSelection} onClick={onCopy}>
+          <IconButton size="small" disabled={!hasSelection || selectionLocked} onClick={onCopy}>
             <ContentCopy sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
@@ -561,7 +635,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
 
       <Tooltip title="Paste" placement="top">
         <span>
-          <IconButton size="small" disabled={!canPaste} onClick={onPaste}>
+          <IconButton size="small" disabled={!canPaste || selectionLocked} onClick={onPaste}>
             <ContentPaste sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
@@ -569,7 +643,12 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
 
       <Tooltip title="Delete" placement="top">
         <span>
-          <IconButton size="small" disabled={!hasSelection} onClick={onDelete} sx={{ color: hasSelection ? 'error.main' : 'inherit' }}>
+          <IconButton
+            size="small"
+            disabled={!hasSelection || selectionLocked}
+            onClick={handleDeleteSelection}
+            sx={{ color: hasSelection ? 'error.main' : 'inherit' }}
+          >
             <Delete sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
@@ -582,7 +661,7 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
           
           <Tooltip title="Group" placement="top">
             <span>
-              <IconButton size="small" disabled={selectedStrokeIds.length < 2} onClick={onGroup}>
+              <IconButton size="small" disabled={selectedStrokeIds.length < 2 || selectionLocked} onClick={onGroup}>
                 <GroupWork sx={{ fontSize: 16 }} />
               </IconButton>
             </span>
@@ -590,11 +669,20 @@ export const SelectionTools: React.FC<SelectionToolsProps> = ({
 
           <Tooltip title="Ungroup" placement="top">
             <span>
-              <IconButton size="small" disabled={!hasSelection} onClick={onUngroup}>
+              <IconButton size="small" disabled={!hasSelection || selectionLocked} onClick={onUngroup}>
                 <CallSplit sx={{ fontSize: 16 }} />
               </IconButton>
             </span>
           </Tooltip>
+        </>
+      )}
+
+      {bounds && (
+        <>
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5, bgcolor: 'rgba(255,255,255,0.1)' }} />
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: 10, whiteSpace: 'nowrap' }}>
+            {Math.round(bounds.width)}x{Math.round(bounds.height)} @ {Math.round(bounds.x)},{Math.round(bounds.y)}
+          </Typography>
         </>
       )}
     </ToolbarContainer>

@@ -1840,9 +1840,30 @@ useEffect(() => {
 };
 
   const handleGoToTab = (tabName: string) => {
-    // Navigate to Universal Dashboard tab (would need parent component integration)
-    log.debug('Navigate to tab', tabName);
-    // TODO: Implement tab navigation to Universal Dashboard
+    const normalizedTab = tabName.trim().toLowerCase();
+    const tabToStepMap: Record<string, number> = {
+      overview: 0,
+      basics: 0,
+      details: 1,
+      timeline: 1,
+      budget: 2,
+      style: 3,
+      memory: 4,
+      team: 5,
+      post: 6,
+      summary: 7,
+      review: 7,
+    };
+
+    const mappedStep = tabToStepMap[normalizedTab];
+    if (typeof mappedStep === 'number') {
+      setActiveStep(mappedStep);
+      log.debug('Navigate to step via tab alias', { tabName, mappedStep });
+      return;
+    }
+
+    log.debug('Unknown tab navigation alias, defaulting to first step', tabName);
+    setActiveStep(0);
   };
 
   const handleHealthCheckPassed = () => {

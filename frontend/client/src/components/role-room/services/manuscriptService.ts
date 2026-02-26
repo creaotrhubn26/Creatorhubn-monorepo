@@ -5,13 +5,10 @@ import {
   ScriptRevision,
   Act,
   ManuscriptExport,
-  ShotCamera,
-  ShotLighting,
-  ShotAudio,
-  ShotNote,
-  StoryboardFrame,
 } from '../models/casting';
 import { settingsService } from './settingsService';
+
+type ScriptFormat = Manuscript['format'];
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -1253,24 +1250,316 @@ class ManuscriptService {
 
   /**
    * Parse screenplay and generate scene breakdown
-   * Supports Fountain format
+   * Supports Fountain, Markdown, Final Draft (FDX) and Celtx text/XML
    */
-  async parseScript(content: string, format: 'fountain' | 'markdown' | 'final-draft'): Promise<{
+  async parseScript(content: string, format: ScriptFormat): Promise<{
     scenes: SceneBreakdown[];
     dialogue: DialogueLine[];
     characters: Set<string>;
   }> {
+    switch (format) {
+      case 'fountain':
+        return this.parseFountain(content);
+      case 'markdown':
+        return this.parseMarkdown(content);
+      case 'final-draft':
+        return this.parseFinalDraft(content);
+      case 'celtx':
+        return this.parseCeltx(content);
+      default:
+        return { scenes: [], dialogue: [], characters: new Set<string>() };
+    }
+  }
+
+  private normalizeSceneTime(value?: string): SceneBreakdown['timeOfDay'] {
+    const normalized = value?.trim().toUpperCase();
+    switch (normalized) {
+      case 'DAY':
+      case 'NIGHT':
+      case 'DAWN':
+      case 'DUSK':
+      case 'CONTINUOUS':
+      case 'LATER':
+      case 'MORNING':
+      case 'EVENING':
+        return normalized;
+      default:
+        return undefined;
+    }
+  }
+
+  private parseSceneHeading(sceneHeadingInput: string): Pick<SceneBreakdown, 'sceneHeading' | 'intExt' | 'locationName' | 'timeOfDay'> {
+    const sceneHeading = sceneHeadingInput.trim() || 'INT. UNKNOWN - DAY';
+    const intExtMatch = sceneHeading.match(/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.)/i);
+    const intExtRaw = intExtMatch?.[1].toUpperCase().replace(/\./g, '');
+    const intExt = intExtRaw === 'I/E' ? 'INT/EXT' : intExtRaw;
+    const remainder = sceneHeading.replace(/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.)\s*/i, '');
+    const parts = remainder.split(/\s+-\s+/);
+    const locationName = parts[0]?.trim() || 'UNKNOWN';
+    const timeOfDay = this.normalizeSceneTime(parts[1]);
+
+    return {
+      sceneHeading,
+      intExt: (intExt as SceneBreakdown['intExt']) || undefined,
+      locationName,
+      timeOfDay,
+    };
+  }
+
+  private createSceneFromHeading(sceneHeadingInput: string, sceneNumber: number): SceneBreakdown {
+    const now = new Date().toISOString();
+    const parsed = this.parseSceneHeading(sceneHeadingInput);
+    return {
+      id: `scene-${Date.now()}-${sceneNumber}`,
+      manuscriptId: '',
+      projectId: '',
+      sceneNumber: sceneNumber.toString(),
+      sceneHeading: parsed.sceneHeading,
+      intExt: parsed.intExt,
+      locationName: parsed.locationName,
+      timeOfDay: parsed.timeOfDay,
+      description: '',
+      characters: [],
+      status: 'not-scheduled',
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private getXMLNodeText(node: Element): string {
+    const textNodes = Array.from(node.getElementsByTagName('Text'));
+    if (textNodes.length > 0) {
+      return textNodes
+        .map((textNode) => textNode.textContent?.trim() || '')
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    return (node.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  private parseStructuredScriptElements(
+    elements: Array<{ kind: 'scene' | 'action' | 'character' | 'dialogue' | 'parenthetical' | 'transition'; text: string }>,
+  ): {
+    scenes: SceneBreakdown[];
+    dialogue: DialogueLine[];
+    characters: Set<string>;
+  } {
     const scenes: SceneBreakdown[] = [];
     const dialogue: DialogueLine[] = [];
     const characters = new Set<string>();
-    
-    if (format === 'fountain') {
-      return this.parseFountain(content);
-    } else if (format === 'markdown') {
-      return this.parseMarkdown(content);
+    let currentScene: SceneBreakdown | null = null;
+    let currentCharacter: string | null = null;
+    let sceneNumber = 1;
+    let lineNumber = 1;
+
+    const pushCurrentScene = () => {
+      if (currentScene) {
+        scenes.push(currentScene);
+      }
+      currentScene = null;
+    };
+
+    const ensureScene = () => {
+      if (!currentScene) {
+        currentScene = this.createSceneFromHeading('INT. UNKNOWN - DAY', sceneNumber);
+        sceneNumber += 1;
+      }
+    };
+
+    const startScene = (heading: string) => {
+      pushCurrentScene();
+      currentScene = this.createSceneFromHeading(heading, sceneNumber);
+      sceneNumber += 1;
+      currentCharacter = null;
+    };
+
+    for (const element of elements) {
+      const text = element.text.trim();
+      if (!text) continue;
+
+      switch (element.kind) {
+        case 'scene': {
+          startScene(text);
+          break;
+        }
+        case 'character': {
+          ensureScene();
+          const normalizedCharacter = text.replace(/\s*\([^)]+\)\s*$/, '').trim().toUpperCase();
+          if (!normalizedCharacter) break;
+          currentCharacter = normalizedCharacter;
+          characters.add(normalizedCharacter);
+          if (!currentScene.characters.includes(normalizedCharacter)) {
+            currentScene.characters = [...currentScene.characters, normalizedCharacter];
+          }
+          break;
+        }
+        case 'parenthetical': {
+          if (
+            currentCharacter &&
+            dialogue.length > 0 &&
+            dialogue[dialogue.length - 1].characterName === currentCharacter
+          ) {
+            dialogue[dialogue.length - 1].parenthetical = text.startsWith('(') ? text : `(${text})`;
+          }
+          break;
+        }
+        case 'dialogue': {
+          ensureScene();
+          if (!currentCharacter) {
+            currentCharacter = 'UNKNOWN';
+            characters.add(currentCharacter);
+            if (!currentScene.characters.includes(currentCharacter)) {
+              currentScene.characters = [...currentScene.characters, currentCharacter];
+            }
+          }
+          dialogue.push({
+            id: `dialogue-${Date.now()}-${lineNumber}`,
+            sceneId: currentScene.id,
+            manuscriptId: '',
+            characterName: currentCharacter,
+            dialogueText: text,
+            dialogueType: 'dialogue',
+            lineNumber: lineNumber++,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          break;
+        }
+        case 'action': {
+          ensureScene();
+          currentScene.description = `${currentScene.description || ''}${text}\n`;
+          currentCharacter = null;
+          break;
+        }
+        case 'transition': {
+          currentCharacter = null;
+          break;
+        }
+      }
     }
-    
+
+    pushCurrentScene();
     return { scenes, dialogue, characters };
+  }
+
+  private parseFinalDraft(content: string): {
+    scenes: SceneBreakdown[];
+    dialogue: DialogueLine[];
+    characters: Set<string>;
+  } {
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(content, 'text/xml');
+    if (xml.querySelector('parsererror')) {
+      return this.parseFountain(content);
+    }
+
+    const paragraphs = Array.from(xml.getElementsByTagName('Paragraph'));
+    if (paragraphs.length === 0) {
+      return this.parseFountain(content);
+    }
+
+    const elements = paragraphs
+      .map((paragraph) => {
+        const text = this.getXMLNodeText(paragraph);
+        if (!text) return null;
+
+        const type = (paragraph.getAttribute('Type') || paragraph.getAttribute('type') || '').toLowerCase();
+        if (type.includes('scene') && type.includes('heading')) {
+          return { kind: 'scene' as const, text };
+        }
+        if (type.includes('character')) {
+          return { kind: 'character' as const, text };
+        }
+        if (type.includes('parenthetical')) {
+          return { kind: 'parenthetical' as const, text };
+        }
+        if (type.includes('dialogue')) {
+          return { kind: 'dialogue' as const, text };
+        }
+        if (type.includes('transition')) {
+          return { kind: 'transition' as const, text };
+        }
+        if (type.includes('action') || type.includes('general')) {
+          return { kind: 'action' as const, text };
+        }
+
+        if (/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.)/i.test(text)) {
+          return { kind: 'scene' as const, text };
+        }
+        if (/^[A-Z][A-Z\s0-9'.-]{1,40}$/.test(text)) {
+          return { kind: 'character' as const, text };
+        }
+
+        return { kind: 'action' as const, text };
+      })
+      .filter((entry): entry is { kind: 'scene' | 'action' | 'character' | 'dialogue' | 'parenthetical' | 'transition'; text: string } => Boolean(entry));
+
+    if (elements.length === 0) {
+      return this.parseFountain(content);
+    }
+
+    return this.parseStructuredScriptElements(elements);
+  }
+
+  private parseCeltx(content: string): {
+    scenes: SceneBreakdown[];
+    dialogue: DialogueLine[];
+    characters: Set<string>;
+  } {
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(content, 'text/xml');
+    if (xml.querySelector('parsererror')) {
+      return this.parseFountain(content);
+    }
+
+    const nodes = Array.from(
+      xml.querySelectorAll('p, paragraph, sceneheading, action, character, dialog, dialogue, parenthetical, transition'),
+    );
+
+    const elements = nodes
+      .map((node) => {
+        const text = this.getXMLNodeText(node);
+        if (!text) return null;
+
+        const tagName = node.tagName.toLowerCase();
+        const className = (node.getAttribute('class') || '').toLowerCase();
+        const type = (node.getAttribute('type') || '').toLowerCase();
+        const descriptor = `${tagName} ${className} ${type}`;
+
+        if (descriptor.includes('sceneheading') || descriptor.includes('scene-heading')) {
+          return { kind: 'scene' as const, text };
+        }
+        if (descriptor.includes('character')) {
+          return { kind: 'character' as const, text };
+        }
+        if (descriptor.includes('parenthetical')) {
+          return { kind: 'parenthetical' as const, text };
+        }
+        if (descriptor.includes('dialogue') || descriptor.includes('dialog')) {
+          return { kind: 'dialogue' as const, text };
+        }
+        if (descriptor.includes('transition')) {
+          return { kind: 'transition' as const, text };
+        }
+        if (descriptor.includes('action')) {
+          return { kind: 'action' as const, text };
+        }
+
+        if (/^(INT\.|EXT\.|INT\/EXT\.|I\/E\.)/i.test(text)) {
+          return { kind: 'scene' as const, text };
+        }
+        return { kind: 'action' as const, text };
+      })
+      .filter((entry): entry is { kind: 'scene' | 'action' | 'character' | 'dialogue' | 'parenthetical' | 'transition'; text: string } => Boolean(entry));
+
+    if (elements.length === 0) {
+      return this.parseFountain(content);
+    }
+
+    return this.parseStructuredScriptElements(elements);
   }
 
   /**
@@ -1298,6 +1587,7 @@ class ManuscriptService {
     let currentCharacter: string | null = null;
     let inDualDialogue = false;
     let pageNumber = 1;
+    const pendingSceneNotes: string[] = [];
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -1324,7 +1614,17 @@ class ManuscriptService {
       
       // Section headers (# heading)
       if (trimmedLine.startsWith('#') && !trimmedLine.match(/^#+\d+#$/)) {
-        // Skip section headers for now
+        const sectionMatch = trimmedLine.match(/^(#+)\s*(.+)$/);
+        if (sectionMatch) {
+          const sectionLevel = sectionMatch[1].length;
+          const sectionLabel = `[SECTION ${sectionLevel}] ${sectionMatch[2].trim()}`;
+          if (currentScene) {
+            currentScene.description = `${currentScene.description || ''}${sectionLabel}\n`;
+          } else {
+            pendingSceneNotes.push(sectionLabel);
+          }
+        }
+        currentCharacter = null;
         continue;
       }
       
@@ -1373,12 +1673,16 @@ class ManuscriptService {
           intExt: intExt as 'INT' | 'EXT' | 'INT/EXT',
           locationName,
           timeOfDay: timeOfDay as SceneBreakdown['timeOfDay'],
-          description: '',
+          description: pendingSceneNotes.length > 0 ? `${pendingSceneNotes.join('\n')}\n` : '',
           characters: [],
           status: 'not-scheduled',
+          metadata: {
+            sourcePage: pageNumber,
+          },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+        pendingSceneNotes.length = 0;
         
         sceneNumber++;
         currentCharacter = null;
@@ -1394,7 +1698,16 @@ class ManuscriptService {
       
       // Centered text (>text<)
       if (trimmedLine.startsWith('>') && trimmedLine.endsWith('<')) {
-        // Centered text for montages, etc - skip for now
+        const centeredText = trimmedLine.slice(1, -1).trim();
+        if (centeredText.length > 0) {
+          const centeredLine = `[CENTER] ${centeredText}`;
+          if (currentScene) {
+            currentScene.description = `${currentScene.description || ''}${centeredLine}\n`;
+          } else {
+            pendingSceneNotes.push(centeredLine);
+          }
+        }
+        currentCharacter = null;
         continue;
       }
       
@@ -1420,8 +1733,9 @@ class ManuscriptService {
         const extension = characterMatch[3]?.trim() || '';
         
         // Check if it's likely a character name (not a transition)
-        if (!characterName.match(/^(FADE|CUT|DISSOLVE|SMASH|MATCH|IRIS|WIPE)/)) {
-          currentCharacter = characterName;
+        if (forcedCharacter || !characterName.match(/^(FADE|CUT|DISSOLVE|SMASH|MATCH|IRIS|WIPE)/)) {
+          const speakingCharacter = extension ? `${characterName} ${extension}` : characterName;
+          currentCharacter = speakingCharacter;
           characters.add(characterName);
           
           // Check for dual dialogue (^ prefix)
@@ -1431,8 +1745,8 @@ class ManuscriptService {
           }
           
           // Add to current scene's character list
-          if (currentScene && !currentScene.characters?.includes(characterName)) {
-            currentScene.characters = [...(currentScene.characters || []), characterName];
+          if (currentScene && !currentScene.characters?.includes(speakingCharacter)) {
+            currentScene.characters = [...(currentScene.characters || []), speakingCharacter];
           }
           
           continue;
@@ -1458,6 +1772,7 @@ class ManuscriptService {
           characterName: currentCharacter,
           dialogueText: trimmedLine,
           dialogueType: 'dialogue', // Note: dual dialogue detected but not distinguished in type
+          parenthetical: inDualDialogue ? '(DUAL)' : undefined,
           lineNumber: lineNumber++,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1528,7 +1843,11 @@ class ManuscriptService {
         break;
       }
     }
-    
+
+    if (inTitlePage) {
+      return 0;
+    }
+
     return titlePageEnd;
   }
 
@@ -2124,6 +2443,278 @@ class ManuscriptService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to parse JSON file',
+      };
+    }
+  }
+
+  private getScriptFormatFromFilename(filename: string): ScriptFormat | null {
+    const extension = filename.toLowerCase().split('.').pop() || '';
+    switch (extension) {
+      case 'fountain':
+      case 'spmd':
+      case 'txt':
+        return 'fountain';
+      case 'md':
+      case 'markdown':
+        return 'markdown';
+      case 'fdx':
+      case 'finaldraft':
+        return 'final-draft';
+      case 'celtx':
+      case 'cxscript':
+      case 'celtxxml':
+        return 'celtx';
+      default:
+        return null;
+    }
+  }
+
+  private inferTitleFromContent(content: string, fallback: string): string {
+    const fountainTitle = content.match(/^\s*Title:\s*(.+)$/im)?.[1]?.trim();
+    if (fountainTitle) {
+      return fountainTitle;
+    }
+
+    const xmlTitle = content.match(/<Title>\s*([^<]+)\s*<\/Title>/i)?.[1]?.trim();
+    if (xmlTitle) {
+      return xmlTitle;
+    }
+
+    const firstHeading = content
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0 && !line.startsWith('<'));
+    if (firstHeading && firstHeading.length <= 120) {
+      return firstHeading;
+    }
+
+    return fallback;
+  }
+
+  private buildExportFromParsedScript(params: {
+    content: string;
+    format: ScriptFormat;
+    projectId: string;
+    title: string;
+    parsed: {
+      scenes: SceneBreakdown[];
+      dialogue: DialogueLine[];
+      characters: Set<string>;
+    };
+  }): ManuscriptExport {
+    const now = new Date().toISOString();
+    const timestamp = Date.now();
+    const manuscriptId = `ms_${timestamp}`;
+    const wordCount = params.content.trim() ? params.content.trim().split(/\s+/).length : 0;
+    const pageCount = Math.max(1, Math.ceil(wordCount / 250));
+
+    const sceneIdMap = new Map<string, string>();
+    const parsedScenes = params.parsed.scenes.length > 0
+      ? params.parsed.scenes
+      : [this.createSceneFromHeading('INT. IMPORTED SCENE - DAY', 1)];
+
+    const scenes = parsedScenes.map((scene, index) => {
+      const fallbackScene = this.createSceneFromHeading(scene.sceneHeading || `INT. SCENE ${index + 1} - DAY`, index + 1);
+      const normalizedSceneId = `scene_${timestamp}_${index + 1}`;
+      if (scene.id) {
+        sceneIdMap.set(scene.id, normalizedSceneId);
+      }
+
+      const normalizedCharacters = Array.from(
+        new Set((scene.characters || []).map((character) => character.trim()).filter(Boolean)),
+      );
+
+      return {
+        ...fallbackScene,
+        ...scene,
+        id: normalizedSceneId,
+        manuscriptId,
+        projectId: params.projectId,
+        sceneNumber: scene.sceneNumber || fallbackScene.sceneNumber,
+        sceneHeading: scene.sceneHeading || fallbackScene.sceneHeading,
+        intExt: scene.intExt || fallbackScene.intExt,
+        locationName: scene.locationName || fallbackScene.locationName,
+        timeOfDay: scene.timeOfDay || fallbackScene.timeOfDay,
+        characters: normalizedCharacters,
+        status: scene.status || 'not-scheduled',
+        createdAt: scene.createdAt || now,
+        updatedAt: now,
+      };
+    });
+
+    const fallbackSceneId = scenes[0]?.id || '';
+    const allCharacters = new Set<string>(params.parsed.characters);
+    const dialogueLines = params.parsed.dialogue.map((line, index) => {
+      const normalizedCharacter = (line.characterName || 'UNKNOWN').trim().toUpperCase();
+      allCharacters.add(normalizedCharacter);
+      return {
+        ...line,
+        id: `dialog_${timestamp}_${index + 1}`,
+        sceneId: sceneIdMap.get(line.sceneId) || fallbackSceneId,
+        manuscriptId,
+        characterName: normalizedCharacter,
+        dialogueType: line.dialogueType || 'dialogue',
+        createdAt: line.createdAt || now,
+        updatedAt: now,
+      };
+    });
+
+    scenes.forEach((scene) => {
+      scene.characters.forEach((character) => allCharacters.add(character));
+    });
+    const characters = Array.from(allCharacters).filter(Boolean).sort();
+    const estimatedRuntime = Math.max(
+      1,
+      Math.round(scenes.reduce((sum, scene) => sum + (scene.estimatedScreenTime || 0), 0) / 60) || pageCount,
+    );
+
+    const manuscript: Manuscript = {
+      id: manuscriptId,
+      projectId: params.projectId,
+      title: params.title,
+      subtitle: '',
+      author: '',
+      version: '1.0',
+      format: params.format,
+      content: params.content,
+      pageCount,
+      wordCount,
+      estimatedRuntime,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const acts: Act[] = [
+      {
+        id: `act_${timestamp}_1`,
+        manuscriptId,
+        projectId: params.projectId,
+        actNumber: 1,
+        title: 'Act 1',
+        sortOrder: 1,
+        pageStart: 1,
+        pageEnd: pageCount,
+        estimatedRuntime,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    const revisions: ScriptRevision[] = [
+      {
+        id: `rev_${timestamp}_1`,
+        manuscriptId,
+        version: '1.0',
+        content: params.content,
+        changesSummary: 'Imported script',
+        createdAt: now,
+      },
+    ];
+
+    return {
+      version: '1.0.0',
+      exportedAt: now,
+      exportedBy: 'script-importer',
+      metadata: {
+        title: manuscript.title,
+        subtitle: manuscript.subtitle || '',
+        author: manuscript.author || '',
+        format: params.format,
+        projectId: params.projectId,
+        manuscriptId,
+        createdAt: now,
+        updatedAt: now,
+      },
+      manuscript,
+      acts,
+      scenes,
+      characters,
+      dialogueLines,
+      production: {
+        shotDetails: {
+          cameras: {},
+          lighting: {},
+          audio: {},
+          notes: {},
+        },
+        storyboards: [],
+      },
+      revisions,
+      statistics: {
+        sceneCount: scenes.length,
+        characterCount: characters.length,
+        estimatedRuntime,
+        shotCount: scenes.length,
+      },
+    };
+  }
+
+  async importManuscriptFile(
+    file: File,
+    options: { projectId: string },
+  ): Promise<{ success: boolean; data?: ManuscriptExport; error?: string }> {
+    if (file.name.toLowerCase().endsWith('.json')) {
+      return this.importManuscriptFromJSON(file);
+    }
+
+    const format = this.getScriptFormatFromFilename(file.name);
+    if (!format) {
+      return {
+        success: false,
+        error: 'Unsupported file type. Use .json, .fountain, .md, .fdx, .celtx, or .txt.',
+      };
+    }
+
+    if (format === 'celtx' && file.name.toLowerCase().endsWith('.celtx') && file.type === 'application/zip') {
+      return {
+        success: false,
+        error: 'Packed Celtx project archives are not supported. Export screenplay as plain text/XML.',
+      };
+    }
+
+    if (format === 'celtx' && file.name.toLowerCase().endsWith('.celtx') && file.size > 5 * 1024 * 1024) {
+      return {
+        success: false,
+        error: 'Celtx file appears too large for plain text/XML import. Export screenplay only before importing.',
+      };
+    }
+
+    try {
+      const content = await file.text();
+      if (!content.trim()) {
+        return {
+          success: false,
+          error: 'Selected file is empty.',
+        };
+      }
+
+      if (content.startsWith('PK')) {
+        return {
+          success: false,
+          error: 'Compressed project packages are not supported. Export as screenplay text/XML first.',
+        };
+      }
+
+      const parsed = await this.parseScript(content, format);
+      const fileTitle = file.name.replace(/\.[^.]+$/, '').trim() || 'Imported Manuscript';
+      const title = this.inferTitleFromContent(content, fileTitle);
+      const data = this.buildExportFromParsedScript({
+        content,
+        format,
+        projectId: options.projectId,
+        title,
+        parsed,
+      });
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to import screenplay file',
       };
     }
   }

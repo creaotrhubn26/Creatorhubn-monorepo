@@ -197,11 +197,13 @@ function generateCurvePath(points: CurvePoint[], width: number, height: number):
 // =============================================================================
 
 const EditorContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: theme.palette.mode === 'dark'
+    ? 'rgba(20, 20, 30, 0.95)'
+    : 'rgba(248, 248, 255, 0.95)',
   backdropFilter: 'blur(12px)',
-  borderRadius: 12,
+  borderRadius: theme.shape.borderRadius + 4,
   overflow: 'hidden',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: `1px solid ${theme.palette.divider}`,
 }));
 
 const CurveCanvas = styled(Box)({
@@ -252,6 +254,9 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
   const [selectedPreset, setSelectedPreset] = useState<string>(curve.id);
   const [testPressure, setTestPressure] = useState(0);
   const [testOutput, setTestOutput] = useState(0);
+  const [showChart, setShowChart] = useState(true);
+  const [testMode, setTestMode] = useState<'pointer' | 'slider'>('pointer');
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -321,6 +326,8 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
   }, []);
 
   const handleTestPointerMove = useCallback((e: React.PointerEvent) => {
+    if (testMode !== 'pointer') return;
+
     // Use pressure if available (Apple Pencil)
     if (e.pressure > 0 && e.pressure < 1) {
       setTestPressure(e.pressure);
@@ -330,7 +337,7 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
       const y = 1 - (e.clientY - rect.top) / rect.height;
       setTestPressure(Math.max(0, Math.min(1, y)));
     }
-  }, []);
+  }, [testMode]);
 
   const curvePath = useMemo(() => 
     generateCurvePath(curve.points, width, height),
@@ -342,6 +349,32 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
     onCurveChange({ ...linearPreset });
     setSelectedPreset('linear');
   }, [onCurveChange]);
+
+  const handleSaveCurvePreset = useCallback(() => {
+    const savedCurve: PressureCurve = {
+      ...curve,
+      id: `custom-${Date.now()}`,
+      name: curve.name === 'Custom' ? `Custom ${new Date().toLocaleTimeString()}` : curve.name,
+    };
+
+    if (typeof window !== 'undefined') {
+      const storageKey = 'virtualstudio-pressure-curves';
+      const existing = localStorage.getItem(storageKey);
+      const parsed = existing ? (JSON.parse(existing) as PressureCurve[]) : [];
+      const next = [savedCurve, ...parsed].slice(0, 20);
+      localStorage.setItem(storageKey, JSON.stringify(next));
+    }
+
+    const blob = new Blob([JSON.stringify(savedCurve, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pressure-curve-${savedCurve.id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setSaveNotice('Curve preset saved and exported.');
+    setTimeout(() => setSaveNotice(null), 1800);
+  }, [curve]);
 
   return (
     <EditorContainer>
@@ -387,15 +420,54 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
         </ToggleButtonGroup>
       </Box>
 
+      <Box sx={{ px: 1.5, pb: 1 }}>
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={0.5}>
+            <Button
+              size="small"
+              variant={testMode === 'pointer' ? 'contained' : 'outlined'}
+              onClick={() => setTestMode('pointer')}
+            >
+              Pointer Test
+            </Button>
+            <Button
+              size="small"
+              variant={testMode === 'slider' ? 'contained' : 'outlined'}
+              onClick={() => setTestMode('slider')}
+            >
+              Slider Test
+            </Button>
+          </Stack>
+          <Stack direction="row" spacing={0.25}>
+            <Tooltip title="Toggle Curve Chart">
+              <IconButton size="small" onClick={() => setShowChart((prev) => !prev)}>
+                <ShowChart sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Save / Export Preset">
+              <IconButton size="small" onClick={handleSaveCurvePreset}>
+                <SaveAlt sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Stack>
+        {saveNotice && (
+          <Typography variant="caption" sx={{ color: 'success.main', display: 'block', mt: 0.5 }}>
+            {saveNotice}
+          </Typography>
+        )}
+      </Box>
+
       {/* Curve editor */}
-      <Box sx={{ p: 1.5 }}>
-        <CurveCanvas
-          ref={canvasRef}
-          sx={{ width, height }}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-        >
+      {showChart && (
+        <Box sx={{ p: 1.5, pt: 0 }}>
+          <CurveCanvas
+            ref={canvasRef}
+            sx={{ width, height }}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+          >
           {/* Grid lines */}
           <svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
             {/* Grid */}
@@ -496,14 +568,27 @@ export const PressureCurveEditor: React.FC<PressureCurveEditorProps> = ({
           >
             Output
           </Typography>
-        </CurveCanvas>
-      </Box>
+          </CurveCanvas>
+        </Box>
+      )}
 
       {/* Test area */}
       <Box sx={{ p: 1.5, pt: 0 }}>
         <Typography variant="caption" sx={{ color: 'text.secondary', mb: 0.5, display: 'block' }}>
-          Test Area (draw here with Apple Pencil)
+          Test Area ({testMode === 'pointer' ? 'draw with Apple Pencil' : 'drag slider to simulate pressure'})
         </Typography>
+        {testMode === 'slider' && (
+          <Box sx={{ mb: 1 }}>
+            <Slider
+              size="small"
+              min={0}
+              max={1}
+              step={0.01}
+              value={testPressure}
+              onChange={(_, value) => setTestPressure(value as number)}
+            />
+          </Box>
+        )}
         <TestArea onPointerMove={handleTestPointerMove}>
           {/* Input indicator */}
           <Box

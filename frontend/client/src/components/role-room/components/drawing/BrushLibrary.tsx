@@ -44,7 +44,14 @@ import {
   Save,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { BrushConfig, DEFAULT_BRUSH_CONFIG, AdvancedBrushType, AdvancedBrushEngine, hexToRgb } from './AdvancedBrushEngine';
+import {
+  BrushConfig,
+  DEFAULT_BRUSH_CONFIG,
+  AdvancedBrushType,
+  AdvancedBrushEngine,
+  hexToRgb,
+  CINEMATIC_BRUSH_PRESETS,
+} from './AdvancedBrushEngine';
 import settingsService from '../../services/settingsService';
 
 // =============================================================================
@@ -148,20 +155,78 @@ const DEFAULT_PRESETS: BrushPreset[] = [
     icon: '🌫️',
     createdAt: 0,
   },
+  {
+    id: 'cinematic-noir-lighting',
+    name: CINEMATIC_BRUSH_PRESETS['noir-lighting'].name,
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      ...CINEMATIC_BRUSH_PRESETS['noir-lighting'].config,
+      color: '#0f172a',
+      size: 7,
+    },
+    favorite: true,
+    category: 'Cinematic',
+    icon: '🎬',
+    createdAt: 0,
+  },
+  {
+    id: 'cinematic-commercial-high-key',
+    name: CINEMATIC_BRUSH_PRESETS['commercial-high-key'].name,
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      ...CINEMATIC_BRUSH_PRESETS['commercial-high-key'].config,
+      color: '#f8fafc',
+      size: 34,
+    },
+    favorite: false,
+    category: 'Cinematic',
+    icon: '💡',
+    createdAt: 0,
+  },
+  {
+    id: 'cinematic-action-crosshatch',
+    name: CINEMATIC_BRUSH_PRESETS['action-crosshatch'].name,
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      ...CINEMATIC_BRUSH_PRESETS['action-crosshatch'].config,
+      color: '#111827',
+      size: 5,
+    },
+    favorite: true,
+    category: 'Cinematic',
+    icon: '⚡',
+    createdAt: 0,
+  },
+  {
+    id: 'cinematic-soft-drama-wash',
+    name: CINEMATIC_BRUSH_PRESETS['soft-drama-wash'].name,
+    config: {
+      ...DEFAULT_BRUSH_CONFIG,
+      ...CINEMATIC_BRUSH_PRESETS['soft-drama-wash'].config,
+      color: '#7c3f20',
+      size: 26,
+    },
+    favorite: false,
+    category: 'Cinematic',
+    icon: '🎭',
+    createdAt: 0,
+  },
 ];
 
-const CATEGORIES = ['All', 'Drawing', 'Painting', 'Markers', 'Custom'];
+const CATEGORIES = ['All', 'Drawing', 'Painting', 'Markers', 'Cinematic', 'Custom'];
 
 // =============================================================================
 // Styled Components
 // =============================================================================
 
 const LibraryContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: theme.palette.mode === 'dark'
+    ? 'rgba(20, 20, 30, 0.95)'
+    : 'rgba(248, 248, 255, 0.95)',
   backdropFilter: 'blur(12px)',
-  borderRadius: 12,
+  borderRadius: theme.shape.borderRadius + 4,
   overflow: 'hidden',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: `1px solid ${theme.palette.divider}`,
   minWidth: 280,
 }));
 
@@ -251,6 +316,11 @@ function renderBrushPreviewDataURL(config: BrushConfig): string {
   return url;
 }
 
+function toTint(color: string, alpha: number): string {
+  const rgb = hexToRgb(color);
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
 /** Small component that shows a live canvas preview of a brush config */
 const LiveBrushThumbnail: React.FC<{ config: BrushConfig }> = React.memo(({ config }) => {
   const dataUrl = useMemo(() => renderBrushPreviewDataURL(config), [config]);
@@ -329,11 +399,37 @@ function useBrushLibrary() {
       if (cached?.presets?.length) {
         setPresets(cached.presets);
         setRecentlyUsed(cached.recentlyUsed || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
+        }
         loadedRef.current = true;
         return;
       }
 
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { presets?: BrushPreset[]; recentlyUsed?: string[] };
+            if (Array.isArray(parsed.presets) && parsed.presets.length > 0) {
+              setPresets(parsed.presets);
+              setRecentlyUsed(Array.isArray(parsed.recentlyUsed) ? parsed.recentlyUsed : []);
+              loadedRef.current = true;
+              return;
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to read brush library local fallback:', error);
+        }
+      }
+
       setPresets(DEFAULT_PRESETS);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ presets: DEFAULT_PRESETS, recentlyUsed: [] })
+        );
+      }
       loadedRef.current = true;
     };
     loadPresets();
@@ -342,6 +438,9 @@ function useBrushLibrary() {
   // Save to database with settings cache backup — debounced 600ms
   const persistNow = useCallback(async (data: { presets: BrushPreset[]; recentlyUsed: string[] }) => {
     await settingsService.setSetting(SETTINGS_NAMESPACE, data);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
     try {
       if (await checkDatabaseAvailability()) {
         await fetch('/api/user/brush-presets', {
@@ -448,6 +547,22 @@ function useBrushLibrary() {
                 grain: Math.max(0, Math.min(1, Number(cfg.grain) || DEFAULT_BRUSH_CONFIG.grain)),
                 tiltSensitivity: Math.max(0, Math.min(1, Number(cfg.tiltSensitivity) || DEFAULT_BRUSH_CONFIG.tiltSensitivity)),
                 pressureSensitivity: Math.max(0, Math.min(1, Number(cfg.pressureSensitivity) || DEFAULT_BRUSH_CONFIG.pressureSensitivity)),
+                blendMode: typeof cfg.blendMode === 'string' ? cfg.blendMode as BrushConfig['blendMode'] : DEFAULT_BRUSH_CONFIG.blendMode,
+                cinematicPreset: typeof cfg.cinematicPreset === 'string' ? cfg.cinematicPreset as BrushConfig['cinematicPreset'] : DEFAULT_BRUSH_CONFIG.cinematicPreset,
+                lensMm: Math.max(8, Math.min(400, Number(cfg.lensMm) || DEFAULT_BRUSH_CONFIG.lensMm)),
+                aperture: Math.max(0.95, Math.min(22, Number(cfg.aperture) || DEFAULT_BRUSH_CONFIG.aperture)),
+                keyLightDirection: Math.max(0, Math.min(360, Number(cfg.keyLightDirection) || DEFAULT_BRUSH_CONFIG.keyLightDirection)),
+                keyLightIntensity: Math.max(0, Math.min(1, Number(cfg.keyLightIntensity) || DEFAULT_BRUSH_CONFIG.keyLightIntensity)),
+                valueContrast: Math.max(0, Math.min(1, Number(cfg.valueContrast) || DEFAULT_BRUSH_CONFIG.valueContrast)),
+                shadowBias: Math.max(-1, Math.min(1, Number(cfg.shadowBias) || DEFAULT_BRUSH_CONFIG.shadowBias)),
+                highlightBias: Math.max(-1, Math.min(1, Number(cfg.highlightBias) || DEFAULT_BRUSH_CONFIG.highlightBias)),
+                warmTint: Math.max(-1, Math.min(1, Number(cfg.warmTint) || DEFAULT_BRUSH_CONFIG.warmTint)),
+                hatchAngle: Math.max(0, Math.min(360, Number(cfg.hatchAngle) || DEFAULT_BRUSH_CONFIG.hatchAngle)),
+                hatchDensity: Math.max(0, Math.min(1, Number(cfg.hatchDensity) || DEFAULT_BRUSH_CONFIG.hatchDensity)),
+                motionAccent: Math.max(0, Math.min(1, Number(cfg.motionAccent) || DEFAULT_BRUSH_CONFIG.motionAccent)),
+                lightWrap: Math.max(0, Math.min(1, Number(cfg.lightWrap) || DEFAULT_BRUSH_CONFIG.lightWrap)),
+                lensAwareShading: typeof cfg.lensAwareShading === 'boolean' ? cfg.lensAwareShading : DEFAULT_BRUSH_CONFIG.lensAwareShading,
+                lightingAware: typeof cfg.lightingAware === 'boolean' ? cfg.lightingAware : DEFAULT_BRUSH_CONFIG.lightingAware,
               },
               favorite: Boolean(p.favorite),
               category: 'Custom',
@@ -504,6 +619,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuPresetId, setMenuPresetId] = useState<string | null>(null);
 
@@ -522,24 +638,54 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
     onBrushSelect(preset.config);
   }, [markUsed, onBrushSelect]);
 
+  const openCreateDialog = useCallback(() => {
+    setEditingPresetId(null);
+    setNewPresetName(`${currentConfig.type.charAt(0).toUpperCase()}${currentConfig.type.slice(1)} Preset`);
+    setSaveDialogOpen(true);
+  }, [currentConfig.type]);
+
   const handleSavePreset = useCallback(() => {
     if (!newPresetName.trim()) return;
-    
-    const newPreset: BrushPreset = {
-      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      name: newPresetName.trim(),
-      config: currentConfig,
-      favorite: false,
-      category: 'Custom',
-      icon: '🎨',
-      createdAt: Date.now(),
-    };
-    
-    addPreset(newPreset);
+
+    if (editingPresetId) {
+      updatePreset(editingPresetId, {
+        name: newPresetName.trim(),
+        config: currentConfig,
+        usedAt: Date.now(),
+      });
+      onSaveCurrentBrush();
+    } else {
+      const newPreset: BrushPreset = {
+        id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        name: newPresetName.trim(),
+        config: currentConfig,
+        favorite: false,
+        category: 'Custom',
+        icon: '🎨',
+        createdAt: Date.now(),
+      };
+
+      addPreset(newPreset);
+      setSelectedPresetId(newPreset.id);
+      onSaveCurrentBrush();
+    }
+
+    setEditingPresetId(null);
     setSaveDialogOpen(false);
     setNewPresetName('');
-    onSaveCurrentBrush();
-  }, [newPresetName, currentConfig, addPreset, onSaveCurrentBrush]);
+    setMenuAnchor(null);
+    setMenuPresetId(null);
+  }, [newPresetName, currentConfig, editingPresetId, addPreset, updatePreset, onSaveCurrentBrush]);
+
+  const handleEditPreset = useCallback(() => {
+    if (!menuPresetId) return;
+    const preset = presets.find((item) => item.id === menuPresetId);
+    if (!preset) return;
+    setEditingPresetId(preset.id);
+    setNewPresetName(preset.name);
+    setSaveDialogOpen(true);
+    setMenuAnchor(null);
+  }, [menuPresetId, presets]);
 
   const handleDeletePreset = useCallback(() => {
     if (menuPresetId) {
@@ -564,8 +710,13 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
           </Stack>
           <Stack direction="row" spacing={0.5}>
             <Tooltip title="Save Current Brush">
-              <IconButton size="small" onClick={() => setSaveDialogOpen(true)}>
+              <IconButton size="small" onClick={openCreateDialog}>
                 <Save sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Create Preset">
+              <IconButton size="small" onClick={openCreateDialog}>
+                <Add sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
             <Tooltip title="Import">
@@ -592,6 +743,8 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
           }}
         />
       </Box>
+
+      <Divider />
 
       {/* Category tabs */}
       <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -625,7 +778,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
               selected={selectedPresetId === preset.id}
               onClick={() => handleSelectPreset(preset)}
             >
-              <BrushPreview sx={{ bgcolor: preset.config.color + '30' }}>
+              <BrushPreview sx={{ bgcolor: toTint(preset.config.color, 0.18) }}>
                 <LiveBrushThumbnail config={preset.config} />
               </BrushPreview>
               <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -683,7 +836,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
             selected={selectedPresetId === preset.id}
             onClick={() => handleSelectPreset(preset)}
           >
-            <BrushPreview sx={{ bgcolor: preset.config.color + '30' }}>
+            <BrushPreview sx={{ bgcolor: toTint(preset.config.color, 0.18) }}>
               <LiveBrushThumbnail config={preset.config} />
             </BrushPreview>
             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -724,11 +877,18 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
       <Menu
         anchorEl={menuAnchor}
         open={Boolean(menuAnchor)}
-        onClose={() => setMenuAnchor(null)}
+        onClose={() => {
+          setMenuAnchor(null);
+          setMenuPresetId(null);
+        }}
         slotProps={{
           paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)' } }
         }}
       >
+        <MenuItem onClick={handleEditPreset} sx={{ fontSize: 12 }}>
+          <Edit sx={{ fontSize: 14, mr: 1 }} /> Edit
+        </MenuItem>
+        <Divider />
         <MenuItem onClick={handleDeletePreset} sx={{ fontSize: 12, color: 'error.main' }}>
           <Delete sx={{ fontSize: 14, mr: 1 }} /> Delete
         </MenuItem>
@@ -740,7 +900,7 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
         onClose={() => setSaveDialogOpen(false)}
         PaperProps={{ sx: { bgcolor: 'rgba(30,30,40,0.98)', backgroundImage: 'none' } }}
       >
-        <DialogTitle>Save Brush Preset</DialogTitle>
+        <DialogTitle>{editingPresetId ? 'Edit Brush Preset' : 'Save Brush Preset'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -754,15 +914,34 @@ export const BrushLibrary: React.FC<BrushLibraryProps> = ({
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Current Settings:
             </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              Type: {currentConfig.type} | Size: {currentConfig.size}px | Opacity: {Math.round(currentConfig.opacity * 100)}%
-            </Typography>
+            <Grid container spacing={1} sx={{ mt: 0.25 }}>
+              <Grid size={6}>
+                <Typography variant="body2" sx={{ fontSize: 12 }}>
+                  Type: {currentConfig.type}
+                </Typography>
+              </Grid>
+              <Grid size={6}>
+                <Typography variant="body2" sx={{ fontSize: 12 }}>
+                  Size: {currentConfig.size}px
+                </Typography>
+              </Grid>
+              <Grid size={6}>
+                <Typography variant="body2" sx={{ fontSize: 12 }}>
+                  Opacity: {Math.round(currentConfig.opacity * 100)}%
+                </Typography>
+              </Grid>
+              <Grid size={6}>
+                <Typography variant="body2" sx={{ fontSize: 12 }}>
+                  Pressure: {Math.round(currentConfig.pressureSensitivity * 100)}%
+                </Typography>
+              </Grid>
+            </Grid>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleSavePreset} variant="contained" disabled={!newPresetName.trim()}>
-            Save
+            {editingPresetId ? 'Update' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

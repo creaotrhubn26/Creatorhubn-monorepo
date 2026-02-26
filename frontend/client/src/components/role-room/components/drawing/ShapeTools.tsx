@@ -338,6 +338,63 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
 }) => {
   const [fillAnchor, setFillAnchor] = useState<HTMLElement | null>(null);
   const [strokeAnchor, setStrokeAnchor] = useState<HTMLElement | null>(null);
+  const [paintMode, setPaintMode] = useState<'fill-stroke' | 'fill-only' | 'stroke-only'>('fill-stroke');
+  const [constrainShapeOptions, setConstrainShapeOptions] = useState(false);
+  const shiftPressedRef = useRef(false);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') {
+        shiftPressedRef.current = true;
+        setConstrainShapeOptions(true);
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') {
+        shiftPressedRef.current = false;
+        setConstrainShapeOptions(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
+  const handleShapeToggle = useCallback((shape: ShapeType) => {
+    onShapeSelect(selectedShape === shape ? null : shape);
+  }, [onShapeSelect, selectedShape]);
+
+  const handlePaintModeChange = useCallback((
+    _: React.MouseEvent<HTMLElement>,
+    mode: 'fill-stroke' | 'fill-only' | 'stroke-only' | null
+  ) => {
+    if (!mode) return;
+    setPaintMode(mode);
+    if (mode === 'fill-only') {
+      onStyleChange({ fillOpacity: Math.max(0.1, style.fillOpacity), strokeOpacity: 0 });
+    } else if (mode === 'stroke-only') {
+      onStyleChange({ fillOpacity: 0, strokeOpacity: Math.max(0.1, style.strokeOpacity) });
+    } else {
+      onStyleChange({
+        fillOpacity: Math.max(0.15, style.fillOpacity),
+        strokeOpacity: Math.max(0.15, style.strokeOpacity),
+      });
+    }
+  }, [onStyleChange, style.fillOpacity, style.strokeOpacity]);
+
+  const handleSidesChange = useCallback((value: number) => {
+    const constrainedValue = constrainShapeOptions ? Math.max(3, Math.round(value / 2) * 2) : value;
+    onStyleChange({ sides: constrainedValue });
+  }, [constrainShapeOptions, onStyleChange]);
+
+  const handlePointsChange = useCallback((value: number) => {
+    const constrainedValue = constrainShapeOptions ? Math.max(4, Math.round(value / 2) * 2) : value;
+    onStyleChange({ points: constrainedValue });
+  }, [constrainShapeOptions, onStyleChange]);
 
   return (
     <ToolbarContainer>
@@ -346,7 +403,7 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
         <Tooltip key={shape} title={shape.charAt(0).toUpperCase() + shape.slice(1)} placement="top">
           <ShapeButton
             selected={selectedShape === shape}
-            onClick={() => onShapeSelect(selectedShape === shape ? null : shape)}
+            onClick={() => handleShapeToggle(shape)}
           >
             {SHAPE_ICONS[shape]}
           </ShapeButton>
@@ -373,6 +430,24 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
           />
         </IconButton>
       </Tooltip>
+
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={paintMode}
+        onChange={handlePaintModeChange}
+        sx={{
+          '& .MuiToggleButton-root': {
+            py: 0.2,
+            px: 0.65,
+            fontSize: 10,
+          },
+        }}
+      >
+        <ToggleButton value="fill-stroke">F+S</ToggleButton>
+        <ToggleButton value="fill-only">Fill</ToggleButton>
+        <ToggleButton value="stroke-only">Stroke</ToggleButton>
+      </ToggleButtonGroup>
 
       <Popover
         open={Boolean(fillAnchor)}
@@ -429,6 +504,12 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
         </IconButton>
       </Tooltip>
 
+      <Tooltip title="Stroke Width" placement="top">
+        <IconButton size="small" onClick={(e) => setStrokeAnchor(e.currentTarget)}>
+          <LineWeight sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
+
       <Popover
         open={Boolean(strokeAnchor)}
         anchorEl={strokeAnchor}
@@ -437,9 +518,9 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
         transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         slotProps={{ paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)' } } }}
       >
-        <Box sx={{ p: 2, width: 200 }}>
+        <Stack spacing={1.5} sx={{ p: 2, width: 200 }}>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>Stroke Color</Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+          <Stack direction="row" flexWrap="wrap" useFlexGap gap={0.5}>
             {COLOR_PRESETS.map(color => (
               <ColorSwatch
                 key={color}
@@ -448,8 +529,8 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
                 onClick={() => onStyleChange({ strokeColor: color })}
               />
             ))}
-          </Box>
-          <Box sx={{ mt: 2 }}>
+          </Stack>
+          <Box>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Width: {style.strokeWidth}px
             </Typography>
@@ -462,7 +543,7 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
               onChange={(_, v) => onStyleChange({ strokeWidth: v as number })}
             />
           </Box>
-        </Box>
+        </Stack>
       </Popover>
 
       {/* Corner radius (for rectangles) */}
@@ -485,34 +566,39 @@ export const ShapeTools: React.FC<ShapeToolsProps> = ({
       {selectedShape === 'polygon' && (
         <Tooltip title="Sides" placement="top">
           <Box sx={{ display: 'flex', alignItems: 'center', ml: 1, width: 80 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>Sides:</Typography>
-            <Slider
-              size="small"
-              value={style.sides || 6}
-              min={3}
-              max={12}
-              step={1}
-              onChange={(_, v) => onStyleChange({ sides: v as number })}
-            />
-          </Box>
-        </Tooltip>
-      )}
+                <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>Sides:</Typography>
+                <Slider
+                  size="small"
+                  value={style.sides || 6}
+                  min={3}
+                  max={12}
+                  step={1}
+                  onChange={(_, v) => handleSidesChange(v as number)}
+                />
+              </Box>
+            </Tooltip>
+          )}
 
       {/* Star points */}
       {selectedShape === 'star' && (
         <Tooltip title="Points" placement="top">
           <Box sx={{ display: 'flex', alignItems: 'center', ml: 1, width: 80 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>Pts:</Typography>
-            <Slider
-              size="small"
-              value={style.points || 5}
-              min={3}
-              max={12}
-              step={1}
-              onChange={(_, v) => onStyleChange({ points: v as number })}
-            />
-          </Box>
-        </Tooltip>
+                <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>Pts:</Typography>
+                <Slider
+                  size="small"
+                  value={style.points || 5}
+                  min={3}
+                  max={12}
+                  step={1}
+                  onChange={(_, v) => handlePointsChange(v as number)}
+                />
+              </Box>
+            </Tooltip>
+          )}
+      {selectedShape && (
+        <Typography variant="caption" sx={{ ml: 1, color: constrainShapeOptions ? 'primary.main' : 'text.secondary' }}>
+          {constrainShapeOptions ? 'Shift constrain on' : 'Hold Shift to constrain'}
+        </Typography>
       )}
     </ToolbarContainer>
   );

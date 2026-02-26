@@ -1179,10 +1179,20 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
   const filteredEvents = useMemo(() => {
     return events.filter(e => enabledDepartments.has(e.department));
   }, [events, enabledDepartments]);
+
+  const filteredBySearch = useMemo(() => {
+    if (!searchQuery.trim()) return filteredEvents;
+    const query = searchQuery.toLowerCase();
+    return filteredEvents.filter(e =>
+      e.title.toLowerCase().includes(query) ||
+      e.description?.toLowerCase().includes(query) ||
+      e.projectName?.toLowerCase().includes(query),
+    );
+  }, [filteredEvents, searchQuery]);
   
   const getEventsForDay = useCallback((day: Date) => {
-    return filteredEvents.filter(e => isSameDay(e.date, day));
-  }, [filteredEvents]);
+    return filteredBySearch.filter(e => isSameDay(e.date, day));
+  }, [filteredBySearch]);
   
   // Handlers - navigate based on view mode
   const handlePrevWeek = () => {
@@ -1288,19 +1298,14 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
   };
   
   const handleAddCrewMember = () => {
-    // TODO: Open crew selection dialog or navigate to crew management
-    console.log('Add crew member clicked');
+    setSelectedTimeSlot({ day: selectedDate, hour: 9 });
+    setEditingEvent(null);
+    setCreateDialogOpen(true);
+    setSearchOpen(false);
+    if (isMobile || isTablet) {
+      setMobileDrawerOpen(false);
+    }
   };
-  
-  const filteredBySearch = useMemo(() => {
-    if (!searchQuery.trim()) return filteredEvents;
-    const query = searchQuery.toLowerCase();
-    return filteredEvents.filter(e => 
-      e.title.toLowerCase().includes(query) ||
-      e.description?.toLowerCase().includes(query) ||
-      e.projectName?.toLowerCase().includes(query)
-    );
-  }, [filteredEvents, searchQuery]);
   
   // Gradient background
   const gradientBg = `linear-gradient(135deg, 
@@ -1312,9 +1317,9 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
   )`;
   
   // Stats calculation
-  const todayEvents = events.filter(e => isToday(e.date)).length;
-  const weekEvents = filteredEvents.length;
-  const crewOnDuty = new Set(filteredEvents.flatMap(e => e.crewIds)).size;
+  const todayEvents = filteredBySearch.filter(e => isToday(e.date)).length;
+  const weekEvents = filteredBySearch.length;
+  const crewOnDuty = new Set(filteredBySearch.flatMap(e => e.crewIds)).size;
   
   // Sidebar content - extracted for reuse in drawer
   const SidebarContent = (
@@ -1584,9 +1589,25 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
       
       {/* Bottom Crew Avatars */}
       <Box sx={{ p: isMobile ? 2 : 2.5, borderTop: `1px solid ${alpha('#fff', 0.08)}`, mt: 'auto' }}>
-        <Typography variant="caption" sx={{ color: alpha('#fff', 0.4), fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.05em', mb: 1, display: 'block' }}>
-          TEAM OVERSIKT
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="caption" sx={{ color: alpha('#fff', 0.4), fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.05em', display: 'block' }}>
+            TEAM OVERSIKT
+          </Typography>
+          <Tooltip title="Opprett crew-hendelse">
+            <IconButton
+              size="small"
+              onClick={handleAddCrewMember}
+              sx={{
+                color: alpha('#fff', 0.75),
+                border: `1px solid ${alpha('#fff', 0.14)}`,
+                bgcolor: alpha('#fff', 0.04),
+                '&:hover': { bgcolor: alpha('#fff', 0.1), color: '#fff' },
+              }}
+            >
+              <Add fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {crew.slice(0, isMobile ? 5 : 6).map((member) => (
             <Tooltip key={member.id} title={member.name}>
@@ -1622,7 +1643,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
         flexDirection: isMobile ? 'column' : 'row',
         height: '100%', 
         minHeight: isMobile ? 500 : 700, 
-        bgcolor: '#0f0f1a' 
+        bgcolor: gradientBg,
       }}
     >
       <ContextualNudgeBanner context="crew-calendar" accentColor="#f59e0b" />

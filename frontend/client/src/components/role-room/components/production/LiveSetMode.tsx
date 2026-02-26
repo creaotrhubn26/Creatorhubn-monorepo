@@ -11,7 +11,7 @@
  *  7.  Fullscreen sync via fullscreenchange event listener (ESC safe)
  *  8.  userId from props — no more hard-coded 'current-user'
  *  9.  ContinuityNotes persisted to localStorage per projectId+dayId
- * 10.  Polling fallback every 5 s (placeholder for WS/SSE subscription)
+ * 10.  Polling fallback every 5 s when WS/SSE transport is not available
  * 11.  Unused imports removed (Badge, Card, Pause, Next, Prev, VolumeUp…)
  * 12.  "Neste setup" + "Marker ferdig" added; manual take ±1 controls
  */
@@ -168,10 +168,23 @@ const TAKE_STATUS_COLORS: Record<Take['status'], string> = {
 
 const POLL_INTERVAL_MS = 5_000;
 const RETRY_MAX        = 4;
+const TAKE_STATUSES: Take['status'][] = ['good', 'ok', 'bad', 'circle', 'print'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const notesKey = (pid: string, did: string) => `liveset:notes:${pid}:${did}`;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isTakeStatus = (value: unknown): value is Take['status'] =>
+  typeof value === 'string' && TAKE_STATUSES.includes(value as Take['status']);
+
+const readString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+
+const readNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -303,7 +316,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
     }
   }, [userId]);
 
-  const { connected: rtConnected, activeUsers } = useLiveSetRealtime({
+  const { connected: rtConnected, activeUsers, send: sendRealtime } = useLiveSetRealtime({
     projectId,
     shootingDayId,
     userId,
@@ -316,18 +329,99 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
   useEffect(() => {
     if (!rtConnected) return;
     Outbox.flush(projectId, shootingDayId, async (entry) => {
-      // Re-execute the original operation
+      if (!isRecord(entry.payload)) return;
+
       if (entry.type === 'add_note') {
-        // addNote not yet exposed on productionWorkflowService; handled when service is extended
+        const noteId = readString(entry.payload.id);
+        const incomingNote: ContinuityNote = {
+          id: noteId ?? `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sceneId: readString(entry.payload.sceneId) ?? '',
+          shotId: readString(entry.payload.shotId),
+          takeId: readString(entry.payload.takeId),
+          type: ((): ContinuityNote['type'] => {
+            const value = readString(entry.payload.type);
+            if (value === 'continuity' || value === 'costume' || value === 'props' || value === 'makeup' || value === 'tech' || value === 'general') {
+              return value;
+            }
+            return 'general';
+          })(),
+          note: readString(entry.payload.note) ?? '',
+          photoUrl: readString(entry.payload.photoUrl),
+          timestamp: readString(entry.payload.timestamp) ?? new Date().toISOString(),
+          createdBy: readString(entry.payload.createdBy) ?? userId,
+          synced: true,
+        };
+
+        if (incomingNote.note.trim().length > 0) {
+          setContinuityNotes((prev) => {
+            const idx = prev.findIndex((note) => note.id === incomingNote.id);
+            const next = idx === -1
+              ? [incomingNote, ...prev]
+              : prev.map((note) => (note.id === incomingNote.id ? { ...note, synced: true } : note));
+            saveLocalNotes(projectId, shootingDayId, next);
+            return next;
+          });
+          sendRealtime('liveset:note', incomingNote);
+        }
       } else if (entry.type === 'cut') {
-        const p = entry.payload;
+        const status = isTakeStatus(entry.payload.status) ? entry.payload.status : null;
+        if (!status) return;
+        const lens = readString(entry.payload.lens);
+        const cameraName = readString(entry.payload.camera);
+        const fps = readNumber(entry.payload.fps);
+        const iso = readNumber(entry.payload.iso);
+        const ndFilter = readString(entry.payload.ndFilter);
+        const duration = readNumber(entry.payload.duration);
+
+        const cameraMetadata: CameraMetadata | undefined = cameraName || lens || fps || iso || ndFilter
+          ? {
+              cameraId: 'A',
+              camera: cameraName ?? 'A-cam',
+              lens,
+              fps,
+              iso,
+              ndFilter,
+            }
+          : undefined;
+
         await productionWorkflowService.cut(
-          p.status as Take['status'], p.notes as string, p.camera as CameraMetadata,
+          status,
+          readString(entry.payload.notes),
+          cameraMetadata,
+          undefined,
+          undefined,
+          userId,
+          duration,
         );
+      } else if (entry.type === 'roll') {
+        const sceneId = readString(entry.payload.sceneId);
+        const shotId = readString(entry.payload.shotId);
+        if (sceneId && shotId) {
+          await productionWorkflowService.startRolling(sceneId, shotId);
+        }
+      } else if (entry.type === 'circle_take') {
+        const takeId = readString(entry.payload.takeId);
+        const circledBy = readString(entry.payload.userId) ?? userId;
+        if (takeId) {
+          await productionWorkflowService.circleTake(takeId, circledBy);
+        }
+      } else if (entry.type === 'setup_complete') {
+        const sceneId = readString(entry.payload.sceneId);
+        const shotId = readString(entry.payload.shotId);
+        const byUser = readString(entry.payload.userId) ?? userId;
+        if (sceneId && shotId) {
+          await productionWorkflowService.setupComplete(sceneId, shotId, byUser);
+        }
+      } else if (entry.type === 'adjust_take') {
+        const delta = readNumber(entry.payload.delta) ?? 0;
+        if (delta !== 0) {
+          setLiveStatus(prev => prev
+            ? { ...prev, currentTake: Math.max(1, (prev.currentTake ?? 1) + delta) }
+            : prev);
+        }
       }
-      // TODO [Studio]: POST to /api/liveset/:projectId/* based on entry.type
     }).catch(() => {});
-  }, [rtConnected]);
+  }, [projectId, rtConnected, sendRealtime, shootingDayId, userId]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Data fetching + polling (fix #6 + #10)
@@ -431,11 +525,18 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
       note:      label,
       timestamp: new Date().toISOString(),
       createdBy: userId,
-      synced:    false,
+      synced:    rtConnected,
     };
+
+    if (rtConnected) {
+      sendRealtime('liveset:note', note);
+    } else {
+      Outbox.enqueue('add_note', Outbox.OutboxPayload.addNote(note), projectId, shootingDayId);
+    }
+
     persistNotes([note, ...continuityNotes]);
     setSnack({ msg: `"${label}" loggført`, severity: 'info' });
-  }, [liveStatus, userId, continuityNotes, persistNotes]);
+  }, [continuityNotes, liveStatus, persistNotes, projectId, rtConnected, sendRealtime, shootingDayId, userId]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Rolling (fix #3 single source of truth + #4 autoIncrement + #8 userId)
@@ -513,6 +614,7 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
         additionalCameras.length > 0 ? additionalCameras : undefined,
         settings.autoIncrement ? undefined : (liveStatus?.currentTake ?? 1) + 1,
         userId,
+        elapsedTime,
       );
       setLiveStatus(prev =>
         prev ? {
@@ -582,13 +684,20 @@ const LiveSetMode: React.FC<LiveSetModeProps> = ({
       note:      noteForm.note,
       timestamp: new Date().toISOString(),
       createdBy: userId,
-      synced:    false,
+      synced:    rtConnected,
     };
+
+    if (rtConnected) {
+      sendRealtime('liveset:note', note);
+    } else {
+      Outbox.enqueue('add_note', Outbox.OutboxPayload.addNote(note), projectId, shootingDayId);
+    }
+
     persistNotes([note, ...continuityNotes]);
     setNoteForm({ type: 'general', note: '' });
     setShowNoteDialog(false);
-    setSnack({ msg: 'Notat lagret lokalt', severity: 'success' });
-  }, [noteForm, liveStatus, userId, continuityNotes, persistNotes]);
+    setSnack({ msg: rtConnected ? 'Notat synkronisert' : 'Notat lagret lokalt (sync ved nettverk)', severity: 'success' });
+  }, [continuityNotes, liveStatus, noteForm, persistNotes, projectId, rtConnected, sendRealtime, shootingDayId, userId]);
 
   const handleNextSetup = useCallback(async () => {
     if (!can.completeSetup) {

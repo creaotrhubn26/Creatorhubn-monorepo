@@ -1,6 +1,88 @@
 import { CastingProject, UserRole } from '../models/casting';
 import { castingService } from './castingService';
 
+type ShareTokenEntry = {
+  token: string;
+  projectId: string;
+  role: UserRole['role'];
+  createdAt: string;
+  expiresAt: string;
+};
+
+const SHARE_TOKEN_STORAGE_KEY = 'role-room-share-links';
+const SHARE_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const parseShareTokenEntries = (value: unknown): ShareTokenEntry[] => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const token = entry.token;
+    const projectId = entry.projectId;
+    const role = entry.role;
+    const createdAt = entry.createdAt;
+    const expiresAt = entry.expiresAt;
+
+    if (
+      typeof token !== 'string' ||
+      typeof projectId !== 'string' ||
+      typeof role !== 'string' ||
+      typeof createdAt !== 'string' ||
+      typeof expiresAt !== 'string'
+    ) {
+      return [];
+    }
+
+    return [{
+      token,
+      projectId,
+      role: role as UserRole['role'],
+      createdAt,
+      expiresAt,
+    }];
+  });
+};
+
+const pruneExpiredShareTokens = (entries: ShareTokenEntry[]): ShareTokenEntry[] => {
+  const now = Date.now();
+  return entries.filter((entry) => Date.parse(entry.expiresAt) > now);
+};
+
+const loadShareTokens = (): ShareTokenEntry[] => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.localStorage.getItem(SHARE_TOKEN_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return pruneExpiredShareTokens(parseShareTokenEntries(parsed));
+  } catch {
+    return [];
+  }
+};
+
+const saveShareTokens = (entries: ShareTokenEntry[]): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SHARE_TOKEN_STORAGE_KEY, JSON.stringify(entries));
+};
+
+const createShareToken = (): string => {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    return cryptoApi.randomUUID().replace(/-/g, '');
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
+};
+
 /**
  * Sharing Service
  * Handles sharing of casting projects and storyboards with team
@@ -51,12 +133,50 @@ export const sharingService = {
   },
 
   /**
-   * Generate share link (for future implementation with backend)
+   * Generate a share link with a persisted access token.
    */
   generateShareLink(projectId: string, role: UserRole['role']): string {
-    // In a real implementation, this would generate a secure token
-    // For now, return a placeholder
-    return `${window.location.origin}/casting/${projectId}?role=${role}`;
+    const token = createShareToken();
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + SHARE_TOKEN_TTL_MS).toISOString();
+
+    const storedTokens = loadShareTokens();
+    const nextTokens = pruneExpiredShareTokens([
+      ...storedTokens.filter((entry) => entry.token !== token),
+      {
+        token,
+        projectId,
+        role,
+        createdAt,
+        expiresAt,
+      },
+    ]);
+    saveShareTokens(nextTokens);
+
+    const sharePath = `/casting/${projectId}`;
+    if (typeof window === 'undefined') {
+      return `${sharePath}?role=${encodeURIComponent(role)}&share=${encodeURIComponent(token)}`;
+    }
+
+    const shareUrl = new URL(sharePath, window.location.origin);
+    shareUrl.searchParams.set('role', role);
+    shareUrl.searchParams.set('share', token);
+    shareUrl.searchParams.set('expires', expiresAt);
+    return shareUrl.toString();
+  },
+
+  /**
+   * Resolve share metadata from a persisted token.
+   */
+  resolveShareToken(token: string): { projectId: string; role: UserRole['role']; expiresAt: string } | null {
+    if (!token.trim()) return null;
+    const match = loadShareTokens().find((entry) => entry.token === token);
+    if (!match) return null;
+    return {
+      projectId: match.projectId,
+      role: match.role,
+      expiresAt: match.expiresAt,
+    };
   },
 
   /**
@@ -94,8 +214,6 @@ export const sharingService = {
     }
   },
 };
-
-
 
 
 

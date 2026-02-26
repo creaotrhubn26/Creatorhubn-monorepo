@@ -368,7 +368,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     title: '',
     subtitle: '',
     author: '',
-    format: 'fountain' as 'fountain' | 'final-draft' | 'markdown',
+    format: 'fountain' as 'fountain' | 'final-draft' | 'markdown' | 'celtx',
   });
 
   // Edit manuscript state
@@ -772,28 +772,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
     }
   };
 
-  const handleImportComplete = async (exportData: ManuscriptExport) => {
-    try {
-      const restored = await manuscriptService.restoreFromExport(exportData);
+  const handleImportComplete = (exportData: ManuscriptExport) => {
+    const restored = exportData;
 
-      // Update state with imported data
-      setSelectedManuscript(restored.manuscript);
-      setActs(restored.acts);
-      setScenes(restored.scenes);
-      setDialogueLines(restored.dialogueLines);
-      setRevisions(restored.revisions);
+    // Update state with imported data
+    setSelectedManuscript(restored.manuscript);
+    setActs(restored.acts);
+    setScenes(restored.scenes);
+    setDialogueLines(restored.dialogueLines);
+    setRevisions(restored.revisions);
 
-      // Add to manuscripts list
-      setManuscripts([
-        ...manuscripts.filter(m => m.id !== restored.manuscript.id),
-        restored.manuscript,
-      ]);
+    // Add to manuscripts list
+    setManuscripts([
+      ...manuscripts.filter(m => m.id !== restored.manuscript.id),
+      restored.manuscript,
+    ]);
 
-      showSuccess('Manuskript importert og klar for bruk');
-    } catch (error) {
-      showError('Feil ved import');
-      console.error(error);
-    }
+    showSuccess('Manuskript importert og klar for bruk');
   };
 
   const handleApplyTemplate = (template: Template) => {
@@ -2059,6 +2054,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
                 <MenuItem value="fountain">Fountain (anbefalt)</MenuItem>
                 <MenuItem value="markdown">Markdown</MenuItem>
                 <MenuItem value="final-draft">Final Draft</MenuItem>
+                <MenuItem value="celtx">Celtx</MenuItem>
               </Select>
             </FormControl>
           </Stack>
@@ -2073,6 +2069,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({ projectId, o
       <ImportManuscriptDialog
         open={showImportDialog}
         onClose={() => setShowImportDialog(false)}
+        projectId={projectId}
         onImportComplete={handleImportComplete}
       />
 

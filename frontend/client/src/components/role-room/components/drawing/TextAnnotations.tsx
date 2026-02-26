@@ -283,8 +283,22 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
 }) => {
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
   const [bgAnchor, setBgAnchor] = useState<HTMLElement | null>(null);
+  const [editAnchor, setEditAnchor] = useState<HTMLElement | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const editInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedAnnotation = annotations.find(a => a.id === selectedId);
+
+  useEffect(() => {
+    setEditingText(selectedAnnotation?.text ?? '');
+  }, [selectedAnnotation?.id, selectedAnnotation?.text]);
+
+  useEffect(() => {
+    if (!editAnchor || !editInputRef.current) return;
+    const input = editInputRef.current;
+    input.focus();
+    input.select();
+  }, [editAnchor]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedId) return;
@@ -304,6 +318,20 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
     onSelectedChange(duplicate.id);
   }, [selectedAnnotation, annotations, onAnnotationsChange, onSelectedChange]);
 
+  const handleApplyTextEdit = useCallback(() => {
+    if (!selectedAnnotation) return;
+    const nextText = editingText.trim();
+    if (!nextText) return;
+
+    const updated = annotations.map((annotation) =>
+      annotation.id === selectedAnnotation.id
+        ? { ...annotation, text: nextText }
+        : annotation
+    );
+    onAnnotationsChange(updated);
+    setEditAnchor(null);
+  }, [selectedAnnotation, editingText, annotations, onAnnotationsChange]);
+
   return (
     <ToolbarContainer>
       {/* Add text */}
@@ -317,8 +345,10 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
 
       {/* Font family */}
       <FormControl size="small" sx={{ minWidth: 100 }}>
+        <InputLabel sx={{ fontSize: 11 }}>Font</InputLabel>
         <Select
           value={style.fontFamily}
+          label="Font"
           onChange={(e) => onStyleChange({ fontFamily: e.target.value })}
           sx={{ fontSize: 11, '& .MuiSelect-select': { py: 0.5 } }}
         >
@@ -514,6 +544,11 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
       {/* Actions for selected */}
       {selectedId && (
         <>
+          <Tooltip title="Edit Text" placement="top">
+            <IconButton size="small" onClick={(event) => setEditAnchor(event.currentTarget)}>
+              <Edit sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Duplicate" placement="top">
             <IconButton size="small" onClick={handleDuplicateSelected}>
               <ContentCopy sx={{ fontSize: 16 }} />
@@ -526,6 +561,44 @@ export const TextAnnotationsToolbar: React.FC<TextAnnotationsProps> = ({
           </Tooltip>
         </>
       )}
+
+      <Popover
+        open={Boolean(editAnchor)}
+        anchorEl={editAnchor}
+        onClose={() => setEditAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        slotProps={{ paper: { sx: { bgcolor: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(8px)' } } }}
+      >
+        <Stack spacing={1.25} sx={{ p: 2, width: 280 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Edit Selected Text
+          </Typography>
+          <TextField
+            inputRef={editInputRef}
+            value={editingText}
+            onChange={(event) => setEditingText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleApplyTextEdit();
+              }
+            }}
+            size="small"
+            multiline
+            minRows={2}
+            maxRows={5}
+          />
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <IconButton size="small" onClick={() => setEditAnchor(null)}>
+              Cancel
+            </IconButton>
+            <IconButton size="small" color="primary" onClick={handleApplyTextEdit} disabled={!editingText.trim()}>
+              Apply
+            </IconButton>
+          </Stack>
+        </Stack>
+      </Popover>
     </ToolbarContainer>
   );
 };

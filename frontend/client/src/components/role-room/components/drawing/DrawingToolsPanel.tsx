@@ -27,6 +27,8 @@ import {
   Collapse,
   Divider,
   Badge,
+  Button,
+  Chip,
 } from '@mui/material';
 import {
   Layers,
@@ -34,6 +36,7 @@ import {
   Category,
   TextFields,
   SelectAll,
+  AutoAwesome,
   Flip,
   Timeline,
   Colorize,
@@ -44,6 +47,7 @@ import {
   Settings,
   Movie,
   AspectRatio,
+  LibraryBooks,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -63,6 +67,17 @@ import { GestureShortcuts, GestureSettings, GestureAction, DEFAULT_GESTURE_SETTI
 import { StoryboardTemplates, StoryboardTemplate, FrameGuides, DEFAULT_GUIDES, drawGuides } from './StoryboardTemplates';
 import { BrushConfig, DEFAULT_BRUSH_CONFIG } from './AdvancedBrushEngine';
 import { PencilStroke } from '../../hooks/useApplePencil';
+import { ConceptArtPanel } from './ConceptArtPanel';
+import { VisualStoryDecisionPanel } from './VisualStoryDecisionPanel';
+import { PropSketchLibrary } from './PropSketchLibrary';
+import {
+  DEFAULT_FRAME_DECISION_DATA,
+  cloneFrameDecisionData,
+} from '../../state/storyboardStore';
+import type {
+  FrameConceptArtData,
+  FrameDecisionData,
+} from '../../state/storyboardStore';
 
 // =============================================================================
 // Types
@@ -107,10 +122,15 @@ export interface DrawingState {
   selectedStrokeIds: string[];
   storyboardTemplate: StoryboardTemplate | null;
   customTemplates: StoryboardTemplate[];
+  decisionData: FrameDecisionData;
+  conceptArt: FrameConceptArtData;
   scriptContext: ScriptContext | null;
 }
 
 export interface DrawingToolsPanelProps {
+  projectId?: string;
+  currentFrameId?: string;
+  currentStoryboardId?: string;
   // Canvas reference for eyedropper
   canvas: HTMLCanvasElement | null;
   
@@ -144,13 +164,14 @@ export interface DrawingToolsPanelProps {
   // Callbacks
   onColorPick: (color: string) => void;
   onExport: (settings: ExportSettings, frameIndices: number[]) => Promise<void>;
-  onGestureAction: (action: GestureAction, data?: any) => void;
+  onGestureAction: (action: GestureAction, data?: unknown) => void;
   onUndo: () => void;
   onRedo: () => void;
   onCopy: () => void;
   onPaste: () => void;
   onCut: () => void;
   onDelete: () => void;
+  onApplyReferenceImage: (imageUrl: string) => void;
   
   // Display options
   position?: 'left' | 'right';
@@ -191,6 +212,22 @@ export const DEFAULT_DRAWING_STATE: DrawingState = {
   selectedStrokeIds: [],
   storyboardTemplate: null,
   customTemplates: [],
+  decisionData: cloneFrameDecisionData(DEFAULT_FRAME_DECISION_DATA),
+  conceptArt: {
+    intent: {
+      sceneIntent: '',
+      environment: '',
+      mood: '',
+      timeOfDay: '',
+      style: '',
+      camera: '',
+      notes: '',
+      template: 'cinematic',
+      prompt: '',
+    },
+    variants: [],
+    selectedVariantId: null,
+  },
   scriptContext: null,
 };
 
@@ -254,6 +291,9 @@ const SectionHeader = styled(Box)({
 // =============================================================================
 
 export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
+  projectId,
+  currentFrameId,
+  currentStoryboardId,
   canvas,
   state,
   onStateChange,
@@ -281,6 +321,7 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
   onPaste,
   onCut,
   onDelete,
+  onApplyReferenceImage,
   position = 'right',
   defaultTab = 0,
   collapsed: controlledCollapsed,
@@ -294,6 +335,9 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
     shapes: false,
     text: false,
     selection: false,
+    decision: true,
+    concept: true,
+    props: true,
     symmetry: false,
     pressure: false,
     onion: false,
@@ -305,9 +349,21 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
   const [recentColors, setRecentColors] = useState<SampledColor[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const latestExportSettingsRef = useRef<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
+  const guidePreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const collapsed = controlledCollapsed ?? internalCollapsed;
   const setCollapsed = onCollapsedChange ?? setInternalCollapsed;
+
+  const activeLayer = useMemo(
+    () => state.layers.find((layer) => layer.id === state.activeLayerId) ?? null,
+    [state.layers, state.activeLayerId]
+  );
+
+  const activeBlendMode = useMemo<BlendMode | null>(
+    () => activeLayer?.blendMode ?? null,
+    [activeLayer]
+  );
 
   const toggleSection = useCallback((section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -336,21 +392,18 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
   const handleExport = useCallback(async (settings: ExportSettings, frameIndices: number[]) => {
     setIsExporting(true);
     setExportProgress(0);
+    latestExportSettingsRef.current = settings;
     
     try {
-      // Simulate progress for now
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(r => setTimeout(r, 100));
-        setExportProgress(i);
-      }
       await onExport(settings, frameIndices);
+      setExportProgress(100);
     } finally {
       setIsExporting(false);
-      setExportProgress(0);
+      setTimeout(() => setExportProgress(0), 300);
     }
   }, [onExport]);
 
-  const handleGestureAction = useCallback((action: GestureAction, data?: any) => {
+  const handleGestureAction = useCallback((action: GestureAction, data?: unknown) => {
     switch (action) {
       case 'undo':
         onUndo();
@@ -371,6 +424,48 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         onGestureAction(action, data);
     }
   }, [onUndo, onRedo, onCopy, onPaste, onCut, onGestureAction]);
+
+  const handleQuickExportDefaults = useCallback(async () => {
+    const indices = selectedFrameIndices.length > 0
+      ? selectedFrameIndices
+      : exportFrames.map((_, index) => index);
+    await handleExport(DEFAULT_EXPORT_SETTINGS, indices);
+  }, [selectedFrameIndices, exportFrames, handleExport]);
+
+  const handleResetTemplateGuides = useCallback(() => {
+    if (!state.storyboardTemplate) return;
+    const resetGuides: FrameGuides = { ...DEFAULT_GUIDES, enabled: true };
+    onStateChange({
+      storyboardTemplate: {
+        ...state.storyboardTemplate,
+        guides: resetGuides,
+      },
+    });
+  }, [state.storyboardTemplate, onStateChange]);
+
+  const guidePreviewDataUrl = useMemo(() => {
+    if (!state.storyboardTemplate?.guides.enabled) return null;
+    if (typeof document === 'undefined') return null;
+
+    const previewCanvas = guidePreviewCanvasRef.current ?? document.createElement('canvas');
+    guidePreviewCanvasRef.current = previewCanvas;
+    previewCanvas.width = 192;
+    previewCanvas.height = 108;
+
+    const context = previewCanvas.getContext('2d');
+    if (!context) return null;
+
+    context.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    context.fillStyle = '#10131d';
+    context.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+    drawGuides(
+      context,
+      previewCanvas.width,
+      previewCanvas.height,
+      state.storyboardTemplate.guides
+    );
+    return previewCanvas.toDataURL('image/png');
+  }, [state.storyboardTemplate]);
 
   // Collapsed toolbar view
   if (collapsed) {
@@ -535,9 +630,35 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
           <LayersPanel
             layers={state.layers}
             activeLayerId={state.activeLayerId}
-            onLayersChange={(layers) => onStateChange({ layers })}
-            onActiveLayerChange={(id) => onStateChange({ activeLayerId: id })}
+            onLayersChange={(layers) => {
+              onStateChange({ layers });
+              const selectedLayer = layers.find((layer) => layer.id === state.activeLayerId) ?? layers[0];
+              onStrokesChange(selectedLayer?.strokes ?? []);
+            }}
+            onActiveLayerChange={(id) => {
+              onLayerSelect(id);
+              onStateChange({ activeLayerId: id });
+              const selectedLayer = state.layers.find((layer) => layer.id === id);
+              onStrokesChange(selectedLayer?.strokes ?? []);
+            }}
+            onLayerSelect={onLayerSelect}
+            onLayerAdd={onLayerAdd}
+            onLayerDelete={onLayerDelete}
+            onLayerVisibilityToggle={onLayerVisibilityToggle}
+            onLayerOpacityChange={onLayerOpacityChange}
+            onLayerReorder={onLayerReorder}
+            onLayerMerge={(layerId) => onLayerMerge(layerId)}
+            onLayerDuplicate={onLayerDuplicate}
           />
+          {activeBlendMode && (
+            <Box sx={{ px: 1.5, pb: 1 }}>
+              <Chip
+                size="small"
+                label={`Blend: ${activeBlendMode}`}
+                sx={{ fontSize: 10, textTransform: 'capitalize' }}
+              />
+            </Box>
+          )}
         </Collapse>
 
         {/* Brush Library Section */}
@@ -676,7 +797,9 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
         <Collapse in={expandedSections.symmetry}>
           <SymmetryMode
             settings={state.symmetrySettings}
-            onSettingsChange={(settings: Partial<SymmetrySettings>) => onStateChange({ symmetrySettings: { ...state.symmetrySettings, ...settings } as SymmetrySettings })}
+            onSettingsChange={(settings: Partial<SymmetrySettings> & { type?: SymmetryType }) =>
+              onStateChange({ symmetrySettings: { ...state.symmetrySettings, ...settings } as SymmetrySettings })
+            }
             canvasWidth={canvas?.width || 800}
             canvasHeight={canvas?.height || 600}
           />
@@ -684,6 +807,73 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
       </TabPanel>
 
       <TabPanel sx={{ display: activeTab === 2 ? 'block' : 'none' }}>
+        <SectionHeader onClick={() => toggleSection('decision')}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <AutoAwesome sx={{ fontSize: 16 }} />
+            <Typography variant="body2" sx={{ fontSize: 12 }}>Decision Engine</Typography>
+            <Chip
+              size="small"
+              label={state.decisionData.production.shotStatus}
+              sx={{ height: 18, fontSize: 9, textTransform: 'uppercase' }}
+            />
+          </Stack>
+          {expandedSections.decision ? <ExpandLess /> : <ExpandMore />}
+        </SectionHeader>
+        <Collapse in={expandedSections.decision}>
+          <VisualStoryDecisionPanel
+            decisionData={state.decisionData}
+            onDecisionDataChange={(decisionData) => onStateChange({ decisionData })}
+            scriptContext={state.scriptContext}
+          />
+        </Collapse>
+
+        <Divider sx={{ my: 1 }} />
+
+        <SectionHeader onClick={() => toggleSection('concept')}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <AutoAwesome sx={{ fontSize: 16 }} />
+            <Typography variant="body2" sx={{ fontSize: 12 }}>Concept Art</Typography>
+            {state.conceptArt.variants.length > 0 && (
+              <Badge badgeContent={state.conceptArt.variants.length} color="primary" />
+            )}
+          </Stack>
+          {expandedSections.concept ? <ExpandLess /> : <ExpandMore />}
+        </SectionHeader>
+        <Collapse in={expandedSections.concept}>
+          <ConceptArtPanel
+            conceptArt={state.conceptArt}
+            onConceptArtChange={(conceptArt) => onStateChange({ conceptArt })}
+            onApplyReferenceImage={onApplyReferenceImage}
+          />
+        </Collapse>
+
+        <Divider sx={{ my: 1 }} />
+
+        <SectionHeader onClick={() => toggleSection('props')}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <LibraryBooks sx={{ fontSize: 16 }} />
+            <Typography variant="body2" sx={{ fontSize: 12 }}>Prop Sketch Library</Typography>
+            <Chip
+              size="small"
+              label="Sketch -> Design -> Final"
+              sx={{ height: 18, fontSize: 9 }}
+            />
+          </Stack>
+          {expandedSections.props ? <ExpandLess /> : <ExpandMore />}
+        </SectionHeader>
+        <Collapse in={expandedSections.props}>
+          <PropSketchLibrary
+            projectId={projectId}
+            frameId={currentFrameId}
+            storyboardId={currentStoryboardId}
+            sceneId={state.scriptContext?.sceneId}
+            canvas={canvas}
+            onApplyReferenceImage={onApplyReferenceImage}
+          />
+        </Collapse>
+
+        <Divider sx={{ my: 1 }} />
+
         {/* Storyboard Templates */}
         <StoryboardTemplates
           selectedTemplate={state.storyboardTemplate}
@@ -700,6 +890,30 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
           canvasWidth={canvas?.width || 1920}
           canvasHeight={canvas?.height || 1080}
         />
+        {state.storyboardTemplate && (
+          <Box sx={{ px: 1.5, pb: 1.5 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Guide Overlay Preview
+              </Typography>
+              <Button size="small" onClick={handleResetTemplateGuides}>
+                Reset Guides
+              </Button>
+            </Stack>
+            {guidePreviewDataUrl && (
+              <Box
+                component="img"
+                src={guidePreviewDataUrl}
+                alt="Guide overlay preview"
+                sx={{
+                  width: '100%',
+                  borderRadius: 1,
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              />
+            )}
+          </Box>
+        )}
       </TabPanel>
 
       <TabPanel sx={{ display: activeTab === 3 ? 'block' : 'none' }}>
@@ -764,6 +978,16 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
       </TabPanel>
 
       <TabPanel sx={{ display: activeTab === 4 ? 'block' : 'none' }}>
+        <Box sx={{ px: 1.5, pt: 1.5 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleQuickExportDefaults}
+            disabled={isExporting || exportFrames.length === 0}
+          >
+            Quick Export Defaults
+          </Button>
+        </Box>
         {/* Export Options */}
         <ExportOptions
           frames={exportFrames}

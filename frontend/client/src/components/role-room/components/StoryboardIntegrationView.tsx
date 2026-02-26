@@ -12,7 +12,6 @@ import {
   CardContent,
   Grid,
   IconButton,
-  Divider,
   Table,
   TableHead,
   TableRow,
@@ -39,10 +38,10 @@ import {
   Sync as SyncIcon,
 } from '@mui/icons-material';
 import { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '../models/casting';
-import { FrameDrawingEditor, QuickDrawButton } from './FrameDrawingEditor';
+import { FrameDrawingEditor } from './FrameDrawingEditor';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import { FrameDrawingData } from '../state/storyboardStore';
-import { useScriptStoryboardOptional, SceneContext } from '../contexts/ScriptStoryboardContext';
+import { useScriptStoryboardOptional } from '../contexts/ScriptStoryboardContext';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
@@ -78,8 +77,8 @@ interface StoryboardFrame {
 export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps> = ({
   scene,
   onUpdate,
-  scriptContent,
-  onScriptChange,
+  scriptContent: _scriptContent,
+  onScriptChange: _onScriptChange,
   showScriptPanel = false,
   activeFrameIndex: propActiveFrameIndex,
   onFrameSelect,
@@ -109,8 +108,6 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
     return [];
   });
   const [activeFrameIdx, setActiveFrameIdx] = useState(propActiveFrameIndex || 0);
-  const device = useDeviceDetection();
-  
   // Try to use script-storyboard context if available
   const scriptStoryboard = useScriptStoryboardOptional();
   const currentScene = scriptStoryboard?.currentScene;
@@ -297,7 +294,9 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             frames={storyboardFrames}
             onUpdate={setStoryboardFrames}
             onFrameDrawingComplete={handleFrameDrawingComplete}
+            onFrameSelect={handleFrameSelect}
             sceneId={scene.id}
+            projectId={scene.projectId}
           />
         )}
         {viewMode === 'shotlist' && (
@@ -365,8 +364,10 @@ const StoryboardView: React.FC<{
   frames: StoryboardFrame[];
   onUpdate: (frames: StoryboardFrame[]) => void;
   onFrameDrawingComplete: (frameId: string, drawingData: FrameDrawingData, imageUrl: string) => void;
+  onFrameSelect?: (index: number) => void;
   sceneId: string;
-}> = ({ frames, onUpdate, onFrameDrawingComplete, sceneId }) => {
+  projectId: string;
+}> = ({ frames, onUpdate, onFrameDrawingComplete, onFrameSelect, sceneId, projectId }) => {
   const device = useDeviceDetection();
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
 
@@ -408,7 +409,11 @@ const StoryboardView: React.FC<{
             <StoryboardFrameCard
               frame={frame}
               index={index}
-              onDrawClick={() => setDrawingFrameId(frame.id)}
+              onDrawClick={() => {
+                onFrameSelect?.(index);
+                setDrawingFrameId(frame.id);
+              }}
+              onSelect={() => onFrameSelect?.(index)}
               showDrawButton={device.isIPad || device.hasTouchScreen}
             />
           </Grid>
@@ -418,6 +423,7 @@ const StoryboardView: React.FC<{
       {/* iPad Drawing Editor Dialog */}
       {drawingFrame && (
         <FrameDrawingEditor
+          projectId={projectId}
           frameId={drawingFrame.id}
           aspectRatio="16:9"
           initialImage={drawingFrame.imageUrl}
@@ -438,8 +444,9 @@ const StoryboardFrameCard: React.FC<{
   frame: StoryboardFrame;
   index: number;
   onDrawClick?: () => void;
+  onSelect?: () => void;
   showDrawButton?: boolean;
-}> = ({ frame, index, onDrawClick, showDrawButton }) => {
+}> = ({ frame, index: _index, onDrawClick, onSelect, showDrawButton }) => {
   return (
     <Card>
       {/* Frame Image/Sketch Area */}
@@ -452,7 +459,12 @@ const StoryboardFrameCard: React.FC<{
           borderColor: 'divider',
           cursor: showDrawButton ? 'pointer' : 'default',
         }}
-        onClick={showDrawButton && !frame.imageUrl ? onDrawClick : undefined}
+        onClick={() => {
+          onSelect?.();
+          if (showDrawButton && !frame.imageUrl) {
+            onDrawClick?.();
+          }
+        }}
       >
         {frame.imageUrl ? (
           <CardMedia

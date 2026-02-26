@@ -1,6 +1,7 @@
 // ============================================
 // Production Manuscript — shared types
 // ============================================
+import type { CallSheet } from '../../services/productionWorkflowService';
 
 /** Harmonized note type: camera + director + sound + vfx */
 export type NoteType = 'camera' | 'director' | 'sound' | 'vfx';
@@ -232,6 +233,7 @@ export interface CallSheetRef {
   shootingDayId: string;
   html: string;
   generatedAt: string;
+  callSheet?: CallSheet;
 }
 
 export type BulkShotTemplate = 'standard' | 'dialogue' | 'action' | 'custom';

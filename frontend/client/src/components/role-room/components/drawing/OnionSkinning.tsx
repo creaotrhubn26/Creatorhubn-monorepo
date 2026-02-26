@@ -90,11 +90,13 @@ export const DEFAULT_ONION_SKIN_SETTINGS: OnionSkinSettings = {
 // =============================================================================
 
 const OnionContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: theme.palette.mode === 'dark'
+    ? 'rgba(20, 20, 30, 0.95)'
+    : 'rgba(248, 248, 255, 0.95)',
   backdropFilter: 'blur(12px)',
-  borderRadius: 12,
+  borderRadius: theme.shape.borderRadius + 4,
   overflow: 'hidden',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: `1px solid ${theme.palette.divider}`,
   minWidth: 260,
 }));
 
@@ -254,10 +256,11 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
     // Previous frames
     for (let i = 3; i >= 1; i--) {
       const frameIndex = currentFrameIndex - i;
+      const hasFrame = frameIndex >= 0 && Boolean(getFrameImage(frameIndex));
       indicators.push({
         type: 'before',
         offset: -i,
-        active: settings.enabled && i <= settings.framesBefore && frameIndex >= 0,
+        active: settings.enabled && i <= settings.framesBefore && hasFrame,
       });
     }
     
@@ -267,15 +270,16 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
     // Next frames
     for (let i = 1; i <= 3; i++) {
       const frameIndex = currentFrameIndex + i;
+      const hasFrame = frameIndex < totalFrames && Boolean(getFrameImage(frameIndex));
       indicators.push({
         type: 'after',
         offset: i,
-        active: settings.enabled && i <= settings.framesAfter && frameIndex < totalFrames,
+        active: settings.enabled && i <= settings.framesAfter && hasFrame,
       });
     }
     
     return indicators;
-  }, [currentFrameIndex, totalFrames, settings]);
+  }, [currentFrameIndex, totalFrames, settings, getFrameImage]);
 
   // Preview frames for visualization
   const onionFrames = useMemo(() => 
@@ -293,6 +297,11 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
               Onion Skinning
             </Typography>
+            {settings.enabled ? (
+              <Visibility sx={{ fontSize: 16, color: 'success.main' }} />
+            ) : (
+              <VisibilityOff sx={{ fontSize: 16, color: 'text.disabled' }} />
+            )}
           </Stack>
           <Switch
             size="small"
@@ -387,9 +396,12 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
         {/* Opacity before */}
         <Box sx={{ mb: 1.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: '#ef4444' }}>
-              Previous Opacity
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <Opacity sx={{ fontSize: 14, color: '#ef4444' }} />
+              <Typography variant="caption" sx={{ color: '#ef4444' }}>
+                Previous Opacity
+              </Typography>
+            </Stack>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {Math.round(settings.opacityBefore * 100)}%
             </Typography>
@@ -412,9 +424,12 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
         {/* Opacity after */}
         <Box sx={{ mb: 1.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: '#22c55e' }}>
-              Next Opacity
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <Opacity sx={{ fontSize: 14, color: '#22c55e' }} />
+              <Typography variant="caption" sx={{ color: '#22c55e' }}>
+                Next Opacity
+              </Typography>
+            </Stack>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {Math.round(settings.opacityAfter * 100)}%
             </Typography>
@@ -459,7 +474,10 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
 
         {/* Colors */}
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="caption">Tint Colors</Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <ColorLens sx={{ fontSize: 14, color: 'text.secondary' }} />
+            <Typography variant="caption">Tint Colors</Typography>
+          </Stack>
           <Stack direction="row" spacing={1}>
             <Tooltip title="Previous frame color">
               <ColorSwatch 
@@ -475,6 +493,39 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
             </Tooltip>
           </Stack>
         </Stack>
+
+        {colorPickerOpen && (
+          <Box sx={{ mt: 1.25, p: 1, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.05)' }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                {colorPickerOpen === 'before' ? 'Previous Frame Tint' : 'Next Frame Tint'}
+              </Typography>
+              <input
+                type="color"
+                value={colorPickerOpen === 'before' ? settings.colorBefore : settings.colorAfter}
+                onChange={(event) => {
+                  if (colorPickerOpen === 'before') {
+                    updateSettings({ colorBefore: event.target.value });
+                  } else {
+                    updateSettings({ colorAfter: event.target.value });
+                  }
+                }}
+                style={{
+                  width: 42,
+                  height: 28,
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                }}
+              />
+            </Stack>
+            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 0.75 }}>
+              <IconButton size="small" onClick={() => setColorPickerOpen(null)}>
+                <VisibilityOff sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Stack>
+          </Box>
+        )}
 
         {/* Outline only toggle */}
         <FormControlLabel
@@ -498,21 +549,26 @@ export const OnionSkinning: React.FC<OnionSkinningProps> = ({
             Active Onion Frames:
           </Typography>
           <Stack direction="row" spacing={0.5} flexWrap="wrap">
-            {onionFrames.map(frame => (
-              <Box
-                key={frame.offset}
-                sx={{
-                  px: 0.75,
-                  py: 0.25,
-                  borderRadius: 1,
-                  bgcolor: frame.color + '30',
-                  border: `1px solid ${frame.color}`,
-                  fontSize: 10,
-                }}
-              >
-                {frame.offset > 0 ? '+' : ''}{frame.offset} ({Math.round(frame.opacity * 100)}%)
-              </Box>
-            ))}
+            {onionFrames.map((frame) => {
+              const hasSourceFrame = Boolean(getFrameImage(frame.index));
+              return (
+                <Box
+                  key={frame.offset}
+                  sx={{
+                    px: 0.75,
+                    py: 0.25,
+                    borderRadius: 1,
+                    bgcolor: hasSourceFrame ? frame.color + '30' : 'rgba(255,255,255,0.08)',
+                    border: `1px solid ${hasSourceFrame ? frame.color : 'rgba(255,255,255,0.2)'}`,
+                    fontSize: 10,
+                    opacity: hasSourceFrame ? 1 : 0.6,
+                  }}
+                >
+                  {frame.offset > 0 ? '+' : ''}{frame.offset} ({Math.round(frame.opacity * 100)}%)
+                  {hasSourceFrame ? ` · F${frame.index + 1}` : ' · missing'}
+                </Box>
+              );
+            })}
           </Stack>
         </Box>
       )}

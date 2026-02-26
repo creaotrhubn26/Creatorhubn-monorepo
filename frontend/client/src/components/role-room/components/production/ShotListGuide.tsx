@@ -604,7 +604,7 @@ function buildSteps(onAction?: (action: string) => void): Step[] {
               ))}
             </Box>
             <Callout color="#f97316">
-              PDF export is coming soon. The option is visible in the export dialog but will show a notification until PDF generation is wired up.
+              PDF export is available from the same export dialog and includes scene-level totals, completion, assignment state and timestamps.
             </Callout>
             <CtaButton label="Eksporter CSV" action="export-csv" onAction={onAction} icon={<ExportIcon sx={{ fontSize: 16 }} />} />
           </>

@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { ContextualNudgeBanner } from '../../ContextualNudgeBanner';
+import { ContextualNudgeBanner } from '../ContextualNudgeBanner';
 import {
   Box,
   Paper,
@@ -417,7 +417,7 @@ export const drawGuides = (
   ctx.setLineDash([]);
   
   switch (guides.type) {
-    case 'thirds':
+    case 'thirds': {
       // Rule of thirds
       const thirdW = width / 3;
       const thirdH = height / 3;
@@ -433,8 +433,9 @@ export const drawGuides = (
       ctx.lineTo(width, thirdH * 2);
       ctx.stroke();
       break;
-      
-    case 'golden':
+    }
+
+    case 'golden': {
       // Golden ratio (1.618)
       const phi = 1.618033988749;
       const goldenW = width / phi;
@@ -451,8 +452,9 @@ export const drawGuides = (
       ctx.lineTo(width, goldenH);
       ctx.stroke();
       break;
-      
-    case 'diagonal':
+    }
+
+    case 'diagonal': {
       // Diagonal lines
       ctx.beginPath();
       ctx.moveTo(0, 0);
@@ -461,8 +463,9 @@ export const drawGuides = (
       ctx.lineTo(0, height);
       ctx.stroke();
       break;
-      
-    case 'center':
+    }
+
+    case 'center': {
       // Center crosshairs
       ctx.beginPath();
       ctx.moveTo(width / 2, 0);
@@ -476,8 +479,9 @@ export const drawGuides = (
       ctx.arc(width / 2, height / 2, Math.min(width, height) * 0.1, 0, Math.PI * 2);
       ctx.stroke();
       break;
-      
-    case 'safe':
+    }
+
+    case 'safe': {
       // TV safe zones
       const actionSafe = 0.93;
       const titleSafe = 0.9;
@@ -502,6 +506,7 @@ export const drawGuides = (
       ctx.strokeStyle = '#4ecdc4';
       ctx.strokeRect(titleX, titleY, titleW, titleH);
       break;
+    }
   }
   
   // Additional safe zones if enabled
@@ -626,6 +631,16 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
   const [customName, setCustomName] = useState('Custom Template');
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+  const [favoritePresetIds, setFavoritePresetIds] = useState<Set<string>>(
+    () => new Set(ASPECT_RATIO_PRESETS.filter((preset) => preset.popular).map((preset) => preset.id))
+  );
+  const [favoriteTemplateIds, setFavoriteTemplateIds] = useState<Set<string>>(
+    () => new Set(customTemplates.filter((template) => template.isFavorite).map((template) => template.id))
+  );
+  const [lockedTemplateIds, setLockedTemplateIds] = useState<Set<string>>(() => new Set<string>());
+  const [templateMenuAnchor, setTemplateMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuTemplate, setMenuTemplate] = useState<StoryboardTemplate | null>(null);
+  const [infoDialogTemplate, setInfoDialogTemplate] = useState<StoryboardTemplate | null>(null);
   
   // Filter presets
   const filteredPresets = useMemo(() => {
@@ -642,9 +657,20 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
         p.description.toLowerCase().includes(query)
       );
     }
+
+    if (showOnlyFavorites) {
+      presets = presets.filter((preset) => favoritePresetIds.has(preset.id));
+    }
     
     return presets;
-  }, [selectedCategory, searchQuery]);
+  }, [selectedCategory, searchQuery, showOnlyFavorites, favoritePresetIds]);
+
+  const visibleCustomTemplates = useMemo(() => {
+    return customTemplates.filter((template) => {
+      if (!showOnlyFavorites) return true;
+      return favoriteTemplateIds.has(template.id) || template.isFavorite;
+    });
+  }, [customTemplates, showOnlyFavorites, favoriteTemplateIds]);
   
   // Group presets by category
   const groupedPresets = useMemo(() => {
@@ -696,6 +722,130 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       onTemplateSelect(updated);
     }
   }, [selectedTemplate, onTemplateSelect]);
+
+  const togglePresetFavorite = useCallback((presetId: string) => {
+    setFavoritePresetIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(presetId)) {
+        next.delete(presetId);
+      } else {
+        next.add(presetId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleTemplateFavorite = useCallback((templateId: string) => {
+    setFavoriteTemplateIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(templateId)) {
+        next.delete(templateId);
+      } else {
+        next.add(templateId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleTemplateLock = useCallback((templateId: string) => {
+    setLockedTemplateIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(templateId)) {
+        next.delete(templateId);
+      } else {
+        next.add(templateId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleTemplateMenuOpen = useCallback((
+    event: React.MouseEvent<HTMLElement>,
+    template: StoryboardTemplate
+  ) => {
+    event.stopPropagation();
+    setTemplateMenuAnchor(event.currentTarget);
+    setMenuTemplate(template);
+  }, []);
+
+  const handleTemplateMenuClose = useCallback(() => {
+    setTemplateMenuAnchor(null);
+    setMenuTemplate(null);
+  }, []);
+
+  const handleDuplicateTemplate = useCallback(() => {
+    if (!menuTemplate) return;
+    const duplicate: StoryboardTemplate = {
+      ...menuTemplate,
+      id: `template-${Date.now()}`,
+      name: `${menuTemplate.name} Copy`,
+      createdAt: Date.now(),
+      isCustom: true,
+    };
+    onTemplateCreate?.(duplicate);
+    onTemplateSelect(duplicate);
+    handleTemplateMenuClose();
+  }, [menuTemplate, onTemplateCreate, onTemplateSelect, handleTemplateMenuClose]);
+
+  const handleRenameTemplate = useCallback(() => {
+    if (!menuTemplate) return;
+    const nextName = window.prompt('Rename template', menuTemplate.name);
+    if (!nextName?.trim()) {
+      handleTemplateMenuClose();
+      return;
+    }
+
+    const renamed: StoryboardTemplate = {
+      ...menuTemplate,
+      name: nextName.trim(),
+    };
+    onTemplateDelete?.(menuTemplate.id);
+    onTemplateCreate?.(renamed);
+    onTemplateSelect(renamed);
+    handleTemplateMenuClose();
+  }, [menuTemplate, onTemplateDelete, onTemplateCreate, onTemplateSelect, handleTemplateMenuClose]);
+
+  const handleSaveTemplatePreset = useCallback(() => {
+    if (!menuTemplate) return;
+    const savedTemplate: StoryboardTemplate = {
+      ...menuTemplate,
+      id: `template-${Date.now()}`,
+      name: `${menuTemplate.name} Saved`,
+      isCustom: true,
+      createdAt: Date.now(),
+    };
+    onTemplateCreate?.(savedTemplate);
+    onTemplateSelect(savedTemplate);
+    handleTemplateMenuClose();
+  }, [menuTemplate, onTemplateCreate, onTemplateSelect, handleTemplateMenuClose]);
+
+  const handleToggleTemplateGuides = useCallback(() => {
+    if (!menuTemplate) return;
+    const updated: StoryboardTemplate = {
+      ...menuTemplate,
+      guides: {
+        ...menuTemplate.guides,
+        enabled: !menuTemplate.guides.enabled,
+      },
+    };
+    onTemplateDelete?.(menuTemplate.id);
+    onTemplateCreate?.(updated);
+    onTemplateSelect(updated);
+    handleTemplateMenuClose();
+  }, [menuTemplate, onTemplateDelete, onTemplateCreate, onTemplateSelect, handleTemplateMenuClose]);
+
+  const handleOpenTemplateSettings = useCallback(() => {
+    if (!menuTemplate) return;
+    onTemplateSelect(menuTemplate);
+    setShowGuideSettings(true);
+    handleTemplateMenuClose();
+  }, [menuTemplate, onTemplateSelect, handleTemplateMenuClose]);
+
+  const handleToggleTemplateLockFromMenu = useCallback(() => {
+    if (!menuTemplate) return;
+    toggleTemplateLock(menuTemplate.id);
+    handleTemplateMenuClose();
+  }, [menuTemplate, toggleTemplateLock, handleTemplateMenuClose]);
   
   return (
     <Box sx={{ p: 2 }}>
@@ -703,9 +853,18 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
 
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
-        <Typography variant="subtitle1" fontWeight={600}>
-          Storyboard Templates
-        </Typography>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Badge
+            color="primary"
+            badgeContent={showOnlyFavorites ? filteredPresets.length + visibleCustomTemplates.length : favoritePresetIds.size + favoriteTemplateIds.size}
+            max={99}
+          >
+            <AspectRatio fontSize="small" />
+          </Badge>
+          <Typography variant="subtitle1" fontWeight={600}>
+            Storyboard Templates
+          </Typography>
+        </Stack>
         <Stack direction="row" gap={1}>
           <Tooltip title="Show favorites only">
             <IconButton
@@ -735,6 +894,13 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
         placeholder="Search templates..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <AspectRatio sx={{ fontSize: 16, color: 'text.secondary' }} />
+            </InputAdornment>
+          ),
+        }}
         sx={{
           mb: 2,
           '& .MuiOutlinedInput-root': {
@@ -745,26 +911,37 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       />
       
       {/* Category Filter */}
-      <Stack direction="row" gap={0.5} flexWrap="wrap" mb={2}>
-        <Chip
-          label="All"
-          size="small"
-          variant={selectedCategory === 'all' ? 'filled' : 'outlined'}
-          onClick={() => setSelectedCategory('all')}
-          sx={{ fontSize: 11 }}
-        />
-        {(Object.keys(CATEGORY_LABELS) as AspectRatioCategory[]).map(cat => (
-          <Chip
-            key={cat}
-            icon={CATEGORY_ICONS[cat] as React.ReactElement}
-            label={CATEGORY_LABELS[cat]}
-            size="small"
-            variant={selectedCategory === cat ? 'filled' : 'outlined'}
-            onClick={() => setSelectedCategory(cat)}
-            sx={{ fontSize: 11, '& .MuiChip-icon': { fontSize: 14 } }}
-          />
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={selectedCategory}
+        onChange={(_, value: AspectRatioCategory | 'all' | null) => {
+          if (value) setSelectedCategory(value);
+        }}
+        sx={{
+          mb: 2,
+          flexWrap: 'wrap',
+          gap: 0.5,
+          '& .MuiToggleButton-root': {
+            fontSize: 10,
+            px: 0.9,
+            py: 0.3,
+            borderColor: 'rgba(255,255,255,0.15)',
+          },
+        }}
+      >
+        <ToggleButton value="all">All</ToggleButton>
+        {(Object.keys(CATEGORY_LABELS) as AspectRatioCategory[]).map((cat) => (
+          <ToggleButton key={cat} value={cat}>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              {CATEGORY_ICONS[cat]}
+              <Typography variant="caption" sx={{ fontSize: 10 }}>
+                {cat}
+              </Typography>
+            </Stack>
+          </ToggleButton>
         ))}
-      </Stack>
+      </ToggleButtonGroup>
       
       {/* Popular Templates */}
       {selectedCategory === 'all' && !searchQuery && (
@@ -776,6 +953,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
             {ASPECT_RATIO_PRESETS.filter(p => p.popular).map(preset => {
               const isSelected = selectedTemplate?.aspectRatio.id === preset.id;
               const aspectRatio = calculateAspectRatio(preset.width, preset.height);
+              const isFavorite = favoritePresetIds.has(preset.id);
               
               return (
                 <Grid size={6} key={preset.id}>
@@ -793,18 +971,33 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                         >
                           {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 20 }} />}
                         </Box>
+                        {isSelected && selectedTemplate?.guides.enabled && (
+                          <GuideOverlay>
+                            <Box sx={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, bgcolor: 'rgba(255,255,255,0.4)' }} />
+                            <Box sx={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, bgcolor: 'rgba(255,255,255,0.4)' }} />
+                          </GuideOverlay>
+                        )}
                       </AspectPreview>
-                      {preset.popular && (
-                        <Star
-                          sx={{
-                            position: 'absolute',
-                            top: -4,
-                            right: -4,
-                            fontSize: 14,
-                            color: '#f59e0b',
-                          }}
-                        />
-                      )}
+                      <IconButton
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          togglePresetFavorite(preset.id);
+                        }}
+                        sx={{
+                          position: 'absolute',
+                          top: -6,
+                          right: -6,
+                          p: 0.35,
+                          bgcolor: 'rgba(0,0,0,0.35)',
+                        }}
+                      >
+                        {isFavorite ? (
+                          <Star sx={{ fontSize: 14, color: '#f59e0b' }} />
+                        ) : (
+                          <StarBorder sx={{ fontSize: 14 }} />
+                        )}
+                      </IconButton>
                     </Box>
                     <Typography variant="caption" fontWeight={500} display="block" noWrap>
                       {preset.name}
@@ -840,6 +1033,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               {presets.map(preset => {
                 const isSelected = selectedTemplate?.aspectRatio.id === preset.id;
                 const aspectRatio = calculateAspectRatio(preset.width, preset.height);
+                const isFavorite = favoritePresetIds.has(preset.id);
                 
                 return (
                   <Grid size={{ xs: 6, sm: 4 }} key={preset.id}>
@@ -856,10 +1050,33 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                         >
                           {isSelected && <Check sx={{ color: '#3b82f6', fontSize: 16 }} />}
                         </Box>
+                        {isSelected && selectedTemplate?.guides.enabled && (
+                          <GuideOverlay>
+                            <Box sx={{ position: 'absolute', top: '33%', left: 0, right: 0, height: 1, bgcolor: 'rgba(255,255,255,0.28)' }} />
+                            <Box sx={{ position: 'absolute', top: '66%', left: 0, right: 0, height: 1, bgcolor: 'rgba(255,255,255,0.28)' }} />
+                            <Box sx={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, bgcolor: 'rgba(255,255,255,0.28)' }} />
+                          </GuideOverlay>
+                        )}
                       </AspectPreview>
-                      <Typography variant="caption" fontWeight={500} display="block" noWrap sx={{ mt: 0.5 }}>
-                        {preset.name}
-                      </Typography>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 0.5 }}>
+                        <Typography variant="caption" fontWeight={500} display="block" noWrap>
+                          {preset.name}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            togglePresetFavorite(preset.id);
+                          }}
+                          sx={{ p: 0.2 }}
+                        >
+                          {isFavorite ? (
+                            <Star sx={{ fontSize: 13, color: '#f59e0b' }} />
+                          ) : (
+                            <StarBorder sx={{ fontSize: 13 }} />
+                          )}
+                        </IconButton>
+                      </Stack>
                       <Stack direction="row" alignItems="center" justifyContent="space-between">
                         <Typography variant="caption" color="text.secondary" fontSize={10}>
                           {formatAspectRatio(preset.width, preset.height)}
@@ -881,7 +1098,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       })}
       
       {/* Custom Templates */}
-      {customTemplates.length > 0 && (
+      {visibleCustomTemplates.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" gap={1} mb={1}>
             <Settings fontSize="small" />
@@ -891,12 +1108,14 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
           </Stack>
           
           <Grid container spacing={1}>
-            {customTemplates.map(template => {
+            {visibleCustomTemplates.map(template => {
               const isSelected = selectedTemplate?.id === template.id;
               const aspectRatio = calculateAspectRatio(
                 template.aspectRatio.width,
                 template.aspectRatio.height
               );
+              const isFavorite = favoriteTemplateIds.has(template.id) || template.isFavorite;
+              const isLocked = lockedTemplateIds.has(template.id);
               
               return (
                 <Grid size={6} key={template.id}>
@@ -917,23 +1136,50 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
                           </Box>
                         </AspectPreview>
                       </Box>
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onTemplateDelete?.(template.id);
-                        }}
-                        sx={{ ml: 0.5, p: 0.25 }}
-                      >
-                        <Delete sx={{ fontSize: 14, color: 'error.main' }} />
-                      </IconButton>
+                      <Stack direction="row" spacing={0.25}>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleTemplateFavorite(template.id);
+                          }}
+                          sx={{ p: 0.2 }}
+                        >
+                          {isFavorite ? (
+                            <Star sx={{ fontSize: 13, color: '#f59e0b' }} />
+                          ) : (
+                            <StarBorder sx={{ fontSize: 13 }} />
+                          )}
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => handleTemplateMenuOpen(event, template)}
+                          sx={{ p: 0.2 }}
+                        >
+                          <Settings sx={{ fontSize: 13 }} />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          disabled={isLocked}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onTemplateDelete?.(template.id);
+                          }}
+                          sx={{ ml: 0.1, p: 0.2 }}
+                        >
+                          <Delete sx={{ fontSize: 14, color: isLocked ? 'text.disabled' : 'error.main' }} />
+                        </IconButton>
+                      </Stack>
                     </Stack>
                     <Typography variant="caption" fontWeight={500} display="block" noWrap sx={{ mt: 0.5 }}>
                       {template.name}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary" fontSize={10}>
-                      {formatAspectRatio(template.aspectRatio.width, template.aspectRatio.height)}
-                    </Typography>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Typography variant="caption" color="text.secondary" fontSize={10}>
+                        {formatAspectRatio(template.aspectRatio.width, template.aspectRatio.height)}
+                      </Typography>
+                      {isLocked ? <Lock sx={{ fontSize: 11, color: 'warning.main' }} /> : <LockOpen sx={{ fontSize: 11, color: 'text.disabled' }} />}
+                    </Stack>
                   </TemplateCard>
                 </Grid>
               );
@@ -955,7 +1201,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
             sx={{ cursor: 'pointer', mb: 1 }}
           >
             <Stack direction="row" alignItems="center" gap={1}>
-              <GridOn fontSize="small" />
+              {selectedTemplate.guides.enabled ? <GridOn fontSize="small" /> : <GridOff fontSize="small" />}
               <Typography variant="caption" fontWeight={500}>
                 Frame Guides
               </Typography>
@@ -1044,6 +1290,108 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
           </Collapse>
         </>
       )}
+
+      <Menu
+        anchorEl={templateMenuAnchor}
+        open={Boolean(templateMenuAnchor)}
+        onClose={handleTemplateMenuClose}
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: 'rgba(30,30,40,0.96)',
+              backdropFilter: 'blur(8px)',
+              minWidth: 190,
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={handleRenameTemplate}>
+          <ListItemIcon>
+            <Edit fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Rename" />
+        </MenuItem>
+        <MenuItem onClick={handleDuplicateTemplate}>
+          <ListItemIcon>
+            <ContentCopy fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Duplicate" />
+        </MenuItem>
+        <MenuItem onClick={handleSaveTemplatePreset}>
+          <ListItemIcon>
+            <Save fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Save As Preset" />
+        </MenuItem>
+        <MenuItem onClick={handleOpenTemplateSettings}>
+          <ListItemIcon>
+            <FolderOpen fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Open Settings" />
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleToggleTemplateGuides}>
+          <ListItemIcon>
+            {menuTemplate?.guides.enabled ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
+          </ListItemIcon>
+          <ListItemText primary={menuTemplate?.guides.enabled ? 'Hide Guides' : 'Show Guides'} />
+        </MenuItem>
+        <MenuItem onClick={handleToggleTemplateLockFromMenu}>
+          <ListItemIcon>
+            {menuTemplate && lockedTemplateIds.has(menuTemplate.id) ? <Lock fontSize="small" /> : <LockOpen fontSize="small" />}
+          </ListItemIcon>
+          <ListItemText primary={menuTemplate && lockedTemplateIds.has(menuTemplate.id) ? 'Unlock Template' : 'Lock Template'} />
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (menuTemplate) {
+              setInfoDialogTemplate(menuTemplate);
+            }
+            handleTemplateMenuClose();
+          }}
+        >
+          <ListItemIcon>
+            <Info fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Template Info" />
+        </MenuItem>
+      </Menu>
+
+      <Dialog
+        open={Boolean(infoDialogTemplate)}
+        onClose={() => setInfoDialogTemplate(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'rgba(30, 30, 40, 0.98)',
+            backgroundImage: 'none',
+          },
+        }}
+      >
+        <DialogTitle>Template Details</DialogTitle>
+        <DialogContent>
+          {infoDialogTemplate && (
+            <Stack spacing={0.75} sx={{ mt: 0.5 }}>
+              <Typography variant="body2">{infoDialogTemplate.name}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Ratio: {formatAspectRatio(infoDialogTemplate.aspectRatio.width, infoDialogTemplate.aspectRatio.height)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Frame: {infoDialogTemplate.frameWidth} x {infoDialogTemplate.frameHeight}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Guides: {infoDialogTemplate.guides.enabled ? infoDialogTemplate.guides.type : 'disabled'}
+              </Typography>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInfoDialogTemplate(null)} size="small">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Custom Template Dialog */}
       <Dialog
@@ -1108,16 +1456,17 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               </Typography>
               <Stack direction="row" gap={0.5} flexWrap="wrap">
                 {[
-                  { w: 16, h: 9, label: '16:9' },
-                  { w: 4, h: 3, label: '4:3' },
-                  { w: 1, h: 1, label: '1:1' },
-                  { w: 9, h: 16, label: '9:16' },
-                  { w: 21, h: 9, label: '21:9' },
-                  { w: 2.39, h: 1, label: '2.39:1' },
-                ].map(({ w, h, label }) => (
+                  { w: 16, h: 9, label: '16:9', icon: <CropLandscape sx={{ fontSize: 13 }} /> },
+                  { w: 4, h: 3, label: '4:3', icon: <CropLandscape sx={{ fontSize: 13 }} /> },
+                  { w: 1, h: 1, label: '1:1', icon: <CropSquare sx={{ fontSize: 13 }} /> },
+                  { w: 9, h: 16, label: '9:16', icon: <CropPortrait sx={{ fontSize: 13 }} /> },
+                  { w: 21, h: 9, label: '21:9', icon: <CropLandscape sx={{ fontSize: 13 }} /> },
+                  { w: 2.39, h: 1, label: '2.39:1', icon: <Movie sx={{ fontSize: 13 }} /> },
+                ].map(({ w, h, label, icon }) => (
                   <Chip
                     key={label}
                     label={label}
+                    icon={icon}
                     size="small"
                     variant="outlined"
                     onClick={() => {

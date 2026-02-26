@@ -130,14 +130,13 @@ import {
 import LiveSetMode from './production/LiveSetMode';
 import StripboardPanel from './production/StripboardPanel';
 import ShootingDayPlanner from './production/ShootingDayPlanner';
-import CallSheetGenerator from './CallSheetGenerator';
 import {
   productionWorkflowService,
   generateCallSheetHTML,
   downloadCallSheetPDF,
   DEFAULT_CALL_SHEET_OPTIONS,
 } from './production';
-import type { ShootingDay, LiveSetStatus } from './production';
+import type { ShootingDay, LiveSetStatus, CallSheet } from './production';
 import AddShotDialog from './production/AddShotDialog';
 import ProductionNotesPanel from './production/ProductionNotesPanel';
 import {
@@ -2622,37 +2621,58 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
     URL.revokeObjectURL(url);
   };
 
-  // Call sheet generation
-  const handleGenerateCallSheet = () => {
-    const callSheet = {
-      title: manuscript.title,
-      date: new Date().toLocaleDateString(),
-      scenes: scenes.map(scene => {
-        const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
-        return {
-          sceneNumber: scene.sceneNumber,
-          heading: scene.sceneHeading,
-          location: scene.locationName,
-          time: scene.timeOfDay,
-          duration: shots.reduce((sum, shot) => sum + (shotDurationValues[shot.id] || 5), 0),
-          cast: scene.characters || [],
-          equipment: scene.metadata?.equipment || [],
-          notes: quickNotes[scene.id] || '',
-        };
-      }),
-      totalDuration: scenes.reduce((sum, scene) => {
-        const shots = shotLists.find(l => l.sceneId === scene.id)?.shots || [];
-        return sum + shots.reduce((s, shot) => s + (shotDurationValues[shot.id] || 5), 0);
-      }, 0),
-    };
+  const resolveCallSheetDayId = (): string | null => {
+    if (selectedShootingDayId && shootingDays.some((day) => day.id === selectedShootingDayId)) {
+      return selectedShootingDayId;
+    }
 
-    const blob = new Blob([JSON.stringify(callSheet, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `call_sheet_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const inProgressDay = shootingDays.find((day) => day.status === 'in-progress');
+    const plannedDay = shootingDays.find((day) => day.status === 'planned');
+    return inProgressDay?.id || plannedDay?.id || shootingDays[0]?.id || null;
+  };
+
+  const openCallSheetPreviewForDay = async (dayId: string): Promise<CallSheet | null> => {
+    try {
+      const callSheet = await productionWorkflowService.generateCallSheet(dayId);
+      const html = generateCallSheetHTML(callSheet, DEFAULT_CALL_SHEET_OPTIONS);
+      const callSheetRef: CallSheetRef = {
+        id: `cs-${dayId}-${Date.now()}`,
+        shootingDayId: dayId,
+        html,
+        generatedAt: new Date().toISOString(),
+        callSheet,
+      };
+      dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
+      return callSheet;
+    } catch (error) {
+      console.error('Failed to generate call sheet:', error);
+      return null;
+    }
+  };
+
+  // Call sheet generation
+  const handleGenerateCallSheet = async () => {
+    const dayId = resolveCallSheetDayId();
+    if (!dayId) {
+      console.warn('No shooting day available for call sheet generation');
+      return;
+    }
+    await openCallSheetPreviewForDay(dayId);
+  };
+
+  const handleDownloadCallSheetPDF = async () => {
+    const dayId = currentCallSheet?.shootingDayId || resolveCallSheetDayId();
+    if (!dayId) {
+      console.warn('No shooting day available for call sheet download');
+      return;
+    }
+
+    try {
+      const callSheet = currentCallSheet?.callSheet || (await productionWorkflowService.generateCallSheet(dayId));
+      await downloadCallSheetPDF(callSheet, DEFAULT_CALL_SHEET_OPTIONS);
+    } catch (error) {
+      console.error('Failed to download call sheet PDF:', error);
+    }
   };
 
   // Keyboard shortcuts
@@ -2751,7 +2771,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
       // Ctrl/Cmd + Shift + E: Export call sheet
       else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyE') {
         e.preventDefault();
-        handleGenerateCallSheet();
+        void handleGenerateCallSheet();
       }
       // Escape: Clear selection / exit batch mode / close panels
       else if (e.code === 'Escape') {
@@ -2951,7 +2971,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
           {!isMobile && (
             <Tooltip title="Call Sheet (Ctrl+Shift+E)">
               <IconButton
-                onClick={handleGenerateCallSheet}
+                onClick={() => { void handleGenerateCallSheet(); }}
                 size={responsive.buttonSize}
                 sx={{
                   color: '#6b7280',
@@ -3772,7 +3792,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
             </Tooltip>
             <Tooltip title="Last ned Call Sheet som PDF">
               <IconButton
-                onClick={() => downloadCallSheetPDF(manuscript.title || 'call-sheet')}
+                onClick={() => { void handleDownloadCallSheetPDF(); }}
                 sx={{
                   color: '#6b7280',
                   bgcolor: '#1a2230',
@@ -6896,15 +6916,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 dispatchWorkflow({ type: 'CLOSE_VIEW' });
               }}
               onGenerateCallSheet={(dayId) => {
-                // Generate call sheet HTML for the specific day and store it
-                const html = generateCallSheetHTML(dayId, DEFAULT_CALL_SHEET_OPTIONS);
-                const callSheetRef: CallSheetRef = {
-                  id: `cs-${dayId}-${Date.now()}`,
-                  shootingDayId: dayId,
-                  html,
-                  generatedAt: new Date().toISOString(),
-                };
-                dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
+                void openCallSheetPreviewForDay(dayId);
               }}
             />
           </Box>
@@ -6950,15 +6962,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                 console.log('Day selected:', dayId);
               }}
               onGenerateCallSheet={(dayId) => {
-                // Generate call sheet for the specific shooting day
-                const html = generateCallSheetHTML(dayId, DEFAULT_CALL_SHEET_OPTIONS);
-                const callSheetRef: CallSheetRef = {
-                  id: `cs-${dayId}-${Date.now()}`,
-                  shootingDayId: dayId,
-                  html,
-                  generatedAt: new Date().toISOString(),
-                };
-                dispatchWorkflow({ type: 'OPEN_CALL_SHEET', callSheet: callSheetRef });
+                void openCallSheetPreviewForDay(dayId);
               }}
             />
           </Box>
@@ -7077,16 +7081,40 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
               Call Sheet Preview - TROLL
             </Stack>
           </Typography>
-          <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#4a4a4a' }}>
-            <CloseIcon />
-          </IconButton>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => { void handleDownloadCallSheetPDF(); }}
+              sx={{ color: '#0369a1', borderColor: '#93c5fd' }}
+            >
+              Last ned PDF
+            </Button>
+            <IconButton onClick={() => dispatchWorkflow({ type: 'CLOSE_MODAL' })} sx={{ color: '#4a4a4a' }}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
         </DialogTitle>
         <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ flex: 1, overflow: 'auto', p: { xs: 1, sm: 2, md: 3 } }}>
-            <CallSheetGenerator
-              projectId={projectId}
+          {currentCallSheet?.html ? (
+            <Box
+              component="iframe"
+              title={`call-sheet-${currentCallSheet.shootingDayId}`}
+              srcDoc={currentCallSheet.html}
+              sx={{
+                flex: 1,
+                width: '100%',
+                border: 0,
+                bgcolor: '#fff',
+              }}
             />
-          </Box>
+          ) : (
+            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+              <Typography sx={{ color: '#4b5563' }}>
+                Ingen call sheet er generert ennå.
+              </Typography>
+            </Box>
+          )}
         </DialogContent>
       </Dialog>
 

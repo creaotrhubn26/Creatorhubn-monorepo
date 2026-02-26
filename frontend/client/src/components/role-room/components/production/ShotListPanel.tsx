@@ -54,6 +54,17 @@ import { useAuth }           from '@/hooks/useAuth';
 
 import type { ShotList, CastingShot } from '../../models/casting';
 
+const extractDisplayName = (user: unknown): string | null => {
+  if (typeof user !== 'object' || user === null) {
+    return null;
+  }
+  const candidate = user as { displayName?: unknown };
+  if (typeof candidate.displayName === 'string' && candidate.displayName.trim().length > 0) {
+    return candidate.displayName.trim();
+  }
+  return null;
+};
+
 // ─── Dialog state (reducer to avoid prop-drilling many booleans) ──────────────
 
 type DialogState =
@@ -82,6 +93,14 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
   const theme = useTheme();
   const isNarrow = useMediaQuery(theme.breakpoints.down('lg'));
   const { user } = useAuth();
+  const resolvedUserName = useMemo(() => {
+    const displayName = extractDisplayName(user);
+    if (displayName) return displayName;
+    if (typeof user?.email === 'string' && user.email.includes('@')) {
+      return user.email.split('@')[0];
+    }
+    return 'Unknown';
+  }, [user]);
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const {
@@ -101,7 +120,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
   const rt = useShotListRealTime({
     projectId,
     userId:   user?.id ?? 'anonymous',
-    userName: (user as any)?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+    userName: resolvedUserName,
   });
   const { connectionStatus } = rt;
 
@@ -309,10 +328,65 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
     URL.revokeObjectURL(url);
   }, [summaries, selectedIds, projectId]);
 
-  const handleExportPDF = useCallback((_id: string | null) => {
-    // TODO: wire to jsPDF when available
-    console.info('PDF export coming soon');
-  }, []);
+  const handleExportPDF = useCallback(async (id: string | null) => {
+    const targets = id
+      ? summaries.filter((s) => s.shotListId === id)
+      : selectedIds.size > 0
+      ? summaries.filter((s) => selectedIds.has(s.shotListId))
+      : summaries;
+
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const projectLabel = projectName?.trim() || projectId;
+
+    let y = 14;
+    const pageBottom = 285;
+    const reserveHeight = 16;
+
+    const ensureSpace = (requiredHeight: number) => {
+      if (y + requiredHeight > pageBottom) {
+        doc.addPage();
+        y = 14;
+      }
+    };
+
+    doc.setFontSize(16);
+    doc.text('Shot List Export', 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.text(`Project: ${projectLabel}`, 14, y);
+    y += 5;
+    doc.text(`Generated: ${new Date().toLocaleString('nb-NO')}`, 14, y);
+    y += 8;
+
+    if (targets.length === 0) {
+      doc.setFontSize(11);
+      doc.text('No shot lists matched the selected export filter.', 14, y);
+    } else {
+      targets.forEach((item, index) => {
+        ensureSpace(reserveHeight);
+
+        doc.setFontSize(11);
+        doc.text(`${index + 1}. ${item.sceneName ?? item.sceneId}`, 14, y);
+        y += 5;
+
+        doc.setFontSize(9);
+        doc.text(`Total shots: ${item.totalShots}`, 18, y);
+        y += 4;
+        doc.text(`Completed: ${item.completedShots}`, 18, y);
+        y += 4;
+        doc.text(`Unassigned: ${item.unassignedShots}`, 18, y);
+        y += 4;
+        doc.text(`Duration (min): ${item.estimatedMinutes}`, 18, y);
+        y += 4;
+        doc.text(`Last updated: ${item.lastUpdated}`, 18, y);
+        y += 6;
+      });
+    }
+
+    doc.save(`shot-lists-${projectId}.pdf`);
+  }, [projectId, projectName, selectedIds, summaries]);
 
   // ── Handler: Batch assign ─────────────────────────────────────────────────
 

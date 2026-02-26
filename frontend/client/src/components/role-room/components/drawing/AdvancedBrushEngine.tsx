@@ -56,11 +56,20 @@ export type AdvancedBrushType =
 // Alias for external usage
 export type ProBrushType = AdvancedBrushType;
 
+export type CinematicBrushPresetId =
+  | 'none'
+  | 'noir-lighting'
+  | 'commercial-high-key'
+  | 'action-crosshatch'
+  | 'soft-drama-wash';
+
 export interface BrushConfig {
   type: AdvancedBrushType;
   size: number;
   color: string;
   opacity: number;
+  blendMode: GlobalCompositeOperation;
+  cinematicPreset: CinematicBrushPresetId;
   // Advanced settings
   hardness: number;      // 0-1: edge softness
   flow: number;          // 0-1: paint flow rate
@@ -68,6 +77,21 @@ export interface BrushConfig {
   grain: number;         // 0-1: texture grain amount
   tiltSensitivity: number;
   pressureSensitivity: number;
+  // Cinematography-aware settings
+  lensMm: number;
+  aperture: number;
+  keyLightDirection: number; // 0-360 degrees
+  keyLightIntensity: number; // 0-1
+  valueContrast: number; // 0-1
+  shadowBias: number; // -1 to 1
+  highlightBias: number; // -1 to 1
+  warmTint: number; // -1 to 1 (cool to warm)
+  hatchAngle: number; // 0-360
+  hatchDensity: number; // 0-1
+  motionAccent: number; // 0-1
+  lightWrap: number; // 0-1
+  lensAwareShading: boolean;
+  lightingAware: boolean;
 }
 
 // Alias for external usage
@@ -78,12 +102,28 @@ export const DEFAULT_BRUSH_CONFIG: BrushConfig = {
   size: 4,
   color: '#000000',
   opacity: 1,
+  blendMode: 'source-over',
+  cinematicPreset: 'none',
   hardness: 0.8,
   flow: 1,
   wetness: 0.5,
   grain: 0.3,
   tiltSensitivity: 0.5,
   pressureSensitivity: 0.8,
+  lensMm: 35,
+  aperture: 2.8,
+  keyLightDirection: 315,
+  keyLightIntensity: 0.4,
+  valueContrast: 0.35,
+  shadowBias: 0,
+  highlightBias: 0,
+  warmTint: 0,
+  hatchAngle: 45,
+  hatchDensity: 0.45,
+  motionAccent: 0.2,
+  lightWrap: 0.15,
+  lensAwareShading: false,
+  lightingAware: false,
 };
 
 // Alias for external usage
@@ -133,11 +173,122 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
     hardness: 0.2,
     flow: 1,
     grain: 0,
+    blendMode: 'multiply',
   },
   eraser: {
     hardness: 0.5,
     flow: 1,
     grain: 0,
+    blendMode: 'destination-out',
+  },
+};
+
+export interface CinematicBrushPreset {
+  id: Exclude<CinematicBrushPresetId, 'none'>;
+  name: string;
+  description: string;
+  config: Partial<BrushConfig>;
+}
+
+export const CINEMATIC_BRUSH_PRESETS: Record<Exclude<CinematicBrushPresetId, 'none'>, CinematicBrushPreset> = {
+  'noir-lighting': {
+    id: 'noir-lighting',
+    name: 'Noir Lighting Pack',
+    description: 'High-contrast chiaroscuro with hard key light and deep shadows.',
+    config: {
+      type: 'brush',
+      blendMode: 'multiply',
+      hardness: 0.88,
+      flow: 0.82,
+      grain: 0.72,
+      opacity: 0.95,
+      pressureSensitivity: 0.95,
+      cinematicPreset: 'noir-lighting',
+      keyLightIntensity: 0.92,
+      valueContrast: 0.9,
+      shadowBias: -0.62,
+      highlightBias: 0.2,
+      warmTint: -0.04,
+      hatchDensity: 0.22,
+      lightWrap: 0,
+      lensAwareShading: true,
+      lightingAware: true,
+    },
+  },
+  'commercial-high-key': {
+    id: 'commercial-high-key',
+    name: 'Commercial High-Key Pack',
+    description: 'Bright, soft transitions with controlled shadow floor and light wrap.',
+    config: {
+      type: 'watercolor',
+      blendMode: 'screen',
+      hardness: 0.12,
+      flow: 0.4,
+      wetness: 0.65,
+      opacity: 0.52,
+      pressureSensitivity: 0.72,
+      cinematicPreset: 'commercial-high-key',
+      keyLightIntensity: 0.68,
+      valueContrast: 0.2,
+      shadowBias: 0.54,
+      highlightBias: 0.35,
+      warmTint: 0.18,
+      lightWrap: 0.75,
+      lensAwareShading: true,
+      lightingAware: true,
+    },
+  },
+  'action-crosshatch': {
+    id: 'action-crosshatch',
+    name: 'Action Crosshatch Pack',
+    description: 'Gritty hatch-driven lines with velocity-reactive motion accents.',
+    config: {
+      type: 'ink',
+      blendMode: 'multiply',
+      hardness: 0.78,
+      flow: 0.9,
+      grain: 0.42,
+      opacity: 0.9,
+      pressureSensitivity: 0.98,
+      cinematicPreset: 'action-crosshatch',
+      keyLightIntensity: 0.58,
+      valueContrast: 0.62,
+      shadowBias: -0.34,
+      highlightBias: 0.16,
+      warmTint: -0.08,
+      hatchAngle: 38,
+      hatchDensity: 0.84,
+      motionAccent: 0.82,
+      lightWrap: 0.1,
+      lensAwareShading: true,
+      lightingAware: true,
+    },
+  },
+  'soft-drama-wash': {
+    id: 'soft-drama-wash',
+    name: 'Soft Drama Wash',
+    description: 'Low-flow atmospheric wash with subtle depth separation for emotional beats.',
+    config: {
+      type: 'watercolor',
+      blendMode: 'soft-light',
+      hardness: 0.1,
+      flow: 0.3,
+      wetness: 0.82,
+      grain: 0.3,
+      opacity: 0.62,
+      pressureSensitivity: 0.74,
+      cinematicPreset: 'soft-drama-wash',
+      keyLightIntensity: 0.46,
+      valueContrast: 0.34,
+      shadowBias: 0.18,
+      highlightBias: 0.12,
+      warmTint: 0.08,
+      hatchDensity: 0.2,
+      motionAccent: 0.06,
+      lightWrap: 0.22,
+      lensAwareShading: true,
+      lightingAware: true,
+    },
   },
 };
 
@@ -191,6 +342,15 @@ function smoothNoise(x: number, y: number, scale: number = 1): number {
   return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeAngle(value: number): number {
+  const normalized = value % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+}
+
 // =============================================================================
 // Advanced Brush Rendering
 // =============================================================================
@@ -216,17 +376,250 @@ export class AdvancedBrushEngine {
    * (opacity, size, colour …) are preserved.
    */
   setConfig(config: Partial<BrushConfig>) {
+    let nextConfig: BrushConfig = { ...this.config };
+
     if (config.type && config.type !== this.config.type) {
-      const preset = BRUSH_PRESETS[config.type];
-      // Preset fills gaps; explicit caller keys win
-      this.config = { ...this.config, ...preset, ...config };
-    } else {
-      this.config = { ...this.config, ...config };
+      nextConfig = { ...nextConfig, ...BRUSH_PRESETS[config.type] };
     }
+
+    if (
+      config.cinematicPreset &&
+      config.cinematicPreset !== 'none' &&
+      config.cinematicPreset !== this.config.cinematicPreset
+    ) {
+      nextConfig = {
+        ...nextConfig,
+        ...CINEMATIC_BRUSH_PRESETS[config.cinematicPreset].config,
+      };
+    }
+
+    this.config = {
+      ...nextConfig,
+      ...config,
+      keyLightDirection: normalizeAngle((config.keyLightDirection ?? nextConfig.keyLightDirection)),
+      lensMm: clamp(config.lensMm ?? nextConfig.lensMm, 8, 400),
+      aperture: clamp(config.aperture ?? nextConfig.aperture, 0.95, 22),
+      keyLightIntensity: clamp(config.keyLightIntensity ?? nextConfig.keyLightIntensity, 0, 1),
+      valueContrast: clamp(config.valueContrast ?? nextConfig.valueContrast, 0, 1),
+      shadowBias: clamp(config.shadowBias ?? nextConfig.shadowBias, -1, 1),
+      highlightBias: clamp(config.highlightBias ?? nextConfig.highlightBias, -1, 1),
+      warmTint: clamp(config.warmTint ?? nextConfig.warmTint, -1, 1),
+      hatchAngle: normalizeAngle(config.hatchAngle ?? nextConfig.hatchAngle),
+      hatchDensity: clamp(config.hatchDensity ?? nextConfig.hatchDensity, 0, 1),
+      motionAccent: clamp(config.motionAccent ?? nextConfig.motionAccent, 0, 1),
+      lightWrap: clamp(config.lightWrap ?? nextConfig.lightWrap, 0, 1),
+    };
   }
 
   getConfig(): BrushConfig {
     return { ...this.config };
+  }
+
+  private applyCinematicTone(
+    x: number,
+    y: number,
+    input: { r: number; g: number; b: number; alpha: number },
+  ): { r: number; g: number; b: number; alpha: number } {
+    const cfg = this.config;
+    const canvasWidth = Math.max(1, this.ctx.canvas.width);
+    const canvasHeight = Math.max(1, this.ctx.canvas.height);
+    const nx = x / canvasWidth - 0.5;
+    const ny = y / canvasHeight - 0.5;
+    const distanceFromCenter = clamp(Math.hypot(nx, ny) / 0.7071, 0, 1);
+
+    const wideFactor = cfg.lensAwareShading ? clamp((35 - cfg.lensMm) / 27, 0, 1) : 0;
+    const teleFactor = cfg.lensAwareShading ? clamp((cfg.lensMm - 85) / 180, 0, 1) : 0;
+    const lensFalloff = wideFactor * distanceFromCenter * 0.36 - teleFactor * distanceFromCenter * 0.14;
+
+    const lightRadians = (cfg.keyLightDirection * Math.PI) / 180;
+    const lightX = Math.cos(lightRadians);
+    const lightY = Math.sin(lightRadians);
+    const facing = clamp(-(nx * lightX + ny * lightY), -1, 1);
+    const lightInfluence = cfg.lightingAware ? facing * cfg.keyLightIntensity : 0;
+
+    const contrast = 1 + cfg.valueContrast * 0.9;
+    const lift = cfg.highlightBias * 42 - cfg.shadowBias * 50 + lightInfluence * 36 - lensFalloff * 62;
+    const midpoint = 128;
+    const applyChannel = (channel: number): number => {
+      const shifted = channel + lift;
+      const contrasted = (shifted - midpoint) * contrast + midpoint;
+      return clamp(contrasted, 0, 255);
+    };
+
+    let r = applyChannel(input.r) + cfg.warmTint * 22;
+    let g = applyChannel(input.g) + cfg.warmTint * 10;
+    let b = applyChannel(input.b) - cfg.warmTint * 18;
+
+    if (cfg.cinematicPreset === 'noir-lighting') {
+      r = Math.pow(r / 255, 1.28) * 214;
+      g = Math.pow(g / 255, 1.28) * 214;
+      b = Math.pow(b / 255, 1.28) * 214;
+    } else if (cfg.cinematicPreset === 'commercial-high-key') {
+      r = Math.min(255, 158 + r * 0.44);
+      g = Math.min(255, 160 + g * 0.44);
+      b = Math.min(255, 164 + b * 0.43);
+    } else if (cfg.cinematicPreset === 'soft-drama-wash') {
+      const mood = 0.82;
+      r = r * 0.88 + 255 * 0.12 * mood;
+      g = g * 0.89 + 242 * 0.11 * mood;
+      b = b * 0.9 + 235 * 0.1 * mood;
+    }
+
+    const alpha = clamp(
+      input.alpha * (1 + lightInfluence * 0.12 - lensFalloff * 0.2 + cfg.shadowBias * -0.08),
+      0,
+      1,
+    );
+
+    return {
+      r: clamp(r, 0, 255),
+      g: clamp(g, 0, 255),
+      b: clamp(b, 0, 255),
+      alpha,
+    };
+  }
+
+  private drawCrosshatchAccents(
+    from: PencilPoint,
+    to: PencilPoint,
+    width: number,
+    baseRgb: { r: number; g: number; b: number },
+    baseOpacity: number,
+  ) {
+    const hatchDensity = clamp(this.config.hatchDensity, 0, 1);
+    if (hatchDensity <= 0.05) return;
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.5) return;
+
+    const steps = Math.max(1, Math.ceil(dist / Math.max(4, width * 1.1)));
+    const angle = ((this.config.hatchAngle + (this.rng() - 0.5) * 18) * Math.PI) / 180;
+    const hatchLen = clamp(width * (1.6 + this.config.motionAccent), 2, 42);
+
+    this.ctx.save();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = from.x + dx * t;
+      const y = from.y + dy * t;
+      const tone = this.applyCinematicTone(x, y, {
+        r: baseRgb.r,
+        g: baseRgb.g,
+        b: baseRgb.b,
+        alpha: baseOpacity * (0.2 + hatchDensity * 0.28),
+      });
+
+      const jitter = (this.rng() - 0.5) * width * 0.8;
+      const cx = x + jitter;
+      const cy = y - jitter * 0.4;
+      const x1 = cx - Math.cos(angle) * hatchLen * 0.5;
+      const y1 = cy - Math.sin(angle) * hatchLen * 0.5;
+      const x2 = cx + Math.cos(angle) * hatchLen * 0.5;
+      const y2 = cy + Math.sin(angle) * hatchLen * 0.5;
+
+      this.ctx.strokeStyle = `rgba(${tone.r},${tone.g},${tone.b},${tone.alpha})`;
+      this.ctx.lineWidth = clamp(width * 0.14, 0.7, 3);
+      this.ctx.beginPath();
+      this.ctx.moveTo(x1, y1);
+      this.ctx.lineTo(x2, y2);
+      this.ctx.stroke();
+    }
+    this.ctx.restore();
+  }
+
+  private drawMotionAccents(from: PencilPoint, to: PencilPoint, strokeWidth: number, rgb: { r: number; g: number; b: number }, opacity: number) {
+    const accentStrength = clamp(this.config.motionAccent, 0, 1);
+    if (accentStrength <= 0.05) return;
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1) return;
+
+    const ndx = dx / dist;
+    const ndy = dy / dist;
+    const tailLength = strokeWidth * (2.8 + accentStrength * 3.5);
+    const streakCount = Math.max(1, Math.round(2 + accentStrength * 3));
+
+    this.ctx.save();
+    for (let i = 0; i < streakCount; i++) {
+      const offset = ((i / Math.max(1, streakCount - 1)) - 0.5) * strokeWidth * 1.8;
+      const px = to.x - ndy * offset;
+      const py = to.y + ndx * offset;
+      const tone = this.applyCinematicTone(px, py, {
+        r: rgb.r,
+        g: rgb.g,
+        b: rgb.b,
+        alpha: opacity * (0.08 + accentStrength * 0.22),
+      });
+
+      this.ctx.strokeStyle = `rgba(${tone.r},${tone.g},${tone.b},${tone.alpha})`;
+      this.ctx.lineWidth = clamp(strokeWidth * 0.2, 0.6, 2.2);
+      this.ctx.beginPath();
+      this.ctx.moveTo(px, py);
+      this.ctx.lineTo(px - ndx * tailLength, py - ndy * tailLength);
+      this.ctx.stroke();
+    }
+    this.ctx.restore();
+  }
+
+  private drawLightWrap(from: PencilPoint, to: PencilPoint, strokeWidth: number) {
+    const wrap = clamp(this.config.lightWrap, 0, 1);
+    if (wrap <= 0.05) return;
+
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'screen';
+    this.ctx.strokeStyle = `rgba(255,255,255,${0.04 + wrap * 0.12})`;
+    this.ctx.lineWidth = strokeWidth * (1.6 + wrap);
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+    this.ctx.beginPath();
+    this.ctx.moveTo(from.x, from.y);
+    this.ctx.lineTo(to.x, to.y);
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  private drawDepthSeparation(
+    from: PencilPoint,
+    to: PencilPoint,
+    strokeWidth: number,
+    rgb: { r: number; g: number; b: number },
+    opacity: number,
+  ) {
+    if (this.config.cinematicPreset !== 'soft-drama-wash') return;
+    if (this.config.lensMm < 75 || this.config.aperture > 2.2) return;
+
+    const focusLineY = this.ctx.canvas.height * 0.58;
+    const y = (from.y + to.y) / 2;
+    const blurRadius = clamp((2.2 - this.config.aperture) * 1.8, 0.4, 3.5);
+    const focusBoost = clamp((this.config.lensMm - 75) / 80, 0, 0.35);
+
+    this.ctx.save();
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+
+    if (y < focusLineY) {
+      this.ctx.filter = `blur(${blurRadius}px)`;
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${opacity * 0.08})`;
+      this.ctx.lineWidth = strokeWidth * 2.3;
+      this.ctx.beginPath();
+      this.ctx.moveTo(from.x, from.y);
+      this.ctx.lineTo(to.x, to.y);
+      this.ctx.stroke();
+    } else {
+      this.ctx.filter = 'none';
+      this.ctx.globalCompositeOperation = 'overlay';
+      this.ctx.strokeStyle = `rgba(255,255,255,${opacity * (0.04 + focusBoost * 0.25)})`;
+      this.ctx.lineWidth = clamp(strokeWidth * 0.62, 0.7, 8);
+      this.ctx.beginPath();
+      this.ctx.moveTo(from.x, from.y);
+      this.ctx.lineTo(to.x, to.y);
+      this.ctx.stroke();
+    }
+    this.ctx.restore();
   }
 
   startStroke(point: PencilPoint) {
@@ -302,6 +695,7 @@ export class AdvancedBrushEngine {
     const steps = Math.max(1, Math.ceil(dist / 2));
     
     this.ctx.save();
+    this.ctx.globalCompositeOperation = this.config.blendMode;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const x = from.x + (to.x - from.x) * t;
@@ -324,14 +718,25 @@ export class AdvancedBrushEngine {
         if (noiseVal < grain * 0.5) continue;
         
         const particleOpacity = strokeOpacity * (0.3 + noiseVal * 0.7);
-        
-        this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
+        const tone = this.applyCinematicTone(px, py, {
+          r: rgb.r,
+          g: rgb.g,
+          b: rgb.b,
+          alpha: particleOpacity,
+        });
+
+        this.ctx.fillStyle = `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`;
         this.ctx.beginPath();
         this.ctx.arc(px, py, 0.5 + this.rng() * 0.5, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
     this.ctx.restore();
+
+    if (this.config.cinematicPreset === 'action-crosshatch') {
+      this.drawCrosshatchAccents(from, to, size, rgb, opacity);
+      this.drawMotionAccents(from, to, size, rgb, opacity);
+    }
   }
 
   // =========================================================================
@@ -340,13 +745,22 @@ export class AdvancedBrushEngine {
   
   private drawPenStroke(from: PencilPoint, to: PencilPoint, velocityFactor: number = 1) {
     const { size, color, opacity, pressureSensitivity } = this.config;
+    const rgb = hexToRgb(color);
     
     const pressure = (from.pressure + to.pressure) / 2;
     const strokeWidth = size * (0.5 + pressure * 0.5 * pressureSensitivity) * velocityFactor;
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
+    const tone = this.applyCinematicTone(midX, midY, {
+      r: rgb.r,
+      g: rgb.g,
+      b: rgb.b,
+      alpha: opacity,
+    });
     
     this.ctx.save();
-    this.ctx.strokeStyle = color;
-    this.ctx.globalAlpha = opacity;
+    this.ctx.globalCompositeOperation = this.config.blendMode;
+    this.ctx.strokeStyle = `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`;
     this.ctx.lineWidth = strokeWidth;
     this.ctx.lineCap = 'round';
     this.ctx.lineJoin = 'round';
@@ -356,6 +770,15 @@ export class AdvancedBrushEngine {
     this.ctx.lineTo(to.x, to.y);
     this.ctx.stroke();
     this.ctx.restore();
+
+    if (this.config.cinematicPreset === 'commercial-high-key') {
+      this.drawLightWrap(from, to, strokeWidth);
+    }
+    if (this.config.cinematicPreset === 'action-crosshatch') {
+      this.drawCrosshatchAccents(from, to, strokeWidth, rgb, opacity);
+      this.drawMotionAccents(from, to, strokeWidth, rgb, opacity);
+    }
+    this.drawDepthSeparation(from, to, strokeWidth, rgb, opacity);
   }
 
   // =========================================================================
@@ -377,22 +800,35 @@ export class AdvancedBrushEngine {
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const steps = Math.max(1, Math.ceil(dist / 3));
     
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = this.config.blendMode;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const x = from.x + (to.x - from.x) * t;
       const y = from.y + (to.y - from.y) * t;
+      const tone = this.applyCinematicTone(x, y, {
+        r: rgb.r,
+        g: rgb.g,
+        b: rgb.b,
+        alpha: opacity * 0.3,
+      });
       
       // Draw ellipse for chisel marker
       this.ctx.save();
       this.ctx.translate(x, y);
       this.ctx.rotate(tiltAngle);
-      this.ctx.globalAlpha = opacity * 0.3; // Semi-transparent for layering
-      this.ctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+      this.ctx.fillStyle = `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`;
       this.ctx.beginPath();
       this.ctx.ellipse(0, 0, width / 2, height / 2, 0, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.restore();
     }
+    this.ctx.restore();
+
+    if (this.config.cinematicPreset === 'commercial-high-key') {
+      this.drawLightWrap(from, to, Math.max(width, height));
+    }
+    this.drawDepthSeparation(from, to, Math.max(width, height), rgb, opacity);
   }
 
   // =========================================================================
@@ -404,14 +840,16 @@ export class AdvancedBrushEngine {
     const rgb = hexToRgb(color);
     
     const pressure = (from.pressure + to.pressure) / 2;
+    const pressureFactor = Math.max(0.25, 0.5 + pressure * pressureSensitivity);
     const bristleCount = Math.ceil(size * 1.5);
-    const spread = size * (1 + (1 - pressure) * 0.5) * velocityFactor;
+    const spread = size * (1 + (1 - pressureFactor) * 0.5) * velocityFactor;
     
     // Direction of stroke
     const angle = Math.atan2(to.y - from.y, to.x - from.x);
     const perpAngle = angle + Math.PI / 2;
     
     this.ctx.save();
+    this.ctx.globalCompositeOperation = this.config.blendMode;
     for (let b = 0; b < bristleCount; b++) {
       // Offset each bristle
       const offset = ((b / bristleCount) - 0.5) * spread;
@@ -422,10 +860,19 @@ export class AdvancedBrushEngine {
       const toX = to.x + Math.cos(perpAngle) * (offset + bristleNoise * 2 - 1);
       const toY = to.y + Math.sin(perpAngle) * (offset + bristleNoise * 2 - 1);
       
-      const bristleOpacity = opacity * (0.3 + bristleNoise * 0.4) * pressure;
-      const bristleWidth = 0.5 + bristleNoise * 1.5;
+      const bristleOpacity = Math.min(
+        1,
+        opacity * (0.25 + bristleNoise * 0.45) * (0.55 + pressureFactor * 0.6)
+      );
+      const bristleWidth = (0.4 + bristleNoise * 1.5) * (0.45 + pressureFactor * 0.8);
+      const tone = this.applyCinematicTone((fromX + toX) / 2, (fromY + toY) / 2, {
+        r: rgb.r,
+        g: rgb.g,
+        b: rgb.b,
+        alpha: bristleOpacity,
+      });
       
-      this.ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${bristleOpacity})`;
+      this.ctx.strokeStyle = `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`;
       this.ctx.lineWidth = bristleWidth;
       this.ctx.lineCap = 'round';
       
@@ -435,6 +882,15 @@ export class AdvancedBrushEngine {
       this.ctx.stroke();
     }
     this.ctx.restore();
+
+    if (this.config.cinematicPreset === 'commercial-high-key') {
+      this.drawLightWrap(from, to, spread * 0.4);
+    }
+    if (this.config.cinematicPreset === 'action-crosshatch') {
+      this.drawCrosshatchAccents(from, to, spread * 0.35, rgb, opacity);
+      this.drawMotionAccents(from, to, spread * 0.35, rgb, opacity);
+    }
+    this.drawDepthSeparation(from, to, spread * 0.35, rgb, opacity);
   }
 
   // =========================================================================
@@ -514,6 +970,7 @@ export class AdvancedBrushEngine {
     }
     
     this.ctx.save();
+    this.ctx.globalCompositeOperation = this.config.blendMode;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const x = from.x + (to.x - from.x) * t;
@@ -561,10 +1018,19 @@ export class AdvancedBrushEngine {
       );
       
       const edgeDarkening = 1 - hardness * 0.3;
-      gradient.addColorStop(0, `rgba(${mr},${mg},${mb},${opacity * 0.1})`);
-      gradient.addColorStop(0.5, `rgba(${mr},${mg},${mb},${opacity * 0.15})`);
-      gradient.addColorStop(0.8, `rgba(${Math.round(mr * edgeDarkening)},${Math.round(mg * edgeDarkening)},${Math.round(mb * edgeDarkening)},${opacity * 0.2})`);
-      gradient.addColorStop(1, `rgba(${mr},${mg},${mb},0)`);
+      const tone = this.applyCinematicTone(blobX, blobY, {
+        r: mr,
+        g: mg,
+        b: mb,
+        alpha: opacity * (0.12 + wetness * 0.1),
+      });
+      gradient.addColorStop(0, `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha * 0.7})`);
+      gradient.addColorStop(0.5, `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`);
+      gradient.addColorStop(
+        0.8,
+        `rgba(${Math.round(tone.r * edgeDarkening)},${Math.round(tone.g * edgeDarkening)},${Math.round(tone.b * edgeDarkening)},${tone.alpha * 1.18})`,
+      );
+      gradient.addColorStop(1, `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},0)`);
       
       this.ctx.fillStyle = gradient;
       this.ctx.beginPath();
@@ -595,6 +1061,11 @@ export class AdvancedBrushEngine {
     }
 
     this.ctx.restore();
+
+    if (this.config.cinematicPreset === 'commercial-high-key') {
+      this.drawLightWrap(from, to, strokeSize * 0.45);
+    }
+    this.drawDepthSeparation(from, to, strokeSize * 0.45, rgb, opacity);
   }
 
   // =========================================================================
@@ -607,11 +1078,19 @@ export class AdvancedBrushEngine {
     
     const pressure = (from.pressure + to.pressure) / 2;
     const strokeWidth = size * (0.3 + pressure * 0.7 * pressureSensitivity) * velocityFactor;
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
+    const tone = this.applyCinematicTone(midX, midY, {
+      r: rgb.r,
+      g: rgb.g,
+      b: rgb.b,
+      alpha: opacity,
+    });
     
     this.ctx.save();
     // Main stroke
-    this.ctx.strokeStyle = color;
-    this.ctx.globalAlpha = opacity;
+    this.ctx.globalCompositeOperation = this.config.blendMode;
+    this.ctx.strokeStyle = `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`;
     this.ctx.lineWidth = strokeWidth;
     this.ctx.lineCap = 'round';
     this.ctx.lineJoin = 'round';
@@ -627,13 +1106,28 @@ export class AdvancedBrushEngine {
       for (let f = 1; f <= featherSteps; f++) {
         const featherOpacity = opacity * 0.1 * (1 - f / featherSteps) * wetness;
         const featherWidth = strokeWidth + f * 2;
+        const featherTone = this.applyCinematicTone(midX, midY, {
+          r: rgb.r,
+          g: rgb.g,
+          b: rgb.b,
+          alpha: featherOpacity,
+        });
         
-        this.ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${featherOpacity})`;
+        this.ctx.strokeStyle = `rgba(${Math.round(featherTone.r)},${Math.round(featherTone.g)},${Math.round(featherTone.b)},${featherTone.alpha})`;
         this.ctx.lineWidth = featherWidth;
         this.ctx.stroke();
       }
     }
     this.ctx.restore();
+
+    if (this.config.cinematicPreset === 'commercial-high-key') {
+      this.drawLightWrap(from, to, strokeWidth);
+    }
+    if (this.config.cinematicPreset === 'action-crosshatch') {
+      this.drawCrosshatchAccents(from, to, strokeWidth, rgb, opacity);
+      this.drawMotionAccents(from, to, strokeWidth, rgb, opacity);
+    }
+    this.drawDepthSeparation(from, to, strokeWidth, rgb, opacity);
   }
 
   // =========================================================================
@@ -642,11 +1136,17 @@ export class AdvancedBrushEngine {
   
   private drawHighlighterStroke(from: PencilPoint, to: PencilPoint) {
     const { size, color, opacity } = this.config;
+    const rgb = hexToRgb(color);
+    const tone = this.applyCinematicTone((from.x + to.x) / 2, (from.y + to.y) / 2, {
+      r: rgb.r,
+      g: rgb.g,
+      b: rgb.b,
+      alpha: opacity * 0.3,
+    });
     
     this.ctx.save();
-    this.ctx.globalCompositeOperation = 'multiply';
-    this.ctx.strokeStyle = color;
-    this.ctx.globalAlpha = opacity * 0.3;
+    this.ctx.globalCompositeOperation = this.config.blendMode === 'destination-out' ? 'multiply' : this.config.blendMode;
+    this.ctx.strokeStyle = `rgba(${Math.round(tone.r)},${Math.round(tone.g)},${Math.round(tone.b)},${tone.alpha})`;
     this.ctx.lineWidth = size * 4;
     this.ctx.lineCap = 'butt';
     this.ctx.lineJoin = 'round';

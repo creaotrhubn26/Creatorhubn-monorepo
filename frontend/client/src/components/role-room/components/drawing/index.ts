@@ -63,6 +63,14 @@ export type { ExportFormat, ExportSettings, ExportFrame, ExportResult, ExportOpt
 export { StoryboardTemplates, ASPECT_RATIO_PRESETS, DEFAULT_GUIDES, calculateAspectRatio, getFrameDimensions, formatAspectRatio, drawGuides, createTemplateFromPreset } from './StoryboardTemplates';
 export type { AspectRatioCategory, GuideType, AspectRatioPreset, FrameGuides, StoryboardTemplate, StoryboardTemplatesProps } from './StoryboardTemplates';
 
+// Concept art generation panel
+export { ConceptArtPanel } from './ConceptArtPanel';
+export type { ConceptArtPanelProps } from './ConceptArtPanel';
+
+// Visual storytelling decision panel
+export { VisualStoryDecisionPanel } from './VisualStoryDecisionPanel';
+export type { VisualStoryDecisionPanelProps, VisualDecisionScriptContext } from './VisualStoryDecisionPanel';
+
 // Unified drawing tools panel
 export { DrawingToolsPanel, DEFAULT_DRAWING_STATE } from './DrawingToolsPanel';
 export type { ActiveTool, DrawingState, DrawingToolsPanelProps } from './DrawingToolsPanel';

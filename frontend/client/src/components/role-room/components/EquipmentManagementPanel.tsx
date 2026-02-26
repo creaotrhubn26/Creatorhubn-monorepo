@@ -188,6 +188,37 @@ import { EquipmentPanelDialogs } from './EquipmentPanelDialogs';
 import { SceneEquipmentAdvisor } from './SceneEquipmentAdvisor';
 import { EquipmentIntelligence } from './EquipmentIntelligence';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const extractUploadedFileUrl = (payload: unknown): string | null => {
+  if (!isRecord(payload)) return null;
+
+  const directKeys = ['url', 'fileUrl', 'downloadUrl', 'publicUrl', 'signedUrl', 'imageUrl', 'path'];
+  for (const key of directKeys) {
+    const candidate = payload[key];
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+
+  const nestedKeys = ['file', 'data', 'result', 'item'];
+  for (const key of nestedKeys) {
+    const nested = payload[key];
+    if (!isRecord(nested)) continue;
+    const nestedUrl = extractUploadedFileUrl(nested);
+    if (nestedUrl) return nestedUrl;
+  }
+
+  const files = payload.files;
+  if (Array.isArray(files) && files.length > 0) {
+    const firstUrl = extractUploadedFileUrl(files[0]);
+    if (firstUrl) return firstUrl;
+  }
+
+  return null;
+};
+
 interface EquipmentManagementPanelProps {
   projectId: string;
   onUpdate?: () => void;
@@ -349,6 +380,80 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   // Drag and drop
   const [isDragging, setIsDragging] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+
+  const readFileAsDataUrl = useCallback((file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        resolve(result);
+      } else {
+        reject(new Error('Kunne ikke lese bildefilen'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Kunne ikke lese bildefilen'));
+    reader.readAsDataURL(file);
+  }), []);
+
+  const uploadImageToProjectFiles = useCallback(async (file: File): Promise<string> => {
+    const endpoints = [
+      `/api/projects/${projectId}/files`,
+      '/api/project-files/upload',
+    ];
+
+    for (const endpoint of endpoints) {
+      const formPayload = new FormData();
+      formPayload.append('file', file);
+      formPayload.append('metadata', JSON.stringify({
+        source: 'role-room-equipment',
+        category: 'equipment-image',
+        uploadedAt: new Date().toISOString(),
+      }));
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formPayload,
+        });
+        if (!response.ok) {
+          continue;
+        }
+
+        const result = await response.json() as unknown;
+        const uploadedUrl = extractUploadedFileUrl(result);
+        if (uploadedUrl) {
+          return uploadedUrl;
+        }
+      } catch {
+        // Try next endpoint.
+      }
+    }
+
+    throw new Error('Ingen tilgjengelig opplastings-endepunkt');
+  }, [projectId]);
+
+  const applyImageFileToForm = useCallback(async (file: File) => {
+    try {
+      const uploadedUrl = await uploadImageToProjectFiles(file);
+      setFormData(prev => ({ ...prev, imageUrl: uploadedUrl }));
+      setTempImageUrl(uploadedUrl);
+      setImagePickerOpen(false);
+      showSuccess('Bilde lastet opp til prosjektfiler');
+      return;
+    } catch {
+      // Fallback keeps image flow functional even when upload API is unavailable.
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setFormData(prev => ({ ...prev, imageUrl: dataUrl }));
+      setTempImageUrl(dataUrl);
+      setImagePickerOpen(false);
+      showError('Kunne ikke laste opp bildet nå. Bruker lokal forhåndsvisning inntil videre.');
+    } catch {
+      showError('Kunne ikke lese bildefilen');
+    }
+  }, [readFileAsDataUrl, showError, showSuccess, uploadImageToProjectFiles]);
 
   // ── Check-in / Check-out ───────────────────────────────
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
@@ -712,17 +817,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
-    // TODO: Replace base64 data-URL storage with signed-URL upload to object storage
-    //       (e.g. Supabase Storage / S3) to avoid bloating the database row.
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setFormData({ ...formData, imageUrl: dataUrl });
-      setTempImageUrl(dataUrl);
-      setImagePickerOpen(false);
-    };
-    reader.readAsDataURL(file);
+
+    await applyImageFileToForm(file);
+    event.currentTarget.value = '';
   };
 
   const handleSelectSearchImage = (imageUrl: string) => {
@@ -1292,22 +1389,101 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     }
   };
 
-  // 6. History/audit log (mock data - would connect to real API)
-  const handleOpenHistory = (eq: Equipment) => {
+  // 6. History/audit log
+  const handleOpenHistory = async (eq: Equipment) => {
     setSelectedEquipmentHistory(eq);
-    // Mock history data - in production, fetch from API
-    setEquipmentHistory([
-      { id: '1', action: 'Opprettet', user: 'System', timestamp: eq.created_at || new Date().toISOString(), details: 'Utstyr lagt til i katalogen' },
-      { id: '2', action: 'Status endret', user: 'Bruker', timestamp: new Date().toISOString(), details: `Status satt til ${STATUS_LABELS[eq.status || 'available']}` },
-      ...(eq.assignees?.map((a, i) => ({
-        id: `assign-${i}`,
-        action: 'Tilordnet',
-        user: 'Bruker',
-        timestamp: new Date().toISOString(),
-        details: `Tilordnet til ${getCrewName(a.crew_id)}`,
-      })) || []),
-    ]);
     setHistoryDialogOpen(true);
+
+    const defaultTimestamp = new Date().toISOString();
+    const timeline: Array<{
+      id: string;
+      action: string;
+      user: string;
+      timestamp: string;
+      details?: string;
+    }> = [
+      {
+        id: `${eq.id}-created`,
+        action: 'Opprettet',
+        user: 'System',
+        timestamp: eq.created_at || defaultTimestamp,
+        details: 'Utstyr lagt til i katalogen',
+      },
+    ];
+
+    if (eq.updated_at) {
+      timeline.push({
+        id: `${eq.id}-updated`,
+        action: 'Oppdatert',
+        user: 'System',
+        timestamp: eq.updated_at,
+        details: `Siste registrerte status: ${STATUS_LABELS[eq.status || 'available']}`,
+      });
+    }
+
+    try {
+      const [checkoutEntries, bookingEntries, availabilityEntries] = await Promise.all([
+        equipmentCheckoutApi.getAll(projectId, eq.id),
+        equipmentBookingsApi.getAll(eq.id),
+        equipmentAvailabilityApi.getAll(eq.id),
+      ]);
+
+      const checkoutTimeline = checkoutEntries.map((entry) => ({
+        id: `checkout-${entry.id}`,
+        action: entry.checked_in_at ? 'Levert inn' : 'Sjekket ut',
+        user: getCrewName(entry.checked_out_to),
+        timestamp: entry.checked_in_at || entry.checked_out_at,
+        details: entry.checked_in_at
+          ? `Returnert (${entry.condition_on_return || 'ukjent tilstand'})`
+          : `Antall: ${entry.quantity}${entry.purpose ? ` • ${entry.purpose}` : ''}`,
+      }));
+
+      const bookingTimeline = bookingEntries.map((entry) => ({
+        id: `booking-${entry.id}`,
+        action: 'Booket',
+        user: entry.booked_by || 'Produksjon',
+        timestamp: entry.created_at || entry.start_date || defaultTimestamp,
+        details: `${entry.start_date}${entry.end_date ? ` → ${entry.end_date}` : ''}${entry.purpose ? ` • ${entry.purpose}` : ''}`,
+      }));
+
+      const availabilityTimeline = availabilityEntries.map((entry) => ({
+        id: `availability-${entry.id}`,
+        action: 'Utilgjengelighet',
+        user: 'Produksjon',
+        timestamp: entry.created_at || entry.start_date || defaultTimestamp,
+        details: `${entry.status}: ${entry.start_date} → ${entry.end_date}${entry.reason ? ` • ${entry.reason}` : ''}`,
+      }));
+
+      const merged = [...timeline, ...checkoutTimeline, ...bookingTimeline, ...availabilityTimeline];
+      merged.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+      setEquipmentHistory(merged);
+      return;
+    } catch (error) {
+      console.warn('Kunne ikke hente full historikk fra API, bruker lokal historikk:', error);
+    }
+
+    const fallback = [
+      ...timeline,
+      ...activeCheckouts
+        .filter((entry) => entry.equipment_id === eq.id)
+        .map((entry) => ({
+          id: `active-checkout-${entry.id}`,
+          action: 'Sjekket ut',
+          user: getCrewName(entry.checked_out_to),
+          timestamp: entry.checked_out_at || defaultTimestamp,
+          details: `Antall: ${entry.quantity}${entry.purpose ? ` • ${entry.purpose}` : ''}`,
+        })),
+      ...(eq.assignees || []).map((assignee, index) => ({
+        id: `assignee-${eq.id}-${index}`,
+        action: 'Tilordnet',
+        user: getCrewName(assignee.crew_id),
+        timestamp: defaultTimestamp,
+        details: `Ansvarsrolle: ${assignee.role}`,
+      })),
+    ];
+
+    fallback.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    setEquipmentHistory(fallback);
   };
 
   // 7. Maintenance scheduling
@@ -1632,16 +1808,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     
     const files = e.dataTransfer.files;
     if (files.length > 0 && files[0].type.startsWith('image/')) {
-      const file = files[0];
-      // TODO: Replace base64 data-URL storage with signed-URL upload to object storage
-      //       (e.g. Supabase Storage / S3) to avoid bloating the database row.
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setFormData({ ...formData, imageUrl: dataUrl });
-        setTempImageUrl(dataUrl);
-      };
-      reader.readAsDataURL(file);
+      void applyImageFileToForm(files[0]);
     }
   };
 

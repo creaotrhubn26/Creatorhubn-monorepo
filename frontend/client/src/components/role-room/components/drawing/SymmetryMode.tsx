@@ -150,7 +150,7 @@ export function getMirroredPoints(
       })));
       break;
 
-    case 'radial':
+    case 'radial': {
       const segments = settings.radialSegments;
       const angleStep = (Math.PI * 2) / segments;
       
@@ -170,6 +170,7 @@ export function getMirroredPoints(
         }));
       }
       break;
+    }
   }
 
   return mirroredSets;
@@ -222,7 +223,7 @@ export function drawSymmetryGuides(
       ctx.stroke();
       break;
 
-    case 'radial':
+    case 'radial': {
       const segments = settings.radialSegments;
       const angleStep = (Math.PI * 2) / segments;
       const radius = Math.max(canvasWidth, canvasHeight);
@@ -243,6 +244,7 @@ export function drawSymmetryGuides(
       ctx.arc(axisX, axisY, 8, 0, Math.PI * 2);
       ctx.stroke();
       break;
+    }
   }
 
   ctx.restore();
@@ -267,60 +269,56 @@ export const SymmetryMode: React.FC<SymmetryModeProps> = ({
     });
   }, [onSettingsChange]);
 
+  const handleTypeToggle = useCallback((
+    _: React.MouseEvent<HTMLElement>,
+    type: SymmetryType | null
+  ) => {
+    if (!type) return;
+    handleTypeChange(type);
+  }, [handleTypeChange]);
+
+  const axisXStep = Math.max(0.001, 1 / Math.max(canvasWidth, 1));
+  const axisYStep = Math.max(0.001, 1 / Math.max(canvasHeight, 1));
+
   return (
     <ToolbarContainer>
-      <Tooltip title="Symmetry Off" placement="top">
-        <SymmetryButton
-          active={settings.type === 'none'}
-          onClick={() => handleTypeChange('none')}
-        >
-          <Typography sx={{ fontSize: 12, fontWeight: 600 }}>OFF</Typography>
-        </SymmetryButton>
-      </Tooltip>
-
-      <Tooltip title="Vertical Symmetry" placement="top">
-        <SymmetryButton
-          active={settings.type === 'vertical'}
-          onClick={() => handleTypeChange('vertical')}
-        >
-          <Flip sx={{ fontSize: 18 }} />
-        </SymmetryButton>
-      </Tooltip>
-
-      <Tooltip title="Horizontal Symmetry" placement="top">
-        <SymmetryButton
-          active={settings.type === 'horizontal'}
-          onClick={() => handleTypeChange('horizontal')}
-        >
-          <FlipCameraAndroid sx={{ fontSize: 18, transform: 'rotate(90deg)' }} />
-        </SymmetryButton>
-      </Tooltip>
-
-      <Tooltip title="Quad Symmetry" placement="top">
-        <SymmetryButton
-          active={settings.type === 'both'}
-          onClick={() => handleTypeChange('both')}
-        >
-          <CenterFocusStrong sx={{ fontSize: 18 }} />
-        </SymmetryButton>
-      </Tooltip>
-
-      <Tooltip title="Radial Symmetry" placement="top">
-        <SymmetryButton
-          active={settings.type === 'radial'}
-          onClick={() => handleTypeChange('radial')}
-        >
-          <AutoAwesome sx={{ fontSize: 18 }} />
-        </SymmetryButton>
-      </Tooltip>
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={settings.type}
+        onChange={handleTypeToggle}
+        sx={{
+          '& .MuiToggleButton-root': {
+            p: 0.5,
+            minWidth: 34,
+            borderColor: 'rgba(255,255,255,0.15)',
+          },
+        }}
+      >
+        <ToggleButton value="none">
+          <Typography sx={{ fontSize: 10, fontWeight: 600 }}>OFF</Typography>
+        </ToggleButton>
+        <ToggleButton value="vertical">
+          <Flip sx={{ fontSize: 16 }} />
+        </ToggleButton>
+        <ToggleButton value="horizontal">
+          <FlipCameraAndroid sx={{ fontSize: 16, transform: 'rotate(90deg)' }} />
+        </ToggleButton>
+        <ToggleButton value="both">
+          <CenterFocusStrong sx={{ fontSize: 16 }} />
+        </ToggleButton>
+        <ToggleButton value="radial">
+          <AutoAwesome sx={{ fontSize: 16 }} />
+        </ToggleButton>
+      </ToggleButtonGroup>
 
       <Divider orientation="vertical" flexItem sx={{ mx: 0.5, bgcolor: 'rgba(255,255,255,0.1)' }} />
 
       {/* Settings popover */}
       <Tooltip title="Symmetry Settings" placement="top">
-        <IconButton size="small" onClick={(e) => setSettingsAnchor(e.currentTarget)}>
+        <SymmetryButton active={Boolean(settingsAnchor)} onClick={(e) => setSettingsAnchor(e.currentTarget)}>
           <RotateRight sx={{ fontSize: 16 }} />
-        </IconButton>
+        </SymmetryButton>
       </Tooltip>
 
       <Popover
@@ -346,32 +344,32 @@ export const SymmetryMode: React.FC<SymmetryModeProps> = ({
           />
 
           <Box sx={{ mt: 2 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Axis X: {Math.round(settings.axisX * 100)}%
-            </Typography>
-            <Slider
-              size="small"
-              value={settings.axisX}
-              min={0}
-              max={1}
-              step={0.01}
-              onChange={(_, v) => onSettingsChange({ axisX: v as number })}
-            />
-          </Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Axis X: {Math.round(settings.axisX * 100)}% ({Math.round(settings.axisX * canvasWidth)}px)
+              </Typography>
+              <Slider
+                size="small"
+                value={settings.axisX}
+                min={0}
+                max={1}
+                step={axisXStep}
+                onChange={(_, v) => onSettingsChange({ axisX: Math.max(0, Math.min(1, v as number)) })}
+              />
+            </Box>
 
-          <Box sx={{ mt: 1 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Axis Y: {Math.round(settings.axisY * 100)}%
-            </Typography>
-            <Slider
-              size="small"
-              value={settings.axisY}
-              min={0}
-              max={1}
-              step={0.01}
-              onChange={(_, v) => onSettingsChange({ axisY: v as number })}
-            />
-          </Box>
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Axis Y: {Math.round(settings.axisY * 100)}% ({Math.round(settings.axisY * canvasHeight)}px)
+              </Typography>
+              <Slider
+                size="small"
+                value={settings.axisY}
+                min={0}
+                max={1}
+                step={axisYStep}
+                onChange={(_, v) => onSettingsChange({ axisY: Math.max(0, Math.min(1, v as number)) })}
+              />
+            </Box>
 
           {settings.type === 'radial' && (
             <Box sx={{ mt: 2 }}>

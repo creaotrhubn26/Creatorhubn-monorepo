@@ -1,5 +1,6 @@
 import { UserRole, UserRoleType } from '../models/casting';
 import { castingService } from './castingService';
+import { authSessionService } from './authSessionService';
 import { getCurrentUserId } from './settingsService';
 
 /**
@@ -8,10 +9,16 @@ import { getCurrentUserId } from './settingsService';
  */
 export const castingAuthService = {
   /**
-   * Get current user (placeholder - in real app would get from auth system)
+   * Resolve current user id from auth session with a settings fallback.
    */
   getCurrentUserId(): string {
-    // Placeholder - in real implementation would get from auth context
+    const session = authSessionService.getSessionSync();
+    if (session.currentUserId && session.currentUserId.trim().length > 0) {
+      return session.currentUserId;
+    }
+    if (session.adminUser?.id !== undefined && session.adminUser?.id !== null) {
+      return String(session.adminUser.id);
+    }
     return getCurrentUserId();
   },
 
@@ -284,7 +291,6 @@ export const castingAuthService = {
     }
   },
 };
-
 
 
 

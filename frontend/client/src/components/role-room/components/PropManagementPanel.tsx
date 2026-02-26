@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useId } from 'react';
+import React, { useState, useMemo, useEffect, useId, useCallback } from 'react';
 import { ContextualNudgeBanner } from './ContextualNudgeBanner';
 import {
   Box,
@@ -63,6 +63,9 @@ import {
   CloudUpload as CloudUploadIcon,
   Inventory as InventoryIcon,
   Inventory2 as Inventory2Icon,
+  LibraryBooks as LibraryIcon,
+  AutoFixHigh as SketchIcon,
+  ViewInAr as Model3DIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Category as CategoryIcon,
@@ -82,12 +85,14 @@ import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import equipPng from './icons/Keep/roleroom_equip.png';
-// GLB3DPreview stub — renders inline 3D preview placeholder
-const GLB3DPreview = ({ src, width, height }: { src?: string; width?: number; height?: number }) => (
-  <Box sx={{ width: width || 200, height: height || 200, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
-    <Typography variant="caption" color="text.secondary">3D Preview</Typography>
-  </Box>
-);
+import { GLB3DPreview } from './GLB3DPreview';
+import {
+  PROP_DESIGN_LIBRARY_UPDATED_EVENT,
+  propDesignLibraryService,
+  PropAssetStage,
+  PropDesignAsset,
+  PropStarterTemplate,
+} from '../services/propDesignLibraryService';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -98,6 +103,20 @@ const focusVisibleStyles = {
     outline: '3px solid #9333ea',
     outlineOffset: 2,
   },
+};
+
+const DESIGN_STAGE_LABELS: Record<PropAssetStage, string> = {
+  sketch: 'Sketch',
+  design: 'Design',
+  reference: 'Reference',
+  final: 'Final',
+};
+
+const DESIGN_STAGE_COLORS: Record<PropAssetStage, string> = {
+  sketch: '#22d3ee',
+  design: '#818cf8',
+  reference: '#f59e0b',
+  final: '#22c55e',
 };
 
 type SortField = 'name' | 'category' | 'quantity' | 'scenes';
@@ -142,6 +161,60 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     };
     loadProps();
   }, [projectId]);
+
+  const starterTemplates = useMemo<PropStarterTemplate[]>(
+    () => propDesignLibraryService.getStarterTemplates(),
+    []
+  );
+
+  const starterCategories = useMemo(() => {
+    const categories = Array.from(new Set(starterTemplates.map((template) => template.category)));
+    return ['all', ...categories];
+  }, [starterTemplates]);
+
+  const reloadDesignLibrary = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const nextAssetsByProp = await propDesignLibraryService.getAssetsByProp(projectId);
+      setAssetsByProp(nextAssetsByProp);
+    } catch (error) {
+      console.error('Error loading prop design library:', error);
+      setAssetsByProp({});
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void reloadDesignLibrary();
+  }, [reloadDesignLibrary]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleLibraryUpdate = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail;
+      if (!detail || typeof detail !== 'object') return;
+      const detailProjectId = 'projectId' in detail ? detail.projectId : null;
+      if (detailProjectId === projectId) {
+        void reloadDesignLibrary();
+      }
+    };
+
+    window.addEventListener(PROP_DESIGN_LIBRARY_UPDATED_EVENT, handleLibraryUpdate);
+    return () => {
+      window.removeEventListener(PROP_DESIGN_LIBRARY_UPDATED_EVENT, handleLibraryUpdate);
+    };
+  }, [projectId, reloadDesignLibrary]);
+
+  const getPropAssets = useCallback((propId: string): PropDesignAsset[] => (
+    assetsByProp[propId] ?? []
+  ), [assetsByProp]);
+
+  const getPropStageCounts = useCallback((propId: string): Record<PropAssetStage, number> => (
+    getPropAssets(propId).reduce<Record<PropAssetStage, number>>((acc, asset) => {
+      acc[asset.stage] += 1;
+      return acc;
+    }, { sketch: 0, design: 0, reference: 0, final: 0 })
+  ), [getPropAssets]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProp, setEditingProp] = useState<Prop | null>(null);
@@ -217,6 +290,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   // Expanded cards state
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [modelPreviewProp, setModelPreviewProp] = useState<Prop | null>(null);
+  const [assetsByProp, setAssetsByProp] = useState<Record<string, PropDesignAsset[]>>({});
+  const [libraryDialogProp, setLibraryDialogProp] = useState<Prop | null>(null);
+  const [libraryStageFilter, setLibraryStageFilter] = useState<PropAssetStage | 'all'>('all');
+  const [starterDialogOpen, setStarterDialogOpen] = useState(false);
+  const [starterQuery, setStarterQuery] = useState('');
+  const [starterCategory, setStarterCategory] = useState('all');
 
   // MenuProps for Select components to ensure proper rendering within Dialog
   const selectMenuProps = {
@@ -377,6 +457,28 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     };
   }, [props, favorites]);
 
+  const filteredStarterTemplates = useMemo(() => {
+    const query = starterQuery.trim().toLowerCase();
+    return starterTemplates.filter((starter) => {
+      if (starterCategory !== 'all' && starter.category !== starterCategory) {
+        return false;
+      }
+      if (!query) return true;
+      return (
+        starter.name.toLowerCase().includes(query) ||
+        starter.description.toLowerCase().includes(query) ||
+        starter.tags.some((tag) => tag.toLowerCase().includes(query))
+      );
+    });
+  }, [starterCategory, starterQuery, starterTemplates]);
+
+  const libraryDialogAssets = useMemo(() => {
+    if (!libraryDialogProp) return [];
+    const assets = getPropAssets(libraryDialogProp.id);
+    if (libraryStageFilter === 'all') return assets;
+    return assets.filter((asset) => asset.stage === libraryStageFilter);
+  }, [getPropAssets, libraryDialogProp, libraryStageFilter]);
+
   // Handlers
   const handleOpenDialog = (prop?: Prop) => {
     if (prop) {
@@ -452,6 +554,28 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     setEditingProp(null);
   };
 
+  const handleCreatePropFromStarter = useCallback(async (starter: PropStarterTemplate) => {
+    if (!projectId) return;
+    try {
+      const createdProp = await propDesignLibraryService.createPropFromStarter(projectId, starter);
+      await propDesignLibraryService.addAsset(projectId, {
+        propId: createdProp.id,
+        stage: 'reference',
+        title: `${starter.name} starter`,
+        imageUrl: starter.previewImageUrl,
+        source: 'starter',
+        tags: starter.tags,
+      });
+      const loadedProps = await castingService.getProps(projectId);
+      setProps(Array.isArray(loadedProps) ? loadedProps : []);
+      await reloadDesignLibrary();
+      showSuccess(`✅ ${createdProp.name} opprettet fra starterbibliotek`);
+    } catch (error) {
+      console.error('Error creating prop from starter:', error);
+      showError('Kunne ikke opprette rekvisitt fra starter');
+    }
+  }, [projectId, reloadDesignLibrary, showError, showSuccess]);
+
   const handleSave = async () => {
     if (!formData.name?.trim()) {
       showError('⚠️ Navn er påkrevd');
@@ -478,6 +602,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       await castingService.saveProp(projectId, prop);
       const loadedProps = await castingService.getProps(projectId);
       setProps(Array.isArray(loadedProps) ? loadedProps : []);
+      await reloadDesignLibrary();
 
       // Show success notification
       if (editingProp) {
@@ -502,6 +627,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         await castingService.deleteProp(projectId, propId);
         const loadedProps = await castingService.getProps(projectId);
         setProps(Array.isArray(loadedProps) ? loadedProps : []);
+        await reloadDesignLibrary();
         setUndoSnackbarOpen(true);
         showInfo(`🗑️ ${prop.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
         if (onUpdate) onUpdate();
@@ -518,6 +644,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         await castingService.saveProp(projectId, deletedProp);
         const loadedProps = await castingService.getProps(projectId);
         setProps(Array.isArray(loadedProps) ? loadedProps : []);
+        await reloadDesignLibrary();
         showSuccess(`↩️ ${deletedProp.name} gjenopprettet`, 3000);
         setDeletedProp(null);
         setUndoSnackbarOpen(false);
@@ -799,7 +926,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     <Box
       component="section"
       aria-labelledby="prop-panel-title"
-      sx={{ p: { xs: 2, sm: 3, md: containerPadding } }}
+      sx={{
+        p: { xs: 2, sm: 3, md: containerPadding },
+        maxWidth: isDesktop ? 1700 : '100%',
+        mx: 'auto',
+      }}
     >
       <ContextualNudgeBanner context="props" accentColor="#a855f7" />
 
@@ -881,6 +1012,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             >
               <CategoryIcon sx={{ fontSize: { xs: 14, sm: 16 }, opacity: 0.7 }} />
+              <BuildIcon sx={{ fontSize: { xs: 14, sm: 16 }, opacity: 0.7 }} />
               Administrer utstyr og rekvisitter
             </Typography>
           </Box>
@@ -949,6 +1081,25 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             >
               <AddIcon />
               {!isMobile && <Box component="span" sx={{ ml: 1 }}>Legg til</Box>}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Åpne starterbibliotek for prop-skisser">
+            <Button
+              variant="outlined"
+              onClick={() => setStarterDialogOpen(true)}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: '#a5b4fc',
+                borderColor: 'rgba(165,180,252,0.45)',
+                px: { xs: 1, sm: 2 },
+                ...focusVisibleStyles,
+                '&:hover': { borderColor: '#818cf8', bgcolor: 'rgba(99,102,241,0.18)' },
+              }}
+            >
+              <LibraryIcon />
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Startere</Box>}
             </Button>
           </Tooltip>
         </Box>
@@ -1131,6 +1282,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             alignItems: { xs: 'stretch', sm: 'center' },
           }}
         >
+          <Box sx={{ display: 'flex', alignItems: 'center', color: '#9333ea', px: { xs: 0.5, sm: 0 } }}>
+            <CategoryCustomIcon sx={{ fontSize: 20 }} />
+          </Box>
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
             <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Filtrer på kategori</InputLabel>
             <Select
@@ -1344,6 +1498,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         <Grid container spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5 }} role="list" aria-label="Liste over rekvisitter">
           {filteredAndSortedProps.map((prop) => {
             const categoryColor = getCategoryColor(prop.category);
+            const propAssets = getPropAssets(prop.id);
+            const stageCounts = getPropStageCounts(prop.id);
             return (
             <Grid size={{ xs: 12, sm: 6, md: 4, lg: 4 }} key={prop.id} role="listitem">
               <Card
@@ -1368,26 +1524,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               >
                 {/* Image Header with Overlay */}
                 <Box sx={{ position: 'relative' }}>
-                  {prop.modelUrl ? (
-                    <Box
-                      sx={{
-                        width: '100%',
-                        height: { xs: 160, sm: 180, md: 200 },
-                        bgcolor: 'rgba(15,20,30,0.9)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <GLB3DPreview
-                        modelUrl={prop.modelUrl}
-                        width="100%"
-                        height={200}
-                        autoRotate={true}
-                        backgroundColor="transparent"
-                      />
-                    </Box>
-                  ) : prop.images && prop.images.length > 0 ? (
+                  {prop.images && prop.images.length > 0 ? (
                     <Box
                       component="img"
                       src={prop.images[0]}
@@ -1398,6 +1535,41 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         objectFit: 'cover',
                       }}
                     />
+                  ) : prop.modelUrl ? (
+                    <Box
+                      sx={{
+                        width: '100%',
+                        height: { xs: 160, sm: 180, md: 200 },
+                        background: 'linear-gradient(135deg, rgba(76, 29, 149, 0.45) 0%, rgba(15, 23, 42, 0.9) 100%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1,
+                        px: 2,
+                      }}
+                    >
+                      <Model3DIcon sx={{ fontSize: { xs: 40, sm: 48 }, color: '#c4b5fd' }} />
+                      <Typography sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700, fontSize: '0.95rem' }}>
+                        3D-modell tilgjengelig
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setModelPreviewProp(prop)}
+                        sx={{
+                          color: '#e9d5ff',
+                          borderColor: 'rgba(233,213,255,0.45)',
+                          minHeight: 34,
+                          '&:hover': {
+                            borderColor: 'rgba(233,213,255,0.8)',
+                            bgcolor: 'rgba(139,92,246,0.2)',
+                          },
+                        }}
+                      >
+                        Vis 3D-forhandsvisning
+                      </Button>
+                    </Box>
                   ) : (
                     <Box
                       sx={{
@@ -1497,6 +1669,27 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       }}
                     />
                   )}
+
+                  {prop.modelUrl && (
+                    <Chip
+                      icon={<Model3DIcon sx={{ fontSize: 14, color: '#fff !important' }} />}
+                      label="3D"
+                      size="small"
+                      onClick={() => setModelPreviewProp(prop)}
+                      sx={{
+                        position: 'absolute',
+                        bottom: 8,
+                        left: 8,
+                        bgcolor: 'rgba(88, 28, 135, 0.88)',
+                        color: '#fff',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        height: 26,
+                        cursor: 'pointer',
+                        '&:hover': { bgcolor: 'rgba(107, 33, 168, 0.95)' },
+                      }}
+                    />
+                  )}
                 </Box>
 
                 <CardContent sx={{ p: { xs: 2, sm: 2.5 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -1518,6 +1711,48 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   >
                     {prop.name}
                   </Typography>
+
+                  {propAssets.length > 0 && (
+                    <Stack direction="row" spacing={0.5} sx={{ mb: 1.25, flexWrap: 'wrap' }}>
+                      {(['sketch', 'design', 'reference', 'final'] as PropAssetStage[]).map((stage) => (
+                        <Chip
+                          key={stage}
+                          size="small"
+                          label={`${DESIGN_STAGE_LABELS[stage]} ${stageCounts[stage]}`}
+                          sx={{
+                            height: 20,
+                            fontSize: 10,
+                            bgcolor: `${DESIGN_STAGE_COLORS[stage]}20`,
+                            color: DESIGN_STAGE_COLORS[stage],
+                            fontWeight: 700,
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+
+                  {propAssets.length > 0 && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      startIcon={<LibraryIcon sx={{ fontSize: 14 }} />}
+                      onClick={() => {
+                        setLibraryDialogProp(prop);
+                        setLibraryStageFilter('all');
+                      }}
+                      sx={{
+                        alignSelf: 'flex-start',
+                        mb: 1.25,
+                        mt: -0.5,
+                        color: '#a5b4fc',
+                        textTransform: 'none',
+                        minHeight: 28,
+                        px: 0.5,
+                      }}
+                    >
+                      Vis bibliotek
+                    </Button>
+                  )}
 
                   {/* Quantity Badge */}
                   {prop.quantity && prop.quantity > 1 && (
@@ -1700,6 +1935,55 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           </Box>
                         </Box>
                       )}
+
+                      {propAssets.length > 0 && (
+                        <Box sx={{ mt: 1.5 }}>
+                          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                            <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Sketch / Design Assets
+                            </Typography>
+                            <Button
+                              size="small"
+                              onClick={() => {
+                                setLibraryDialogProp(prop);
+                                setLibraryStageFilter('all');
+                              }}
+                              sx={{ color: '#a5b4fc', minHeight: 20, px: 0.5, fontSize: '0.72rem' }}
+                            >
+                              Åpne
+                            </Button>
+                          </Stack>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            {propAssets.slice(0, 6).map((asset) => (
+                              <Box key={asset.id} sx={{ width: 76 }}>
+                                <Box
+                                  component="img"
+                                  src={asset.imageUrl}
+                                  alt={asset.title}
+                                  sx={{
+                                    width: 76,
+                                    height: 52,
+                                    borderRadius: 1,
+                                    objectFit: 'cover',
+                                    border: '1px solid rgba(255,255,255,0.2)',
+                                  }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={`${DESIGN_STAGE_LABELS[asset.stage]} v${asset.version}`}
+                                  sx={{
+                                    mt: 0.5,
+                                    height: 18,
+                                    fontSize: 9,
+                                    bgcolor: `${DESIGN_STAGE_COLORS[asset.stage]}20`,
+                                    color: DESIGN_STAGE_COLORS[asset.stage],
+                                  }}
+                                />
+                              </Box>
+                            ))}
+                          </Box>
+                        </Box>
+                      )}
                     </Box>
                   </Collapse>
 
@@ -1718,6 +2002,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                       variant="contained"
                       size="medium"
                       onClick={() => toggleCardExpanded(prop.id)}
+                      startIcon={expandedCards.has(prop.id) ? <VisibilityOffIcon /> : <VisibilityIcon />}
                       endIcon={expandedCards.has(prop.id) ? <CollapseIcon /> : <ExpandIcon />}
                       aria-expanded={expandedCards.has(prop.id)}
                       aria-label={expandedCards.has(prop.id) ? 'Skjul detaljer' : 'Vis mer'}
@@ -1800,14 +2085,240 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         </Grid>
       )}
 
+      <Dialog
+        open={Boolean(modelPreviewProp?.modelUrl)}
+        onClose={() => setModelPreviewProp(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#1c2128', color: '#fff' }}>
+          {modelPreviewProp?.name || '3D-forhandsvisning'}
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0f172a', py: 2 }}>
+          {modelPreviewProp?.modelUrl ? (
+            <GLB3DPreview
+              modelUrl={modelPreviewProp.modelUrl}
+              width="100%"
+              height={420}
+              autoRotate
+              backgroundColor="#0f172a"
+            />
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#1c2128' }}>
+          <Button onClick={() => setModelPreviewProp(null)} sx={{ color: '#c4b5fd' }}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={starterDialogOpen}
+        onClose={() => setStarterDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#1c2128', color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <SketchIcon sx={{ color: '#22d3ee' }} />
+          Starterbibliotek for rekvisittskisser
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0f172a', py: 2 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ mb: 1.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Søk starter"
+              value={starterQuery}
+              onChange={(event) => setStarterQuery(event.target.value)}
+            />
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Kategori</InputLabel>
+              <Select
+                value={starterCategory}
+                onChange={(event) => setStarterCategory(event.target.value)}
+                label="Kategori"
+              >
+                {starterCategories.map((category) => (
+                  <MenuItem key={category} value={category}>
+                    {category === 'all' ? 'Alle' : category}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+
+          <Grid container spacing={1.5}>
+            {filteredStarterTemplates.map((starter) => (
+              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={starter.id}>
+                <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <Box
+                    component="img"
+                    src={starter.previewImageUrl}
+                    alt={starter.name}
+                    sx={{ width: '100%', height: 124, objectFit: 'cover' }}
+                  />
+                  <CardContent sx={{ p: 1.25 }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>
+                      {starter.name}
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', mt: 0.35 }}>
+                      {starter.description}
+                    </Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ mt: 0.8, flexWrap: 'wrap' }}>
+                      {starter.tags.slice(0, 3).map((tag) => (
+                        <Chip key={tag} label={tag} size="small" sx={{ height: 18, fontSize: 10 }} />
+                      ))}
+                    </Stack>
+                    <Stack direction="row" spacing={0.8} sx={{ mt: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleCreatePropFromStarter(starter)}
+                        sx={{ borderColor: '#22d3ee', color: '#22d3ee', minHeight: 28 }}
+                      >
+                        Opprett prop
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => {
+                          setFormData((prev) => ({ ...prev, images: [...(prev.images || []), starter.previewImageUrl] }));
+                          setDialogOpen(true);
+                          setStarterDialogOpen(false);
+                        }}
+                        sx={{ color: '#a5b4fc', minHeight: 28 }}
+                      >
+                        Bruk i editor
+                      </Button>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#1c2128' }}>
+          <Button onClick={() => setStarterDialogOpen(false)} sx={{ color: '#c4b5fd' }}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(libraryDialogProp)}
+        onClose={() => setLibraryDialogProp(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#1c2128', color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <LibraryIcon sx={{ color: '#a5b4fc' }} />
+          Assetbibliotek: {libraryDialogProp?.name}
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0f172a', py: 2 }}>
+          <Stack direction="row" spacing={0.6} sx={{ mb: 1.25, flexWrap: 'wrap' }}>
+            <Chip
+              size="small"
+              label="All"
+              onClick={() => setLibraryStageFilter('all')}
+              sx={{
+                bgcolor: libraryStageFilter === 'all' ? 'rgba(148,163,184,0.26)' : 'rgba(255,255,255,0.08)',
+                color: '#fff',
+              }}
+            />
+            {(['sketch', 'design', 'reference', 'final'] as PropAssetStage[]).map((stage) => (
+              <Chip
+                key={stage}
+                size="small"
+                label={DESIGN_STAGE_LABELS[stage]}
+                onClick={() => setLibraryStageFilter(stage)}
+                sx={{
+                  bgcolor: libraryStageFilter === stage ? `${DESIGN_STAGE_COLORS[stage]}33` : 'rgba(255,255,255,0.08)',
+                  color: libraryStageFilter === stage ? DESIGN_STAGE_COLORS[stage] : 'rgba(255,255,255,0.87)',
+                }}
+              />
+            ))}
+          </Stack>
+
+          {libraryDialogAssets.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#93c5fd' }}>
+              Ingen assets i denne fasen ennå.
+            </Alert>
+          ) : (
+            <Grid container spacing={1.5}>
+              {libraryDialogAssets.map((asset) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={asset.id}>
+                  <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Box
+                      component="img"
+                      src={asset.imageUrl}
+                      alt={asset.title}
+                      sx={{ width: '100%', height: 136, objectFit: 'cover' }}
+                    />
+                    <CardContent sx={{ p: 1.25 }}>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem' }} noWrap>
+                        {asset.title}
+                      </Typography>
+                      <Stack direction="row" spacing={0.5} sx={{ mt: 0.7, alignItems: 'center' }}>
+                        <Chip
+                          size="small"
+                          label={`${DESIGN_STAGE_LABELS[asset.stage]} v${asset.version}`}
+                          sx={{
+                            height: 19,
+                            fontSize: 10,
+                            bgcolor: `${DESIGN_STAGE_COLORS[asset.stage]}20`,
+                            color: DESIGN_STAGE_COLORS[asset.stage],
+                          }}
+                        />
+                        <Chip size="small" label={asset.source} sx={{ height: 19, fontSize: 10 }} />
+                      </Stack>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        sx={{ mt: 1, color: '#22d3ee', borderColor: '#22d3ee' }}
+                        onClick={async () => {
+                          if (!libraryDialogProp) return;
+                          try {
+                            await propDesignLibraryService.applyAssetAsPropPreview(projectId, libraryDialogProp.id, asset.id);
+                            const loadedProps = await castingService.getProps(projectId);
+                            setProps(Array.isArray(loadedProps) ? loadedProps : []);
+                            showSuccess(`✅ ${asset.title} satt som forhåndsvisning`);
+                          } catch (error) {
+                            console.error('Error applying prop asset preview:', error);
+                            showError('Kunne ikke sette asset som forhåndsvisning');
+                          }
+                        }}
+                      >
+                        Bruk som forhåndsvisning
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#1c2128' }}>
+          <Button onClick={() => setLibraryDialogProp(null)} sx={{ color: '#c4b5fd' }}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Undo Delete Snackbar */}
       <Snackbar
         open={undoSnackbarOpen}
         autoHideDuration={6000}
         onClose={() => setUndoSnackbarOpen(false)}
+        TransitionComponent={Fade}
         message={`"${deletedProp?.name}" slettet`}
         action={
-          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#9333ea' }}>
+          <Button
+            color="primary"
+            size="small"
+            onClick={handleUndoDelete}
+            startIcon={<CheckIcon fontSize="small" />}
+            sx={{ color: '#9333ea' }}
+          >
             Angre
           </Button>
         }
@@ -1956,6 +2467,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                 <ImageIcon sx={{ color: '#9333ea', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+                <PhotoCameraIcon sx={{ color: '#9333ea', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
                 <Typography variant="subtitle2" sx={{ color: '#9333ea', fontWeight: 600 }}>
                   Bilder
                 </Typography>
@@ -2148,4 +2660,3 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     </Box>
   );
 }
-

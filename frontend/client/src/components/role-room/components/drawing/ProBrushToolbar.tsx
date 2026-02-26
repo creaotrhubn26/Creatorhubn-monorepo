@@ -17,6 +17,7 @@ import {
   Popover,
   Slider,
   Typography,
+  ToggleButtonGroup,
   ToggleButton,
   Divider,
 } from '@mui/material';
@@ -275,31 +276,48 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
   const [colorPickerAnchor, setColorPickerAnchor] = useState<HTMLElement | null>(null);
   const [sizeAnchor, setSizeAnchor] = useState<HTMLElement | null>(null);
   const [selectedBrushForSize, setSelectedBrushForSize] = useState<AdvancedBrushType | null>(null);
+  const [mode, setMode] = useState<'brush' | 'size'>('brush');
 
   // Get size dots (3 dots showing relative size)
-  const getSizeDots = (size: number): boolean[] => {
+  const getSizeDots = useCallback((size: number): boolean[] => {
     if (size < 10) return [true, false, false];
     if (size < 25) return [true, true, false];
     return [true, true, true];
-  };
+  }, []);
 
-  const handleBrushSelect = (type: AdvancedBrushType) => {
-    onBrushChange({ type });
-  };
+  const handleBrushSelect = useCallback((type: AdvancedBrushType) => {
+    const preset = BRUSH_PRESETS[type] || {};
+    onBrushChange({ type, ...preset });
+  }, [onBrushChange]);
 
-  const handleColorChange = (color: string) => {
+  const handleColorChange = useCallback((color: string) => {
     onBrushChange({ color });
-  };
+  }, [onBrushChange]);
 
-  const handleSizeChange = (_: Event, value: number | number[]) => {
-    onBrushChange({ size: value as number });
-  };
+  const handleSizeChange = useCallback((_: Event, value: number | number[]) => {
+    const brushType = selectedBrushForSize ?? brushConfig.type;
+    onBrushChange({
+      type: brushType,
+      ...BRUSH_PRESETS[brushType],
+      size: value as number,
+    });
+  }, [brushConfig.type, onBrushChange, selectedBrushForSize]);
 
-  const handleBrushSizeClick = (event: React.MouseEvent<HTMLElement>, type: AdvancedBrushType) => {
+  const handleBrushSizeClick = useCallback((event: React.MouseEvent<HTMLElement>, type: AdvancedBrushType) => {
     event.stopPropagation();
     setSelectedBrushForSize(type);
     setSizeAnchor(event.currentTarget);
-  };
+  }, []);
+
+  const handleBrushModeChange = useCallback((
+    _: React.MouseEvent<HTMLElement>,
+    value: 'brush' | 'size' | null
+  ) => {
+    if (!value) return;
+    setMode(value);
+  }, []);
+
+  const sizeTargetBrush = selectedBrushForSize ?? brushConfig.type;
 
   return (
     <ToolbarContainer elevation={8}>
@@ -339,7 +357,13 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
           <Tooltip key={brush.type} title={brush.name}>
             <BrushButton
               isSelected={brushConfig.type === brush.type}
-              onClick={() => handleBrushSelect(brush.type)}
+              onClick={(e) => {
+                if (mode === 'size') {
+                  handleBrushSizeClick(e as React.MouseEvent<HTMLElement>, brush.type);
+                } else {
+                  handleBrushSelect(brush.type);
+                }
+              }}
               onDoubleClick={(e) => handleBrushSizeClick(e as React.MouseEvent<HTMLElement>, brush.type)}
             >
               <BrushIcon>
@@ -358,6 +382,24 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
           </Tooltip>
         ))}
       </Stack>
+
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={mode}
+        onChange={handleBrushModeChange}
+        sx={{
+          '& .MuiToggleButton-root': {
+            px: 1,
+            py: 0.25,
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.9)',
+          },
+        }}
+      >
+        <ToggleButton value="brush">Brush</ToggleButton>
+        <ToggleButton value="size">Size</ToggleButton>
+      </ToggleButtonGroup>
 
       <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
 
@@ -447,7 +489,11 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
         }}
       >
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
-          Brush Size: {brushConfig.size}px
+          {BRUSHES.find((brush) => brush.type === sizeTargetBrush)?.name || 'Brush'} Size: {brushConfig.size}px
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', mb: 1, display: 'block' }}>
+          Preset flow: {Math.round((BRUSH_PRESETS[sizeTargetBrush]?.flow ?? brushConfig.flow) * 100)}% •
+          Pressure {Math.round((BRUSH_PRESETS[sizeTargetBrush]?.pressureSensitivity ?? brushConfig.pressureSensitivity) * 100)}%
         </Typography>
         <Slider
           value={brushConfig.size}

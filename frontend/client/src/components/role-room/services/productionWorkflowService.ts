@@ -1730,15 +1730,27 @@ class ProductionWorkflowService {
     additionalCameras?: CameraMetadata[],
     nextTake?:        number,
     loggedBy?:        string,
+    durationSeconds?: number,
   ): Promise<Take> {
     const now = new Date().toISOString();
+    const fallbackDurationSeconds = (() => {
+      const lastActionTs = this.liveSetStatus.lastActionTime
+        ? new Date(this.liveSetStatus.lastActionTime).getTime()
+        : NaN;
+      if (!Number.isFinite(lastActionTs)) return 1;
+      const diff = Math.round((Date.now() - lastActionTs) / 1000);
+      return Math.max(1, diff);
+    })();
+    const resolvedDurationSeconds = typeof durationSeconds === 'number'
+      ? Math.max(1, Math.round(durationSeconds))
+      : fallbackDurationSeconds;
     const take: Take = {
       id:         `take-${Date.now()}`,
       sceneId:    this.liveSetStatus.currentScene!,
       shotId:     this.liveSetStatus.currentShot!,
       takeNumber: this.liveSetStatus.currentTake,
       status,
-      duration:   Math.floor(Math.random() * 30) + 20, // TODO: real duration from timer
+      duration:   resolvedDurationSeconds,
       notes,
       recordedAt: now,
       loggedAt:   now,
@@ -1776,8 +1788,8 @@ class ProductionWorkflowService {
 
   /**
    * Mark the current setup complete and advance to the next setup/scene.
-   * Returns the new liveStatus (with updated currentScene/currentShot/currentTake=1).
-   * TODO [Studio]: broadcast via WebSocket so all clients update.
+   * Returns the new liveStatus (with updated currentTake reset to 1) and
+   * emits a browser event so listeners can react immediately.
    */
   async setupComplete(
     sceneId:  string,
@@ -1797,20 +1809,62 @@ class ProductionWorkflowService {
         completedSetups: this.liveSetStatus.todayProgress.completedSetups + 1,
       },
     };
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('liveset:setup_done', {
+        detail: {
+          sceneId,
+          shotId,
+          userId,
+          status: this.liveSetStatus,
+          timestamp: now,
+        },
+      }));
+    }
     return this.liveSetStatus;
   }
 
   /**
    * Advance to the next setup in the stripboard.
-   * Finds the next un-shot scene/setup after `currentScene`.
-   * TODO [Studio]: Wire to real stripboard order endpoint.
+   * Finds the next scheduled strip in day/sort order.
    */
   async nextSetup(shootingDayId: string): Promise<{ sceneId: string; shotId: string } | null> {
-    const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
-    if (!day) return null;
-    const idx = day.scenes.indexOf(this.liveSetStatus.currentScene ?? '');
-    const nextScene = day.scenes[idx + 1] ?? null;
-    if (!nextScene) return null;
+    const orderedStrips = this.stripboardCache
+      .filter(strip =>
+        strip.shootingDayId === shootingDayId
+        && strip.status !== 'not-scheduled',
+      )
+      .sort((a, b) => {
+        const dayDiff = (a.dayNumber ?? 0) - (b.dayNumber ?? 0);
+        if (dayDiff !== 0) return dayDiff;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+
+    if (orderedStrips.length === 0) {
+      const day = this.shootingDaysCache.find(d => d.id === shootingDayId);
+      if (!day || day.scenes.length === 0) return null;
+      const idx = day.scenes.indexOf(this.liveSetStatus.currentScene ?? '');
+      const nextScene = day.scenes[idx + 1] ?? day.scenes[0] ?? null;
+      if (!nextScene) return null;
+      const nextShotIdFallback = `${nextScene}-shot-1`;
+      this.liveSetStatus = {
+        ...this.liveSetStatus,
+        currentScene:   nextScene,
+        currentShot:    nextShotIdFallback,
+        currentTake:    1,
+        lastAction:     'NEXT SETUP',
+        lastActionTime: new Date().toISOString(),
+      };
+      return { sceneId: nextScene, shotId: nextShotIdFallback };
+    }
+
+    const currentSceneId = this.liveSetStatus.currentScene ?? '';
+    const currentIndex = orderedStrips.findIndex(strip => strip.sceneId === currentSceneId);
+    const nextStrip = currentIndex >= 0
+      ? orderedStrips[currentIndex + 1] ?? null
+      : orderedStrips[0];
+
+    if (!nextStrip) return null;
+    const nextScene = nextStrip.sceneId;
     const nextShotId = `${nextScene}-shot-1`;
     this.liveSetStatus = {
       ...this.liveSetStatus,

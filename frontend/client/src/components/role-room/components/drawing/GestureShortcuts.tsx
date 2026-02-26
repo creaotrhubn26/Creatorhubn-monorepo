@@ -27,6 +27,7 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Chip,
+  Tooltip,
 } from '@mui/material';
 import {
   Undo,
@@ -99,13 +100,13 @@ export interface GestureSettings {
 export interface GestureShortcutsProps {
   settings: GestureSettings;
   onSettingsChange: (settings: GestureSettings) => void;
-  onGestureAction: (action: GestureAction, data?: any) => void;
+  onGestureAction: (action: GestureAction, data?: unknown) => void;
 }
 
 export interface GestureHandlerProps {
   element: HTMLElement | null;
   settings: GestureSettings;
-  onAction: (action: GestureAction, data?: any) => void;
+  onAction: (action: GestureAction, data?: unknown) => void;
 }
 
 // =============================================================================
@@ -136,6 +137,14 @@ export const DEFAULT_GESTURE_BINDINGS: GestureBinding[] = [
     description: 'Double-tap to zoom fit',
     icon: <FitScreen />,
     fingerCount: 1,
+  },
+  {
+    gesture: 'two-finger-double-tap',
+    action: 'zoom-out',
+    enabled: true,
+    description: 'Two-finger double tap to zoom out',
+    icon: <ZoomOut />,
+    fingerCount: 2,
   },
   {
     gesture: 'pinch',
@@ -187,10 +196,10 @@ export const DEFAULT_GESTURE_BINDINGS: GestureBinding[] = [
   },
   {
     gesture: 'three-finger-swipe-down',
-    action: 'paste',
+    action: 'cut',
     enabled: true,
-    description: 'Three-finger swipe down to paste',
-    icon: <ContentPaste />,
+    description: 'Three-finger swipe down to cut',
+    icon: <ContentCut />,
     fingerCount: 3,
   },
   {
@@ -218,11 +227,13 @@ export const DEFAULT_GESTURE_SETTINGS: GestureSettings = {
 // =============================================================================
 
 const GestureContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: theme.palette.mode === 'dark'
+    ? 'rgba(20, 20, 30, 0.95)'
+    : 'rgba(248, 248, 255, 0.95)',
   backdropFilter: 'blur(12px)',
-  borderRadius: 12,
+  borderRadius: theme.shape.borderRadius + 4,
   overflow: 'hidden',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: `1px solid ${theme.palette.divider}`,
   minWidth: 280,
 }));
 
@@ -424,12 +435,28 @@ export function useGestureHandler({
           );
 
           if (moveDistance < 20) { // Was a tap, not a drag
-            if (fingerCount === 2) {
+            const isRepeatTap =
+              lastTapCountRef.current === fingerCount &&
+              timeSinceLastTap > 0 &&
+              timeSinceLastTap < settings.doubleTapDelay;
+
+            if (fingerCount === 2 && isRepeatTap) {
+              const doubleTapBinding = getBinding('two-finger-double-tap');
+              if (doubleTapBinding) {
+                onAction(doubleTapBinding.action);
+                lastTapTimeRef.current = 0;
+                lastTapCountRef.current = 0;
+              }
+            } else if (fingerCount === 2) {
               const binding = getBinding('two-finger-tap');
               if (binding) onAction(binding.action);
+              lastTapTimeRef.current = now;
+              lastTapCountRef.current = fingerCount;
             } else if (fingerCount === 3) {
               const binding = getBinding('three-finger-tap');
               if (binding) onAction(binding.action);
+              lastTapTimeRef.current = now;
+              lastTapCountRef.current = fingerCount;
             }
           }
         }
@@ -444,8 +471,10 @@ export function useGestureHandler({
           const binding = getBinding('double-tap');
           if (binding) onAction(binding.action);
           lastTapTimeRef.current = 0;
+          lastTapCountRef.current = 0;
         } else {
           lastTapTimeRef.current = now;
+          lastTapCountRef.current = 1;
         }
       }
 
@@ -479,6 +508,8 @@ export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
   onSettingsChange,
   onGestureAction,
 }) => {
+  const [showSettings, setShowSettings] = useState(false);
+
   const updateSettings = useCallback((updates: Partial<GestureSettings>) => {
     onSettingsChange({ ...settings, ...updates });
   }, [settings, onSettingsChange]);
@@ -513,13 +544,40 @@ export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
               Gesture Shortcuts
             </Typography>
           </Stack>
-          <Switch
-            size="small"
-            checked={settings.enabled}
-            onChange={(e) => updateSettings({ enabled: e.target.checked })}
-          />
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <IconButton size="small" onClick={() => setShowSettings((prev) => !prev)}>
+              <Settings sx={{ fontSize: 16 }} />
+            </IconButton>
+            <Switch
+              size="small"
+              checked={settings.enabled}
+              onChange={(e) => updateSettings({ enabled: e.target.checked })}
+            />
+          </Stack>
         </Stack>
       </Box>
+
+      {showSettings && (
+        <>
+          <Box sx={{ p: 1.5, bgcolor: 'rgba(0,0,0,0.2)' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75 }}>
+              Gesture Sensitivity
+            </Typography>
+            <Stack spacing={1}>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Double Tap Delay: {settings.doubleTapDelay}ms
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Long Press Delay: {settings.longPressDelay}ms
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Swipe Threshold: {settings.swipeThreshold}px
+              </Typography>
+            </Stack>
+          </Box>
+          <Divider />
+        </>
+      )}
 
       {/* Gesture bindings */}
       <Box sx={{ maxHeight: 400, overflowY: 'auto', opacity: settings.enabled ? 1 : 0.5 }}>
@@ -541,12 +599,14 @@ export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: 36 }}>
-                    <Box sx={{ 
-                      color: binding.enabled ? 'primary.main' : 'text.disabled',
-                      '& svg': { fontSize: 18 },
-                    }}>
-                      {binding.icon}
-                    </Box>
+                    <GestureIcon fingers={binding.fingerCount}>
+                      <Box sx={{ 
+                        color: binding.enabled ? 'primary.main' : 'text.disabled',
+                        '& svg': { fontSize: 18 },
+                      }}>
+                        {binding.icon}
+                      </Box>
+                    </GestureIcon>
                   </ListItemIcon>
                   <ListItemText
                     primary={
@@ -581,6 +641,46 @@ export const GestureShortcuts: React.FC<GestureShortcutsProps> = ({
             </List>
           </Box>
         ))}
+      </Box>
+
+      <Divider />
+
+      <Box sx={{ p: 1.5, bgcolor: 'rgba(0,0,0,0.15)' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.75 }}>
+          Gesture Test Actions
+        </Typography>
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          <Tooltip title="Trigger Undo">
+            <IconButton size="small" onClick={() => onGestureAction('undo')}>
+              <Undo sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Trigger Redo">
+            <IconButton size="small" onClick={() => onGestureAction('redo')}>
+              <Redo sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Trigger Copy">
+            <IconButton size="small" onClick={() => onGestureAction('copy')}>
+              <ContentCopy sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Trigger Paste">
+            <IconButton size="small" onClick={() => onGestureAction('paste')}>
+              <ContentPaste sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Trigger Cut">
+            <IconButton size="small" onClick={() => onGestureAction('cut')}>
+              <ContentCut sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Trigger Zoom Out">
+            <IconButton size="small" onClick={() => onGestureAction('zoom-out')}>
+              <ZoomOut sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Box>
 
       {/* Quick reference */}

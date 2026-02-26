@@ -166,11 +166,13 @@ function getLuminance(r: number, g: number, b: number): number {
 // =============================================================================
 
 const EyedropperContainer = styled(Paper)(({ theme }) => ({
-  backgroundColor: 'rgba(20, 20, 30, 0.95)',
+  backgroundColor: theme.palette.mode === 'dark'
+    ? 'rgba(20, 20, 30, 0.95)'
+    : 'rgba(248, 248, 255, 0.95)',
   backdropFilter: 'blur(12px)',
-  borderRadius: 12,
+  borderRadius: theme.shape.borderRadius + 4,
   overflow: 'hidden',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: `1px solid ${theme.palette.divider}`,
   minWidth: 200,
 }));
 
@@ -430,7 +432,7 @@ export const Eyedropper: React.FC<EyedropperProps> = ({
       {/* Panel */}
       <EyedropperContainer>
         {/* Header */}
-        <Box sx={{ p: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <Box sx={{ p: 1.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Stack direction="row" alignItems="center" gap={1}>
               <Colorize sx={{ fontSize: 18, color: isActive ? 'primary.main' : 'text.secondary' }} />
@@ -450,10 +452,11 @@ export const Eyedropper: React.FC<EyedropperProps> = ({
             </IconButton>
           </Stack>
         </Box>
+        <Divider />
 
         {/* Current color preview */}
         {currentColor && (
-          <Box sx={{ p: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box sx={{ p: 1.5 }}>
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Box
                 sx={{
@@ -493,15 +496,17 @@ export const Eyedropper: React.FC<EyedropperProps> = ({
             </Stack>
           </Box>
         )}
+        {currentColor && <Divider />}
 
         {/* Instructions */}
         {isActive && (
-          <Box sx={{ p: 1.5, bgcolor: 'rgba(59,130,246,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Box sx={{ p: 1.5, bgcolor: 'rgba(59,130,246,0.1)' }}>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Click on the canvas to pick a color
             </Typography>
           </Box>
         )}
+        {isActive && <Divider />}
 
         {/* Recent colors */}
         {recentColors.length > 0 && (

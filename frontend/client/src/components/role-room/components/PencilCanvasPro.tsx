@@ -25,7 +25,7 @@
  * - Export options (PNG, JPEG, SVG, PDF, PSD)
  */
 
-import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 import {
   Box,
   IconButton,
@@ -64,12 +64,14 @@ import {
   ProBrushType,
   ProBrushSettings,
   DEFAULT_BRUSH_SETTINGS,
+  CINEMATIC_BRUSH_PRESETS,
 } from './drawing/AdvancedBrushEngine';
 import {
   DrawingToolsPanel,
   DrawingState,
   DEFAULT_DRAWING_STATE,
 } from './drawing/DrawingToolsPanel';
+import type { ScriptContext } from './drawing/DrawingToolsPanel';
 import {
   getMirroredPoints,
   drawSymmetryGuides,
@@ -93,9 +95,18 @@ import {
   generateFilename,
 } from './drawing/ExportOptions';
 import { drawGuides } from './drawing/StoryboardTemplates';
+import type { FrameGuides } from './drawing/StoryboardTemplates';
 import { DrawingLayer } from './drawing/LayersPanel';
 import { drawShape, Shape } from './drawing/ShapeTools';
 import { WebGLBrushEngine } from './drawing/WebGLBrushEngine';
+import {
+  DEFAULT_FRAME_DECISION_DATA,
+  cloneFrameDecisionData,
+} from '../state/storyboardStore';
+import type {
+  FrameConceptArtData,
+  FrameDecisionData,
+} from '../state/storyboardStore';
 
 // =============================================================================
 // Types
@@ -111,10 +122,23 @@ export interface ReferenceImage {
   height: number;
 }
 
+export type CanvasTexturePreset = 'none' | 'paper' | 'canvas' | 'grain' | 'blueprint';
+
+export interface CanvasSurfaceSettings {
+  fillColor: string;
+  texture: CanvasTexturePreset;
+  textureOpacity: number;
+  textureScale: number;
+}
+
 export interface PencilCanvasProProps {
+  projectId?: string;
+  currentFrameId?: string;
+  currentStoryboardId?: string;
   width: number;
   height: number;
   backgroundImage?: string;
+  canvasSurface?: Partial<CanvasSurfaceSettings>;
   referenceImage?: ReferenceImage;
   initialStrokes?: PencilStroke[];
   brushSettings?: Partial<ProBrushSettings>;
@@ -124,6 +148,8 @@ export interface PencilCanvasProProps {
   showGridOverlay?: boolean;
   showDrawingToolsPanel?: boolean;
   drawingToolsPanelPosition?: 'left' | 'right';
+  toolsPanelCollapsed?: boolean;
+  onToolsPanelCollapsedChange?: (collapsed: boolean) => void;
   palmRejection?: 'off' | 'pencil-only' | 'smart';
   currentFrameIndex?: number;
   totalFrames?: number;
@@ -132,7 +158,461 @@ export interface PencilCanvasProProps {
   onSave?: (imageData: string) => void;
   onReferenceImageChange?: (ref: ReferenceImage | null) => void;
   onExport?: (settings: ExportSettings, frameIndices: number[]) => Promise<void>;
+  initialConceptArt?: FrameConceptArtData;
+  onConceptArtChange?: (conceptArt: FrameConceptArtData) => void;
+  initialDecisionData?: FrameDecisionData;
+  onDecisionDataChange?: (decisionData: FrameDecisionData) => void;
+  scriptContext?: ScriptContext | null;
 }
+
+export interface PencilCanvasProHandle {
+  save: () => void;
+  clear: () => void;
+  undo: () => void;
+  redo: () => void;
+  getCanvas: () => HTMLCanvasElement | null;
+}
+
+export const DEFAULT_CANVAS_SURFACE: CanvasSurfaceSettings = {
+  fillColor: '#ffffff',
+  texture: 'none',
+  textureOpacity: 0.22,
+  textureScale: 1,
+};
+
+const BRUSH_SETTING_KEYS: Array<keyof ProBrushSettings> = [
+  'type',
+  'size',
+  'color',
+  'opacity',
+  'hardness',
+  'flow',
+  'wetness',
+  'grain',
+  'tiltSensitivity',
+  'pressureSensitivity',
+  'blendMode',
+  'cinematicPreset',
+  'lensMm',
+  'aperture',
+  'keyLightDirection',
+  'keyLightIntensity',
+  'valueContrast',
+  'shadowBias',
+  'highlightBias',
+  'warmTint',
+  'hatchAngle',
+  'hatchDensity',
+  'motionAccent',
+  'lightWrap',
+  'lensAwareShading',
+  'lightingAware',
+];
+
+const serializeBrushSettings = (settings: ProBrushSettings): Record<string, unknown> => ({ ...settings });
+
+const parseStoredBrushSettings = (stored?: Record<string, unknown>): Partial<ProBrushSettings> | null => {
+  if (!stored || typeof stored !== 'object') return null;
+  const parsed: Partial<ProBrushSettings> = {};
+  BRUSH_SETTING_KEYS.forEach((key) => {
+    const value = stored[key];
+    if (value !== undefined) {
+      if (
+        (
+          key === 'type' ||
+          key === 'color' ||
+          key === 'blendMode' ||
+          key === 'cinematicPreset'
+        ) &&
+        typeof value === 'string'
+      ) {
+        parsed[key] = value as ProBrushSettings[typeof key];
+      } else if ((key === 'lensAwareShading' || key === 'lightingAware') && typeof value === 'boolean') {
+        parsed[key] = value as ProBrushSettings[typeof key];
+      } else if (typeof value === 'number') {
+        parsed[key] = value as ProBrushSettings[typeof key];
+      }
+    }
+  });
+  return Object.keys(parsed).length > 0 ? parsed : null;
+};
+
+const buildGuidesFromDecision = (decisionData: FrameDecisionData): FrameGuides => {
+  const { overlays } = decisionData;
+  const guideType = overlays.safeAreas
+    ? 'safe'
+    : overlays.centerCross
+      ? 'center'
+      : overlays.ruleOfThirds
+        ? 'thirds'
+        : 'none';
+
+  return {
+    type: guideType,
+    enabled: guideType !== 'none',
+    opacity: overlays.opacity,
+    color: '#ffffff',
+    showActionSafe: overlays.showActionSafe || overlays.safeAreas,
+    showTitleSafe: overlays.showTitleSafe || overlays.safeAreas,
+  };
+};
+
+const drawEyelineGuide = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  opacity: number
+) => {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0.15, Math.min(opacity, 1));
+  ctx.strokeStyle = '#93c5fd';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 4]);
+  const eyelineY = height * 0.38;
+  ctx.beginPath();
+  ctx.moveTo(0, eyelineY);
+  ctx.lineTo(width, eyelineY);
+  ctx.stroke();
+  ctx.restore();
+};
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+interface PerspectiveGeometry {
+  horizonY: number;
+  centerVanishing: { x: number; y: number };
+  leftVanishing: { x: number; y: number };
+  rightVanishing: { x: number; y: number };
+}
+
+interface LineSegment {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+}
+
+const getPerspectiveGeometry = (
+  width: number,
+  height: number,
+  decisionData: FrameDecisionData
+): PerspectiveGeometry => {
+  const normalizedHeight = clamp((decisionData.cinematography.cameraHeightCm - 20) / 280, 0, 1);
+  const horizonY = height * clamp(0.68 - normalizedHeight * 0.46, 0.22, 0.78);
+  const wideLensSpread = clamp((50 - decisionData.cinematography.lensMm) / 42, -0.4, 0.7);
+  const spreadMultiplier = 1.35 + wideLensSpread * 0.9;
+  const spread = width * spreadMultiplier;
+
+  return {
+    horizonY,
+    centerVanishing: { x: width * 0.5, y: horizonY },
+    leftVanishing: { x: width * 0.5 - spread, y: horizonY },
+    rightVanishing: { x: width * 0.5 + spread, y: horizonY },
+  };
+};
+
+const projectPointToLine = (
+  point: { x: number; y: number },
+  line: LineSegment,
+): { x: number; y: number; distance: number } => {
+  const vx = line.end.x - line.start.x;
+  const vy = line.end.y - line.start.y;
+  const lenSq = vx * vx + vy * vy;
+  if (lenSq <= 0.0001) {
+    const distance = Math.hypot(point.x - line.start.x, point.y - line.start.y);
+    return { x: line.start.x, y: line.start.y, distance };
+  }
+  const t = ((point.x - line.start.x) * vx + (point.y - line.start.y) * vy) / lenSq;
+  const clampedT = clamp(t, 0, 1);
+  const x = line.start.x + vx * clampedT;
+  const y = line.start.y + vy * clampedT;
+  return { x, y, distance: Math.hypot(point.x - x, point.y - y) };
+};
+
+const snapPointToPerspective = (
+  point: PencilPoint,
+  width: number,
+  height: number,
+  decisionData: FrameDecisionData,
+): PencilPoint => {
+  if (!decisionData.overlays.perspectiveSnap) return point;
+
+  const geometry = getPerspectiveGeometry(width, height, decisionData);
+  const lines: LineSegment[] = [
+    { start: { x: 0, y: geometry.horizonY }, end: { x: width, y: geometry.horizonY } },
+    { start: { x: width * 0.5, y: 0 }, end: { x: width * 0.5, y: height } },
+  ];
+
+  const anchors = 8;
+  for (let i = 0; i <= anchors; i++) {
+    const anchorX = (width * i) / anchors;
+    const anchorY = height;
+    lines.push({ start: geometry.centerVanishing, end: { x: anchorX, y: anchorY } });
+    if (decisionData.overlays.vanishingPoints || decisionData.overlays.perspectiveGrid) {
+      const verticalAnchorY = (height * i) / anchors;
+      lines.push({ start: geometry.leftVanishing, end: { x: width, y: verticalAnchorY } });
+      lines.push({ start: geometry.rightVanishing, end: { x: 0, y: verticalAnchorY } });
+    }
+  }
+
+  const snapThreshold = clamp(width * 0.018, 10, 22);
+  let closest = { x: point.x, y: point.y, distance: Number.POSITIVE_INFINITY };
+  lines.forEach((line) => {
+    const projected = projectPointToLine(point, line);
+    if (projected.distance < closest.distance) {
+      closest = projected;
+    }
+  });
+
+  if (closest.distance > snapThreshold) return point;
+
+  return {
+    ...point,
+    x: closest.x,
+    y: closest.y,
+  };
+};
+
+const drawProductionOverlays = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  decisionData: FrameDecisionData,
+) => {
+  const overlays = decisionData.overlays;
+  const showPerspective = overlays.perspectiveGrid || overlays.vanishingPoints;
+  if (!showPerspective && !overlays.lensFalloff && !overlays.lightingVector) return;
+
+  const geometry = getPerspectiveGeometry(width, height, decisionData);
+  const alpha = clamp(overlays.opacity, 0.1, 1);
+
+  if (showPerspective) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+
+    ctx.beginPath();
+    ctx.moveTo(0, geometry.horizonY);
+    ctx.lineTo(width, geometry.horizonY);
+    ctx.stroke();
+
+    const rays = 8;
+    for (let i = 0; i <= rays; i++) {
+      const x = (width * i) / rays;
+      ctx.beginPath();
+      ctx.moveTo(geometry.centerVanishing.x, geometry.centerVanishing.y);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    if (overlays.vanishingPoints) {
+      ctx.setLineDash([3, 3]);
+      for (let i = 1; i < rays; i++) {
+        const y = (height * i) / rays;
+        ctx.beginPath();
+        ctx.moveTo(geometry.leftVanishing.x, geometry.leftVanishing.y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(geometry.rightVanishing.x, geometry.rightVanishing.y);
+        ctx.lineTo(0, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.95)';
+      [geometry.centerVanishing, geometry.leftVanishing, geometry.rightVanishing].forEach((point) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    ctx.restore();
+  }
+
+  if (overlays.lensFalloff) {
+    ctx.save();
+    const lensMm = decisionData.cinematography.lensMm;
+    const wideFactor = clamp((35 - lensMm) / 30, 0, 1);
+    const vignetteStrength = 0.08 + wideFactor * 0.2;
+    const gradient = ctx.createRadialGradient(
+      width * 0.5,
+      height * 0.5,
+      Math.min(width, height) * 0.2,
+      width * 0.5,
+      height * 0.5,
+      Math.max(width, height) * 0.62
+    );
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, `rgba(0,0,0,${vignetteStrength * alpha})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  if (overlays.lightingVector) {
+    const lightAngle = (decisionData.cinematography.keyLightDirection * Math.PI) / 180;
+    const arrowLength = Math.min(width, height) * 0.18;
+    const startX = width - 24;
+    const startY = 24;
+    const endX = startX + Math.cos(lightAngle) * arrowLength;
+    const endY = startY + Math.sin(lightAngle) * arrowLength;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#fde68a';
+    ctx.fillStyle = '#fde68a';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    const headSize = 7;
+    const headAngle = Math.atan2(endY - startY, endX - startX);
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+      endX - Math.cos(headAngle - Math.PI / 6) * headSize,
+      endY - Math.sin(headAngle - Math.PI / 6) * headSize
+    );
+    ctx.lineTo(
+      endX - Math.cos(headAngle + Math.PI / 6) * headSize,
+      endY - Math.sin(headAngle + Math.PI / 6) * headSize
+    );
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+};
+
+const resolveEffectiveBrushSettings = (
+  base: ProBrushSettings,
+  decisionData: FrameDecisionData
+): ProBrushSettings => {
+  const cinematicPreset = base.cinematicPreset ?? 'none';
+  const cinematicConfig = cinematicPreset !== 'none'
+    ? CINEMATIC_BRUSH_PRESETS[cinematicPreset].config
+    : {};
+
+  return {
+    ...DEFAULT_BRUSH_SETTINGS,
+    ...cinematicConfig,
+    ...base,
+    lensMm: decisionData.cinematography.lensMm,
+    aperture: decisionData.cinematography.apertureFStop,
+    keyLightDirection: decisionData.cinematography.keyLightDirection,
+    keyLightIntensity: decisionData.cinematography.keyLightIntensity,
+    lensAwareShading: cinematicPreset !== 'none' ? true : base.lensAwareShading,
+    lightingAware: cinematicPreset !== 'none' ? true : base.lightingAware,
+  };
+};
+
+const buildCanvasTextureTile = (
+  texture: CanvasTexturePreset,
+  scale: number
+): HTMLCanvasElement => {
+  const normalizedScale = clamp(scale, 0.6, 2.4);
+  const tileSize = Math.max(64, Math.round(120 * normalizedScale));
+  const tile = document.createElement('canvas');
+  tile.width = tileSize;
+  tile.height = tileSize;
+  const ctx = tile.getContext('2d');
+  if (!ctx) return tile;
+
+  ctx.clearRect(0, 0, tileSize, tileSize);
+
+  if (texture === 'paper') {
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < tileSize; x += 12) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + 6, tileSize);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    for (let i = 0; i < 120; i++) {
+      const px = Math.random() * tileSize;
+      const py = Math.random() * tileSize;
+      ctx.fillRect(px, py, 1, 1);
+    }
+  } else if (texture === 'canvas') {
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.lineWidth = 1.2;
+    for (let x = 0; x < tileSize; x += 16) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, tileSize);
+      ctx.stroke();
+    }
+    for (let y = 0; y < tileSize; y += 16) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(tileSize, y);
+      ctx.stroke();
+    }
+  } else if (texture === 'grain') {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    for (let i = 0; i < 480; i++) {
+      const px = Math.random() * tileSize;
+      const py = Math.random() * tileSize;
+      const dot = Math.random() > 0.85 ? 2 : 1;
+      ctx.fillRect(px, py, dot, dot);
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    for (let i = 0; i < 220; i++) {
+      const px = Math.random() * tileSize;
+      const py = Math.random() * tileSize;
+      ctx.fillRect(px, py, 1, 1);
+    }
+  } else if (texture === 'blueprint') {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < tileSize; x += 18) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, tileSize);
+      ctx.stroke();
+    }
+    for (let y = 0; y < tileSize; y += 18) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(tileSize, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+    for (let x = 0; x < tileSize; x += 18) {
+      for (let y = 0; y < tileSize; y += 18) {
+        ctx.fillRect(x - 0.5, y - 0.5, 1.2, 1.2);
+      }
+    }
+  }
+
+  return tile;
+};
+
+const paintCanvasSurface = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  surface: CanvasSurfaceSettings,
+  textureTile: HTMLCanvasElement | null
+) => {
+  ctx.save();
+  ctx.fillStyle = surface.fillColor;
+  ctx.fillRect(0, 0, width, height);
+
+  if (surface.texture !== 'none' && textureTile && surface.textureOpacity > 0) {
+    const pattern = ctx.createPattern(textureTile, 'repeat');
+    if (pattern) {
+      ctx.globalAlpha = clamp(surface.textureOpacity, 0, 1);
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+  ctx.restore();
+};
 
 // =============================================================================
 // Module-scope constants (hoisted from render body — P-4 fix)
@@ -330,10 +810,14 @@ const BrushIcons: Record<ProBrushType, React.ReactNode> = {
 // Component
 // =============================================================================
 
-export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
+export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasProProps>(({
+  projectId,
+  currentFrameId,
+  currentStoryboardId,
   width,
   height,
   backgroundImage,
+  canvasSurface: canvasSurfaceProp,
   referenceImage: initialRefImage,
   initialStrokes = [],
   brushSettings: initialBrushSettings,
@@ -343,6 +827,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   showGridOverlay: initialShowGrid = false,
   showDrawingToolsPanel = true,
   drawingToolsPanelPosition = 'right',
+  toolsPanelCollapsed: controlledToolsPanelCollapsed,
+  onToolsPanelCollapsedChange,
   palmRejection = 'smart',
   currentFrameIndex = 0,
   totalFrames = 1,
@@ -351,10 +837,15 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   onSave,
   onReferenceImageChange,
   onExport,
-}) => {
+  initialConceptArt,
+  onConceptArtChange,
+  initialDecisionData,
+  onDecisionDataChange,
+  scriptContext,
+}, ref) => {
   // Device detection — adapt UI for touch devices
   const device = useDeviceDetection();
-  const isTouchDevice = device.isMobile || device.isTablet;
+  const isTouchDevice = device.hasTouchScreen && !device.hasPencilSupport;
   
   // Canvas refs
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -379,8 +870,13 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   
   // Canvas transform state (zoom, pan, rotation)
   const [canvasTransform, setCanvasTransform] = useState({ zoom: 1, panX: 0, panY: 0, rotation: 0 });
+  const surfaceTextureCacheRef = useRef<{ key: string; tile: HTMLCanvasElement } | null>(null);
   
   // State
+  const [canvasSurface, setCanvasSurface] = useState<CanvasSurfaceSettings>({
+    ...DEFAULT_CANVAS_SURFACE,
+    ...canvasSurfaceProp,
+  });
   const [brushSettings, setBrushSettings] = useState<ProBrushSettings>({
     ...DEFAULT_BRUSH_SETTINGS,
     ...initialBrushSettings,
@@ -392,10 +888,30 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(initialRefImage || null);
   const [showGrid, setShowGrid] = useState(initialShowGrid);
   const [refOpacity, setRefOpacity] = useState(initialRefImage?.opacity || 0.3);
-  const [toolsPanelCollapsed, setToolsPanelCollapsed] = useState(false);
+  const [internalToolsPanelCollapsed, setInternalToolsPanelCollapsed] = useState(false);
+  const toolsPanelCollapsed = controlledToolsPanelCollapsed ?? internalToolsPanelCollapsed;
+  const setToolsPanelCollapsed = onToolsPanelCollapsedChange ?? setInternalToolsPanelCollapsed;
   
   // Drawing state for professional features
-  const [drawingState, setDrawingState] = useState<DrawingState>(DEFAULT_DRAWING_STATE);
+  const [drawingState, setDrawingState] = useState<DrawingState>(() => ({
+    ...DEFAULT_DRAWING_STATE,
+    decisionData: initialDecisionData
+      ? cloneFrameDecisionData(initialDecisionData)
+      : cloneFrameDecisionData(DEFAULT_FRAME_DECISION_DATA),
+    conceptArt: initialConceptArt
+      ? {
+          intent: { ...initialConceptArt.intent },
+          variants: [...initialConceptArt.variants],
+          selectedVariantId: initialConceptArt.selectedVariantId,
+          lastGeneratedAt: initialConceptArt.lastGeneratedAt,
+        }
+      : {
+          ...DEFAULT_DRAWING_STATE.conceptArt,
+          intent: { ...DEFAULT_DRAWING_STATE.conceptArt.intent },
+          variants: [...DEFAULT_DRAWING_STATE.conceptArt.variants],
+        },
+    scriptContext: scriptContext ?? DEFAULT_DRAWING_STATE.scriptContext,
+  }));
   
   // Clipboard for copy/paste
   const [clipboard, setClipboard] = useState<PencilStroke[]>([]);
@@ -405,6 +921,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   /** Tracks in-progress shape creation drag (startX, startY) */
   const shapeDragRef = useRef<{ startX: number; startY: number; shapeId: string } | null>(null);
+  const conceptArtSyncReadyRef = useRef(false);
+  const decisionDataSyncReadyRef = useRef(false);
   
   // Popover anchors
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
@@ -415,6 +933,58 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   const updateDrawingState = useCallback((updates: Partial<DrawingState>) => {
     setDrawingState(prev => ({ ...prev, ...updates }));
   }, []);
+
+  useEffect(() => {
+    if (!initialConceptArt) return;
+    updateDrawingState({
+      conceptArt: {
+        intent: { ...initialConceptArt.intent },
+        variants: [...initialConceptArt.variants],
+        selectedVariantId: initialConceptArt.selectedVariantId,
+        lastGeneratedAt: initialConceptArt.lastGeneratedAt,
+      },
+    });
+  }, [initialConceptArt, updateDrawingState]);
+
+  useEffect(() => {
+    if (!onConceptArtChange) return;
+    if (!conceptArtSyncReadyRef.current) {
+      conceptArtSyncReadyRef.current = true;
+      return;
+    }
+    onConceptArtChange(drawingState.conceptArt);
+  }, [drawingState.conceptArt, onConceptArtChange]);
+
+  useEffect(() => {
+    if (!initialDecisionData) return;
+    updateDrawingState({
+      decisionData: cloneFrameDecisionData(initialDecisionData),
+    });
+  }, [initialDecisionData, updateDrawingState]);
+
+  useEffect(() => {
+    if (!onDecisionDataChange) return;
+    if (!decisionDataSyncReadyRef.current) {
+      decisionDataSyncReadyRef.current = true;
+      return;
+    }
+    onDecisionDataChange(drawingState.decisionData);
+  }, [drawingState.decisionData, onDecisionDataChange]);
+
+  useEffect(() => {
+    if (scriptContext === undefined) return;
+    updateDrawingState({ scriptContext });
+  }, [scriptContext, updateDrawingState]);
+
+  useEffect(() => {
+    if (!initialBrushSettings) return;
+    setBrushSettings((prev) => ({ ...prev, ...initialBrushSettings }));
+  }, [initialBrushSettings]);
+
+  useEffect(() => {
+    if (!canvasSurfaceProp) return;
+    setCanvasSurface((previous) => ({ ...previous, ...canvasSurfaceProp }));
+  }, [canvasSurfaceProp]);
   
   // Apply pressure curve to points
   const applyPressureCurve = useCallback((point: PencilPoint): PencilPoint => {
@@ -423,32 +993,56 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       pressure: evaluatePressureCurve(drawingState.pressureCurve, point.pressure),
     };
   }, [drawingState.pressureCurve]);
+
+  const applyInputPointAdjustments = useCallback((point: PencilPoint): PencilPoint => {
+    const snapped = snapPointToPerspective(point, width, height, drawingState.decisionData);
+    return applyPressureCurve(snapped);
+  }, [applyPressureCurve, drawingState.decisionData, height, width]);
+
+  const effectiveBrushSettings = useMemo(
+    () => resolveEffectiveBrushSettings(brushSettings, drawingState.decisionData),
+    [brushSettings, drawingState.decisionData]
+  );
+
+  const surfaceTextureTile = useMemo(() => {
+    if (canvasSurface.texture === 'none') return null;
+    const key = `${canvasSurface.texture}:${canvasSurface.textureScale.toFixed(2)}`;
+    const cached = surfaceTextureCacheRef.current;
+    if (cached && cached.key === key) {
+      return cached.tile;
+    }
+    const tile = buildCanvasTextureTile(canvasSurface.texture, canvasSurface.textureScale);
+    surfaceTextureCacheRef.current = { key, tile };
+    return tile;
+  }, [canvasSurface.texture, canvasSurface.textureScale]);
   
   // Apple Pencil hook
   const {
     ref: pencilRef,
     state: pencilState,
     currentStroke,
+    getStrokeWidth,
+    getOpacity,
   } = useApplePencil({
     onStrokeStart: (point: PencilPoint) => {
       const previewCtx = previewCanvasRef.current?.getContext('2d');
       if (previewCtx) {
         previewCtx.clearRect(0, 0, width, height);
       }
-      // Apply pressure curve
-      const adjustedPoint = applyPressureCurve(point);
+      const adjustedPoint = applyInputPointAdjustments(point);
       brushEngineRef.current?.startStroke(adjustedPoint);
     },
     
     onStrokeMove: (point: PencilPoint) => {
       if (currentStroke && previewCanvasRef.current && brushEngineRef.current) {
+        const adjustedCurrentPoint = applyInputPointAdjustments(point);
+        setHoverPosition({ x: adjustedCurrentPoint.x, y: adjustedCurrentPoint.y });
         const ctx = previewCanvasRef.current.getContext('2d');
         if (!ctx) return;
         
         ctx.clearRect(0, 0, width, height);
         
-        // Apply pressure curve to all points
-        const adjustedPoints = currentStroke.points.map(applyPressureCurve);
+        const adjustedPoints = currentStroke.points.map(applyInputPointAdjustments);
         
         // Apply symmetry if enabled
         if (drawingState.symmetrySettings.type !== 'none') {
@@ -459,10 +1053,10 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
             height
           );
           mirroredPointSets.forEach(points => {
-            brushEngineRef.current?.renderStroke(ctx, points, brushSettings);
+            brushEngineRef.current?.renderStroke(ctx, points, effectiveBrushSettings);
           });
         } else {
-          brushEngineRef.current.renderStroke(ctx, adjustedPoints, brushSettings);
+          brushEngineRef.current.renderStroke(ctx, adjustedPoints, effectiveBrushSettings);
         }
       }
     },
@@ -470,16 +1064,15 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     onStrokeEnd: (stroke: PencilStroke) => {
       brushEngineRef.current?.endStroke();
       
-      // Apply pressure curve to stroke points
       const adjustedStroke: PencilStroke = {
         ...stroke,
-        points: stroke.points.map(applyPressureCurve),
+        points: stroke.points.map(applyInputPointAdjustments),
         // Snapshot brush config so replay uses the same settings
-        brushSettings: { ...brushSettings } as unknown as Record<string, unknown>,
+        brushSettings: serializeBrushSettings(effectiveBrushSettings),
         layerId: drawingState.activeLayerId,
       };
       
-      if (brushSettings.type === 'eraser') {
+      if (effectiveBrushSettings.type === 'eraser') {
         const newStrokes = strokes.filter(s => !strokesIntersect(s, adjustedStroke));
         saveToUndo();
         setStrokes(newStrokes);
@@ -519,11 +1112,13 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     },
     
     onHoverStart: (point: PencilPoint) => {
-      setHoverPosition({ x: point.x, y: point.y });
+      const adjustedPoint = applyInputPointAdjustments(point);
+      setHoverPosition({ x: adjustedPoint.x, y: adjustedPoint.y });
     },
     
     onHoverMove: (point: PencilPoint) => {
-      setHoverPosition({ x: point.x, y: point.y });
+      const adjustedPoint = applyInputPointAdjustments(point);
+      setHoverPosition({ x: adjustedPoint.x, y: adjustedPoint.y });
     },
     
     onHoverEnd: () => {
@@ -540,8 +1135,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     palmRejection,
     minPressure: 0.01,
     pressureSmoothing: 0.15,
-    enableHover: true,
-    enableDoubleTap: true,
+    enableHover: device.hasPencilSupport && !isTouchDevice,
+    enableDoubleTap: device.hasPencilSupport,
   });
   
   // Initialize brush engine + keep config in sync
@@ -549,23 +1144,35 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     if (!brushEngineRef.current && mainCanvasRef.current) {
       const ctx = mainCanvasRef.current.getContext('2d');
       if (ctx) {
-        brushEngineRef.current = new AdvancedBrushEngine(ctx, brushSettings);
+        brushEngineRef.current = new AdvancedBrushEngine(ctx, effectiveBrushSettings);
       }
     } else if (brushEngineRef.current) {
-      brushEngineRef.current.setConfig(brushSettings);
+      brushEngineRef.current.setConfig(effectiveBrushSettings);
     }
-  }, [brushSettings]);
+  }, [effectiveBrushSettings]);
 
-  // Initialize WebGL engine when available
+  const initialWebGLSetupRef = useRef<{
+    width: number;
+    height: number;
+    settings: ProBrushSettings;
+  } | null>(null);
+  if (!initialWebGLSetupRef.current) {
+    initialWebGLSetupRef.current = {
+      width,
+      height,
+      settings: effectiveBrushSettings,
+    };
+  }
+
+  // Initialize WebGL engine once when available
   useEffect(() => {
-    if (webglEngineRef.current) {
-      // Resize if dimensions changed
-      webglEngineRef.current.resize(width, height);
-      webglEngineRef.current.setConfig(brushSettings);
-      return;
-    }
-
-    const glEngine = WebGLBrushEngine.create(width, height, brushSettings);
+    const initialSetup = initialWebGLSetupRef.current;
+    if (!initialSetup) return;
+    const glEngine = WebGLBrushEngine.create(
+      initialSetup.width,
+      initialSetup.height,
+      initialSetup.settings
+    );
     if (glEngine) {
       webglEngineRef.current = glEngine;
       setUseWebGL(true);
@@ -575,9 +1182,13 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       webglEngineRef.current?.dispose();
       webglEngineRef.current = null;
     };
-  // Only run on mount/unmount — resize handled above
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!webglEngineRef.current) return;
+    webglEngineRef.current.resize(width, height);
+    webglEngineRef.current.setConfig(effectiveBrushSettings);
+  }, [width, height, effectiveBrushSettings]);
 
   // Sync brushSettings ← drawingState.brushConfig (from BrushLibrary / DrawingToolsPanel)
   useEffect(() => {
@@ -594,7 +1205,23 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
         prev.wetness === next.wetness &&
         prev.grain === next.grain &&
         prev.tiltSensitivity === next.tiltSensitivity &&
-        prev.pressureSensitivity === next.pressureSensitivity
+        prev.pressureSensitivity === next.pressureSensitivity &&
+        prev.blendMode === next.blendMode &&
+        prev.cinematicPreset === next.cinematicPreset &&
+        prev.valueContrast === next.valueContrast &&
+        prev.shadowBias === next.shadowBias &&
+        prev.highlightBias === next.highlightBias &&
+        prev.warmTint === next.warmTint &&
+        prev.hatchAngle === next.hatchAngle &&
+        prev.hatchDensity === next.hatchDensity &&
+        prev.motionAccent === next.motionAccent &&
+        prev.lightWrap === next.lightWrap &&
+        prev.lensAwareShading === next.lensAwareShading &&
+        prev.lightingAware === next.lightingAware &&
+        prev.lensMm === next.lensMm &&
+        prev.aperture === next.aperture &&
+        prev.keyLightDirection === next.keyLightDirection &&
+        prev.keyLightIntensity === next.keyLightIntensity
       ) {
         return prev;
       }
@@ -608,6 +1235,107 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       (pencilRef as React.MutableRefObject<HTMLElement | null>).current = containerRef.current;
     }
   }, [pencilRef]);
+
+  // Redraw main canvas
+  const redrawMainCanvas = useCallback(() => {
+    const canvas = mainCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    const engine = brushEngineRef.current;
+    if (!canvas || !ctx || !engine) return;
+
+    ctx.clearRect(0, 0, width, height);
+    paintCanvasSurface(ctx, width, height, canvasSurface, surfaceTextureTile);
+
+    const renderContent = () => {
+      // Group strokes by layer for correct visibility/blend ordering
+      const layerMap = new Map<string, DrawingLayer>();
+      drawingState.layers.forEach(l => layerMap.set(l.id, l));
+
+      // Try GPU-accelerated path first for simple strokes (no blend modes)
+      const glEngine = webglEngineRef.current;
+      const hasComplexBlending = strokes.some(s => {
+        const layer = layerMap.get(s.layerId);
+        return layer && (layer.blendMode !== 'normal' || layer.opacity < 1);
+      });
+      const cinematicActive = effectiveBrushSettings.cinematicPreset !== 'none';
+
+      if (glEngine && !hasComplexBlending && !cinematicActive) {
+        // ── WebGL fast path ──
+        glEngine.resize(width, height);
+        glEngine.clear();
+
+        strokes.forEach(stroke => {
+          const layer = layerMap.get(stroke.layerId);
+          if (layer && !layer.visible) return;
+
+          const strokeBrush = stroke.brushSettings
+            ? (parseStoredBrushSettings(stroke.brushSettings) ?? effectiveBrushSettings)
+            : effectiveBrushSettings;
+
+          glEngine.renderStroke(stroke.points, strokeBrush);
+        });
+
+        // Blit WebGL result onto the 2D canvas
+        glEngine.copyTo2D(ctx);
+      } else {
+        // ── Canvas 2D path (supports blend modes, per-layer opacity) ──
+        strokes.forEach(stroke => {
+          const layer = layerMap.get(stroke.layerId);
+          if (layer && !layer.visible) return;
+
+          const strokeBrush = stroke.brushSettings
+            ? (parseStoredBrushSettings(stroke.brushSettings) ?? effectiveBrushSettings)
+            : effectiveBrushSettings;
+
+          if (layer && layer.blendMode !== 'normal') {
+            ctx.globalCompositeOperation = layer.blendMode;
+          }
+          if (layer) {
+            ctx.globalAlpha = layer.opacity;
+          }
+
+          engine.renderStroke(ctx, stroke.points, strokeBrush);
+
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        });
+      }
+
+      // Render shape objects on top of strokes
+      shapes.forEach(shape => {
+        drawShape(ctx, shape, shape.id === selectedShapeId);
+      });
+    };
+
+    // Draw background image if provided (cached to avoid re-creating Image)
+    if (backgroundImage) {
+      if (bgImageCacheRef.current && bgImageCacheRef.current.src === backgroundImage) {
+        ctx.drawImage(bgImageCacheRef.current.img, 0, 0, width, height);
+        renderContent();
+      } else {
+        const img = new window.Image();
+        img.onload = () => {
+          bgImageCacheRef.current = { src: backgroundImage, img };
+          ctx.drawImage(img, 0, 0, width, height);
+          renderContent();
+        };
+        img.src = backgroundImage;
+      }
+    } else {
+      renderContent();
+    }
+  }, [
+    width,
+    height,
+    backgroundImage,
+    strokes,
+    shapes,
+    selectedShapeId,
+    effectiveBrushSettings,
+    drawingState.layers,
+    canvasSurface,
+    surfaceTextureTile,
+  ]);
   
   // Shape interaction — pointer handlers when active tool is 'shape'
   useEffect(() => {
@@ -616,7 +1344,16 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
 
     const getCanvasPoint = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const rawPoint: PencilPoint = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        pressure: 0.5,
+        tiltX: 0,
+        tiltY: 0,
+        timestamp: Date.now(),
+      };
+      const snapped = snapPointToPerspective(rawPoint, width, height, drawingState.decisionData);
+      return { x: snapped.x, y: snapped.y };
     };
 
     const handleShapeDown = (e: PointerEvent) => {
@@ -676,7 +1413,15 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       canvas.removeEventListener('pointermove', handleShapeMove, { capture: true });
       canvas.removeEventListener('pointerup', handleShapeUp, { capture: true });
     };
-  }, [drawingState.activeTool, drawingState.activeShapeType, drawingState.shapeStyle, width, height, redrawMainCanvas]);
+  }, [
+    drawingState.activeTool,
+    drawingState.activeShapeType,
+    drawingState.shapeStyle,
+    drawingState.decisionData,
+    width,
+    height,
+    redrawMainCanvas,
+  ]);
   
   // Draw reference image (cached Image element to avoid re-creating per render)
   useEffect(() => {
@@ -721,8 +1466,10 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     if (!ctx) return;
     
     ctx.clearRect(0, 0, width, height);
-    
-    if (showGrid) {
+
+    const gridEnabled = showGrid || drawingState.decisionData.overlays.grid;
+
+    if (gridEnabled) {
       const gridSize = 50;
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.lineWidth = 0.5;
@@ -752,7 +1499,7 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       ctx.lineTo(width, height / 2);
       ctx.stroke();
     }
-  }, [showGrid, width, height]);
+  }, [showGrid, drawingState.decisionData.overlays.grid, width, height]);
   
   // Draw symmetry guides
   useEffect(() => {
@@ -761,6 +1508,29 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     if (!ctx) return;
     
     ctx.clearRect(0, 0, width, height);
+
+    const decisionGuides = buildGuidesFromDecision(drawingState.decisionData);
+    if (decisionGuides.enabled) {
+      drawGuides(ctx, width, height, decisionGuides);
+    }
+    if (drawingState.decisionData.overlays.eyelineMatch) {
+      drawEyelineGuide(ctx, width, height, drawingState.decisionData.overlays.opacity);
+    }
+    if (drawingState.decisionData.overlays.centerCross && decisionGuides.type !== 'center') {
+      ctx.save();
+      ctx.globalAlpha = drawingState.decisionData.overlays.opacity;
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    drawProductionOverlays(ctx, width, height, drawingState.decisionData);
     
     // Draw storyboard template guides
     if (drawingState.storyboardTemplate?.guides.enabled) {
@@ -771,7 +1541,7 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     if (drawingState.symmetrySettings.type !== 'none' && drawingState.symmetrySettings.showGuides) {
       drawSymmetryGuides(ctx, drawingState.symmetrySettings, width, height);
     }
-  }, [drawingState.symmetrySettings, drawingState.storyboardTemplate, width, height]);
+  }, [drawingState.decisionData, drawingState.symmetrySettings, drawingState.storyboardTemplate, width, height]);
   
   // Built-in frame snapshot cache for onion skinning when no external getFrameImage is provided
   const frameSnapshotsRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
@@ -817,94 +1587,6 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       renderOnionSkins(ctx, width, height, frames, resolvedGetFrameImage, drawingState.onionSkinSettings);
     }
   }, [drawingState.onionSkinSettings, currentFrameIndex, totalFrames, resolvedGetFrameImage, width, height]);
-  
-  // Redraw main canvas
-  const redrawMainCanvas = useCallback(() => {
-    const canvas = mainCanvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    const engine = brushEngineRef.current;
-    if (!canvas || !ctx || !engine) return;
-    
-    ctx.clearRect(0, 0, width, height);
-    
-    const renderContent = () => {
-      // Group strokes by layer for correct visibility/blend ordering
-      const layerMap = new Map<string, DrawingLayer>();
-      drawingState.layers.forEach(l => layerMap.set(l.id, l));
-
-      // Try GPU-accelerated path first for simple strokes (no blend modes)
-      const glEngine = webglEngineRef.current;
-      const hasComplexBlending = strokes.some(s => {
-        const layer = layerMap.get(s.layerId);
-        return layer && (layer.blendMode !== 'normal' || layer.opacity < 1);
-      });
-
-      if (glEngine && !hasComplexBlending) {
-        // ── WebGL fast path ──
-        glEngine.resize(width, height);
-        glEngine.clear();
-
-        strokes.forEach(stroke => {
-          const layer = layerMap.get(stroke.layerId);
-          if (layer && !layer.visible) return;
-
-          const strokeBrush = stroke.brushSettings
-            ? (stroke.brushSettings as unknown as Partial<ProBrushSettings>)
-            : brushSettings;
-
-          glEngine.renderStroke(stroke.points, strokeBrush);
-        });
-
-        // Blit WebGL result onto the 2D canvas
-        glEngine.copyTo2D(ctx);
-      } else {
-        // ── Canvas 2D path (supports blend modes, per-layer opacity) ──
-        strokes.forEach(stroke => {
-          const layer = layerMap.get(stroke.layerId);
-          if (layer && !layer.visible) return;
-
-          const strokeBrush = stroke.brushSettings
-            ? (stroke.brushSettings as unknown as Partial<ProBrushSettings>)
-            : brushSettings;
-
-          if (layer && layer.blendMode !== 'normal') {
-            ctx.globalCompositeOperation = layer.blendMode;
-          }
-          if (layer) {
-            ctx.globalAlpha = layer.opacity;
-          }
-
-          engine.renderStroke(ctx, stroke.points, strokeBrush);
-
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.globalAlpha = 1;
-        });
-      }
-
-      // Render shape objects on top of strokes
-      shapes.forEach(shape => {
-        drawShape(ctx, shape, shape.id === selectedShapeId);
-      });
-    };
-
-    // Draw background image if provided (cached to avoid re-creating Image)
-    if (backgroundImage) {
-      if (bgImageCacheRef.current && bgImageCacheRef.current.src === backgroundImage) {
-        ctx.drawImage(bgImageCacheRef.current.img, 0, 0, width, height);
-        renderContent();
-      } else {
-        const img = new window.Image();
-        img.onload = () => {
-          bgImageCacheRef.current = { src: backgroundImage, img };
-          ctx.drawImage(img, 0, 0, width, height);
-          renderContent();
-        };
-        img.src = backgroundImage;
-      }
-    } else {
-      renderContent();
-    }
-  }, [width, height, backgroundImage, strokes, shapes, selectedShapeId, brushSettings, drawingState.layers]);
   
   // Redraw when strokes change
   useEffect(() => {
@@ -1158,6 +1840,28 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     const imageData = canvas.toDataURL('image/png');
     onSave?.(imageData);
   }, [onSave]);
+
+  const applyConceptReference = useCallback((imageUrl: string) => {
+    const newReference: ReferenceImage = {
+      src: imageUrl,
+      opacity: refOpacity,
+      visible: true,
+      x: 0,
+      y: 0,
+      width,
+      height,
+    };
+    setReferenceImage(newReference);
+    onReferenceImageChange?.(newReference);
+  }, [height, onReferenceImageChange, refOpacity, width]);
+
+  useImperativeHandle(ref, () => ({
+    save: saveCanvas,
+    clear: clearCanvas,
+    undo,
+    redo,
+    getCanvas: () => mainCanvasRef.current,
+  }), [saveCanvas, clearCanvas, undo, redo]);
   
   // Handle reference image upload
   const handleRefImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1183,14 +1887,20 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
   
   // (SIZE_PRESETS and COLOR_PRESETS hoisted to module scope for stable references)
   
-  // Calculate cursor size
-  const cursorSize = brushSettings.size * (0.5 + (pencilState.currentPressure || 0.5));
+  // Calculate cursor metrics with pressure-aware helpers
+  const cursorSize = getStrokeWidth(
+    pencilState.currentPressure || 0.5,
+    effectiveBrushSettings.size
+  );
+  const cursorOpacity = getOpacity(
+    pencilState.currentPressure || 0.5,
+    effectiveBrushSettings.opacity
+  );
   
   // P-11 fix: Memoize exportFrames to avoid array literal recreated per render
   const exportFramesMemo = useMemo((): ExportFrame[] => {
     if (!mainCanvasRef.current) return [];
     return [{ index: 0, canvas: mainCanvasRef.current }];
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes]);
 
   // Compute CSS transform from canvasTransform state
@@ -1199,6 +1909,15 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
     transformOrigin: 'center center',
     transition: 'transform 0.15s ease-out',
   }), [canvasTransform]);
+
+  const activeInputLabel = useMemo(() => {
+    if (pencilState.currentInputType === 'pen') return 'Apple Pencil';
+    if (pencilState.currentInputType === 'touch') return 'Touch Input';
+    if (pencilState.currentInputType === 'mouse') return 'Mouse Input';
+    if (device.hasPencilSupport) return 'Pencil Ready';
+    if (isTouchDevice) return 'Touch Device';
+    return 'Pointer Device';
+  }, [device.hasPencilSupport, isTouchDevice, pencilState.currentInputType]);
 
   return (
     <CanvasContainer ref={containerRef} sx={{ width, height }}>
@@ -1279,10 +1998,11 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
             top: hoverPosition.y,
             width: cursorSize * 2,
             height: cursorSize * 2,
-            border: `2px solid ${brushSettings.type === 'eraser' ? 'rgba(255,255,255,0.5)' : brushSettings.color}`,
-            backgroundColor: brushSettings.type === 'watercolor' 
-              ? `${brushSettings.color}20`
+            border: `2px solid ${effectiveBrushSettings.type === 'eraser' ? 'rgba(255,255,255,0.5)' : effectiveBrushSettings.color}`,
+            backgroundColor: effectiveBrushSettings.type === 'watercolor' 
+              ? `${effectiveBrushSettings.color}20`
               : 'transparent',
+            opacity: clamp(cursorOpacity, 0.2, 1),
           }}
         />
       )}
@@ -1418,7 +2138,7 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
             <IconButton
               size="small"
               onClick={() => setShowGrid(prev => !prev)}
-              sx={{ color: showGrid ? 'primary.main' : 'inherit' }}
+              sx={{ color: showGrid || drawingState.decisionData.overlays.grid ? 'primary.main' : 'inherit' }}
             >
               <GridOn sx={{ fontSize: 18 }} />
             </IconButton>
@@ -1511,9 +2231,9 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
           )}
           
           {/* Input indicator */}
-          <Tooltip title={pencilState.isPencilConnected ? 'Apple Pencil' : 'Touch/Mouse'} placement="top">
-            <Box sx={{ display: 'flex', alignItems: 'center', color: pencilState.isPencilConnected ? 'success.main' : 'text.secondary' }}>
-              {pencilState.isPencilConnected ? <Create sx={{ fontSize: 16 }} /> : <TouchApp sx={{ fontSize: 16 }} />}
+          <Tooltip title={activeInputLabel} placement="top">
+            <Box sx={{ display: 'flex', alignItems: 'center', color: pencilState.currentInputType === 'pen' ? 'success.main' : 'text.secondary' }}>
+              {pencilState.currentInputType === 'pen' ? <Create sx={{ fontSize: 16 }} /> : <TouchApp sx={{ fontSize: 16 }} />}
             </Box>
           </Tooltip>
           
@@ -1535,6 +2255,9 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       {/* Drawing Tools Panel */}
       {showDrawingToolsPanel && (
         <DrawingToolsPanel
+          projectId={projectId}
+          currentFrameId={currentFrameId}
+          currentStoryboardId={currentStoryboardId}
           canvas={mainCanvasRef.current}
           state={drawingState}
           onStateChange={updateDrawingState}
@@ -1649,6 +2372,7 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
           onPaste={pasteClipboard}
           onCut={cutSelection}
           onDelete={deleteSelection}
+          onApplyReferenceImage={applyConceptReference}
           position={drawingToolsPanelPosition}
           collapsed={toolsPanelCollapsed}
           onCollapsedChange={setToolsPanelCollapsed}
@@ -1656,6 +2380,8 @@ export const PencilCanvasPro: React.FC<PencilCanvasProProps> = ({
       )}
     </CanvasContainer>
   );
-};
+});
+
+PencilCanvasPro.displayName = 'PencilCanvasPro';
 
 export default PencilCanvasPro;

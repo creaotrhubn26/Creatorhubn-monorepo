@@ -100,7 +100,7 @@ const GUIDE_ICONS: Record<GuideId, React.ReactNode> = {
   'location-analysis': <LocationAnalysisIcon sx={{ fontSize: 20 }} />,
 };
 
-const BADGE_PRESETS = ['New', 'Updated', 'Beta', 'Coming Soon', '!'];
+const BADGE_PRESETS = ['New', 'Updated', 'Beta', 'Planned', '!'];
 const NOTE_COLOR_PRESETS = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899'];
 
 // ── HEX color input ───────────────────────────────────────────────────────
