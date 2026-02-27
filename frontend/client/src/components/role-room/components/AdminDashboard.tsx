@@ -69,6 +69,7 @@ import {
 } from '../config/branding';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { GuideEditorPanel } from './admin/visual-editor/GuideEditorPanel';
+import { StoryboardPackVisualEditor } from './admin/visual-editor/StoryboardPackVisualEditor';
 
 interface AdminUser {
   id: number;
@@ -2772,6 +2773,9 @@ export default function AdminDashboard({ open, onClose, projectName = 'Mitt Pros
                     </Box>
                   </Box>
                 </Box>
+              </Box>
+              <Box sx={{ mt: spacing }}>
+                <StoryboardPackVisualEditor />
               </Box>
             </Box>
           )}

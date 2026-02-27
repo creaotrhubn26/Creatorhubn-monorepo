@@ -57,6 +57,8 @@ import {
   KeyboardDoubleArrowLeft,
   KeyboardDoubleArrowRight,
   CenterFocusStrong,
+  PhotoLibrary,
+  EditOutlined,
 } from '@mui/icons-material';
 import { styled, useTheme } from '@mui/material/styles';
 
@@ -75,18 +77,28 @@ import {
   CINEMATIC_BRUSH_PRESETS,
   type CinematicBrushPresetId,
 } from './drawing/AdvancedBrushEngine';
+import { type DrawingState, type DrawingLayer, DEFAULT_DRAWING_STATE } from './drawing/DrawingToolsPanel';
+import type { Shape } from './drawing/ShapeTools';
+import type { TextAnnotation } from './drawing/TextAnnotations';
+import storyboardPackService, { saveFrameAssetPackage, loadFrameAssetPackage } from '../services/storyboardPackService';
+import type { StoryboardPackManifest, StoryboardPackSlot } from './storyboardPackTypes';
 import { PencilStroke } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import { 
   useStoryboardStore, 
   StoryboardFrame, 
+  type FrameAssetPackage,
+  type FrameAssetLayer,
   FrameDrawingData,
   FrameImageSource,
   FrameConceptArtData,
   FrameDecisionData,
   DEFAULT_FRAME_DECISION_DATA,
   cloneFrameDecisionData,
+  type CameraAngle,
+  type CameraMovement,
 } from '../state/storyboardStore';
+import type { StoryboardPack } from './storyboardPackTypes';
 
 // =============================================================================
 // Types
@@ -118,6 +130,423 @@ interface CanvasDimensions {
   width: number;
   height: number;
 }
+
+// ── Asset-package size guardrails ─────────────────────────────────────────────
+const MAX_STROKES_PER_PACKAGE = 10_000;
+const MAX_LAYERS_PER_PACKAGE = 64;
+const MAX_SHAPES_PER_PACKAGE = 500;
+const MAX_TEXT_ANNOTATIONS_PER_PACKAGE = 200;
+const MAX_PACKAGE_JSON_BYTES = 8 * 1024 * 1024; // 8 MB
+
+const validateAssetPackageLimits = (params: {
+  strokes: PencilStroke[];
+  drawingLayers: DrawingLayer[];
+  shapes?: Shape[];
+  textAnnotations?: TextAnnotation[];
+}): string[] => {
+  const warnings: string[] = [];
+  if (params.strokes.length > MAX_STROKES_PER_PACKAGE) {
+    warnings.push(`Stroke count (${params.strokes.length}) exceeds limit of ${MAX_STROKES_PER_PACKAGE}. Oldest strokes may be truncated.`);
+  }
+  if (params.drawingLayers.length > MAX_LAYERS_PER_PACKAGE) {
+    warnings.push(`Layer count (${params.drawingLayers.length}) exceeds limit of ${MAX_LAYERS_PER_PACKAGE}. Extra layers will be dropped.`);
+  }
+  if ((params.shapes?.length ?? 0) > MAX_SHAPES_PER_PACKAGE) {
+    warnings.push(`Shape count (${params.shapes?.length}) exceeds limit of ${MAX_SHAPES_PER_PACKAGE}.`);
+  }
+  if ((params.textAnnotations?.length ?? 0) > MAX_TEXT_ANNOTATIONS_PER_PACKAGE) {
+    warnings.push(`Text annotation count (${params.textAnnotations?.length}) exceeds limit of ${MAX_TEXT_ANNOTATIONS_PER_PACKAGE}.`);
+  }
+  return warnings;
+};
+
+const buildFrameAssetPackage = (params: {
+  imageData: string;
+  strokes: PencilStroke[];
+  activePackId: string;
+  activeSlotId: string;
+  activeCinematography: FrameDrawingData['cinematography'];
+  overlaySettings: FrameDrawingData['overlay'];
+  referenceImage: ReferenceImage | null;
+  drawingLayers: DrawingLayer[];
+  activeLayerId?: string;
+  annotations: Array<{ id: string; type: string; label?: string; notes?: string; x: number; y: number; rotation?: number; color?: string }>;
+  shapes?: Shape[];
+  textAnnotations?: TextAnnotation[];
+  canvasEl?: HTMLCanvasElement | null;
+}): FrameAssetPackage => {
+  const now = new Date().toISOString();
+  // PencilCanvasPro keeps strokes in a flat array (each tagged with layerId)
+  // rather than inside each DrawingLayer.strokes — so we must distribute
+  // the flat strokes into the correct per-layer buckets here.
+  const layers: FrameAssetPackage['layers'] = params.drawingLayers.length
+    ? params.drawingLayers.map<FrameAssetLayer>((layer) => ({
+      id: layer.id,
+      kind: 'stroke',
+      name: layer.name,
+      visible: layer.visible,
+      locked: layer.locked,
+      opacity: layer.opacity,
+      blendMode: layer.blendMode,
+      strokeData: JSON.stringify(params.strokes.filter(s => s.layerId === layer.id)),
+    }))
+    : [{
+      id: 'layer-strokes-primary',
+      kind: 'stroke',
+      name: 'Primary Strokes',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      blendMode: 'normal',
+      strokeData: JSON.stringify(params.strokes),
+    }];
+
+  if (params.referenceImage?.src) {
+    layers.unshift({
+      id: 'layer-reference-base',
+      kind: 'reference',
+      name: 'Reference Image',
+      visible: Boolean(params.referenceImage.visible),
+      locked: true,
+      opacity: params.referenceImage.opacity,
+      blendMode: 'normal',
+      referenceSrc: params.referenceImage.src,
+      vectorData: JSON.stringify({
+        x: params.referenceImage.x,
+        y: params.referenceImage.y,
+        width: params.referenceImage.width,
+        height: params.referenceImage.height,
+      }),
+    });
+  }
+
+  if (params.annotations.length) {
+    layers.push({
+      id: 'layer-annotations',
+      kind: 'annotation',
+      name: 'Frame Annotations',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      annotationData: JSON.stringify(params.annotations),
+    });
+  }
+
+  // ── Shapes layer (first-class vector objects) ──
+  if (params.shapes && params.shapes.length > 0) {
+    const cappedShapes = params.shapes.slice(0, MAX_SHAPES_PER_PACKAGE);
+    layers.push({
+      id: 'layer-shapes',
+      kind: 'vector',
+      name: 'Shape Objects',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      vectorData: JSON.stringify({ shapes: cappedShapes }),
+    });
+  }
+
+  // ── Text annotations layer (first-class editable text) ──
+  if (params.textAnnotations && params.textAnnotations.length > 0) {
+    const cappedText = params.textAnnotations.slice(0, MAX_TEXT_ANNOTATIONS_PER_PACKAGE);
+    layers.push({
+      id: 'layer-text-annotations',
+      kind: 'vector',
+      name: 'Text Annotations',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      vectorData: JSON.stringify({ textAnnotations: cappedText }),
+    });
+  }
+
+  layers.push({
+    id: 'layer-vector-settings',
+    kind: 'vector',
+    name: 'Vector & Tool State',
+    visible: true,
+    locked: false,
+    opacity: 1,
+    vectorData: JSON.stringify({
+      activeShot: params.activeCinematography,
+      overlay: params.overlaySettings,
+      drawingState: {
+        activeLayerId: params.activeLayerId ?? params.drawingLayers[0]?.id,
+      },
+    }),
+  });
+
+  // ── Multi-format exports ──
+  const exports: FrameAssetPackage['exports'] = [
+    {
+      id: 'export-primary-png',
+      format: 'png',
+      dataUrl: params.imageData,
+      createdAt: now,
+    },
+  ];
+
+  // Generate JPEG export (smaller footprint)
+  if (params.canvasEl) {
+    try {
+      const jpegDataUrl = params.canvasEl.toDataURL('image/jpeg', 0.85);
+      exports.push({
+        id: 'export-jpeg-85',
+        format: 'jpeg',
+        dataUrl: jpegDataUrl,
+        createdAt: now,
+      });
+    } catch {
+      // Canvas tainted or unavailable — skip JPEG
+    }
+
+    try {
+      const webpDataUrl = params.canvasEl.toDataURL('image/webp', 0.80);
+      exports.push({
+        id: 'export-webp-80',
+        format: 'webp',
+        dataUrl: webpDataUrl,
+        createdAt: now,
+      });
+    } catch {
+      // Browser may not support WebP canvas export — skip
+    }
+
+    // Thumbnail (256px wide)
+    try {
+      const thumbCanvas = document.createElement('canvas');
+      const scale = 256 / params.canvasEl.width;
+      thumbCanvas.width = 256;
+      thumbCanvas.height = Math.round(params.canvasEl.height * scale);
+      const thumbCtx = thumbCanvas.getContext('2d');
+      if (thumbCtx) {
+        thumbCtx.drawImage(params.canvasEl, 0, 0, thumbCanvas.width, thumbCanvas.height);
+        exports.push({
+          id: 'export-thumbnail-256',
+          format: 'webp',
+          dataUrl: thumbCanvas.toDataURL('image/webp', 0.65),
+          createdAt: now,
+        });
+      }
+    } catch {
+      // Skip thumbnail on failure
+    }
+  }
+
+  // ── Prune exports: keep only the latest N per format (max 3 per format) ──
+  const MAX_EXPORTS_PER_FORMAT = 3;
+  const formatBuckets = new Map<string, typeof exports>();
+  for (const exp of exports) {
+    const key = exp.format || 'unknown';
+    const bucket = formatBuckets.get(key) ?? [];
+    bucket.push(exp);
+    formatBuckets.set(key, bucket);
+  }
+  const prunedExports = Array.from(formatBuckets.values()).flatMap(bucket =>
+    bucket.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, MAX_EXPORTS_PER_FORMAT)
+  );
+
+  return {
+    version: 2,
+    baseBitmap: params.referenceImage?.src,
+    layers: layers.slice(0, MAX_LAYERS_PER_PACKAGE),
+    renderSettings: {
+      storyboardPackSelection: params.activePackId && params.activeSlotId
+        ? { packId: params.activePackId, slotId: params.activeSlotId }
+        : undefined,
+      cinematography: params.activeCinematography,
+      overlay: params.overlaySettings,
+    },
+    exports: prunedExports,
+    updatedAt: now,
+  };
+};
+
+const migrateFrameAssetPackage = (assetPackage?: FrameDrawingData['assetPackage']): FrameDrawingData['assetPackage'] | null => {
+  if (!assetPackage) return null;
+
+  const normalizeV1 = (input: NonNullable<FrameDrawingData['assetPackage']>): NonNullable<FrameDrawingData['assetPackage']> => ({
+    version: 1,
+    baseBitmap: input.baseBitmap,
+    layers: (input.layers || []).map((layer) => ({ ...layer, locked: layer.locked ?? false })),
+    renderSettings: input.renderSettings || {},
+    exports: input.exports || [],
+    updatedAt: input.updatedAt || new Date().toISOString(),
+  });
+
+  const migrateV1ToV2 = (input: NonNullable<FrameDrawingData['assetPackage']>): NonNullable<FrameDrawingData['assetPackage']> => {
+    const normalized = normalizeV1(input);
+    return {
+      ...normalized,
+      version: 2,
+      layers: normalized.layers.map((layer, index) => ({
+        ...layer,
+        id: layer.id || `layer-${index}`,
+        name: layer.name || `Layer ${index + 1}`,
+        blendMode: layer.blendMode || 'normal',
+      })),
+      exports: normalized.exports.map((assetExport, index) => ({
+        ...assetExport,
+        id: assetExport.id || `export-${index}`,
+        createdAt: assetExport.createdAt || normalized.updatedAt,
+      })),
+      updatedAt: normalized.updatedAt || new Date().toISOString(),
+    };
+  };
+
+  /** V2 packages only need light field-backfill; no version reset. */
+  const normalizeV2 = (input: NonNullable<FrameDrawingData['assetPackage']>): NonNullable<FrameDrawingData['assetPackage']> => ({
+    ...input,
+    version: 2,
+    layers: (input.layers || []).map((layer, index) => ({
+      ...layer,
+      id: layer.id || `layer-${index}`,
+      name: layer.name || `Layer ${index + 1}`,
+      locked: layer.locked ?? false,
+      blendMode: layer.blendMode || 'normal',
+    })),
+    exports: (input.exports || []).map((assetExport, index) => ({
+      ...assetExport,
+      id: assetExport.id || `export-${index}`,
+      createdAt: assetExport.createdAt || input.updatedAt || new Date().toISOString(),
+    })),
+    renderSettings: input.renderSettings || {},
+    updatedAt: input.updatedAt || new Date().toISOString(),
+  });
+
+  const migrationTargets: Record<number, (input: NonNullable<FrameDrawingData['assetPackage']>) => NonNullable<FrameDrawingData['assetPackage']>> = {
+    1: migrateV1ToV2,
+    2: normalizeV2,
+  };
+
+  const migrate = migrationTargets[assetPackage.version] || migrateV1ToV2;
+  return migrate(assetPackage);
+};
+
+const parseFrameAssetPackage = (assetPackage?: FrameDrawingData['assetPackage']) => {
+  const migrated = migrateFrameAssetPackage(assetPackage);
+  if (!migrated) return null;
+  const referenceLayer = migrated.layers.find((layer) => layer.kind === 'reference' && layer.referenceSrc);
+  const strokeLayers = migrated.layers.filter((layer) => layer.kind === 'stroke' && layer.strokeData);
+
+  // Merge strokes from ALL stroke layers into one flat array (PencilCanvasPro
+  // uses a flat strokes list where each stroke carries a layerId).
+  let strokesFromPackage: PencilStroke[] | null = null;
+  if (strokeLayers.length) {
+    const merged: PencilStroke[] = [];
+    for (const sl of strokeLayers) {
+      if (!sl.strokeData) continue;
+      try {
+        const parsed = JSON.parse(sl.strokeData) as PencilStroke[];
+        // Ensure every stroke carries the correct layerId
+        for (const s of parsed) {
+          merged.push({ ...s, layerId: s.layerId || sl.id });
+        }
+      } catch (e) {
+        console.warn('[parseFrameAssetPackage] Malformed strokeData in layer', sl.id, e);
+      }
+    }
+    strokesFromPackage = merged.length ? merged : null;
+  }
+
+  let referenceRect: { x: number; y: number; width: number; height: number } | null = null;
+  if (referenceLayer?.vectorData) {
+    try {
+      referenceRect = JSON.parse(referenceLayer.vectorData) as { x: number; y: number; width: number; height: number };
+    } catch (e) {
+      console.warn('[parseFrameAssetPackage] Malformed reference vectorData', e);
+      referenceRect = null;
+    }
+  }
+
+  const vectorLayer = migrated.layers.find((layer) => layer.kind === 'vector' && layer.vectorData);
+  let vectorState: { drawingState?: { activeLayerId?: string }; activeShot?: FrameDrawingData['cinematography']; overlay?: FrameDrawingData['overlay'] } | null = null;
+  if (vectorLayer?.vectorData) {
+    try {
+      vectorState = JSON.parse(vectorLayer.vectorData) as { drawingState?: { activeLayerId?: string } };
+    } catch (e) {
+      console.warn('[parseFrameAssetPackage] Malformed vector vectorData', e);
+      vectorState = null;
+    }
+  }
+
+  const annotationLayer = migrated.layers.find((layer) => layer.kind === 'annotation' && layer.annotationData);
+  let annotations: Array<{ id: string; type: string; label?: string; notes?: string; x: number; y: number; rotation?: number; color?: string }> = [];
+  if (annotationLayer?.annotationData) {
+    try {
+      annotations = JSON.parse(annotationLayer.annotationData) as Array<{ id: string; type: string; label?: string; notes?: string; x: number; y: number; rotation?: number; color?: string }>;
+    } catch (e) {
+      console.warn('[parseFrameAssetPackage] Malformed annotationData', e);
+      annotations = [];
+    }
+  }
+
+  // ── Shapes layer (vector objects) ──
+  const shapesLayer = migrated.layers.find((layer) => layer.kind === 'vector' && layer.id === 'layer-shapes' && layer.vectorData);
+  let shapes: Shape[] = [];
+  if (shapesLayer?.vectorData) {
+    try {
+      const parsed = JSON.parse(shapesLayer.vectorData) as { shapes?: Shape[] };
+      shapes = Array.isArray(parsed.shapes) ? parsed.shapes : [];
+    } catch (e) {
+      console.warn('[parseFrameAssetPackage] Malformed shapes vectorData', e);
+      shapes = [];
+    }
+  }
+
+  // ── Text annotations layer (editable text objects) ──
+  const textAnnotationsLayer = migrated.layers.find((layer) => layer.kind === 'vector' && layer.id === 'layer-text-annotations' && layer.vectorData);
+  let textAnnotations: TextAnnotation[] = [];
+  if (textAnnotationsLayer?.vectorData) {
+    try {
+      const parsed = JSON.parse(textAnnotationsLayer.vectorData) as { textAnnotations?: TextAnnotation[] };
+      textAnnotations = Array.isArray(parsed.textAnnotations) ? parsed.textAnnotations : [];
+    } catch (e) {
+      console.warn('[parseFrameAssetPackage] Malformed textAnnotations vectorData', e);
+      textAnnotations = [];
+    }
+  }
+
+  return {
+    strokes: strokesFromPackage,
+    drawingLayers: strokeLayers.map((layer, index) => {
+      let layerStrokes: PencilStroke[] = [];
+      try {
+        layerStrokes = JSON.parse(layer.strokeData || '[]') as PencilStroke[];
+      } catch (e) {
+        console.warn('[parseFrameAssetPackage] Malformed stroke layer data', layer.id, e);
+        layerStrokes = [];
+      }
+      return {
+        id: layer.id || `asset-layer-${index}`,
+        name: layer.name || `Layer ${index + 1}`,
+        visible: layer.visible,
+        locked: layer.locked ?? false,
+        opacity: layer.opacity,
+        blendMode: (layer.blendMode as DrawingLayer['blendMode']) || 'normal',
+        strokes: layerStrokes,
+      } as DrawingLayer;
+    }),
+    storyboardPackSelection: migrated.renderSettings.storyboardPackSelection,
+    cinematography: migrated.renderSettings.cinematography ?? vectorState?.activeShot,
+    overlay: migrated.renderSettings.overlay ?? vectorState?.overlay,
+    annotations,
+    shapes,
+    textAnnotations,
+    activeLayerId: vectorState?.drawingState?.activeLayerId,
+    reference: referenceLayer?.referenceSrc
+      ? {
+          src: referenceLayer.referenceSrc,
+          visible: referenceLayer.visible,
+          opacity: referenceLayer.opacity,
+          x: referenceRect?.x ?? 0,
+          y: referenceRect?.y ?? 0,
+          width: referenceRect?.width ?? 0,
+          height: referenceRect?.height ?? 0,
+        }
+      : null,
+  };
+};
 
 // =============================================================================
 // Styled Components
@@ -467,6 +896,23 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     height: 560,
   });
 
+  // Storyboard Pack state
+  const [storyboardManifest, setStoryboardManifest] = useState<StoryboardPackManifest | null>(null);
+  const [storyboardActivePackId, setStoryboardActivePackId] = useState<string>('');
+  const [storyboardActiveSlotId, setStoryboardActiveSlotId] = useState<string>('');
+  const [storyboardBrushOverrides, setStoryboardBrushOverrides] = useState<Partial<ProBrushSettings>>({});
+  const [storyboardCinematography, setStoryboardCinematography] = useState<StoryboardPackSlot['patch']['cinematography']>({});
+  const [storyboardOverlaySettings, setStoryboardOverlaySettings] = useState<StoryboardPackSlot['patch']['overlay']>({});
+  const [drawingStateSnapshot, setDrawingStateSnapshot] = useState<DrawingState>(DEFAULT_DRAWING_STATE);
+  const [shapesSnapshot, setShapesSnapshot] = useState<Shape[]>([]);
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
+  const [assetPackageServerVersion, setAssetPackageServerVersion] = useState<number | undefined>(undefined);
+
+  const currentFrame = useStoryboardStore((state) => {
+    const board = state.storyboards.find((storyboard) => storyboard.id === state.currentStoryboardId);
+    return board?.frames.find((frame) => frame.id === frameId);
+  });
+
   const handleConceptArtChange = useCallback((nextConceptArt: FrameConceptArtData) => {
     setConceptArt(nextConceptArt);
     setHasUnsavedChanges(true);
@@ -635,6 +1081,189 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     [proMode]
   );
 
+  // =========================================================================
+  // Storyboard Pack integration
+  // =========================================================================
+
+  const buildReferenceFromSlot = useCallback((slotImageUrl: string): ReferenceImage => {
+    const width = Math.round(canvasDimensions.width * 0.86);
+    const height = Math.round(canvasDimensions.height * 0.86);
+    const x = Math.round((canvasDimensions.width - width) / 2);
+    const y = Math.round((canvasDimensions.height - height) / 2);
+    return {
+      src: slotImageUrl,
+      opacity: 0.45,
+      visible: true,
+      x,
+      y,
+      width,
+      height,
+    };
+  }, [canvasDimensions.height, canvasDimensions.width]);
+
+  useEffect(() => {
+    storyboardPackService.getPublished().then((manifest) => {
+      setStoryboardManifest(manifest);
+      setStoryboardActivePackId(manifest.packs[0]?.id ?? '');
+      setStoryboardActiveSlotId(manifest.packs[0]?.slots[0]?.id ?? '');
+    });
+  }, []);
+
+  const activePack = useMemo(
+    () => storyboardManifest?.packs.find((pack) => pack.id === storyboardActivePackId) ?? storyboardManifest?.packs[0],
+    [storyboardManifest, storyboardActivePackId],
+  );
+
+  /** Apply full slot patch to ALL live canvas state — brush, cinematography & overlays */
+  const applySlotPatchToLiveState = useCallback((
+    mergedBrush: Partial<ProBrushSettings>,
+    cine: StoryboardPackSlot['patch']['cinematography'],
+    overlay: StoryboardPackSlot['patch']['overlay'],
+  ) => {
+    // ── Brush overrides → proBrushSettings (the prop PencilCanvasPro reads) ──
+    setStoryboardBrushOverrides(mergedBrush);
+    setProBrushSettings((prev) => ({ ...prev, ...mergedBrush }));
+
+    // ── Cinematography patch → decisionData.cinematography ──
+    setStoryboardCinematography(cine ?? {});
+    if (cine && Object.keys(cine).length > 0) {
+      updateDecisionData((next) => {
+        if (cine.cameraAngle) next.cinematography.angle = cine.cameraAngle as CameraAngle;
+        if (cine.movement) next.cinematography.movement = cine.movement as CameraMovement;
+        if (cine.shotType) {
+          const shotMap: Record<string, FrameDecisionData['cinematography']['shotSize']> = {
+            'Extreme Wide': 'EWS', 'Wide': 'WS', 'Medium': 'MS', 'Close Up': 'CU', 'Extreme Close Up': 'ECU',
+          };
+          const mapped = shotMap[cine.shotType];
+          if (mapped) next.cinematography.shotSize = mapped;
+        }
+        if (cine.lens) {
+          const lensNum = parseInt(cine.lens, 10);
+          if (!Number.isNaN(lensNum) && lensNum > 0) next.cinematography.lensMm = lensNum;
+        }
+      });
+    }
+
+    // ── Overlay patch → decisionData.overlays ──
+    setStoryboardOverlaySettings(overlay ?? {});
+    if (overlay) {
+      updateDecisionData((next) => {
+        if (overlay.showGrid !== undefined) next.overlays.grid = overlay.showGrid;
+        if (overlay.showSafeArea !== undefined) next.overlays.safeAreas = overlay.showSafeArea;
+      });
+    }
+  }, [updateDecisionData]);
+
+  const applyPackSlot = useCallback((slot: StoryboardPackSlot, options?: { useAsReference?: boolean }) => {
+    if (!activePack) return;
+    setStoryboardActivePackId(activePack.id);
+    setStoryboardActiveSlotId(slot.id);
+
+    const mergedBrush = { ...activePack.baseBrushSettings, ...slot.patch.brushSettings };
+    applySlotPatchToLiveState(mergedBrush, slot.patch.cinematography, slot.patch.overlay);
+
+    if (options?.useAsReference && slot.imageUrl) {
+      setReferenceImage(buildReferenceFromSlot(slot.imageUrl));
+    }
+    setHasUnsavedChanges(true);
+  }, [activePack, applySlotPatchToLiveState, buildReferenceFromSlot]);
+
+  useEffect(() => {
+    const selectedPack = storyboardManifest?.packs.find((pack) => pack.id === storyboardActivePackId);
+    const selectedSlot = selectedPack?.slots.find((slot) => slot.id === storyboardActiveSlotId);
+    if (!selectedPack || !selectedSlot) return;
+    const mergedBrush = { ...selectedPack.baseBrushSettings, ...selectedSlot.patch.brushSettings };
+    applySlotPatchToLiveState(mergedBrush, selectedSlot.patch.cinematography, selectedSlot.patch.overlay);
+  }, [storyboardManifest, storyboardActivePackId, storyboardActiveSlotId, applySlotPatchToLiveState]);
+
+  // ── Load asset package from server on mount (C1: dedicated endpoint) ──
+  useEffect(() => {
+    if (!frameId) return;
+    let cancelled = false;
+    loadFrameAssetPackage(frameId).then((serverResult) => {
+      if (cancelled || !serverResult) return;
+      setAssetPackageServerVersion(serverResult.version);
+      // Merge server asset package into the frame so the restore effect below picks it up
+      const serverAsset = serverResult.assetPackage as FrameDrawingData['assetPackage'];
+      if (serverAsset && currentFrame?.drawingData) {
+        const localUpdatedAt = currentFrame.drawingData.assetPackage?.updatedAt;
+        const serverUpdatedAt = serverAsset.updatedAt;
+        // Prefer whichever is newer; fallback to server if timestamps are missing
+        if (!localUpdatedAt || (serverUpdatedAt && serverUpdatedAt > localUpdatedAt)) {
+          if (frameId && storyboardId) {
+            updateFrame(frameId, {
+              drawingData: { ...currentFrame.drawingData, assetPackage: serverAsset },
+            });
+          }
+        }
+      }
+    }).catch(() => { /* server unreachable — use store data */ });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameId]);
+
+  useEffect(() => {
+    if (!currentFrame?.drawingData) return;
+
+    // ── 1. Parse asset package (always attempt, regardless of pack selection) ──
+    const assetState = parseFrameAssetPackage(currentFrame.drawingData.assetPackage);
+
+    // ── 2. Restore per-layer strokes from asset package ──
+    // Only overwrite when the package contains real strokes; an empty array
+    // from a corrupted save must NOT wipe initialStrokes.
+    if (assetState?.strokes && assetState.strokes.length > 0) {
+      setStrokes(assetState.strokes);
+    }
+
+    if (assetState?.drawingLayers?.length) {
+      setDrawingStateSnapshot((prev) => ({
+        ...prev,
+        layers: assetState.drawingLayers,
+        activeLayerId: assetState.activeLayerId ?? assetState.drawingLayers[0]?.id ?? prev.activeLayerId,
+        // Restore text annotations into DrawingState
+        ...(assetState.textAnnotations?.length ? { textAnnotations: assetState.textAnnotations } : {}),
+      }));
+    }
+
+    // Restore shapes (vector objects)
+    if (assetState?.shapes?.length) {
+      setShapesSnapshot(assetState.shapes);
+    }
+
+    if (assetState?.annotations?.length && frameId && storyboardId) {
+      updateFrame(frameId, {
+        annotations: assetState.annotations.map((annotation) => ({
+          ...annotation,
+          createdAt: annotation.createdAt || new Date().toISOString(),
+        })),
+      });
+    }
+
+    if (!referenceImage) {
+      if (assetState?.reference) {
+        setReferenceImage(assetState.reference);
+      } else if (currentFrame.drawingData.referenceImageSrc) {
+        setReferenceImage(buildReferenceFromSlot(currentFrame.drawingData.referenceImageSrc));
+      }
+    }
+
+    // ── 3. Restore storyboard pack selection & apply slot patch (only if present) ──
+    if (!storyboardManifest) return;
+    const savedSelection = assetState?.storyboardPackSelection ?? currentFrame.drawingData.storyboardPackSelection;
+    if (!savedSelection) return;
+
+    const pack = storyboardManifest.packs.find((item) => item.id === savedSelection.packId);
+    const slot = pack?.slots.find((item) => item.id === savedSelection.slotId);
+    if (!pack || !slot) return;
+
+    setStoryboardActivePackId(pack.id);
+    setStoryboardActiveSlotId(slot.id);
+    const restoredCine = assetState?.cinematography ?? currentFrame.drawingData.cinematography ?? slot.patch.cinematography ?? {};
+    const restoredOverlay = assetState?.overlay ?? currentFrame.drawingData.overlay ?? slot.patch.overlay ?? {};
+    const mergedBrush = { ...pack.baseBrushSettings, ...slot.patch.brushSettings };
+    applySlotPatchToLiveState(mergedBrush, restoredCine, restoredOverlay);
+  }, [buildReferenceFromSlot, currentFrame?.drawingData, referenceImage, storyboardManifest]);
+
   // Handle stroke changes
   const handleStrokesChange = useCallback((newStrokes: PencilStroke[]) => {
     setStrokes(newStrokes);
@@ -656,16 +1285,71 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       opacity: activeBrush.opacity ?? 1,
     };
 
+    // Pre-save validation
+    const warnings = validateAssetPackageLimits({
+      strokes,
+      drawingLayers: drawingStateSnapshot.layers,
+      shapes: shapesSnapshot,
+      textAnnotations: drawingStateSnapshot.textAnnotations,
+    });
+    setSaveWarnings(warnings);
+
+    // Cap strokes at limit to prevent oversized payloads
+    const cappedStrokes = strokes.slice(-MAX_STROKES_PER_PACKAGE);
+
+    // Get canvas element for multi-format export
+    const canvasEl = pencilCanvasProRef.current?.getCompositeCanvas?.()
+      ?? pencilCanvasProRef.current?.getCanvas?.()
+      ?? null;
+
     const drawingData: FrameDrawingData = {
       dataUrl: imageData,
-      strokes: JSON.stringify(strokes),
+      strokes: JSON.stringify(cappedStrokes),
       brushSettings: normalizedBrushSettings,
+      storyboardPackSelection: storyboardActivePackId && storyboardActiveSlotId ? { packId: storyboardActivePackId, slotId: storyboardActiveSlotId } : undefined,
+      cinematography: storyboardCinematography,
+      overlay: storyboardOverlaySettings,
+      referenceImageSrc: referenceImage?.src,
+      assetPackage: buildFrameAssetPackage({
+        imageData,
+        strokes: cappedStrokes,
+        activePackId: storyboardActivePackId,
+        activeSlotId: storyboardActiveSlotId,
+        activeCinematography: storyboardCinematography,
+        overlaySettings: storyboardOverlaySettings,
+        referenceImage,
+        drawingLayers: drawingStateSnapshot.layers,
+        activeLayerId: drawingStateSnapshot.activeLayerId,
+        annotations: (currentFrame?.annotations ?? []).map((annotation) => ({
+          id: annotation.id,
+          type: annotation.type,
+          label: annotation.label,
+          notes: annotation.notes,
+          x: annotation.x,
+          y: annotation.y,
+          rotation: annotation.rotation,
+          color: annotation.color,
+        })),
+        shapes: shapesSnapshot,
+        textAnnotations: drawingStateSnapshot.textAnnotations,
+        canvasEl,
+      }),
       deviceType: device.hasPencilSupport ? 'pencil' : device.hasTouchScreen ? 'touch' : 'mouse',
       conceptArt: conceptArt && conceptArt.variants.length > 0 ? conceptArt : undefined,
       decisionData: nextDecisionData,
-      createdAt: new Date().toISOString(),
+      createdAt: currentFrame?.drawingData?.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    // Final size check — warn if the serialized package is very large
+    try {
+      const serializedSize = JSON.stringify(drawingData.assetPackage).length;
+      if (serializedSize > MAX_PACKAGE_JSON_BYTES) {
+        console.warn(`[FrameDrawingEditor] Asset package is ${(serializedSize / 1024 / 1024).toFixed(1)} MB — exceeds ${MAX_PACKAGE_JSON_BYTES / 1024 / 1024} MB limit`);
+      }
+    } catch {
+      // Serialization check failed — proceed anyway
+    }
 
     // Update frame in store if we have a frame ID
     if (frameId && storyboardId) {
@@ -681,12 +1365,25 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       });
     }
 
+    // Persist asset package to server (non-blocking — store update above is the source of truth for in-session state)
+    if (frameId && drawingData.assetPackage) {
+      saveFrameAssetPackage(
+        frameId,
+        drawingData.assetPackage as Record<string, unknown>,
+        assetPackageServerVersion,
+      ).then((result) => {
+        if (result) setAssetPackageServerVersion(result.version);
+      }).catch(() => {
+        console.warn('[FrameDrawingEditor] Server asset package save failed — data is still in local store');
+      });
+    }
+
     // Call external save handler
     onSave?.(drawingData, imageData);
     
     setLastSavedImage(imageData);
     setHasUnsavedChanges(false);
-  }, [strokes, brushSettings, proBrushSettings, proMode, decisionData, device, frameId, storyboardId, updateFrame, onSave, conceptArt]);
+  }, [strokes, brushSettings, proBrushSettings, proMode, decisionData, device, frameId, storyboardId, updateFrame, onSave, conceptArt, storyboardActivePackId, storyboardActiveSlotId, storyboardCinematography, storyboardOverlaySettings, referenceImage, drawingStateSnapshot.layers, drawingStateSnapshot.activeLayerId, drawingStateSnapshot.textAnnotations, currentFrame?.annotations, shapesSnapshot, assetPackageServerVersion]);
 
   const handleApplyCinematicPack = useCallback((packId: Exclude<CinematicBrushPresetId, 'none'>) => {
     const pack = CINEMATIC_BRUSH_PRESETS[packId];
@@ -759,6 +1456,18 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       onCancel?.();
     }
   }, [hasUnsavedChanges, onCancel]);
+
+  // ── Warn user before navigating away with unsaved work (L10) ──
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
 
   // Discard changes and close
   const handleDiscardChanges = useCallback(() => {
@@ -1178,6 +1887,119 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
 
             <Divider sx={{ borderColor: 'rgba(148,163,184,0.25)' }} />
 
+            {/* ── Storyboard Pack Slot Selection ── */}
+            <Typography variant="caption" sx={{ letterSpacing: 0.7, color: '#94a3b8' }}>
+              STORYBOARD PACKS
+            </Typography>
+
+            {storyboardManifest && storyboardManifest.packs.length > 0 && (
+              <>
+                {/* Pack selector tabs */}
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  {storyboardManifest.packs.map((sbPack: StoryboardPack) => (
+                    <Chip
+                      key={sbPack.id}
+                      label={sbPack.name}
+                      size="small"
+                      onClick={() => {
+                        setStoryboardActivePackId(sbPack.id);
+                        const firstSlot = sbPack.slots[0];
+                        if (firstSlot) {
+                          setStoryboardActiveSlotId(firstSlot.id);
+                          applyPackSlot(firstSlot);
+                        }
+                      }}
+                      sx={{
+                        bgcolor: storyboardActivePackId === sbPack.id ? 'rgba(56,189,248,0.22)' : 'rgba(15,23,42,0.72)',
+                        color: storyboardActivePackId === sbPack.id ? '#67e8f9' : '#cbd5e1',
+                        border: `1px solid ${storyboardActivePackId === sbPack.id ? 'rgba(56,189,248,0.5)' : 'rgba(148,163,184,0.26)'}`,
+                        fontWeight: 600,
+                        fontSize: 11,
+                      }}
+                    />
+                  ))}
+                </Stack>
+
+                {/* Slots for the active pack */}
+                {activePack && activePack.slots.map((slot) => {
+                  const isActive = storyboardActiveSlotId === slot.id;
+                  return (
+                    <Box
+                      key={slot.id}
+                      onClick={() => applyPackSlot(slot)}
+                      sx={{
+                        p: 0.8,
+                        borderRadius: 1.5,
+                        border: `1px solid ${isActive ? 'rgba(56,189,248,0.55)' : 'rgba(148,163,184,0.22)'}`,
+                        bgcolor: isActive ? 'rgba(56,189,248,0.1)' : 'rgba(15,23,42,0.55)',
+                        cursor: 'pointer',
+                        '&:hover': { bgcolor: 'rgba(56,189,248,0.08)', borderColor: 'rgba(56,189,248,0.35)' },
+                        transition: 'all 150ms ease',
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {slot.imageUrl && (
+                          <Box
+                            component="img"
+                            src={slot.imageUrl}
+                            alt={slot.name}
+                            sx={{
+                              width: 42,
+                              height: 42,
+                              borderRadius: 1,
+                              objectFit: 'cover',
+                              border: '1px solid rgba(148,163,184,0.25)',
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <Stack sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: isActive ? '#67e8f9' : '#e2e8f0', lineHeight: 1.2 }}>
+                            {slot.name}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#64748b', fontSize: 10, lineHeight: 1.2 }} noWrap>
+                            {slot.description}
+                          </Typography>
+                        </Stack>
+                        <Tooltip title="Edit in Canvas">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              applyPackSlot(slot, { useAsReference: true });
+                            }}
+                            sx={{
+                              color: '#93c5fd',
+                              border: '1px solid rgba(147,197,253,0.3)',
+                              borderRadius: 1,
+                              p: 0.4,
+                              '&:hover': { bgcolor: 'rgba(147,197,253,0.15)' },
+                            }}
+                          >
+                            <EditOutlined sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                      {/* Patch summary chips */}
+                      <Stack direction="row" spacing={0.4} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+                        {slot.patch.cinematography?.shotType && (
+                          <Chip label={slot.patch.cinematography.shotType} size="small" sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(96,165,250,0.15)', color: '#93c5fd' }} />
+                        )}
+                        {slot.patch.cinematography?.lens && (
+                          <Chip label={slot.patch.cinematography.lens} size="small" sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(250,204,21,0.15)', color: '#fde68a' }} />
+                        )}
+                        {slot.patch.overlay?.showGrid && (
+                          <Chip icon={<GridOn sx={{ fontSize: 10 }} />} label="Grid" size="small" sx={{ height: 18, fontSize: 9, bgcolor: 'rgba(56,189,248,0.15)', color: '#67e8f9' }} />
+                        )}
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </>
+            )}
+
+            <Divider sx={{ borderColor: 'rgba(148,163,184,0.25)' }} />
+
             <Typography variant="caption" sx={{ letterSpacing: 0.7, color: '#94a3b8' }}>
               BRUSH LIBRARY
             </Typography>
@@ -1399,11 +2221,16 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 showToolbar={false}
                 showPressureIndicator={device.hasPencilSupport}
                 showReferenceImageControls={false}
+                showGridOverlay={decisionData.overlays.grid}
                 showDrawingToolsPanel
                 drawingToolsPanelPosition="right"
                 toolsPanelCollapsed={toolsPanelCollapsed}
                 onToolsPanelCollapsedChange={setToolsPanelCollapsed}
                 palmRejection="smart"
+                initialDrawingState={drawingStateSnapshot}
+                onDrawingStateChange={setDrawingStateSnapshot}
+                initialShapes={shapesSnapshot}
+                onShapesChange={setShapesSnapshot}
                 onStrokesChange={handleStrokesChange}
                 onSave={handleSave}
                 onReferenceImageChange={setReferenceImage}
@@ -1787,6 +2614,15 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
               size="small" 
               sx={{ bgcolor: 'rgba(245,158,11,0.2)', color: '#f59e0b', height: 20 }}
             />
+          )}
+          {saveWarnings.length > 0 && (
+            <Tooltip title={saveWarnings.join('\n')}>
+              <Chip
+                label={`${saveWarnings.length} warning${saveWarnings.length > 1 ? 's' : ''}`}
+                size="small"
+                sx={{ bgcolor: 'rgba(239,68,68,0.2)', color: '#ef4444', height: 20, cursor: 'help' }}
+              />
+            </Tooltip>
           )}
           {lastSavedImage && !hasUnsavedChanges && (
             <Chip

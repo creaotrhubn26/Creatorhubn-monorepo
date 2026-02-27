@@ -16,7 +16,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:storyboard-asset-package": "node scripts/verify-storyboard-asset-package-roundtrip.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "^8.52.0",

@@ -147,6 +147,7 @@ export interface PencilCanvasProProps {
   showReferenceImageControls?: boolean;
   showGridOverlay?: boolean;
   showDrawingToolsPanel?: boolean;
+  initialDrawingState?: DrawingState;
   drawingToolsPanelPosition?: 'left' | 'right';
   toolsPanelCollapsed?: boolean;
   onToolsPanelCollapsedChange?: (collapsed: boolean) => void;
@@ -157,6 +158,9 @@ export interface PencilCanvasProProps {
   onStrokesChange?: (strokes: PencilStroke[]) => void;
   onSave?: (imageData: string) => void;
   onReferenceImageChange?: (ref: ReferenceImage | null) => void;
+  onDrawingStateChange?: (state: DrawingState) => void;
+  initialShapes?: Shape[];
+  onShapesChange?: (shapes: Shape[]) => void;
   onExport?: (settings: ExportSettings, frameIndices: number[]) => Promise<void>;
   initialConceptArt?: FrameConceptArtData;
   onConceptArtChange?: (conceptArt: FrameConceptArtData) => void;
@@ -171,6 +175,8 @@ export interface PencilCanvasProHandle {
   undo: () => void;
   redo: () => void;
   getCanvas: () => HTMLCanvasElement | null;
+  /** Returns a canvas compositing reference + strokes layers into one bitmap */
+  getCompositeCanvas: () => HTMLCanvasElement | null;
 }
 
 export const DEFAULT_CANVAS_SURFACE: CanvasSurfaceSettings = {
@@ -826,6 +832,7 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   showReferenceImageControls = true,
   showGridOverlay: initialShowGrid = false,
   showDrawingToolsPanel = true,
+  initialDrawingState,
   drawingToolsPanelPosition = 'right',
   toolsPanelCollapsed: controlledToolsPanelCollapsed,
   onToolsPanelCollapsedChange,
@@ -836,6 +843,9 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   onStrokesChange,
   onSave,
   onReferenceImageChange,
+  onDrawingStateChange,
+  initialShapes,
+  onShapesChange,
   onExport,
   initialConceptArt,
   onConceptArtChange,
@@ -895,6 +905,7 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   // Drawing state for professional features
   const [drawingState, setDrawingState] = useState<DrawingState>(() => ({
     ...DEFAULT_DRAWING_STATE,
+    ...(initialDrawingState ?? {}),
     decisionData: initialDecisionData
       ? cloneFrameDecisionData(initialDecisionData)
       : cloneFrameDecisionData(DEFAULT_FRAME_DECISION_DATA),
@@ -912,13 +923,36 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
         },
     scriptContext: scriptContext ?? DEFAULT_DRAWING_STATE.scriptContext,
   }));
+
+  // Stabilise initialDrawingState: only apply when the serialised form actually changes,
+  // preventing re-render loops when the parent recreates the object on every render.
+  const prevInitialDrawingStateJson = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialDrawingState) return;
+    const json = JSON.stringify(initialDrawingState);
+    if (json === prevInitialDrawingStateJson.current) return;
+    prevInitialDrawingStateJson.current = json;
+    setDrawingState(initialDrawingState);
+  }, [initialDrawingState]);
+
+  useEffect(() => {
+    onDrawingStateChange?.(drawingState);
+  }, [drawingState, onDrawingStateChange]);
   
   // Clipboard for copy/paste
   const [clipboard, setClipboard] = useState<PencilStroke[]>([]);
   
   // Shape objects on the canvas
-  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [shapes, setShapes] = useState<Shape[]>(initialShapes ?? []);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialShapes) setShapes(initialShapes);
+  }, [initialShapes]);
+
+  useEffect(() => {
+    onShapesChange?.(shapes);
+  }, [shapes, onShapesChange]);
   /** Tracks in-progress shape creation drag (startX, startY) */
   const shapeDragRef = useRef<{ startX: number; startY: number; shapeId: string } | null>(null);
   const conceptArtSyncReadyRef = useRef(false);
@@ -1834,12 +1868,39 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     redrawMainCanvas();
   }, [saveToUndo, onStrokesChange, redrawMainCanvas]);
   
+  /**
+   * Composite all visible layers (reference + strokes) into one offscreen
+   * canvas so the exported PNG includes the reference layer underneath.
+   */
+  const getCompositeCanvas = useCallback((): HTMLCanvasElement | null => {
+    const main = mainCanvasRef.current;
+    if (!main) return null;
+    const composite = document.createElement('canvas');
+    composite.width = main.width;
+    composite.height = main.height;
+    const ctx = composite.getContext('2d');
+    if (!ctx) return null;
+
+    // 1) Reference layer (if visible)
+    const refCanvas = referenceCanvasRef.current;
+    if (refCanvas) {
+      ctx.drawImage(refCanvas, 0, 0);
+    }
+
+    // 2) Main strokes layer
+    ctx.drawImage(main, 0, 0);
+
+    return composite;
+  }, []);
+
   const saveCanvas = useCallback(() => {
-    const canvas = mainCanvasRef.current;
+    // Composite reference + strokes into a single merged bitmap
+    const composite = getCompositeCanvas();
+    const canvas = composite ?? mainCanvasRef.current;
     if (!canvas) return;
     const imageData = canvas.toDataURL('image/png');
     onSave?.(imageData);
-  }, [onSave]);
+  }, [getCompositeCanvas, onSave]);
 
   const applyConceptReference = useCallback((imageUrl: string) => {
     const newReference: ReferenceImage = {
@@ -1861,7 +1922,8 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     undo,
     redo,
     getCanvas: () => mainCanvasRef.current,
-  }), [saveCanvas, clearCanvas, undo, redo]);
+    getCompositeCanvas,
+  }), [saveCanvas, clearCanvas, undo, redo, getCompositeCanvas]);
   
   // Handle reference image upload
   const handleRefImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

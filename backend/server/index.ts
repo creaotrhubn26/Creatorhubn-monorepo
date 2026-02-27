@@ -12,6 +12,7 @@ import mammoth from 'mammoth';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '../migrations/schema.js';
@@ -23,6 +24,7 @@ import { createReferenceProxyRouter } from './reference-proxy-routes.js';
 import { createFirmwareRouter } from './firmware-routes.js';
 import { createEquipmentRouter } from './equipment-routes.js';
 import { createServer } from 'http';
+import { buildStoryboardPackR2ObjectKey, normalizeStoryboardPackR2Prefix } from './storyboardPackStorage.js';
 
 // Database connection
 const pool = new Pool({
@@ -30,6 +32,24 @@ const pool = new Pool({
 });
 
 const db = drizzle(pool, { schema });
+
+const storyboardPackR2Bucket = process.env.STORYBOARD_PACKS_R2_BUCKET || 'theroleroom';
+const storyboardPackR2Prefix = normalizeStoryboardPackR2Prefix(process.env.STORYBOARD_PACKS_R2_PREFIX);
+const storyboardPackR2ObjectKey = (packId: string, slotId: string, fileName: string) =>
+  buildStoryboardPackR2ObjectKey({ prefix: storyboardPackR2Prefix, packId, slotId, fileName });
+const storyboardPackR2Client =
+  process.env.STORYBOARD_PACKS_R2_ACCESS_KEY_ID &&
+  process.env.STORYBOARD_PACKS_R2_SECRET_ACCESS_KEY &&
+  process.env.STORYBOARD_PACKS_R2_ENDPOINT
+    ? new S3Client({
+        region: 'auto',
+        endpoint: process.env.STORYBOARD_PACKS_R2_ENDPOINT,
+        credentials: {
+          accessKeyId: process.env.STORYBOARD_PACKS_R2_ACCESS_KEY_ID,
+          secretAccessKey: process.env.STORYBOARD_PACKS_R2_SECRET_ACCESS_KEY,
+        },
+      })
+    : null;
 
 // Configure multer for file uploads
 const upload = multer({
@@ -95,6 +115,11 @@ async function getTableColumns(tableName: string): Promise<Set<string>> {
 
 // CORS — apply CORS_ALLOW_ORIGINS to Role Room routes; wide-open for legacy routes
 app.use(cors());
+
+// Enable gzip/deflate response compression for all routes
+import compressionMiddleware from 'compression';
+app.use(compressionMiddleware());
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -510,7 +535,7 @@ function normalizeBase64Upload(payload: string, fileName?: string | null) {
     }
     const [, mimeType, base64Data] = match;
     const buffer = Buffer.from(base64Data, 'base64');
-    return { dataUrl: trimmed, size: buffer.length, mimeType };
+    return { dataUrl: trimmed, size: buffer.length, mimeType, buffer };
   }
 
   const mimeType = resolveMimeType(fileName);
@@ -518,10 +543,76 @@ function normalizeBase64Upload(payload: string, fileName?: string | null) {
   return {
     dataUrl: `data:${mimeType};base64,${trimmed}`,
     size: buffer.length,
-    mimeType
+    mimeType,
+    buffer,
   };
 }
 
+
+
+type StoryboardPackManifestRecord = {
+  packs: Array<Record<string, unknown>>;
+  version: number;
+  updatedAt: string;
+  publishedAt?: string;
+};
+
+async function ensureStoryboardPackSchema() {
+  await pool.query(`
+    create table if not exists storyboard_pack_manifests (
+      id integer primary key,
+      draft_manifest jsonb not null,
+      published_manifest jsonb not null,
+      version integer not null default 1,
+      published_at timestamptz,
+      updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS frame_asset_packages (
+      frame_id TEXT PRIMARY KEY,
+      asset_package JSONB NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+function defaultStoryboardPackManifest(): StoryboardPackManifestRecord {
+  const now = new Date().toISOString();
+  return { packs: [], version: 1, updatedAt: now, publishedAt: now };
+}
+
+async function loadStoryboardPackState() {
+  await ensureStoryboardPackSchema();
+  const result = await pool.query('select draft_manifest, published_manifest, version, published_at, updated_at from storyboard_pack_manifests where id = 1 limit 1');
+  const row = result.rows?.[0];
+  if (!row) {
+    const manifest = defaultStoryboardPackManifest();
+    await pool.query(
+      'insert into storyboard_pack_manifests (id, draft_manifest, published_manifest, version, published_at, updated_at) values (1, $1::jsonb, $2::jsonb, $3, $4::timestamptz, $5::timestamptz)',
+      [JSON.stringify(manifest), JSON.stringify(manifest), manifest.version, manifest.publishedAt, manifest.updatedAt],
+    );
+    return {
+      draft: manifest,
+      published: manifest,
+      version: manifest.version,
+      publishedAt: manifest.publishedAt || null,
+      updatedAt: manifest.updatedAt || null,
+    };
+  }
+
+  const draft = (row.draft_manifest || defaultStoryboardPackManifest()) as StoryboardPackManifestRecord;
+  const published = (row.published_manifest || draft) as StoryboardPackManifestRecord;
+  return {
+    draft,
+    published,
+    version: Number(row.version || published.version || 1),
+    publishedAt: row.published_at ? new Date(row.published_at).toISOString() : (published.publishedAt || null),
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : (draft.updatedAt || null),
+  };
+}
 function normalizeEquipmentType(raw?: string | null): EquipmentType {
   const value = (raw || '').toLowerCase();
   if (value.includes('camera')) return 'camera';
@@ -16075,6 +16166,321 @@ app.get('/api/projects/:projectId/email-activity', async (req, res) => {
   } catch (error) {
     console.error('Project email activity error:', error);
     res.status(500).json({ error: 'Failed to load project email activity' });
+  }
+});
+
+
+app.get('/api/storyboard-packs', async (_req, res) => {
+  try {
+    const state = await loadStoryboardPackState();
+    return res.json(state.published);
+  } catch (error) {
+    console.error('Storyboard pack published fetch error:', error);
+    return res.status(500).json({ error: 'Failed to load storyboard packs' });
+  }
+});
+
+app.get('/api/storyboard-packs/admin', async (_req, res) => {
+  try {
+    const state = await loadStoryboardPackState();
+    return res.json(state);
+  } catch (error) {
+    console.error('Storyboard pack admin fetch error:', error);
+    return res.status(500).json({ error: 'Failed to load storyboard packs admin state' });
+  }
+});
+
+app.put('/api/storyboard-packs/admin/draft', async (req, res) => {
+  try {
+    const manifest = req.body?.manifest as StoryboardPackManifestRecord | undefined;
+    if (!manifest || !Array.isArray(manifest.packs)) {
+      return res.status(400).json({ error: 'Invalid manifest payload' });
+    }
+    const updatedAt = new Date().toISOString();
+    const nextDraft = { ...manifest, updatedAt };
+    await ensureStoryboardPackSchema();
+    await pool.query(
+      `insert into storyboard_pack_manifests (id, draft_manifest, published_manifest, version, published_at, updated_at)
+       values (1, $1::jsonb, $2::jsonb, $3, $4::timestamptz, $5::timestamptz)
+       on conflict (id) do update set draft_manifest = excluded.draft_manifest, updated_at = excluded.updated_at`,
+      [JSON.stringify(nextDraft), JSON.stringify(nextDraft), Number(nextDraft.version || 1), nextDraft.publishedAt || null, updatedAt],
+    );
+    const state = await loadStoryboardPackState();
+    return res.json({ ...state, draft: nextDraft, updatedAt });
+  } catch (error) {
+    console.error('Storyboard pack draft save error:', error);
+    return res.status(500).json({ error: 'Failed to save storyboard draft' });
+  }
+});
+
+app.post('/api/storyboard-packs/admin/publish', async (_req, res) => {
+  try {
+    const state = await loadStoryboardPackState();
+    const now = new Date().toISOString();
+    const nextVersion = Number(state.version || 0) + 1;
+    const published = { ...state.draft, version: nextVersion, publishedAt: now, updatedAt: now };
+    await pool.query(
+      'update storyboard_pack_manifests set draft_manifest = $1::jsonb, published_manifest = $2::jsonb, version = $3, published_at = $4::timestamptz, updated_at = $5::timestamptz where id = 1',
+      [JSON.stringify(published), JSON.stringify(published), nextVersion, now, now],
+    );
+    return res.json({ draft: published, published, version: nextVersion, publishedAt: now, updatedAt: now });
+  } catch (error) {
+    console.error('Storyboard pack publish error:', error);
+    return res.status(500).json({ error: 'Failed to publish storyboard packs' });
+  }
+});
+
+app.post('/api/storyboard-packs/admin/upload-slot-image', async (req, res) => {
+  try {
+    const packId = readString(req.body?.packId);
+    const slotId = readString(req.body?.slotId);
+    const fileName = readString(req.body?.fileName) || 'storyboard-slot.png';
+    const imageBase64 = readString(req.body?.imageBase64);
+    if (!packId || !slotId || !imageBase64) {
+      return res.status(400).json({ error: 'Missing upload payload' });
+    }
+
+    const allowedExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+    const ext = path.extname(fileName).toLowerCase();
+    if (!allowedExtensions.has(ext)) {
+      return res.status(400).json({ error: 'Unsupported file type' });
+    }
+
+    const normalized = normalizeBase64Upload(imageBase64, fileName);
+    if (!normalized.mimeType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Invalid upload mime type' });
+    }
+    if (normalized.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Image exceeds 10MB limit' });
+    }
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const persistedFileName = `${Date.now()}-${safeFileName}`;
+    const relativeFilePath = `storyboard-packs/${packId}/${slotId}/${persistedFileName}`;
+    let durableImageUrl = `/api/storyboard-packs/admin/slot-image/${packId}/${slotId}/${persistedFileName}`;
+
+    if (storyboardPackR2Client) {
+      await storyboardPackR2Client.send(
+        new PutObjectCommand({
+          Bucket: storyboardPackR2Bucket,
+          Key: storyboardPackR2ObjectKey(packId, slotId, persistedFileName),
+          Body: normalized.buffer,
+          ContentType: normalized.mimeType,
+        }),
+      );
+      durableImageUrl = `/api/storyboard-packs/admin/slot-image/${packId}/${slotId}/${persistedFileName}?storage=r2`;
+    } else {
+      const absoluteFilePath = path.join(process.cwd(), 'backend', 'uploads', relativeFilePath);
+      await fs.mkdir(path.dirname(absoluteFilePath), { recursive: true });
+      await fs.writeFile(absoluteFilePath, normalized.buffer);
+    }
+
+    try {
+      const columns = await getTableColumns('user_files');
+      const insertColumns = ['id', 'user_id', 'file_name', 'file_path', 'file_type', 'file_size', 'mime_type', 'metadata'].filter((column) => columns.has(column));
+      if (columns.has('file_url')) {
+        insertColumns.splice(4, 0, 'file_url');
+      }
+      if (insertColumns.length > 0) {
+        const id = crypto.randomUUID();
+        const values = insertColumns.map((column) => {
+          switch (column) {
+            case 'id': return id;
+            case 'user_id': return 'system';
+            case 'file_name': return fileName;
+            case 'file_path': return relativeFilePath;
+            case 'file_url': return durableImageUrl;
+            case 'file_type': return 'storyboard_pack_slot';
+            case 'file_size': return String(normalized.size);
+            case 'mime_type': return normalized.mimeType;
+            case 'metadata': return JSON.stringify({ packId, slotId });
+            default: return null;
+          }
+        });
+        const placeholders = insertColumns.map((_, index) => `$${index + 1}`).join(', ');
+        await pool.query(`insert into user_files (${insertColumns.join(', ')}) values (${placeholders})`, values);
+      }
+    } catch (insertError) {
+      console.warn('Storyboard slot image persistence warning:', insertError);
+    }
+
+    return res.json({ imageUrl: durableImageUrl });
+  } catch (error) {
+    console.error('Storyboard slot image upload error:', error);
+    return res.status(500).json({ error: 'Failed to upload storyboard slot image' });
+  }
+});
+
+app.get('/api/storyboard-packs/admin/slot-image/:packId/:slotId/:fileName', async (req, res) => {
+  try {
+    const packId = readString(req.params.packId);
+    const slotId = readString(req.params.slotId);
+    const fileName = readString(req.params.fileName);
+    if (!packId || !slotId || !fileName) {
+      return res.status(400).json({ error: 'Invalid slot image path' });
+    }
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storage = readString(req.query.storage as string | undefined);
+    const key = storyboardPackR2ObjectKey(packId, slotId, safeFileName);
+    if (storage === 'r2' && storyboardPackR2Client) {
+      const object = await storyboardPackR2Client.send(
+        new GetObjectCommand({
+          Bucket: storyboardPackR2Bucket,
+          Key: key,
+        }),
+      );
+      if (!object.Body) {
+        return res.status(404).json({ error: 'Slot image not found' });
+      }
+      const arrayBuffer = await object.Body.transformToByteArray();
+      res.setHeader('Content-Type', object.ContentType || 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.send(Buffer.from(arrayBuffer));
+    }
+
+    const baseDir = path.join(process.cwd(), 'backend', 'uploads', 'storyboard-packs', packId, slotId);
+    const absoluteFilePath = path.join(baseDir, safeFileName);
+    if (!absoluteFilePath.startsWith(baseDir)) {
+      return res.status(400).json({ error: 'Invalid slot image path' });
+    }
+    const fileBuffer = await fs.readFile(absoluteFilePath);
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeType = ext === '.jpg' || ext === '.jpeg'
+      ? 'image/jpeg'
+      : ext === '.webp'
+        ? 'image/webp'
+        : 'image/png';
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.send(fileBuffer);
+  } catch (error) {
+    return res.status(404).json({ error: 'Slot image not found' });
+  }
+});
+
+// ── Frame Asset Package endpoints (dedicated save/retrieve with optimistic concurrency) ──
+
+app.put('/api/frames/:frameId/asset-package', async (req, res) => {
+  try {
+    const frameId = readString(req.params.frameId);
+    if (!frameId) {
+      return res.status(400).json({ error: 'frameId is required' });
+    }
+    if (!/^[\w-]+$/.test(frameId)) {
+      return res.status(400).json({ error: 'frameId contains invalid characters' });
+    }
+
+    const assetPackage = req.body?.assetPackage;
+    if (!assetPackage || typeof assetPackage !== 'object') {
+      return res.status(400).json({ error: 'assetPackage payload is required' });
+    }
+
+    // Validate version
+    if (typeof assetPackage.version !== 'number' || assetPackage.version < 1) {
+      return res.status(400).json({ error: 'assetPackage.version must be a positive integer' });
+    }
+
+    // Validate layers count
+    if (Array.isArray(assetPackage.layers) && assetPackage.layers.length > 64) {
+      return res.status(400).json({ error: `Too many layers (${assetPackage.layers.length}). Maximum is 64.` });
+    }
+
+    // Payload size check (rough JSON size)
+    const payloadSize = JSON.stringify(assetPackage).length;
+    if (payloadSize > 8 * 1024 * 1024) {
+      return res.status(413).json({ error: `Asset package too large (${(payloadSize / 1024 / 1024).toFixed(1)} MB). Maximum is 8 MB.` });
+    }
+
+    // Optimistic concurrency: check expectedVersion
+    const expectedVersion = req.body?.expectedVersion;
+
+    if (expectedVersion !== undefined && expectedVersion !== null) {
+      // Optimistic lock: only update if version matches
+      const result = await pool.query(
+        `UPDATE frame_asset_packages
+         SET asset_package = $1, version = version + 1, updated_at = NOW()
+         WHERE frame_id = $2 AND version = $3
+         RETURNING version`,
+        [JSON.stringify(assetPackage), frameId, expectedVersion]
+      );
+      if (result.rowCount === 0) {
+        // Check if the row exists at all
+        const existingRow = await pool.query(
+          'SELECT version FROM frame_asset_packages WHERE frame_id = $1',
+          [frameId]
+        );
+        if (existingRow.rowCount === 0) {
+          // Row doesn't exist — insert fresh
+          const insertResult = await pool.query(
+            `INSERT INTO frame_asset_packages (frame_id, asset_package, version)
+             VALUES ($1, $2, 1)
+             RETURNING version`,
+            [frameId, JSON.stringify(assetPackage)]
+          );
+          return res.json({ version: insertResult.rows[0].version, frameId });
+        }
+        return res.status(409).json({
+          error: 'Version conflict',
+          currentVersion: existingRow.rows[0].version,
+          expectedVersion,
+        });
+      }
+      return res.json({ version: result.rows[0].version, frameId });
+    }
+
+    // No optimistic lock — upsert
+    const result = await pool.query(
+      `INSERT INTO frame_asset_packages (frame_id, asset_package, version)
+       VALUES ($1, $2, 1)
+       ON CONFLICT (frame_id) DO UPDATE SET
+         asset_package = $2, version = frame_asset_packages.version + 1, updated_at = NOW()
+       RETURNING version`,
+      [frameId, JSON.stringify(assetPackage)]
+    );
+
+    return res.json({ version: result.rows[0].version, frameId });
+  } catch (error) {
+    console.error('Frame asset package save error:', error);
+    return res.status(500).json({ error: 'Failed to save frame asset package' });
+  }
+});
+
+app.get('/api/frames/:frameId/asset-package', async (req, res) => {
+  try {
+    const frameId = readString(req.params.frameId);
+    if (!frameId) {
+      return res.status(400).json({ error: 'frameId is required' });
+    }
+    if (!/^[\w-]+$/.test(frameId)) {
+      return res.status(400).json({ error: 'frameId contains invalid characters' });
+    }
+
+    // Table may not exist yet
+    try {
+      const result = await pool.query(
+        'SELECT asset_package, version, updated_at FROM frame_asset_packages WHERE frame_id = $1',
+        [frameId]
+      );
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: 'No asset package found for this frame' });
+      }
+      const row = result.rows[0];
+      return res.json({
+        frameId,
+        assetPackage: row.asset_package,
+        version: row.version,
+        updatedAt: row.updated_at,
+      });
+    } catch (tableError: unknown) {
+      const pgError = tableError as { code?: string };
+      if (pgError.code === '42P01') {
+        // Table doesn't exist yet — not an error
+        return res.status(404).json({ error: 'No asset package found for this frame' });
+      }
+      throw tableError;
+    }
+  } catch (error) {
+    console.error('Frame asset package fetch error:', error);
+    return res.status(500).json({ error: 'Failed to fetch frame asset package' });
   }
 });
 

@@ -26,6 +26,54 @@ export interface FrameAnnotationData {
 
 export type FrameImageSource = 'ai' | 'captured' | 'drawn' | 'uploaded';
 
+export interface FrameAssetLayer {
+  id: string;
+  kind: 'stroke' | 'vector' | 'annotation' | 'reference';
+  name: string;
+  visible: boolean;
+  opacity: number;
+  locked?: boolean;
+  blendMode?: string;
+  strokeData?: string;
+  vectorData?: string;
+  annotationData?: string;
+  referenceSrc?: string;
+}
+
+export interface FrameAssetRenderSettings {
+  storyboardPackSelection?: {
+    packId: string;
+    slotId: string;
+  };
+  cinematography?: {
+    shotType?: string;
+    cameraAngle?: string;
+    lens?: string;
+    movement?: string;
+  };
+  overlay?: {
+    showGrid?: boolean;
+    showSafeArea?: boolean;
+    notes?: string;
+  };
+}
+
+export interface FrameAssetExport {
+  id: string;
+  format: 'png' | 'jpeg' | 'webp';
+  dataUrl: string;
+  createdAt: string;
+}
+
+export interface FrameAssetPackage {
+  version: number;
+  baseBitmap?: string;
+  layers: FrameAssetLayer[];
+  renderSettings: FrameAssetRenderSettings;
+  exports: FrameAssetExport[];
+  updatedAt: string;
+}
+
 export interface ConceptArtIntentData {
   sceneIntent: string;
   environment: string;
@@ -465,6 +513,23 @@ export interface FrameDrawingData {
     color: string;
     opacity: number;
   };
+  storyboardPackSelection?: {
+    packId: string;
+    slotId: string;
+  };
+  cinematography?: {
+    shotType?: string;
+    cameraAngle?: string;
+    lens?: string;
+    movement?: string;
+  };
+  overlay?: {
+    showGrid?: boolean;
+    showSafeArea?: boolean;
+    notes?: string;
+  };
+  referenceImageSrc?: string;
+  assetPackage?: FrameAssetPackage;
   deviceType?: 'pencil' | 'touch' | 'mouse';
   conceptArt?: FrameConceptArtData;
   decisionData?: FrameDecisionData;

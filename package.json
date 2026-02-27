@@ -14,7 +14,10 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
     "dev:all": "concurrently -n \"frontend,backend\" \"npm run dev:frontend\" \"npm run dev:backend\"",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "test:storyboard-asset-package": "cd frontend && npm run test:storyboard-asset-package",
+    "test:storyboard-packs-api": "cd backend && npm run test:storyboard-packs",
+    "test:storyboard-r2-path": "cd backend && npm run test:storyboard-r2-path"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
