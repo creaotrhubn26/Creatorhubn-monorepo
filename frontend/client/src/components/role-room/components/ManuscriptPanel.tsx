@@ -261,7 +261,7 @@ import { ManuscriptTemplatePanel } from './ManuscriptTemplatePanel';
 import { manuscriptTemplateService } from '../services/manuscriptTemplateService';
 import { castingService } from '../services/castingService';
 import { characterProfileService, CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
-import { Template } from '../models/manuscriptTemplates';
+import { Template } from '../data/manuscriptTemplates';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 

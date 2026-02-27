@@ -114,6 +114,722 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Dev Compatibility APIs (legacy frontend paths) ────────────────────────
+// These lightweight routes keep older frontend modules functional in local dev.
+type LegacySettingEntry = {
+  userId: string;
+  projectId?: string;
+  namespace: string;
+  data: unknown;
+};
+
+type LegacyStoryLogicEntry = {
+  projectId: string;
+  storyLogic: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const legacySettingsStore = new Map<string, LegacySettingEntry>();
+const legacyCastingProjects = new Map<string, any>();
+const legacyShotListsByProject = new Map<string, any[]>();
+const legacyStoryLogicByProject = new Map<string, LegacyStoryLogicEntry>();
+const legacyFavoritesStore = new Map<string, string[]>();
+const legacyCandidatePool = new Map<string, any>();
+const legacyRolePool = new Map<string, any>();
+const legacyOffersByProject = new Map<string, any[]>();
+const legacyContractsByProject = new Map<string, any[]>();
+
+function legacySettingKey(userId: string, namespace: string, projectId?: string): string {
+  return `${userId}::${projectId || ''}::${namespace}`;
+}
+
+function legacyFavoritesKey(projectId: string, favoriteType: string): string {
+  return `${projectId}::${favoriteType}`;
+}
+
+function readQueryString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+app.get('/api/settings', (req, res) => {
+  const userId = readQueryString(req.query.user_id, 'default-user');
+  const namespace = readQueryString(req.query.namespace, '');
+  const projectId = typeof req.query.project_id === 'string' ? req.query.project_id : undefined;
+
+  if (!namespace) {
+    res.status(400).json({ error: 'namespace is required' });
+    return;
+  }
+
+  const entry = legacySettingsStore.get(legacySettingKey(userId, namespace, projectId));
+  res.json({ data: entry?.data ?? null });
+});
+
+app.put('/api/settings', (req, res) => {
+  const userId = readQueryString(req.body?.userId ?? req.body?.user_id, 'default-user');
+  const namespace = readQueryString(req.body?.namespace, '');
+  const projectId = typeof req.body?.projectId === 'string'
+    ? req.body.projectId
+    : typeof req.body?.project_id === 'string'
+      ? req.body.project_id
+      : undefined;
+
+  if (!namespace) {
+    res.status(400).json({ error: 'namespace is required' });
+    return;
+  }
+
+  const entry: LegacySettingEntry = {
+    userId,
+    projectId,
+    namespace,
+    data: req.body?.data ?? null,
+  };
+  legacySettingsStore.set(legacySettingKey(userId, namespace, projectId), entry);
+  res.json({ ok: true });
+});
+
+app.delete('/api/settings', (req, res) => {
+  const userId = readQueryString(req.query.user_id, 'default-user');
+  const namespace = readQueryString(req.query.namespace, '');
+  const projectId = typeof req.query.project_id === 'string' ? req.query.project_id : undefined;
+
+  if (!namespace) {
+    res.status(400).json({ error: 'namespace is required' });
+    return;
+  }
+
+  legacySettingsStore.delete(legacySettingKey(userId, namespace, projectId));
+  res.json({ ok: true });
+});
+
+app.get('/api/settings/list', (req, res) => {
+  const userId = readQueryString(req.query.user_id, 'default-user');
+  const namespacePrefix = readQueryString(req.query.namespace_prefix, '');
+  const projectId = typeof req.query.project_id === 'string' ? req.query.project_id : undefined;
+
+  const entries = Array.from(legacySettingsStore.values()).filter((entry) => {
+    if (entry.userId !== userId) return false;
+    if ((entry.projectId || '') !== (projectId || '')) return false;
+    return !namespacePrefix || entry.namespace.startsWith(namespacePrefix);
+  });
+
+  res.json({ entries });
+});
+
+app.get('/api/branding/settings', (_req, res) => {
+  res.json({ settings: {} });
+});
+
+app.get('/api/pages/:pageId/published', (req, res) => {
+  const pageId = req.params.pageId || 'unknown-page';
+  res.json({
+    pageId,
+    pageType: pageId,
+    sections: {
+      loginPanel: {
+        demoMode: true,
+      },
+    },
+    styles: {},
+    wiringConnections: [],
+    nodePositions: {},
+    metadata: {},
+    isPublished: true,
+    publishedAt: new Date().toISOString(),
+    publishedBy: 'local-dev',
+  });
+});
+
+app.get('/api/studio/scenes', (_req, res) => {
+  res.json({ scenes: [] });
+});
+
+app.get('/api/projects/:projectId/story-logic', (req, res) => {
+  const projectId = req.params.projectId;
+  const entry = legacyStoryLogicByProject.get(projectId);
+  res.json({
+    success: true,
+    storyLogic: entry?.storyLogic ?? null,
+    createdAt: entry?.createdAt ?? null,
+    updatedAt: entry?.updatedAt ?? null,
+  });
+});
+
+app.post('/api/projects/:projectId/story-logic', (req, res) => {
+  const projectId = req.params.projectId;
+  const existing = legacyStoryLogicByProject.get(projectId);
+  const now = new Date().toISOString();
+  const updatedAt = typeof req.body?.updatedAt === 'string' && req.body.updatedAt.trim()
+    ? req.body.updatedAt
+    : now;
+
+  const entry: LegacyStoryLogicEntry = {
+    projectId,
+    storyLogic: req.body?.storyLogic ?? null,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt,
+  };
+
+  legacyStoryLogicByProject.set(projectId, entry);
+  res.json({
+    success: true,
+    storyLogic: entry.storyLogic,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  });
+});
+
+app.delete('/api/projects/:projectId/story-logic', (req, res) => {
+  legacyStoryLogicByProject.delete(req.params.projectId);
+  res.json({ success: true });
+});
+
+app.get('/api/casting/health', (_req, res) => {
+  res.json({ status: 'healthy', mode: 'local-dev' });
+});
+
+app.get('/api/casting/projects', (_req, res) => {
+  res.json({ projects: Array.from(legacyCastingProjects.values()) });
+});
+
+app.post('/api/casting/projects', (req, res) => {
+  const payload = req.body || {};
+  const id = typeof payload.id === 'string' && payload.id.trim()
+    ? payload.id
+    : crypto.randomUUID();
+  const now = new Date().toISOString();
+  const existing = legacyCastingProjects.get(id) || {};
+  const project = {
+    ...existing,
+    ...payload,
+    id,
+    createdAt: existing.createdAt || now,
+    updatedAt: now,
+  };
+  legacyCastingProjects.set(id, project);
+  res.json(project);
+});
+
+app.get('/api/casting/projects/:projectId', (req, res) => {
+  const project = legacyCastingProjects.get(req.params.projectId);
+  if (!project) {
+    res.json(null);
+    return;
+  }
+  res.json(project);
+});
+
+app.put('/api/casting/projects/:projectId', (req, res) => {
+  const id = req.params.projectId;
+  const existing = legacyCastingProjects.get(id) || {};
+  const updated = {
+    ...existing,
+    ...req.body,
+    id,
+    createdAt: existing.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  legacyCastingProjects.set(id, updated);
+  res.json(updated);
+});
+
+app.delete('/api/casting/projects/:projectId', (req, res) => {
+  legacyCastingProjects.delete(req.params.projectId);
+  legacyShotListsByProject.delete(req.params.projectId);
+  res.status(204).end();
+});
+
+app.get('/api/casting/projects/:projectId/shot-lists', (req, res) => {
+  res.json(legacyShotListsByProject.get(req.params.projectId) || []);
+});
+
+app.post('/api/casting/projects/:projectId/shot-lists', (req, res) => {
+  const projectId = req.params.projectId;
+  const current = legacyShotListsByProject.get(projectId) || [];
+  const payload = req.body || {};
+  const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id : `shot-list-${Date.now()}`;
+  const next = [...current];
+  const idx = next.findIndex((item) => item.id === id);
+  const shotList = { ...payload, id, projectId, updatedAt: new Date().toISOString() };
+  if (idx >= 0) next[idx] = shotList;
+  else next.push(shotList);
+  legacyShotListsByProject.set(projectId, next);
+  res.json(shotList);
+});
+
+app.put('/api/casting/projects/:projectId/shot-lists/:shotListId', (req, res) => {
+  const projectId = req.params.projectId;
+  const shotListId = req.params.shotListId;
+  const current = legacyShotListsByProject.get(projectId) || [];
+  const idx = current.findIndex((item) => item.id === shotListId);
+  if (idx < 0) {
+    res.status(404).json({ error: 'Shot list not found' });
+    return;
+  }
+  current[idx] = {
+    ...current[idx],
+    ...req.body,
+    id: shotListId,
+    projectId,
+    updatedAt: new Date().toISOString(),
+  };
+  legacyShotListsByProject.set(projectId, current);
+  res.json(current[idx]);
+});
+
+app.post('/api/casting/projects/:projectId/shot-lists/reorder', (req, res) => {
+  const projectId = req.params.projectId;
+  const incoming = Array.isArray(req.body?.shotLists) ? req.body.shotLists : null;
+  if (incoming) {
+    legacyShotListsByProject.set(projectId, incoming.map((item: any) => ({ ...item, projectId })));
+  }
+  res.json({ ok: true });
+});
+
+// Favorites (legacy compatibility for Role/Candidate panels)
+app.get('/api/casting/favorites/:projectId/:favoriteType', (req, res) => {
+  const { projectId, favoriteType } = req.params;
+  const key = legacyFavoritesKey(projectId, favoriteType);
+  res.json({ favorites: legacyFavoritesStore.get(key) || [] });
+});
+
+app.post('/api/casting/favorites/:projectId/:favoriteType', (req, res) => {
+  const { projectId, favoriteType } = req.params;
+  const itemIds = Array.isArray(req.body?.itemIds)
+    ? req.body.itemIds.filter((id: unknown) => typeof id === 'string')
+    : [];
+  legacyFavoritesStore.set(legacyFavoritesKey(projectId, favoriteType), itemIds as string[]);
+  res.json({ ok: true, favorites: itemIds });
+});
+
+app.post('/api/casting/favorites/:projectId/:favoriteType/add', (req, res) => {
+  const { projectId, favoriteType } = req.params;
+  const itemId = typeof req.body?.itemId === 'string' ? req.body.itemId : '';
+  if (!itemId) {
+    res.status(400).json({ error: 'itemId is required' });
+    return;
+  }
+  const key = legacyFavoritesKey(projectId, favoriteType);
+  const current = new Set(legacyFavoritesStore.get(key) || []);
+  current.add(itemId);
+  const updated = Array.from(current);
+  legacyFavoritesStore.set(key, updated);
+  res.json({ ok: true, favorites: updated });
+});
+
+app.post('/api/casting/favorites/:projectId/:favoriteType/remove', (req, res) => {
+  const { projectId, favoriteType } = req.params;
+  const itemId = typeof req.body?.itemId === 'string' ? req.body.itemId : '';
+  if (!itemId) {
+    res.status(400).json({ error: 'itemId is required' });
+    return;
+  }
+  const key = legacyFavoritesKey(projectId, favoriteType);
+  const updated = (legacyFavoritesStore.get(key) || []).filter((id) => id !== itemId);
+  legacyFavoritesStore.set(key, updated);
+  res.json({ ok: true, favorites: updated });
+});
+
+// Candidate pool (legacy compatibility)
+app.get('/api/casting/candidate-pool', (_req, res) => {
+  res.json({ success: true, candidates: Array.from(legacyCandidatePool.values()) });
+});
+
+app.post('/api/casting/candidate-pool', (req, res) => {
+  const payload = req.body || {};
+  const candidateId = typeof payload.id === 'string' && payload.id.trim()
+    ? payload.id
+    : `pool-candidate-${Date.now()}`;
+  const now = new Date().toISOString();
+  const current = legacyCandidatePool.get(candidateId) || {};
+  const candidate = {
+    ...current,
+    ...payload,
+    id: candidateId,
+    createdAt: current.createdAt || now,
+    updatedAt: now,
+  };
+  legacyCandidatePool.set(candidateId, candidate);
+  res.status(201).json({ success: true, candidateId, candidate });
+});
+
+app.delete('/api/casting/candidate-pool/:candidateId', (req, res) => {
+  legacyCandidatePool.delete(req.params.candidateId);
+  res.json({ success: true });
+});
+
+app.post('/api/casting/candidate-pool/import-to-project', (req, res) => {
+  const poolCandidateId = typeof req.body?.poolCandidateId === 'string' ? req.body.poolCandidateId : '';
+  const targetProjectId = typeof req.body?.targetProjectId === 'string' ? req.body.targetProjectId : '';
+  const poolCandidate = legacyCandidatePool.get(poolCandidateId);
+  if (!poolCandidate || !targetProjectId) {
+    res.status(400).json({ success: false, error: 'Invalid candidate or target project' });
+    return;
+  }
+  const candidateId = `candidate-${Date.now()}`;
+  res.status(201).json({ success: true, candidateId });
+});
+
+app.post('/api/casting/candidates/copy-to-project', (req, res) => {
+  const candidateId = typeof req.body?.candidateId === 'string' ? req.body.candidateId : '';
+  const targetProjectId = typeof req.body?.targetProjectId === 'string' ? req.body.targetProjectId : '';
+  if (!candidateId || !targetProjectId) {
+    res.status(400).json({ success: false, error: 'candidateId and targetProjectId are required' });
+    return;
+  }
+  res.status(201).json({ success: true, candidateId: `candidate-copy-${Date.now()}` });
+});
+
+app.post('/api/casting/candidates/save-to-pool', (req, res) => {
+  const candidateId = typeof req.body?.candidateId === 'string' ? req.body.candidateId : '';
+  if (!candidateId) {
+    res.status(400).json({ success: false, error: 'candidateId is required' });
+    return;
+  }
+  const poolCandidateId = `pool-candidate-${Date.now()}`;
+  const now = new Date().toISOString();
+  legacyCandidatePool.set(poolCandidateId, {
+    id: poolCandidateId,
+    name: `Candidate ${candidateId}`,
+    tags: ['imported'],
+    photos: [],
+    videos: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  res.status(201).json({ success: true, poolCandidateId });
+});
+
+// Role pool (legacy compatibility)
+app.get('/api/casting/role-pool', (_req, res) => {
+  res.json({ success: true, roles: Array.from(legacyRolePool.values()) });
+});
+
+app.post('/api/casting/role-pool', (req, res) => {
+  const payload = req.body || {};
+  const roleId = typeof payload.id === 'string' && payload.id.trim()
+    ? payload.id
+    : `pool-role-${Date.now()}`;
+  const now = new Date().toISOString();
+  const current = legacyRolePool.get(roleId) || {};
+  const role = {
+    ...current,
+    ...payload,
+    id: roleId,
+    createdAt: current.createdAt || now,
+    updatedAt: now,
+  };
+  legacyRolePool.set(roleId, role);
+  res.status(201).json({ success: true, roleId, role });
+});
+
+app.delete('/api/casting/role-pool/:roleId', (req, res) => {
+  legacyRolePool.delete(req.params.roleId);
+  res.json({ success: true });
+});
+
+app.post('/api/casting/role-pool/import-to-project', (req, res) => {
+  const poolRoleId = typeof req.body?.poolRoleId === 'string' ? req.body.poolRoleId : '';
+  const targetProjectId = typeof req.body?.targetProjectId === 'string' ? req.body.targetProjectId : '';
+  const poolRole = legacyRolePool.get(poolRoleId);
+  if (!poolRole || !targetProjectId) {
+    res.status(400).json({ success: false, error: 'Invalid role or target project' });
+    return;
+  }
+  res.status(201).json({ success: true, roleId: `role-${Date.now()}` });
+});
+
+app.post('/api/casting/roles/save-to-pool', (req, res) => {
+  const roleId = typeof req.body?.roleId === 'string' ? req.body.roleId : '';
+  if (!roleId) {
+    res.status(400).json({ success: false, error: 'roleId is required' });
+    return;
+  }
+  const poolRoleId = `pool-role-${Date.now()}`;
+  const now = new Date().toISOString();
+  legacyRolePool.set(poolRoleId, {
+    id: poolRoleId,
+    name: `Role ${roleId}`,
+    requirements: {},
+    tags: ['imported'],
+    createdAt: now,
+    updatedAt: now,
+  });
+  res.status(201).json({ success: true, poolRoleId });
+});
+
+function findByIdInProjectMap(source: Map<string, any[]>, id: string): { projectId: string; index: number } | null {
+  for (const [projectId, items] of source.entries()) {
+    const index = items.findIndex((item) => item.id === id);
+    if (index >= 0) return { projectId, index };
+  }
+  return null;
+}
+
+function getProjectItems(source: Map<string, any[]>, projectId: string): any[] {
+  return source.get(projectId) || [];
+}
+
+function setProjectItems(source: Map<string, any[]>, projectId: string, items: any[]): void {
+  source.set(projectId, items);
+}
+
+// Offers + Contracts endpoints (shared for /api/casting and /api/role-room consumers)
+app.get('/api/casting/projects/:projectId/offers', (req, res) => {
+  res.json({ offers: getProjectItems(legacyOffersByProject, req.params.projectId) });
+});
+
+app.get('/api/casting/projects/:projectId/contracts', (req, res) => {
+  res.json({ contracts: getProjectItems(legacyContractsByProject, req.params.projectId) });
+});
+
+app.post('/api/casting/offers', (req, res) => {
+  const payload = req.body || {};
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId : '';
+  const candidateId = typeof payload.candidateId === 'string' ? payload.candidateId : '';
+  if (!projectId || !candidateId) {
+    res.status(400).json({ error: 'projectId and candidateId are required' });
+    return;
+  }
+  const offerId = `offer-${Date.now()}`;
+  const offer = {
+    id: offerId,
+    project_id: projectId,
+    candidate_id: candidateId,
+    role_id: payload.roleId || null,
+    offer_date: new Date().toISOString(),
+    response_deadline: payload.responseDeadline || null,
+    status: 'pending',
+    compensation: payload.compensation || null,
+    terms: payload.terms || null,
+    notes: payload.notes || null,
+  };
+  const current = getProjectItems(legacyOffersByProject, projectId);
+  setProjectItems(legacyOffersByProject, projectId, [...current, offer]);
+  res.status(201).json({ offerId });
+});
+
+app.put('/api/casting/offers/:offerId/respond', (req, res) => {
+  const location = findByIdInProjectMap(legacyOffersByProject, req.params.offerId);
+  if (!location) {
+    res.status(404).json({ error: 'Offer not found' });
+    return;
+  }
+  const current = getProjectItems(legacyOffersByProject, location.projectId);
+  const status = req.body?.status === 'declined' ? 'declined' : 'accepted';
+  current[location.index] = {
+    ...current[location.index],
+    status,
+    response_date: new Date().toISOString(),
+  };
+  setProjectItems(legacyOffersByProject, location.projectId, current);
+  res.json({ ok: true });
+});
+
+app.post('/api/casting/contracts', (req, res) => {
+  const payload = req.body || {};
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId : '';
+  const candidateId = typeof payload.candidateId === 'string' ? payload.candidateId : '';
+  if (!projectId || !candidateId) {
+    res.status(400).json({ error: 'projectId and candidateId are required' });
+    return;
+  }
+  const contractId = `contract-${Date.now()}`;
+  const contract = {
+    id: contractId,
+    project_id: projectId,
+    candidate_id: candidateId,
+    offer_id: payload.offerId || null,
+    role_id: payload.roleId || null,
+    contract_type: payload.contractType || null,
+    start_date: payload.startDate || null,
+    end_date: payload.endDate || null,
+    compensation: payload.compensation || null,
+    terms: payload.terms || null,
+    status: 'draft',
+    signed_date: null,
+  };
+  const current = getProjectItems(legacyContractsByProject, projectId);
+  setProjectItems(legacyContractsByProject, projectId, [...current, contract]);
+  res.status(201).json({ contractId });
+});
+
+app.put('/api/casting/contracts/:contractId/sign', (req, res) => {
+  const location = findByIdInProjectMap(legacyContractsByProject, req.params.contractId);
+  if (!location) {
+    res.status(404).json({ error: 'Contract not found' });
+    return;
+  }
+  const current = getProjectItems(legacyContractsByProject, location.projectId);
+  current[location.index] = {
+    ...current[location.index],
+    status: 'signed',
+    signed_date: new Date().toISOString(),
+  };
+  setProjectItems(legacyContractsByProject, location.projectId, current);
+  res.json({ ok: true });
+});
+
+app.get('/api/role-room/projects/:projectId/offers', (req, res) => {
+  res.json({ offers: getProjectItems(legacyOffersByProject, req.params.projectId) });
+});
+
+app.get('/api/role-room/projects/:projectId/contracts', (req, res) => {
+  res.json({ contracts: getProjectItems(legacyContractsByProject, req.params.projectId) });
+});
+
+app.post('/api/role-room/offers', (req, res) => {
+  const payload = req.body || {};
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId : '';
+  const candidateId = typeof payload.candidateId === 'string' ? payload.candidateId : '';
+  if (!projectId || !candidateId) {
+    res.status(400).json({ error: 'projectId and candidateId are required' });
+    return;
+  }
+  const offerId = `offer-${Date.now()}`;
+  const offer = {
+    id: offerId,
+    project_id: projectId,
+    candidate_id: candidateId,
+    role_id: payload.roleId || null,
+    offer_date: new Date().toISOString(),
+    response_deadline: payload.responseDeadline || null,
+    status: 'pending',
+    compensation: payload.compensation || null,
+    terms: payload.terms || null,
+    notes: payload.notes || null,
+  };
+  const current = getProjectItems(legacyOffersByProject, projectId);
+  setProjectItems(legacyOffersByProject, projectId, [...current, offer]);
+  res.status(201).json({ offerId });
+});
+
+app.put('/api/role-room/offers/:offerId/respond', (req, res) => {
+  const location = findByIdInProjectMap(legacyOffersByProject, req.params.offerId);
+  if (!location) {
+    res.status(404).json({ error: 'Offer not found' });
+    return;
+  }
+  const current = getProjectItems(legacyOffersByProject, location.projectId);
+  const status = req.body?.status === 'declined' ? 'declined' : 'accepted';
+  current[location.index] = {
+    ...current[location.index],
+    status,
+    response_date: new Date().toISOString(),
+  };
+  setProjectItems(legacyOffersByProject, location.projectId, current);
+  res.json({ ok: true });
+});
+
+app.post('/api/role-room/contracts', (req, res) => {
+  const payload = req.body || {};
+  const projectId = typeof payload.projectId === 'string' ? payload.projectId : '';
+  const candidateId = typeof payload.candidateId === 'string' ? payload.candidateId : '';
+  if (!projectId || !candidateId) {
+    res.status(400).json({ error: 'projectId and candidateId are required' });
+    return;
+  }
+  const contractId = `contract-${Date.now()}`;
+  const contract = {
+    id: contractId,
+    project_id: projectId,
+    candidate_id: candidateId,
+    offer_id: payload.offerId || null,
+    role_id: payload.roleId || null,
+    contract_type: payload.contractType || null,
+    start_date: payload.startDate || null,
+    end_date: payload.endDate || null,
+    compensation: payload.compensation || null,
+    terms: payload.terms || null,
+    status: 'draft',
+    signed_date: null,
+  };
+  const current = getProjectItems(legacyContractsByProject, projectId);
+  setProjectItems(legacyContractsByProject, projectId, [...current, contract]);
+  res.status(201).json({ contractId });
+});
+
+app.put('/api/role-room/contracts/:contractId/sign', (req, res) => {
+  const location = findByIdInProjectMap(legacyContractsByProject, req.params.contractId);
+  if (!location) {
+    res.status(404).json({ error: 'Contract not found' });
+    return;
+  }
+  const current = getProjectItems(legacyContractsByProject, location.projectId);
+  current[location.index] = {
+    ...current[location.index],
+    status: 'signed',
+    signed_date: new Date().toISOString(),
+  };
+  setProjectItems(legacyContractsByProject, location.projectId, current);
+  res.json({ ok: true });
+});
+
+app.post('/api/casting/demo/troll/offers-contracts', (_req, res) => {
+  res.json({ success: true, created: 0 });
+});
+
+app.post('/api/demo/troll/initialize-all', (_req, res) => {
+  const fallbackProject = {
+    id: 'troll-project-2026',
+    name: 'TROLL',
+    description: 'Norsk eventyrfilm regissert av Roar Uthaug',
+    crew: [],
+    locations: [],
+  };
+  const project =
+    legacyCastingProjects.get('troll-project-2026') ||
+    legacyCastingProjects.get('troll') ||
+    Array.from(legacyCastingProjects.values())[0] ||
+    fallbackProject;
+
+  const crew = Array.isArray(project?.crew) ? project.crew : [];
+  const locations = Array.isArray(project?.locations) ? project.locations : [];
+
+  res.json({
+    success: true,
+    areas: {
+      project: {
+        status: 'loaded',
+        count: 1,
+        items: [project],
+      },
+      crew: {
+        status: 'loaded',
+        count: crew.length,
+        items: crew,
+      },
+      locations: {
+        status: 'loaded',
+        count: locations.length,
+        items: locations,
+      },
+      split_sheets: {
+        status: 'loaded',
+        count: 0,
+        items: [],
+      },
+      offers: {
+        status: 'loaded',
+        count: 0,
+        items: [],
+      },
+      contracts: {
+        status: 'loaded',
+        count: 0,
+        items: [],
+      },
+      consents: {
+        status: 'loaded',
+        count: 0,
+        items: [],
+      },
+    },
+  });
+});
+
 type FirmwarePriority = 'critical' | 'high' | 'medium' | 'low';
 type EquipmentType =
   | 'camera'

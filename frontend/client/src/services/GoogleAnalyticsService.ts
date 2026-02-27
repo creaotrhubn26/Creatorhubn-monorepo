@@ -34,7 +34,10 @@ export class GoogleAnalyticsService {
       this.isInitialized = true;
       console.log('✅ Google Analytics 4 initialized with property: ', this.GA4_PROPERTY_ID);
     } else {
-      console.warn('⚠️ Google Analytics 4 not available');
+      // In local dev, GA script is often intentionally absent.
+      if (import.meta.env.PROD) {
+        console.warn('⚠️ Google Analytics 4 not available');
+      }
     }
   }
 

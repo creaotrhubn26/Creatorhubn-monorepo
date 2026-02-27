@@ -6,13 +6,12 @@
 import {
   Template,
   TemplateLibrary,
-  TemplateCategory,
   AutoCompleteSuggestion,
   buildTemplateLibrary,
   AUTO_COMPLETE_SUGGESTIONS,
   STRUCTURE_TEMPLATES,
   StructureTemplate
-} from '../models/manuscriptTemplates';
+} from '../data/manuscriptTemplates';
 import settingsService, { getCurrentUserId } from './settingsService';
 
 const STORAGE_KEY = 'virtualStudio_manuscriptTemplates';

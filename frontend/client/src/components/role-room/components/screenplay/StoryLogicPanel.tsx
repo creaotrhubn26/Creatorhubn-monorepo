@@ -18,6 +18,7 @@ import {
   TextField,
   Button,
   Chip,
+  Badge,
   LinearProgress,
   Alert,
   Accordion,
@@ -284,6 +285,37 @@ const AUDIENCE_AGES = [
   'Adult (26-45)', 'Mature Adult (46-65)', 'Senior (65+)', 'All Ages'
 ];
 
+const LEGACY_SUBGENRE_MAP: Record<string, string> = {
+  'Monster/Creature Feature': 'Mythological',
+};
+
+const LEGACY_AUDIENCE_AGE_MAP: Record<string, string> = {
+  '12+': 'Teen (13-17)',
+};
+
+function normalizeConceptSelections(concept: ConceptData): ConceptData {
+  const normalizedGenre = GENRES.includes(concept.genre) ? concept.genre : '';
+  const validSubGenres = normalizedGenre ? (SUB_GENRES[normalizedGenre] || []) : [];
+  const mappedSubGenre = LEGACY_SUBGENRE_MAP[concept.subGenre] ?? concept.subGenre;
+  const normalizedSubGenre = mappedSubGenre && validSubGenres.includes(mappedSubGenre) ? mappedSubGenre : '';
+  const mappedAudienceAge = LEGACY_AUDIENCE_AGE_MAP[concept.audienceAge] ?? concept.audienceAge;
+  const normalizedAudienceAge = AUDIENCE_AGES.includes(mappedAudienceAge) ? mappedAudienceAge : '';
+
+  return {
+    ...concept,
+    genre: normalizedGenre,
+    subGenre: normalizedSubGenre,
+    audienceAge: normalizedAudienceAge,
+  };
+}
+
+function normalizeStoryLogicState(input: StoryLogicState): StoryLogicState {
+  return {
+    ...input,
+    concept: normalizeConceptSelections(input.concept),
+  };
+}
+
 const _EMOTIONAL_JOURNEY_BEATS = [
   'Hope', 'Fear', 'Joy', 'Sadness', 'Anger', 'Surprise', 
   'Disgust', 'Trust', 'Anticipation', 'Love', 'Shame', 
@@ -434,10 +466,10 @@ const TROLL_DEMO_STATE: StoryLogicState = {
   concept: {
     corePremise: 'An ancient troll awakens in modern Norway, forcing a paleontologist to bridge the gap between myth and reality before the military destroys the last remnant of Norse legend.',
     genre: 'Fantasy',
-    subGenre: 'Monster/Creature Feature',
+    subGenre: 'Mythological',
     tone: ['Intense', 'Suspenseful', 'Nostalgic'],
     targetAudience: 'Families and fantasy enthusiasts who love Nordic mythology',
-    audienceAge: '12+',
+    audienceAge: 'Teen (13-17)',
     whyNow: 'Rising interest in Scandinavian mythology (Vikings, God of War), climate anxiety awakening dormant threats, and the universal theme of humanity\'s relationship with nature and forgotten traditions.',
     uniqueAngle: 'Unlike typical monster movies where creatures are purely antagonistic, the troll is a sympathetic being seeking home - making the real conflict about preservation vs. destruction of cultural heritage.',
     marketComparables: 'Godzilla (2014) meets The Water Horse, with themes similar to Princess Mononoke. Norwegian kaiju with heart.',
@@ -824,13 +856,38 @@ const PhaseHeader: React.FC<PhaseHeaderProps> = ({ number, title, purpose, icon,
         </Typography>
       </Box>
       <Tooltip title={locked ? `Unlock ${title}` : status === 'ready' ? `Lock ${title} (ready)` : `Lock ${title}`}>
-        <IconButton
-          onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
-          size="small"
-          sx={{ color: locked ? '#f59e0b' : '#6b7280', flexShrink: 0 }}
+        <Box
+          component="span"
+          role="button"
+          tabIndex={0}
+          aria-label={locked ? `Unlock ${title}` : `Lock ${title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleLock();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleLock();
+            }
+          }}
+          sx={{
+            width: 30,
+            height: 30,
+            borderRadius: '50%',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: locked ? '#f59e0b' : '#6b7280',
+            flexShrink: 0,
+            cursor: 'pointer',
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
+            '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: 2 },
+          }}
         >
           {locked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
-        </IconButton>
+        </Box>
       </Tooltip>
     </Box>
   );
@@ -1113,14 +1170,16 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
             locks: savedData.locks || { concept: false, logline: false, theme: false },
             versions: savedData.versions || [],
           };
-          setState(migrated);
-          lastSavedSnapshot.current = JSON.stringify(migrated);
+          const normalized = normalizeStoryLogicState(migrated);
+          setState(normalized);
+          lastSavedSnapshot.current = JSON.stringify(normalized);
           setSaveStatus('saved');
           console.log('✓ Loaded story logic from database for project:', projectId);
         } else if (projectId.toLowerCase().includes('troll')) {
-          setState(TROLL_DEMO_STATE);
-          await storyLogicService.saveStoryLogic(projectId, TROLL_DEMO_STATE);
-          lastSavedSnapshot.current = JSON.stringify(TROLL_DEMO_STATE);
+          const normalizedDemo = normalizeStoryLogicState(TROLL_DEMO_STATE);
+          setState(normalizedDemo);
+          await storyLogicService.saveStoryLogic(projectId, normalizedDemo);
+          lastSavedSnapshot.current = JSON.stringify(normalizedDemo);
           console.log('🎬 Initialized TROLL story logic demo data');
         }
       } catch (error) {
@@ -1175,6 +1234,19 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     }
     prevPremiseRef.current = curr;
   }, [state.concept.corePremise]);
+
+  // Save version snapshot (#11)
+  const saveVersion = useCallback((label?: string) => {
+    setState(prev => {
+      const version: StoryVersion = {
+        id: Date.now().toString(36),
+        label: label || `v${prev.versions.length + 1}`,
+        timestamp: new Date().toISOString(),
+        snapshot: JSON.stringify({ concept: prev.concept, logline: prev.logline, theme: prev.theme }),
+      };
+      return { ...prev, versions: [...prev.versions, version] };
+    });
+  }, []);
 
   // Apply template (#9)
   const applyTemplate = useCallback((template: StoryTemplate) => {
@@ -1273,6 +1345,13 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
     return raw;
   }, [conceptValidation.score, loglineValidation.score, themeValidation.score]);
 
+  const availableSubGenres = useMemo(
+    () => SUB_GENRES[state.concept.genre] || [],
+    [state.concept.genre]
+  );
+  const safeSubGenreValue = availableSubGenres.includes(state.concept.subGenre) ? state.concept.subGenre : '';
+  const safeAudienceAgeValue = AUDIENCE_AGES.includes(state.concept.audienceAge) ? state.concept.audienceAge : '';
+
   // Generate logline from components — best-effort with placeholders for missing fields (D)
   const generateLogline = useCallback(() => {
     if (state.locks.logline) return;
@@ -1321,19 +1400,6 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
       ...prev,
       locks: { ...prev.locks, [phase]: !prev.locks[phase] },
     }));
-  }, []);
-
-  // Save version snapshot (#11)
-  const saveVersion = useCallback((label?: string) => {
-    setState(prev => {
-      const version: StoryVersion = {
-        id: Date.now().toString(36),
-        label: label || `v${prev.versions.length + 1}`,
-        timestamp: new Date().toISOString(),
-        snapshot: JSON.stringify({ concept: prev.concept, logline: prev.logline, theme: prev.theme }),
-      };
-      return { ...prev, versions: [...prev.versions, version] };
-    });
   }, []);
 
   // Restore version (#11)
@@ -1740,7 +1806,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               <FormControl fullWidth>
                 <InputLabel sx={{ color: '#9ca3af' }}>Sub-Genre</InputLabel>
                 <Select
-                  value={state.concept.subGenre}
+                  value={safeSubGenreValue}
                   label="Sub-Genre"
                   onChange={(e) => updateConcept('subGenre', e.target.value)}
                   disabled={state.locks.concept || !state.concept.genre}
@@ -1751,7 +1817,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
                   }}
                 >
-                  {(SUB_GENRES[state.concept.genre] || []).map((sub) => (
+                  {availableSubGenres.map((sub) => (
                     <MenuItem key={sub} value={sub}>{sub}</MenuItem>
                   ))}
                 </Select>
@@ -1867,7 +1933,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
               <FormControl fullWidth>
                 <InputLabel sx={{ color: '#9ca3af' }}>Audience Age Range</InputLabel>
                 <Select
-                  value={state.concept.audienceAge}
+                  value={safeAudienceAgeValue}
                   label="Audience Age Range"
                   onChange={(e) => updateConcept('audienceAge', e.target.value)}
                   disabled={state.locks.concept}

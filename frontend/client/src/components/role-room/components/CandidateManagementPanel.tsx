@@ -271,6 +271,11 @@ function CandidateManagementPanelInner({
   // Load favorites from database (with settings cache fallback)
   useEffect(() => {
     const loadFavorites = async () => {
+      if (!projectId) {
+        setFavorites(new Set());
+        setFavoritesLoaded(true);
+        return;
+      }
       try {
         const { favoritesApi } = await import('@/services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'candidate');
@@ -297,6 +302,7 @@ function CandidateManagementPanelInner({
   // Save favorites to database and settings cache
   useEffect(() => {
     const saveFavorites = async () => {
+      if (!projectId) return;
       const values = [...favorites];
       await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
       try {

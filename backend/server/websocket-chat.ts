@@ -24,8 +24,28 @@ interface ConnectedClient {
 }
 
 export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<string, ConnectedClient>();
+
+  server.on('upgrade', (req, socket, head) => {
+    try {
+      const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+      const pathname = url.pathname || '/';
+      if (pathname === '/ws' || pathname.startsWith('/ws/')) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit('connection', ws, req);
+        });
+        return;
+      }
+    } catch {
+      // Ignore malformed upgrade URL and let other listeners handle it.
+    }
+
+    // If this is the only upgrade listener, proactively close unsupported paths.
+    if (server.listeners('upgrade').length <= 1) {
+      socket.destroy();
+    }
+  });
 
   wss.on('connection', (ws, req) => {
     const clientId = crypto.randomUUID();
@@ -144,6 +164,15 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
               timestamp: new Date().toISOString(),
               userId: data.userId || userId,
             }, clientId);
+            break;
+          }
+
+          case 'ping': {
+            ws.send(JSON.stringify({
+              type: 'pong',
+              payload: { projectId: data.projectId || null },
+              timestamp: new Date().toISOString(),
+            }));
             break;
           }
 

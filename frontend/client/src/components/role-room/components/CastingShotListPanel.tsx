@@ -143,6 +143,21 @@ type SortField = 'scene' | 'shots' | 'updated';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table' | '2d-planner';
 
+const STORYBOARD_TEMPLATE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'cinematic', label: 'Filmisk - Dramatisk kinolook' },
+  { value: 'documentary', label: 'Dokumentar - Naturlig stil' },
+  { value: 'commercial', label: 'Reklame - Profesjonelt' },
+  { value: 'drama', label: 'Drama/TV-serie - Varme toner' },
+  { value: 'music_video', label: 'Musikkvideo - Kreativ' },
+  { value: 'news', label: 'Nyhetsreportasje - Nøytral' },
+  { value: 'horror', label: 'Skrekk/Thriller - Mørk' },
+  { value: 'comedy', label: 'Komedie - Lys stemning' },
+  { value: 'action', label: 'Action - Dynamisk' },
+  { value: 'noir', label: 'Film Noir - Klassisk' },
+  { value: 'romantic', label: 'Romantisk - Myk stemning' },
+  { value: 'sci_fi', label: 'Sci-Fi - Futuristisk' },
+];
+
 interface SortableShotItemProps {
   id: string;
   children: ReactNode;
@@ -636,6 +651,18 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     );
   }, [storyboards, availableScenes]);
 
+  // Resolve a cover image for storyboard pack cards and slot previews.
+  const getStoryboardPackPreviewImage = (
+    shotList: ShotList,
+    relatedStoryboard?: { frames?: Array<{ thumbnailUrl?: string; imageUrl?: string }> }
+  ): string | undefined => {
+    const storyboardFrameImage = relatedStoryboard?.frames?.find((frame) => frame.thumbnailUrl || frame.imageUrl);
+    if (storyboardFrameImage) return storyboardFrameImage.thumbnailUrl || storyboardFrameImage.imageUrl;
+
+    const shotImage = shotList.shots.find((shot) => shot.imageUrl);
+    return shotImage?.imageUrl;
+  };
+
   const getShotTypeLabel = (type: ShotType): string => {
     const labels: Record<ShotType, string> = {
       'Wide': 'Totalbilde',
@@ -1008,7 +1035,13 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   };
 
   const [selectedTemplate, setSelectedTemplate] = useState<string>('cinematic');
+  const [packTemplateByShotListId, setPackTemplateByShotListId] = useState<Record<string, string>>({});
   const [showAdvancedCamera, setShowAdvancedCamera] = useState(false);
+
+  const getPackTemplate = useCallback(
+    (shotListId: string): string => packTemplateByShotListId[shotListId] || 'cinematic',
+    [packTemplateByShotListId]
+  );
 
   const handleGenerateImage = async () => {
     if (!currentShotListId || !shotFormData.description) {
@@ -1052,7 +1085,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     }
   };
 
-  const handleAutoGenerateStoryboardImages = async (shotList: ShotList) => {
+  const handleAutoGenerateStoryboardImages = async (shotList: ShotList, template: string = 'cinematic') => {
     const shotsWithDescription = shotList.shots.filter(s => s.description && s.description.trim());
     
     if (shotsWithDescription.length === 0) {
@@ -1079,7 +1112,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       try {
         const result = await storyboardAIGenerationService.generateFrame({
           prompt: shot.description || '',
-          template: 'cinematic',
+          template,
           cameraAngle: shot.cameraAngle?.toLowerCase().replace(/\s+/g, '-'),
           cameraMovement: shot.cameraMovement?.toLowerCase(),
           additionalNotes: shot.notes,
@@ -1140,7 +1173,11 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
 
   const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null);
 
-  const handleRegenerateSingleImage = async (shotList: ShotList, shot: CastingShot) => {
+  const handleRegenerateSingleImage = async (
+    shotList: ShotList,
+    shot: CastingShot,
+    template: string = 'cinematic'
+  ) => {
     if (!shot.description || !shot.description.trim()) {
       toast.showWarning('Legg til beskrivelse for å generere bilde');
       return;
@@ -1151,7 +1188,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     try {
       const result = await storyboardAIGenerationService.generateFrame({
         prompt: shot.description,
-        template: 'cinematic',
+        template,
         cameraAngle: shot.cameraAngle?.toLowerCase().replace(/\s+/g, '-'),
         cameraMovement: shot.cameraMovement?.toLowerCase(),
         additionalNotes: shot.notes,
@@ -3876,7 +3913,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                       <span>
                                         <IconButton
                                           size="small"
-                                          onClick={() => handleRegenerateSingleImage(shotList, shot)}
+                                          onClick={() => handleRegenerateSingleImage(shotList, shot, getPackTemplate(shotList.id))}
                                           disabled={regeneratingShotId === shot.id}
                                           sx={{
                                             position: 'absolute',
@@ -3914,7 +3951,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                       transition: 'opacity 0.2s',
                                       '&:hover': { opacity: 1 },
                                     }}
-                                    onClick={() => handleRegenerateSingleImage(shotList, shot)}
+                                    onClick={() => handleRegenerateSingleImage(shotList, shot, getPackTemplate(shotList.id))}
                                   >
                                     {regeneratingShotId === shot.id ? (
                                       <MUICircularProgress size={12} sx={{ color: '#00d4ff' }} />
@@ -5355,18 +5392,11 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                         '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.87)' },
                       }}
                     >
-                      <MenuItem value="cinematic">Filmisk - Dramatisk kinolook</MenuItem>
-                      <MenuItem value="documentary">Dokumentar - Naturlig stil</MenuItem>
-                      <MenuItem value="commercial">Reklame - Profesjonelt</MenuItem>
-                      <MenuItem value="drama">Drama/TV-serie - Varme toner</MenuItem>
-                      <MenuItem value="music_video">Musikkvideo - Kreativ</MenuItem>
-                      <MenuItem value="news">Nyhetsreportasje - Nøytral</MenuItem>
-                      <MenuItem value="horror">Skrekk/Thriller - Mørk</MenuItem>
-                      <MenuItem value="comedy">Komedie - Lys stemning</MenuItem>
-                      <MenuItem value="action">Action - Dynamisk</MenuItem>
-                      <MenuItem value="noir">Film Noir - Klassisk</MenuItem>
-                      <MenuItem value="romantic">Romantisk - Myk stemning</MenuItem>
-                      <MenuItem value="sci_fi">Sci-Fi - Futuristisk</MenuItem>
+                      {STORYBOARD_TEMPLATE_OPTIONS.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                   <Button
@@ -5475,6 +5505,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                 <Stack spacing={1}>
                   {selectedShotListForStoryboard.shots.map((shot) => {
                     const roleName = getRoleName(shot.roleId);
+                    const shotPreview = shot.imageUrl;
                     return (
                       <Box
                         key={shot.id}
@@ -5521,6 +5552,33 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                           }}
                           sx={{ color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#00d4ff' } }}
                         />
+                        <Box
+                          sx={{
+                            width: 74,
+                            height: 48,
+                            borderRadius: 1,
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                            bgcolor: 'rgba(255,255,255,0.03)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {shotPreview ? (
+                            <Box
+                              component="img"
+                              src={shotPreview}
+                              alt={`Shot ${shot.shotType}`}
+                              sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            />
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>
+                              Slot image
+                            </Typography>
+                          )}
+                        </Box>
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="body2" sx={{ color: '#fff', fontWeight: 500 }}>
                             {getShotTypeLabel(shot.shotType)} - {shot.cameraAngle}
@@ -5976,6 +6034,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
           <Grid container spacing={2}>
             {shotLists.map((sl) => {
               const relatedStoryboard = findRelatedStoryboard(sl);
+              const storyboardPackImage = getStoryboardPackPreviewImage(sl, relatedStoryboard);
               return (
                 <Grid key={sl.id} size={{ xs: 12, sm: 6, md: 4 }}>
                   <Card
@@ -5986,6 +6045,36 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                     }}
                   >
                     <CardContent>
+                      <Box
+                        sx={{
+                          mb: 1.5,
+                          borderRadius: 1.5,
+                          overflow: 'hidden',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          height: 132,
+                          bgcolor: 'rgba(255,255,255,0.03)',
+                          position: 'relative',
+                        }}
+                      >
+                        {storyboardPackImage ? (
+                          <Box
+                            component="img"
+                            src={storyboardPackImage}
+                            alt={`${getSceneName(sl.sceneId, sl.sceneName)} storyboard preview`}
+                            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          />
+                        ) : (
+                          <Stack
+                            alignItems="center"
+                            justifyContent="center"
+                            spacing={0.5}
+                            sx={{ height: '100%', color: 'rgba(255,255,255,0.55)' }}
+                          >
+                            <StoryboardIcon sx={{ fontSize: 26, opacity: 0.7 }} />
+                            <Typography variant="caption">Slot image</Typography>
+                          </Stack>
+                        )}
+                      </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                         <Typography sx={{ color: '#fff', fontWeight: 600 }}>
                           {getSceneName(sl.sceneId, sl.sceneName)}
@@ -6001,6 +6090,29 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', display: 'block', mb: 2 }}>
                         {sl.shots.length} shots
                       </Typography>
+                      <FormControl size="small" fullWidth sx={{ mb: 1.5 }}>
+                        <Select
+                          value={getPackTemplate(sl.id)}
+                          onChange={(e) =>
+                            setPackTemplateByShotListId((prev) => ({
+                              ...prev,
+                              [sl.id]: e.target.value as string,
+                            }))
+                          }
+                          sx={{
+                            color: '#fff',
+                            fontSize: '12px',
+                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.87)' },
+                          }}
+                        >
+                          {STORYBOARD_TEMPLATE_OPTIONS.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>
+                              {option.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                       <Stack direction="row" spacing={1}>
                         {/* Add Shot Button */}
                         <Button
@@ -6052,7 +6164,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                             disabled={generatingStoryboardImages[sl.id]}
                             onClick={() => {
                               setShowStoryboardManager(false);
-                              handleAutoGenerateStoryboardImages(sl);
+                              handleAutoGenerateStoryboardImages(sl, getPackTemplate(sl.id));
                             }}
                             startIcon={generatingStoryboardImages[sl.id] ? <MUICircularProgress size={14} /> : <AutoAwesomeIcon />}
                           >

@@ -16,7 +16,7 @@ const INITIAL_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 
 /**
- * Opens a WebSocket to `/ws/casting?projectId=<id>` and calls
+ * Opens a WebSocket to `/ws?projectId=<id>` and calls
  * `onRemoteChange()` whenever a candidate update / reload event arrives.
  *
  * The hook handles:
@@ -52,7 +52,9 @@ export function useKanbanRealtime(
 
     // Derive WS URL from current page origin
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${window.location.host}/ws/casting?projectId=${encodeURIComponent(projectId)}`;
+    const room = encodeURIComponent(`casting:${projectId}`);
+    const userId = encodeURIComponent(`casting-ui-${projectId}`);
+    const url = `${protocol}//${window.location.host}/ws?projectId=${encodeURIComponent(projectId)}&room=${room}&role=casting&userId=${userId}`;
 
     let ws: WebSocket;
     try {

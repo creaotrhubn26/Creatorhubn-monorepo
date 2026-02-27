@@ -128,7 +128,9 @@ export function useProfessionConfigs() {
   });
 
   // Fetch dashboard configurations for each profession
-  const professionIds = rawProfessions?.professions?.map((p: any) => p.professionId) || [];
+  const professionIds = (rawProfessions?.professions || [])
+    .map((p: any) => p?.professionId)
+    .filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0);
   
   const dashboardConfigQueries = useQuery({
     queryKey: ['/api/professions/dashboard-configs', professionIds],
@@ -138,6 +140,7 @@ export function useProfessionConfigs() {
       const configs: Record<string, any> = {};
       
       for (const professionId of professionIds) {
+        if (!professionId) continue;
         try {
           const config = await apiRequest(`/api/professions/${professionId}/dashboard-config`);
           configs[professionId] = config;
@@ -215,4 +218,3 @@ export function useProfessionConfigs() {
     hasData: Object.keys(transformedConfigs).length > 0
   };
 }
-

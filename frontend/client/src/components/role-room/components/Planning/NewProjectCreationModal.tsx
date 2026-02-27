@@ -3578,8 +3578,12 @@ export default function NewProjectCreationModal({
             </Typography>
             {trollInitStatus === 'loading' && <CircularProgress size={24} />}
             <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
-              <Tooltip title="Story Arc"><StoryArcIcon sx={{ fontSize: 20, color: '#e91e63' }} /></Tooltip>
-              <Tooltip title="Kamera"><CameraIcon sx={{ fontSize: 20, color: '#00d4ff' }} /></Tooltip>
+              <Tooltip title="Story Arc">
+                <span><StoryArcIcon sx={{ fontSize: 20, color: '#e91e63' }} /></span>
+              </Tooltip>
+              <Tooltip title="Kamera">
+                <span><CameraIcon sx={{ fontSize: 20, color: '#00d4ff' }} /></span>
+              </Tooltip>
             </Stack>
           </Stack>
         </DialogContent>

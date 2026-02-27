@@ -118,6 +118,31 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   const handleStartClick   = () => setLoginDialogOpen(true);
   const handleLoginSuccess = () => { setLoginDialogOpen(false); window.location.reload(); };
 
+  // The standalone casting shell sets html/body overflow:hidden.
+  // Re-enable vertical scrolling while the landing page is mounted.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevHtmlOverflowY = html.style.overflowY;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyOverflowY = body.style.overflowY;
+
+    html.style.overflow = 'auto';
+    html.style.overflowY = 'auto';
+    body.style.overflow = 'auto';
+    body.style.overflowY = 'auto';
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      html.style.overflowY = prevHtmlOverflowY;
+      body.style.overflow = prevBodyOverflow;
+      body.style.overflowY = prevBodyOverflowY;
+    };
+  }, []);
+
   return (
     <Box sx={{
       width: '100%',

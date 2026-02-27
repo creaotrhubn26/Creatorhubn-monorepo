@@ -3,11 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { Box, IconButton, CssBaseline } from '@mui/material';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import { Brightness4 as DarkModeIcon, Brightness7 as LightModeIcon } from '@mui/icons-material';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
 import { ToastProvider } from './components/ToastStack';
 import authSessionService from './services/authSessionService';
 import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
+import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { DemoModeProvider } from '@/contexts/DemoModeContext';
 
 // Lightweight theme context for standalone casting app (no auth/integration deps)
 const CastingThemeContext = createContext<{ mode: 'light' | 'dark'; toggleTheme: () => void }>({
@@ -15,6 +19,15 @@ const CastingThemeContext = createContext<{ mode: 'light' | 'dark'; toggleTheme:
   toggleTheme: () => {},
 });
 const useCastingTheme = () => useContext(CastingThemeContext);
+
+const castingQueryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function CastingStandaloneAppContent() {
   // Check if user is logged in - determines which view to show
@@ -154,12 +167,20 @@ function CastingStandaloneApp() {
   }), [mode]);
 
   return (
-    <CastingThemeContext.Provider value={{ mode, toggleTheme }}>
-      <MuiThemeProvider theme={muiTheme}>
-        <CssBaseline />
-        <CastingStandaloneAppContent />
-      </MuiThemeProvider>
-    </CastingThemeContext.Provider>
+    <QueryClientProvider client={castingQueryClient}>
+      <DemoModeProvider>
+        <CastingThemeContext.Provider value={{ mode, toggleTheme }}>
+          <MuiThemeProvider theme={muiTheme}>
+            <CssBaseline />
+            <AuthProvider>
+              <EnhancedMasterIntegrationProvider>
+                <CastingStandaloneAppContent />
+              </EnhancedMasterIntegrationProvider>
+            </AuthProvider>
+          </MuiThemeProvider>
+        </CastingThemeContext.Provider>
+      </DemoModeProvider>
+    </QueryClientProvider>
   );
 }
 
