@@ -1,4 +1,5 @@
 import React, { useState, useId, useMemo, useEffect, memo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Typography,
@@ -11,7 +12,6 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -46,8 +46,6 @@ import {
   GridView as GridViewIcon,
   ViewList as TableViewIcon,
   FileDownload as ExportIcon,
-  FileDownload as DownloadIcon,
-  Close as CloseIcon,
   ContentCopy as DuplicateIcon,
   People as PeopleIcon,
   Movie as MovieIcon,
@@ -57,14 +55,20 @@ import {
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import { RolesIcon as TheaterComedyIcon, StatsIcon } from './icons/CastingIcons';
-import { Role, CastingProject } from '../models/casting';
+import { Role } from '../models/casting';
 import { castingService } from '../services/castingService';
-import { castingAuthService } from '../services/castingAuthService';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
 import { rolePoolService, PoolRole } from '../services/rolePoolService';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import castingDirectorPng from './icons/Keep/roleroom_casting_director.png';
+import {
+  ROLE_WORKFLOW_ORDER,
+  RoleWorkflowStatus,
+  getRoleWorkflowMeta,
+} from '../config/roleWorkflow';
+import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';
+import { roleQueryKeys } from '../services/roleQueryKeys';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -80,7 +84,7 @@ const focusVisibleStyles = {
 type SortField = 'name' | 'status' | 'candidates' | 'scenes';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
-type StatusFilter = 'all' | 'open' | 'casting' | 'filled' | 'cancelled' | 'draft';
+type StatusFilter = 'all' | RoleWorkflowStatus;
 
 interface RoleManagementPanelProps {
   projectId: string;
@@ -99,6 +103,7 @@ function RoleManagementPanelInner({
   onCreateRole,
   profession,
 }: RoleManagementPanelProps) {
+  const queryClient = useQueryClient();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -111,6 +116,11 @@ function RoleManagementPanelInner({
   const roleTabAccent = '#f48fb1';
   const roleTabAccentHover = '#f06292';
   const roleTabAccentSoft = 'rgba(244,143,177,0.15)';
+  const roleContextLabel = profession === 'photographer'
+    ? 'Administrer roller og krav for foto-casting'
+    : profession === 'videographer'
+      ? 'Administrer roller og krav for video-casting'
+      : 'Administrer roller og krav for casting';
 
   // Unique IDs for accessibility
   const panelTitleId = useId();
@@ -134,35 +144,48 @@ function RoleManagementPanelInner({
   
   // Pool mode state
   const [poolMode, setPoolMode] = useState<'project' | 'pool'>('project');
-  const [poolRoles, setPoolRoles] = useState<PoolRole[]>([]);
-  const [poolLoading, setPoolLoading] = useState(false);
+  const {
+    data: poolRoles = [],
+    isLoading: poolLoading,
+    isError: isPoolError,
+  } = useQuery({
+    queryKey: roleQueryKeys.pool,
+    queryFn: rolePoolService.getPoolRoles,
+    enabled: poolMode === 'pool',
+  });
 
-  // Load pool roles when switching to pool mode
   useEffect(() => {
-    if (poolMode === 'pool') {
-      loadPoolRoles();
-    }
-  }, [poolMode]);
-
-  const loadPoolRoles = async () => {
-    setPoolLoading(true);
-    try {
-      const roles = await rolePoolService.getPoolRoles();
-      setPoolRoles(roles);
-    } catch (error) {
-      console.error('Error loading pool roles:', error);
+    if (poolMode === 'pool' && isPoolError) {
       showError('Kunne ikke laste rollepool');
-    } finally {
-      setPoolLoading(false);
     }
-  };
+  }, [isPoolError, poolMode, showError]);
+
+  // Event-driven sync between role pool and project roles
+  useEffect(() => {
+    return onRoleSyncEvent((event) => {
+      if (event.type === 'pool-updated') {
+        void queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
+        return;
+      }
+      if (
+        (event.type === 'project-roles-updated' || event.type === 'pool-imported-to-project') &&
+        event.projectId === projectId
+      ) {
+        onRolesChange();
+        void queryClient.invalidateQueries({
+          queryKey: roleQueryKeys.projectRoles(projectId),
+        });
+      }
+    });
+  }, [onRolesChange, projectId, queryClient]);
 
   const handleSaveToPool = async (role: Role) => {
     try {
       const poolId = await rolePoolService.saveRoleToPool(role.id);
       if (poolId) {
         showSuccess(`"${role.name}" lagret til rollepool`);
-        loadPoolRoles();
+        emitRoleSyncEvent({ type: 'pool-updated', source: 'role-management' });
+        await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
       } else {
         showError('Kunne ikke lagre rolle til pool');
       }
@@ -182,6 +205,15 @@ function RoleManagementPanelInner({
       if (newRoleId) {
         showSuccess(`"${poolRole.name}" importert til prosjektet`);
         onRolesChange();
+        emitRoleSyncEvent({
+          type: 'pool-imported-to-project',
+          source: 'role-management',
+          projectId,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: roleQueryKeys.projectRoles(projectId),
+        });
+        await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
         setPoolMode('project');
       } else {
         showError('Kunne ikke importere rolle');
@@ -203,8 +235,9 @@ function RoleManagementPanelInner({
     try {
       const success = await rolePoolService.deleteFromPool(poolRole.id);
       if (success) {
-        setPoolRoles(prev => prev.filter(r => r.id !== poolRole.id));
+        await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
         showSuccess('Rolle fjernet fra pool');
+        emitRoleSyncEvent({ type: 'pool-updated', source: 'role-management' });
       } else {
         showError('Kunne ikke fjerne rolle fra pool');
       }
@@ -279,29 +312,15 @@ function RoleManagementPanelInner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [onCreateRole]);
 
   // Helper functions
   const getStatusColor = (status: Role['status']): string => {
-    const colors: Record<string, string> = {
-      open: '#00d4ff',
-      casting: '#ffb800',
-      filled: '#10b981',
-      cancelled: '#ef4444',
-      draft: '#6b7280',
-    };
-    return colors[status] || '#6b7280';
+    return getRoleWorkflowMeta(status).color;
   };
 
   const getStatusLabel = (status: Role['status']): string => {
-    const labels: Record<string, string> = {
-      open: 'Åpen',
-      casting: 'Casting pågår',
-      filled: 'Besatt',
-      cancelled: 'Kansellert',
-      draft: 'Utkast',
-    };
-    return labels[status] || status;
+    return getRoleWorkflowMeta(status).label;
   };
 
   // Filtering and sorting
@@ -336,7 +355,7 @@ function RoleManagementPanelInner({
           comparison = a.name.localeCompare(b.name, 'nb');
           break;
         case 'status':
-          comparison = a.status.localeCompare(b.status);
+          comparison = getRoleWorkflowMeta(a.status).order - getRoleWorkflowMeta(b.status).order;
           break;
         case 'candidates':
           comparison = (a.candidateIds?.length || 0) - (b.candidateIds?.length || 0);
@@ -413,6 +432,11 @@ function RoleManagementPanelInner({
     try {
       await castingService.deleteRole(projectId, role.id);
       onRolesChange();
+      emitRoleSyncEvent({
+        type: 'project-roles-updated',
+        source: 'role-management',
+        projectId,
+      });
       setUndoSnackbarOpen(true);
       showInfo(`🗑️ ${role.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
     } catch (error) {
@@ -426,6 +450,11 @@ function RoleManagementPanelInner({
       try {
         await castingService.saveRole(projectId, deletedRole);
         onRolesChange();
+        emitRoleSyncEvent({
+          type: 'project-roles-updated',
+          source: 'role-management',
+          projectId,
+        });
         showSuccess(`↩️ ${deletedRole.name} gjenopprettet`, 3000);
       } catch (error) {
         console.error('Failed to restore role:', error);
@@ -436,14 +465,47 @@ function RoleManagementPanelInner({
   };
 
   const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const idsToDelete = Array.from(selectedIds);
     try {
-      await Promise.all(
-        Array.from(selectedIds).map(id => castingService.deleteRole(projectId, id))
+      const results = await Promise.allSettled(
+        idsToDelete.map(id => castingService.deleteRole(projectId, id)),
       );
-      setSelectedIds(new Set());
-      onRolesChange();
+      const failedIds = new Set<string>();
+      let successCount = 0;
+
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          successCount += 1;
+          return;
+        }
+        failedIds.add(idsToDelete[index]);
+      });
+
+      if (successCount > 0) {
+        onRolesChange();
+        emitRoleSyncEvent({
+          type: 'project-roles-updated',
+          source: 'role-management',
+          projectId,
+        });
+      }
+
+      const failedCount = failedIds.size;
+      setSelectedIds(failedIds);
+
+      if (successCount > 0 && failedCount === 0) {
+        showSuccess(`Slettet ${successCount} roller.`);
+        return;
+      }
+      if (successCount > 0 && failedCount > 0) {
+        showError(`${successCount} slettet, ${failedCount} feilet. Markerede feil ligger igjen for retry.`);
+        return;
+      }
+      showError('Kunne ikke slette valgte roller.');
     } catch (error) {
       console.error('Failed to bulk delete roles:', error);
+      showError('Kunne ikke slette valgte roller.');
     }
   };
 
@@ -458,6 +520,11 @@ function RoleManagementPanelInner({
     try {
       await castingService.saveRole(projectId, newRole);
       onRolesChange();
+      emitRoleSyncEvent({
+        type: 'project-roles-updated',
+        source: 'role-management',
+        projectId,
+      });
     } catch (error) {
       console.error('Failed to duplicate role:', error);
     }
@@ -493,7 +560,8 @@ function RoleManagementPanelInner({
     }
   };
 
-  const generateRolesHTML = (project: any, roles: Role[]): string => {
+  type ProjectExportInfo = { name: string };
+  const generateRolesHTML = (project: ProjectExportInfo, roles: Role[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -985,7 +1053,7 @@ function RoleManagementPanelInner({
               }}
             >
               <AssignmentIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, opacity: 0.7 }} />
-              Administrer roller og krav for casting
+              {roleContextLabel}
             </Typography>
           </Box>
         </Box>
@@ -1092,11 +1160,11 @@ function RoleManagementPanelInner({
           onClick={() => setPoolMode('project')}
           sx={{
             minHeight: 36,
-            bgcolor: poolMode === 'project' ? 'rgba(0,212,255,0.2)' : 'transparent',
-            color: poolMode === 'project' ? '#00d4ff' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'project' ? '#00d4ff' : 'rgba(255,255,255,0.3)',
+            bgcolor: poolMode === 'project' ? roleTabAccentSoft : 'transparent',
+            color: poolMode === 'project' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: poolMode === 'project' ? roleTabAccent : 'rgba(255,255,255,0.3)',
             '&:hover': {
-              bgcolor: poolMode === 'project' ? 'rgba(0,212,255,0.28)' : 'rgba(255,255,255,0.1)',
+              bgcolor: poolMode === 'project' ? 'rgba(244,143,177,0.22)' : 'rgba(255,255,255,0.1)',
             },
           }}
         >
@@ -1108,11 +1176,11 @@ function RoleManagementPanelInner({
           onClick={() => setPoolMode('pool')}
           sx={{
             minHeight: 36,
-            bgcolor: poolMode === 'pool' ? 'rgba(147,51,234,0.22)' : 'transparent',
-            color: poolMode === 'pool' ? '#d8b4fe' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'pool' ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+            bgcolor: poolMode === 'pool' ? roleTabAccentSoft : 'transparent',
+            color: poolMode === 'pool' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: poolMode === 'pool' ? roleTabAccent : 'rgba(255,255,255,0.3)',
             '&:hover': {
-              bgcolor: poolMode === 'pool' ? 'rgba(167,139,250,0.3)' : 'rgba(255,255,255,0.1)',
+              bgcolor: poolMode === 'pool' ? 'rgba(244,143,177,0.22)' : 'rgba(255,255,255,0.1)',
             },
           }}
         >
@@ -1128,12 +1196,12 @@ function RoleManagementPanelInner({
             sx={{
               mb: 3,
               p: 2,
-              bgcolor: 'rgba(167, 139, 250, 0.08)',
+              bgcolor: 'rgba(244,143,177,0.08)',
               borderRadius: 2,
-              border: '1px solid rgba(167, 139, 250, 0.2)',
+              border: '1px solid rgba(244,143,177,0.2)',
             }}
           >
-            <Typography variant="subtitle1" sx={{ color: '#a78bfa', fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle1" sx={{ color: roleTabAccent, fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
               <InventoryIcon sx={{ fontSize: 20 }} />
               Slik bruker du rollemaler
             </Typography>
@@ -1141,7 +1209,7 @@ function RoleManagementPanelInner({
               Maler lar deg lagre rollebeskrivelser for gjenbruk i fremtidige prosjekter.
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'rgba(255,255,255,0.87)', '& li': { mb: 0.5, fontSize: '0.875rem' } }}>
-              <li><strong>Lagre som mal:</strong> Klikk på lilla ikon på en prosjektrolle</li>
+              <li><strong>Lagre som mal:</strong> Klikk på lagre-til-pool-ikonet på en prosjektrolle</li>
               <li><strong>Importer:</strong> Klikk "Importer" for å kopiere malen til prosjektet</li>
               <li><strong>Slett:</strong> Fjern maler du ikke trenger lenger</li>
             </Box>
@@ -1164,7 +1232,7 @@ function RoleManagementPanelInner({
                 Ingen rollemaler ennå
               </Typography>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                Klikk på lilla ikon på prosjektroller for å lagre som mal
+                Klikk på lagre-til-pool-ikonet på prosjektroller for å lagre som mal
               </Typography>
             </Box>
           ) : (
@@ -1183,13 +1251,13 @@ function RoleManagementPanelInner({
                     transition: 'all 0.2s',
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.08)',
-                      borderColor: 'rgba(167,139,250,0.3)',
+                      borderColor: roleTabAccentSoft,
                     },
                   }}
                 >
                   <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                      <TheaterComedyIcon sx={{ color: '#a78bfa', fontSize: 20 }} />
+                      <TheaterComedyIcon sx={{ color: roleTabAccent, fontSize: 20 }} />
                       <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.95rem' }}>
                         {poolRole.name}
                       </Typography>
@@ -1203,8 +1271,8 @@ function RoleManagementPanelInner({
                           height: 20,
                           fontSize: '0.7rem',
                           mb: 1,
-                          bgcolor: 'rgba(167,139,250,0.2)',
-                          color: '#a78bfa',
+                          bgcolor: roleTabAccentSoft,
+                          color: roleTabAccent,
                         }}
                       />
                     )}
@@ -1237,10 +1305,10 @@ function RoleManagementPanelInner({
                         size="small"
                         onClick={() => handleImportFromPool(poolRole)}
                         sx={{
-                          color: '#a78bfa',
+                          color: roleTabAccent,
                           fontSize: '0.75rem',
                           minHeight: TOUCH_TARGET_SIZE,
-                          '&:hover': { bgcolor: 'rgba(167,139,250,0.1)' },
+                          '&:hover': { bgcolor: roleTabAccentSoft },
                         }}
                       >
                         Importer
@@ -1390,11 +1458,11 @@ function RoleManagementPanelInner({
             }}
           >
             <MenuItem value="all">Alle statuser</MenuItem>
-            <MenuItem value="open">Åpen</MenuItem>
-            <MenuItem value="casting">Casting pågår</MenuItem>
-            <MenuItem value="filled">Besatt</MenuItem>
-            <MenuItem value="cancelled">Kansellert</MenuItem>
-            <MenuItem value="draft">Utkast</MenuItem>
+            {ROLE_WORKFLOW_ORDER.map((status) => (
+              <MenuItem key={status} value={status}>
+                {getRoleWorkflowMeta(status).label}
+              </MenuItem>
+            ))}
           </Select>
         </FormControl>
 
@@ -2093,140 +2161,6 @@ function RoleManagementPanelInner({
       )
       )}
 
-      {/* Pool View - shows pool roles when in pool mode */}
-      {poolMode === 'pool' && (
-        <Box>
-          {poolRoles.length === 0 ? (
-            <Box
-              role="status"
-              sx={{
-                textAlign: 'center',
-                py: { xs: 4, sm: 8 },
-                px: 4,
-                bgcolor: 'rgba(156, 39, 176, 0.03)',
-                borderRadius: 3,
-                border: '2px dashed rgba(156, 39, 176, 0.2)',
-              }}
-            >
-              <Box
-                sx={{
-                  width: { xs: 60, sm: 80 },
-                  height: { xs: 60, sm: 80 },
-                  borderRadius: '50%',
-                  bgcolor: 'rgba(156, 39, 176, 0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto',
-                  mb: { xs: 2, sm: 3 },
-                }}
-              >
-                <InventoryIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: '#9c27b0' }} />
-              </Box>
-              <Typography variant="h5" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
-                Rollepool er tom
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.87)', mb: 3, maxWidth: 400, mx: 'auto' }}>
-                Lagre roller fra prosjekter til poolen for gjenbruk i fremtidige produksjoner.
-              </Typography>
-            </Box>
-          ) : (
-            <Grid container spacing={{ xs: 1, sm: 2 }}>
-              {poolRoles.map((poolRole) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={poolRole.id}>
-                  <Card
-                    sx={{
-                      bgcolor: 'rgba(156, 39, 176, 0.08)',
-                      border: '1px solid rgba(156, 39, 176, 0.3)',
-                      borderRadius: 2,
-                      transition: 'all 0.2s',
-                      '&:hover': {
-                        borderColor: '#9c27b0',
-                        transform: 'translateY(-2px)',
-                        boxShadow: '0 4px 12px rgba(156, 39, 176, 0.2)',
-                      },
-                    }}
-                  >
-                    <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: { xs: '1rem', sm: '1.1rem' } }}>
-                          {poolRole.name}
-                        </Typography>
-                        <Chip
-                          icon={<InventoryIcon sx={{ fontSize: 14 }} />}
-                          label="Pool"
-                          size="small"
-                          sx={{
-                            bgcolor: 'rgba(156, 39, 176, 0.2)',
-                            color: '#ce93d8',
-                            fontSize: '0.7rem',
-                            height: 24,
-                          }}
-                        />
-                      </Box>
-                      {poolRole.description && (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: 'rgba(255,255,255,0.87)',
-                            mb: 1.5,
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {poolRole.description}
-                        </Typography>
-                      )}
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
-                        {poolRole.roleType && (
-                          <Chip
-                            label={poolRole.roleType}
-                            size="small"
-                            sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.87)', fontSize: '0.7rem' }}
-                          />
-                        )}
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          startIcon={<DownloadIcon />}
-                          onClick={() => handleImportFromPool(poolRole)}
-                          sx={{
-                            bgcolor: '#9c27b0',
-                            color: '#fff',
-                            flex: 1,
-                            minHeight: TOUCH_TARGET_SIZE,
-                            '&:hover': { bgcolor: '#7b1fa2' },
-                          }}
-                        >
-                          Importer
-                        </Button>
-                        <Tooltip title="Slett fra pool">
-                          <IconButton
-                            onClick={() => handleDeleteFromPool(poolRole)}
-                            sx={{
-                              minWidth: TOUCH_TARGET_SIZE,
-                              minHeight: TOUCH_TARGET_SIZE,
-                              color: '#ff4444',
-                              '&:hover': { bgcolor: 'rgba(255,68,68,0.1)' },
-                            }}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-        </Box>
-      )}
-
       {/* Undo Delete Snackbar */}
       <Snackbar
         open={undoSnackbarOpen}
@@ -2246,6 +2180,8 @@ function RoleManagementPanelInner({
         open={!!confirmDeletePoolRole}
         onClose={() => setConfirmDeletePoolRole(null)}
         maxWidth="sm"
+        aria-labelledby={dialogTitleId}
+        aria-describedby={dialogDescId}
         PaperProps={{
           sx: {
             bgcolor: '#1c2128',
@@ -2255,12 +2191,12 @@ function RoleManagementPanelInner({
           },
         }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <DialogTitle id={dialogTitleId} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             {branding.tokens.labels.deleteProjectLabel || 'Slett'}
           </Typography>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent id={dialogDescId}>
           <Typography sx={{ color: 'rgba(255,255,255,0.85)' }}>
             {`Er du sikker på at du vil fjerne "${confirmDeletePoolRole?.name}" fra poolen?`}
           </Typography>

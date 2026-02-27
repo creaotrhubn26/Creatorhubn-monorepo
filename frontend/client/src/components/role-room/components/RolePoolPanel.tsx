@@ -1,4 +1,5 @@
-import { useState, useEffect, type FC } from 'react';
+import { useState, useEffect, useMemo, type FC } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Typography,
@@ -17,18 +18,22 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  useMediaQuery,
-  useTheme,
+  Stack,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   Search as SearchIcon,
   Download as DownloadIcon,
   TheaterComedy as RoleIcon,
-  Edit as EditIcon,
+  Event as EventIcon,
 } from '@mui/icons-material';
-import { rolePoolService, PoolRole } from '../services/rolePoolService';
+import { rolePoolService } from '../services/rolePoolService';
 import { CastingProject } from '../models/casting';
+import { castingService } from '../services/castingService';
+import { ROLE_WORKFLOW_ORDER, RoleWorkflowStatus, getRoleWorkflowMeta } from '../config/roleWorkflow';
+import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';
+import { roleQueryKeys } from '../services/roleQueryKeys';
+import { RoleTemplate, createTemplateImportAuditEntry } from '../config/roleDomain';
 
 interface RolePoolPanelProps {
   projects: CastingProject[];
@@ -41,67 +46,141 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   currentProjectId,
   onImport,
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
-  const [poolRoles, setPoolRoles] = useState<PoolRole[]>([]);
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<PoolRole | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<RoleTemplate | null>(null);
+  const [rolePendingDelete, setRolePendingDelete] = useState<RoleTemplate | null>(null);
   const [targetProjectId, setTargetProjectId] = useState<string>(currentProjectId || '');
+  const [importStatus, setImportStatus] = useState<RoleWorkflowStatus>('draft');
+  const [castingWindowStart, setCastingWindowStart] = useState('');
+  const [castingWindowEnd, setCastingWindowEnd] = useState('');
+  const [importAuditNote, setImportAuditNote] = useState('');
 
   const TOUCH_TARGET = 44;
+  const roleTabAccent = '#f48fb1';
+  const roleTabAccentHover = '#f06292';
+  const roleTabAccentSoft = 'rgba(244,143,177,0.2)';
+
+  const {
+    data: poolRoles = [],
+    isLoading: loading,
+  } = useQuery({
+    queryKey: roleQueryKeys.pool,
+    queryFn: rolePoolService.getPoolRoles,
+  });
 
   useEffect(() => {
-    loadPoolRoles();
-  }, []);
-
-  const loadPoolRoles = async () => {
-    setLoading(true);
-    try {
-      const roles = await rolePoolService.getPoolRoles();
-      setPoolRoles(roles);
-    } catch (error) {
-      console.error('Error loading pool roles:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteFromPool = async (roleId: string) => {
-    if (window.confirm('Er du sikker på at du vil fjerne denne rollen fra poolen?')) {
-      const success = await rolePoolService.deleteFromPool(roleId);
-      if (success) {
-        setPoolRoles(prev => prev.filter(r => r.id !== roleId));
+    return onRoleSyncEvent((event) => {
+      if (event.type === 'pool-updated') {
+        void queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
       }
-    }
+    });
+  }, [queryClient]);
+
+  const handleDeleteFromPool = (role: RoleTemplate) => {
+    setRolePendingDelete(role);
+    setDeleteDialogOpen(true);
   };
 
-  const handleImportClick = (role: PoolRole) => {
+  const handleDeleteConfirm = async () => {
+    if (!rolePendingDelete) return;
+    const success = await rolePoolService.deleteFromPool(rolePendingDelete.id);
+    if (success) {
+      await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
+      emitRoleSyncEvent({ type: 'pool-updated', source: 'role-pool-panel' });
+    }
+    setDeleteDialogOpen(false);
+    setRolePendingDelete(null);
+  };
+
+  const handleImportClick = (role: RoleTemplate) => {
     setSelectedRole(role);
     setTargetProjectId(currentProjectId || '');
+    setImportStatus('draft');
+    setCastingWindowStart('');
+    setCastingWindowEnd('');
+    setImportAuditNote('');
     setImportDialogOpen(true);
   };
 
   const handleImportConfirm = async () => {
     if (!selectedRole || !targetProjectId) return;
-    
-    const newId = await rolePoolService.importToProject(selectedRole.id, targetProjectId);
+
+    const newId = await rolePoolService.importToProject(selectedRole.id, targetProjectId, {
+      initialStatus: importStatus,
+      castingWindow: {
+        start: castingWindowStart || undefined,
+        end: castingWindowEnd || undefined,
+      },
+      auditNote: importAuditNote || undefined,
+    });
+
     if (newId) {
+      // Enrich imported role locally when backend does not yet persist the options payload.
+      try {
+        const project = await castingService.getProject(targetProjectId);
+        const importedRole = project?.roles?.find((role) => role.id === newId);
+        if (importedRole) {
+          const rawMetadata = 'metadata' in importedRole ? importedRole.metadata : undefined;
+          const metadata = isRecord(rawMetadata) ? rawMetadata : {};
+          const existingRoleAudit = Array.isArray(metadata['roleAudit']) ? metadata['roleAudit'] : [];
+          const auditEntry = createTemplateImportAuditEntry({
+            templateId: selectedRole.id,
+            actor: 'role-pool-panel',
+            note: importAuditNote || undefined,
+          });
+          await castingService.saveRole(targetProjectId, {
+            ...importedRole,
+            status: importStatus,
+            metadata: {
+              ...metadata,
+              castingWindow: {
+                start: castingWindowStart || null,
+                end: castingWindowEnd || null,
+              },
+              poolImport: {
+                importedAt: new Date().toISOString(),
+                importedBy: 'role-pool-panel',
+                sourceRolePoolId: selectedRole.id,
+                note: importAuditNote || null,
+              },
+              roleAudit: [...existingRoleAudit, auditEntry],
+            },
+          });
+        }
+      } catch (error) {
+        console.warn('Imported role overrides could not be persisted:', error);
+      }
+
       setImportDialogOpen(false);
       setSelectedRole(null);
       if (onImport) {
         onImport(newId);
       }
+      await queryClient.invalidateQueries({ queryKey: roleQueryKeys.pool });
+      await queryClient.invalidateQueries({ queryKey: roleQueryKeys.projectRoles(targetProjectId) });
+      emitRoleSyncEvent({
+        type: 'pool-imported-to-project',
+        source: 'role-pool-panel',
+        projectId: targetProjectId,
+      });
     }
   };
 
-  const filteredRoles = poolRoles.filter(role =>
-    role.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    role.roleType?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    role.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredRoles = useMemo(() => {
+    if (!normalizedQuery) return poolRoles;
+    return poolRoles.filter((role) =>
+      role.name.toLowerCase().includes(normalizedQuery) ||
+      role.roleType?.toLowerCase().includes(normalizedQuery) ||
+      role.tags?.some((tag) => tag.toLowerCase().includes(normalizedQuery))
+    );
+  }, [poolRoles, normalizedQuery]);
 
   const cardStyles = {
     bgcolor: 'rgba(255,255,255,0.05)',
@@ -110,7 +189,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
     transition: 'all 0.2s ease',
     '&:hover': {
       bgcolor: 'rgba(255,255,255,0.08)',
-      borderColor: 'rgba(139,92,246,0.3)',
+      borderColor: roleTabAccentSoft,
     },
   };
 
@@ -140,14 +219,14 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
           alignItems: 'center',
           gap: 1,
         }}>
-          <RoleIcon sx={{ color: '#8b5cf6' }} />
+          <RoleIcon sx={{ color: roleTabAccent }} />
           Rollepool
           <Chip 
             label={poolRoles.length} 
             size="small" 
             sx={{ 
-              bgcolor: 'rgba(139,92,246,0.2)', 
-              color: '#a78bfa',
+              bgcolor: roleTabAccentSoft,
+              color: roleTabAccent,
               ml: 1,
             }} 
           />
@@ -172,7 +251,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               color: '#fff',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-              '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+              '&.Mui-focused fieldset': { borderColor: roleTabAccent },
             },
             '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.87)' },
           }}
@@ -320,10 +399,10 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                     startIcon={<DownloadIcon sx={{ fontSize: 16 }} />}
                     onClick={() => handleImportClick(role)}
                     sx={{
-                      color: '#8b5cf6',
+                      color: roleTabAccent,
                       fontSize: '0.75rem',
                       minHeight: TOUCH_TARGET,
-                      '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                      '&:hover': { bgcolor: roleTabAccentSoft },
                     }}
                   >
                     Importer
@@ -331,7 +410,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                   
                   <IconButton
                     size="small"
-                    onClick={() => handleDeleteFromPool(role.id)}
+                    onClick={() => handleDeleteFromPool(role)}
                     sx={{
                       color: 'rgba(255,255,255,0.7)',
                       minWidth: TOUCH_TARGET,
@@ -393,27 +472,105 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               </Box>
             </Box>
           )}
-          
-          <FormControl fullWidth>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Velg prosjekt</InputLabel>
-            <Select
-              value={targetProjectId}
-              onChange={(e) => setTargetProjectId(e.target.value)}
-              label="Velg prosjekt"
+
+          <Stack spacing={2}>
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Velg prosjekt</InputLabel>
+              <Select
+                value={targetProjectId}
+                onChange={(e) => setTargetProjectId(e.target.value)}
+                label="Velg prosjekt"
+                sx={{
+                  color: '#fff',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                }}
+              >
+                {projects.map((project) => (
+                  <MenuItem key={project.id} value={project.id}>
+                    {project.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Workflow-status</InputLabel>
+              <Select
+                value={importStatus}
+                onChange={(e) => setImportStatus(e.target.value as RoleWorkflowStatus)}
+                label="Workflow-status"
+                sx={{
+                  color: '#fff',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                }}
+              >
+                {ROLE_WORKFLOW_ORDER.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {getRoleWorkflowMeta(status).label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <TextField
+                label="Casting fra"
+                type="date"
+                value={castingWindowStart}
+                onChange={(e) => setCastingWindowStart(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><EventIcon sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 18 }} /></InputAdornment> }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: '#fff',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                  },
+                }}
+              />
+              <TextField
+                label="Casting til"
+                type="date"
+                value={castingWindowEnd}
+                onChange={(e) => setCastingWindowEnd(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><EventIcon sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 18 }} /></InputAdornment> }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                  '& .MuiOutlinedInput-root': {
+                    color: '#fff',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                  },
+                }}
+              />
+            </Box>
+
+            <TextField
+              label="Audit-notat (valgfritt)"
+              value={importAuditNote}
+              onChange={(e) => setImportAuditNote(e.target.value)}
+              placeholder="f.eks. Importert fra Sci-Fi template for audition sprint"
+              multiline
+              minRows={2}
               sx={{
-                color: '#fff',
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#8b5cf6' },
+                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                '& .MuiOutlinedInput-root': {
+                  color: '#fff',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                },
               }}
-            >
-              {projects.map((project) => (
-                <MenuItem key={project.id} value={project.id}>
-                  {project.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+            />
+          </Stack>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
           <Button 
@@ -428,13 +585,64 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             disabled={!targetProjectId}
             startIcon={<DownloadIcon />}
             sx={{
-              bgcolor: '#8b5cf6',
+              bgcolor: roleTabAccent,
               color: '#fff',
-              '&:hover': { bgcolor: '#7c3aed' },
-              '&.Mui-disabled': { bgcolor: 'rgba(139,92,246,0.3)', color: 'rgba(255,255,255,0.87)' },
+              '&:hover': { bgcolor: roleTabAccentHover },
+              '&.Mui-disabled': { bgcolor: 'rgba(244,143,177,0.3)', color: 'rgba(255,255,255,0.87)' },
             }}
           >
             Importer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setRolePendingDelete(null);
+        }}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1a1a2e',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: { xs: '90vw', sm: 420 },
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          Fjern rolle fra pool
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            Er du sikker på at du vil fjerne{' '}
+            <Box component="span" sx={{ color: roleTabAccent, fontWeight: 700 }}>
+              {rolePendingDelete?.name || 'denne rollen'}
+            </Box>{' '}
+            fra rollepoolen?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+          <Button
+            onClick={() => {
+              setDeleteDialogOpen(false);
+              setRolePendingDelete(null);
+            }}
+            sx={{ color: 'rgba(255,255,255,0.87)' }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleDeleteConfirm}
+            startIcon={<DeleteIcon />}
+            sx={{
+              bgcolor: '#ef4444',
+              color: '#fff',
+              '&:hover': { bgcolor: '#dc2626' },
+            }}
+          >
+            Fjern
           </Button>
         </DialogActions>
       </Dialog>

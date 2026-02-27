@@ -268,9 +268,16 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
 
   return (
     <Box sx={{
-      width: 200, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.08)',
-      overflowY: 'auto', display: 'flex', flexDirection: 'column',
-      bgcolor: 'rgba(0,0,0,0.2)',
+      width: 220,
+      flexShrink: 0,
+      overflowY: 'auto',
+      display: 'flex',
+      flexDirection: 'column',
+      border: '1px solid rgba(0,212,255,0.18)',
+      borderRadius: 2,
+      bgcolor: 'rgba(7,14,24,0.72)',
+      backdropFilter: 'blur(6px)',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
     }}>
       {/* All crews */}
       <Box
@@ -278,9 +285,9 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
         sx={{
           px: 2, py: 1.25, cursor: 'pointer', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between',
-          bgcolor: filterDept === 'all' ? 'rgba(0,212,255,0.12)' : 'transparent',
+          bgcolor: filterDept === 'all' ? 'rgba(0,212,255,0.14)' : 'transparent',
           borderLeft: filterDept === 'all' ? '3px solid #00d4ff' : '3px solid transparent',
-          '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+          '&:hover': { bgcolor: 'rgba(0,212,255,0.08)' },
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -291,7 +298,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
         </Box>
         <Chip label={crewMembers.length} size="small" sx={{ height: 18, fontSize: 11, color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.12)' }} />
       </Box>
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+      <Divider sx={{ borderColor: 'rgba(0,212,255,0.12)' }} />
       {DEPT_ORDER.map(dept => {
         const members = grouped.get(dept) ?? [];
         if (members.length === 0) return null;
@@ -306,7 +313,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
               justifyContent: 'space-between',
               bgcolor: active ? `${color}18` : 'transparent',
               borderLeft: active ? `3px solid ${color}` : '3px solid transparent',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+              '&:hover': { bgcolor: 'rgba(0,212,255,0.08)' },
             }}
           >
             <Typography sx={{ color: active ? color : 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: active ? 700 : 400 }}>
@@ -316,7 +323,7 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
           </Box>
         );
       })}
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)', mt: 1 }} />
+      <Divider sx={{ borderColor: 'rgba(0,212,255,0.12)', mt: 1 }} />
       {/* Favorites */}
       {favorites.size > 0 && (
         <Box sx={{ px: 2, py: 1 }}>
@@ -1635,7 +1642,8 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     }
   };
 
-  const generateCrewHTML = (project: any, crew: any[]): string => {
+  type ProjectExportInfo = { name: string };
+  const generateCrewHTML = (project: ProjectExportInfo, crew: CrewMember[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -1998,12 +2006,37 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     <Box
       ref={panelRef}
       component="section"
-      sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, bgcolor: 'transparent' }}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        bgcolor: 'transparent',
+        background: 'radial-gradient(circle at 20% -20%, rgba(0,212,255,0.18), transparent 55%), radial-gradient(circle at 90% 0%, rgba(147,51,234,0.14), transparent 48%)',
+      }}
     >
       <OfflineBanner pending={offlinePending} />
 
       {/* ── HEADER ── */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, pt: 1.5, pb: 1, gap: 1, flexWrap: 'wrap' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          px: 2,
+          pt: 1.5,
+          pb: 1,
+          gap: 1,
+          flexWrap: 'wrap',
+          border: '1px solid rgba(0,212,255,0.2)',
+          borderRadius: 2,
+          mx: 2,
+          mb: 1,
+          bgcolor: 'rgba(7,14,24,0.72)',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
+        }}
+      >
         {/* Title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{ width: 44, height: 44, borderRadius: 2, background: 'linear-gradient(135deg,rgba(0,212,255,0.25),rgba(0,212,255,0.1))', border: '2px solid rgba(0,212,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -2080,18 +2113,18 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
             </ToggleButton>
           </ToggleButtonGroup>
           <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={() => setInviteDialogOpen(true)}
-            sx={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontWeight: 600, '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' } }}>
+            sx={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontWeight: 700, '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' } }}>
             Inviter (F)
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}
-            sx={{ bgcolor: '#00d4ff', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#00b8e6' } }}>
+            sx={{ bgcolor: '#00d4ff', color: '#001018', fontWeight: 800, '&:hover': { bgcolor: '#00b8e6' } }}>
             {isMobile ? 'Ny' : 'Legg til'}
           </Button>
         </Box>
       </Box>
 
       {/* ── SEARCH + FILTER TOOLBAR ── */}
-      <Box sx={{ px: 2, pb: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ px: 2, pb: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', border: '1px solid rgba(0,212,255,0.14)', borderRadius: 2, mx: 2, py: 1, bgcolor: 'rgba(8,16,28,0.64)' }}>
         <TextField
           inputRef={searchInputRef}
           size="small"
@@ -2162,7 +2195,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
       {/* ── ACTIVE FILTER CHIPS ── */}
       {(filterAssignedToday || filterDept !== 'all' || filterStatus !== 'all' || filterRole !== 'all') && (
-        <Box sx={{ px: 2, pb: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Box sx={{ px: 2, pb: 0.75, pt: 0.25, mx: 2, display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
           {filterAssignedToday && (
             <Chip
               label={`${stats.assignedToday} Assigned Today`}
@@ -2200,7 +2233,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
       {/* ── ROLE FILTER PANEL ── */}
       <Collapse in={showFilters}>
-        <Box sx={{ px: 2, pb: 1 }}>
+        <Box sx={{ px: 2, pb: 1, mx: 2 }}>
           <Accordion
             disableGutters
             sx={{ bgcolor: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1, '&:before': { display: 'none' } }}
@@ -2282,14 +2315,14 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       </Collapse>
 
       {/* ── MAIN BODY: dept sidebar + crew list ── */}
-      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', gap: 1.25, px: 2, pb: 1.25 }}>
         {/* LEFT: department sidebar */}
         <Collapse in={showDeptSidebar && !isMobile} orientation="horizontal" sx={{ flexShrink: 0 }}>
           <DeptSidebarPanel crewMembers={crewMembers} filterDept={filterDept} onDeptClick={setFilterDept} favorites={favorites} />
         </Collapse>
 
         {/* CENTER: crew list */}
-        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', border: '1px solid rgba(0,212,255,0.14)', borderRadius: 2, bgcolor: 'rgba(7,14,24,0.58)', backdropFilter: 'blur(6px)', p: 1 }}>
           {crewMembers.length === 0 ? (
             <RoleRoomEmptyState
               iconSrc={crewPng}

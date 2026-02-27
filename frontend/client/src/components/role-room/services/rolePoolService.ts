@@ -10,6 +10,15 @@ export interface PoolRole {
   updatedAt?: string;
 }
 
+export interface PoolImportOptions {
+  initialStatus?: 'draft' | 'open' | 'casting' | 'filled' | 'cancelled';
+  castingWindow?: {
+    start?: string;
+    end?: string;
+  };
+  auditNote?: string;
+}
+
 const API_BASE = '/api/casting';
 
 export const rolePoolService = {
@@ -52,12 +61,16 @@ export const rolePoolService = {
     }
   },
 
-  async importToProject(poolRoleId: string, targetProjectId: string): Promise<string | null> {
+  async importToProject(
+    poolRoleId: string,
+    targetProjectId: string,
+    options?: PoolImportOptions,
+  ): Promise<string | null> {
     try {
       const response = await fetch(`${API_BASE}/role-pool/import-to-project`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ poolRoleId, targetProjectId }),
+        body: JSON.stringify({ poolRoleId, targetProjectId, options }),
       });
       const data = await response.json();
       return data.success ? data.roleId : null;
