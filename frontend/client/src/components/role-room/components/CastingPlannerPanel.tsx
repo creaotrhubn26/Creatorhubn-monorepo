@@ -89,6 +89,7 @@ import {
   Create as StoryWriterIcon,
   CalendarMonth as CalendarMonthIcon,
 } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 
 // Custom SVG icons for consistent visual language
 import {
@@ -400,7 +401,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
       },
       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-      '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+      '&.Mui-focused fieldset': { borderColor: 'var(--dialog-accent-color, #00d4ff)', borderWidth: 2 },
     },
   }), []);
   
@@ -409,15 +410,36 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     color: 'rgba(255,255,255,0.87)',
     fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
   }), []);
+
+  const roleDialogSelectStyles = useMemo(() => ({
+    color: '#fff',
+    minHeight: { xs: 44, sm: 48, md: 50, lg: 52, xl: 56 },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--dialog-accent-color, #00d4ff)', borderWidth: 2 },
+    '& .MuiSelect-select': {
+      display: 'flex',
+      alignItems: 'center',
+      minHeight: '0 !important',
+      py: { xs: 1.05, sm: 1.2, md: 1.25, lg: 1.35, xl: 1.5 },
+      pr: '36px !important',
+    },
+    '& .MuiSvgIcon-root': {
+      color: 'rgba(255,255,255,0.87)',
+    },
+  }), []);
   
   // Shared MenuProps for Select components - memoized with z-index tokens
   const selectMenuProps = useMemo(() => ({
     container: document.body,
+    disablePortal: false,
+    disableScrollLock: true,
     sx: {
       zIndex: Z_INDEX.dialogSelect,
     },
     PaperProps: {
       sx: {
+        zIndex: Z_INDEX.dialogSelect + 1,
         bgcolor: '#1c2128',
         color: '#fff',
         border: '1px solid rgba(255,255,255,0.1)',
@@ -429,12 +451,12 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           minHeight: TOUCH_TARGET_SIZE,
           py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
           '&:hover': {
-            bgcolor: 'rgba(139,92,246,0.15)',
+            bgcolor: 'var(--dialog-accent-hover, rgba(139,92,246,0.15))',
           },
           '&.Mui-selected': {
-            bgcolor: 'rgba(139,92,246,0.25)',
+            bgcolor: 'var(--dialog-accent-selected, rgba(139,92,246,0.25))',
             '&:hover': {
-              bgcolor: 'rgba(139,92,246,0.35)',
+              bgcolor: 'var(--dialog-accent-selected-hover, rgba(139,92,246,0.35))',
             },
           },
         },
@@ -629,6 +651,30 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     return labels[role] || role;
   };
 
+  const mapAccountRoleToProjectRole = (role?: string | null): string | null => {
+    if (!role) return null;
+    const normalized = role.trim().toLowerCase();
+
+    if (normalized === 'owner') return 'director';
+    if (normalized === 'admin') return 'producer';
+    if (normalized === 'director') return 'director';
+    if (normalized === 'producer') return 'producer';
+    if (normalized === 'casting_director') return 'casting_director';
+    if (normalized === 'production_manager') return 'production_manager';
+    if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
+    if (normalized === 'writer') return 'writer';
+    if (normalized === 'script_editor') return 'script_editor';
+    if (normalized === 'reader') return 'reader';
+    if (normalized === 'agency') return 'agency';
+
+    // Map photo/video account roles to the closest project-role permission set
+    if (['photographer', 'film_photographer', 'photo_director', 'photo_assistant'].includes(normalized)) {
+      return 'camera_team';
+    }
+
+    return null;
+  };
+
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role ? getHeaderRoleLabel(currentUserRole.role) : '';
   const headerRoleLabel = projectRoleLabel && accountRoleLabel && projectRoleLabel !== accountRoleLabel
@@ -665,6 +711,8 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     { color: '#06b6d4', icon: SharingTabIcon },
     { color: '#ef4444', icon: LiveSetTabIcon },
   ], [professionConfig?.color]);
+  const roleDialogAccentColor = tabConfig[1].color;
+  const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
 
   // Quick navigation links for SpeedDial - matching tabConfig icons and colors
   // SpeedDial with direction="up" displays items from first to last (nearest to farthest from FAB)
@@ -977,6 +1025,33 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           });
           setPermissionsLoading(false);
           return;
+        }
+
+        // Standalone login sets an account role, but project userRoles may still be empty.
+        // Auto-provision a project role from the logged-in account role so permission checks work.
+        if (adminUser) {
+          const mappedRole = mapAccountRoleToProjectRole(adminUser.role);
+          if (mappedRole) {
+            const userId = String(adminUser.id);
+            const userRoles = await castingService.getUserRoles(projectIdForRequest);
+            const existingRole = userRoles.find((ur) => String(ur.userId) === userId);
+
+            if (!existingRole) {
+              const now = new Date().toISOString();
+              await castingService.saveUserRole(
+                projectIdForRequest,
+                {
+                  id: `userrole-${userId}-${projectIdForRequest}`,
+                  userId,
+                  projectId: projectIdForRequest,
+                  role: mappedRole as any,
+                  permissions: castingAuthService.getDefaultPermissions(mappedRole as any),
+                  createdAt: now,
+                  updatedAt: now,
+                } as any,
+              );
+            }
+          }
         }
         
         const role = await castingAuthService.getUserRole(projectIdForRequest);
@@ -2613,9 +2688,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
 
         <TabPanel value={activeTab} index={9}>
           {storyArcView === 'main' ? (
-            <Box sx={{ p: 2 }}>
+            <Box sx={{ p: { xs: 2, sm: 2.5, md: 3 } }}>
               {/* Story Arc Studio Header */}
-              <Box sx={{ mb: 3, textAlign: 'center' }}>
+              <Box sx={{ mb: { xs: 3, sm: 4 }, textAlign: 'center' }}>
                 <Typography variant="h5" sx={{ 
                   fontWeight: 700, 
                   color: '#fff',
@@ -2634,11 +2709,25 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               </Box>
 
               {/* Two Cards Grid */}
-              <Grid container spacing={3} justifyContent="center">
+              <Box
+                sx={{
+                  maxWidth: { xs: '100%', sm: 900 },
+                  mx: 'auto',
+                  px: { xs: 0, sm: 1 },
+                }}
+              >
+              <Grid
+                container
+                rowSpacing={{ xs: 2.5, sm: 3 }}
+                columnSpacing={{ xs: 2.5, sm: 4, md: 5 }}
+                justifyContent="center"
+              >
                 {/* Story Logic Card */}
-                <Grid size={{ xs: 12, sm: 6, md: 5 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 5 }} sx={{ display: 'flex', justifyContent: 'center' }}>
                   <Card
                     sx={{
+                      width: '100%',
+                      maxWidth: { xs: 420, sm: 360, md: 380 },
                       bgcolor: 'rgba(139, 92, 246, 0.1)',
                       border: '1px solid rgba(139, 92, 246, 0.3)',
                       borderRadius: 3,
@@ -2686,9 +2775,11 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 </Grid>
 
                 {/* Story Writer Card */}
-                <Grid size={{ xs: 12, sm: 6, md: 5 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 5 }} sx={{ display: 'flex', justifyContent: 'center' }}>
                   <Card
                     sx={{
+                      width: '100%',
+                      maxWidth: { xs: 420, sm: 360, md: 380 },
                       bgcolor: 'rgba(236, 72, 153, 0.1)',
                       border: '1px solid rgba(236, 72, 153, 0.3)',
                       borderRadius: 3,
@@ -2735,6 +2826,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   </Card>
                 </Grid>
               </Grid>
+              </Box>
             </Box>
           ) : storyArcView === 'story-logic' ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -2848,12 +2940,31 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       <Dialog
         open={!!roleDialogOpen}
         onClose={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
         container={() => document.body}
         TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', borderRadius: 2 } }}
-        sx={{ zIndex: Z_INDEX.dialog, '& .MuiBackdrop-root': { bgcolor: 'rgba(0,0,0,0.8)' } }}
+        PaperProps={{
+          sx: {
+            '--dialog-accent-color': roleDialogAccentColor,
+            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
+            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
+            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            bgcolor: '#1c2128',
+            color: '#fff',
+            borderRadius: 2,
+            width: '100%',
+            maxWidth: { xs: '96vw', sm: '92vw', md: '88vw', lg: 1120 },
+            zIndex: Z_INDEX.dialog,
+          },
+        }}
+        sx={{
+          zIndex: Z_INDEX.dialog,
+          '& .MuiBackdrop-root': {
+            bgcolor: 'rgba(0,0,0,0.8)',
+            zIndex: Z_INDEX.backdrop,
+          },
+        }}
       >
         <DialogTitle sx={{ 
           color: '#fff', 
@@ -2865,7 +2976,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           px: 3,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <TheaterComedyIcon sx={{ color: '#00d4ff', fontSize: 28 }} />
+            <TheaterComedyIcon sx={{ color: roleDialogAccentColor, fontSize: 28 }} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 {selectedRole?.id && !selectedRole.name ? branding.tokens.labels.roleDialogNewTitle : branding.tokens.labels.roleDialogEditTitle}
@@ -2881,18 +2992,23 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3, px: 3, pb: 2 }}>
+        <DialogContent sx={{ pt: { xs: 2.75, sm: 3.25 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3, sm: 3.5 } }}>
           {selectedRole && (
-            <Grid container spacing={3}>
+            <Grid
+              container
+              alignItems="flex-start"
+              rowSpacing={{ xs: 3.5, md: 0 }}
+              columnSpacing={0}
+            >
               {/* Left Column - Basic Info */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <PersonNameIcon sx={{ color: '#00d4ff', fontSize: 20 }} />
-                  <Typography variant="subtitle2" sx={{ color: '#00d4ff', fontWeight: 600 }}>
+              <Grid size={{ xs: 12, md: 5 }} sx={{ pr: { md: 2, lg: 2.25 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
+                  <PersonNameIcon sx={{ color: roleDialogAccentColor, fontSize: 20 }} />
+                  <Typography variant="subtitle2" sx={{ color: roleDialogAccentColor, fontWeight: 600 }}>
                     {branding.tokens.labels.roleBasicsSectionLabel}
                   </Typography>
                 </Box>
-                <Stack spacing={2}>
+                <Stack spacing={{ xs: 2.5, sm: 2.75, md: 3 }}>
                   <TextField
                     label={branding.tokens.labels.roleNameLabel}
                     value={selectedRole.name}
@@ -2926,7 +3042,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     }}
                     sx={textFieldStyles}
                   />
-                  <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 3 }}>
                     <TextField
                       label={branding.tokens.labels.roleMinAgeLabel}
                       type="number"
@@ -2943,7 +3059,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                           </InputAdornment>
                         ),
                       }}
-                      sx={{ flex: 1, ...textFieldStyles }}
+                      sx={textFieldStyles}
                     />
                     <TextField
                       label={branding.tokens.labels.roleMaxAgeLabel}
@@ -2961,7 +3077,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                           </InputAdornment>
                         ),
                       }}
-                      sx={{ flex: 1, ...textFieldStyles }}
+                      sx={textFieldStyles}
                     />
                   </Box>
                   <FormControl fullWidth size="small">
@@ -2978,7 +3094,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                           <TransgenderIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
                         </InputAdornment>
                       }
-                      sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                      sx={roleDialogSelectStyles}
                     >
                       <MenuItem value="mann">{branding.tokens.labels.genderMaleLabel}</MenuItem>
                       <MenuItem value="kvinne">{branding.tokens.labels.genderFemaleLabel}</MenuItem>
@@ -2997,7 +3113,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                           <CheckCircleOutlineIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
                         </InputAdornment>
                       }
-                      sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                      sx={roleDialogSelectStyles}
                     >
                       <MenuItem value="draft">{branding.tokens.labels.roleStatusDraft}</MenuItem>
                       <MenuItem value="open">{branding.tokens.labels.roleStatusOpen}</MenuItem>
@@ -3010,14 +3126,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               </Grid>
 
               {/* Right Column - Requirements */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <AssignmentIcon sx={{ color: '#00d4ff', fontSize: 20 }} />
-                  <Typography variant="subtitle2" sx={{ color: '#00d4ff', fontWeight: 600 }}>
+              <Grid size={{ xs: 12, md: 7 }} sx={{ pl: { md: 2, lg: 2.25 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
+                  <AssignmentIcon sx={{ color: roleDialogAccentColor, fontSize: 20 }} />
+                  <Typography variant="subtitle2" sx={{ color: roleDialogAccentColor, fontWeight: 600 }}>
                     {branding.tokens.labels.roleRequirementsSectionLabel}
                   </Typography>
                 </Box>
-                <Stack spacing={2}>
+                <Stack spacing={{ xs: 2.75, sm: 3, md: 3.25 }}>
                   <TextField
                     label={branding.tokens.labels.roleAppearanceLabel}
                     value={selectedRole.requirements.appearance?.join(', ') || ''}
@@ -3075,6 +3191,20 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     }}
                     sx={textFieldStyles}
                   />
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      pt: { xs: 0.5, sm: 0.75, md: 1 },
+                      pb: { xs: 0.25, sm: 0.5, md: 0.75 },
+                    }}
+                  >
+                    <AssignmentIcon sx={{ color: roleDialogAccentColor, fontSize: 18 }} />
+                    <Typography variant="caption" sx={{ color: roleDialogAccentColor, letterSpacing: 0.3, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Tilknytninger
+                    </Typography>
+                  </Box>
                   <FormControl fullWidth size="small">
                     <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleScenesLabel}</InputLabel>
                     <Select
@@ -3090,11 +3220,11 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                           {(selected as string[]).map((sceneId) => (
-                            <Chip key={sceneId} label={availableScenes.find(s => s.id === sceneId)?.name || sceneId} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', height: 22 }} />
+                            <Chip key={sceneId} label={availableScenes.find(s => s.id === sceneId)?.name || sceneId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
                           ))}
                         </Box>
                       )}
-                      sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                      sx={roleDialogSelectStyles}
                     >
                       {availableScenes.map((scene) => (
                         <MenuItem key={scene.id} value={scene.id}>{scene.name}</MenuItem>
@@ -3103,84 +3233,86 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   </FormControl>
                   {currentProject && (
                     <>
-                      <FormControl fullWidth size="small">
-                        <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleCrewLabel}</InputLabel>
-                        <Select
-                          multiple
-                          value={selectedRole.crewRequirements || []}
-                          MenuProps={selectMenuProps}
-                          onChange={(e) => setSelectedRole({ ...selectedRole, crewRequirements: e.target.value as string[] })}
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <GroupsIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                            </InputAdornment>
-                          }
-                          renderValue={(selected) => (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {(selected as string[]).map((crewId) => (
-                                <Chip key={crewId} label={(currentProject?.crew || []).find(c => c.id === crewId)?.name || crewId} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', height: 22 }} />
-                              ))}
-                            </Box>
-                          )}
-                          sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
-                        >
-                          {(currentProject?.crew || []).map((crew) => (
-                            <MenuItem key={crew.id} value={crew.id}>{crew.name}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <FormControl fullWidth size="small">
-                        <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleLocationsLabel}</InputLabel>
-                        <Select
-                          multiple
-                          value={selectedRole.locationRequirements || []}
-                          MenuProps={selectMenuProps}
-                          onChange={(e) => setSelectedRole({ ...selectedRole, locationRequirements: e.target.value as string[] })}
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <LocationIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                            </InputAdornment>
-                          }
-                          renderValue={(selected) => (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {(selected as string[]).map((locId) => (
-                                <Chip key={locId} label={(currentProject?.locations || []).find(l => l.id === locId)?.name || locId} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', height: 22 }} />
-                              ))}
-                            </Box>
-                          )}
-                          sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
-                        >
-                          {(currentProject?.locations || []).map((loc) => (
-                            <MenuItem key={loc.id} value={loc.id}>{loc.name}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <FormControl fullWidth size="small">
-                        <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.rolePropsLabel}</InputLabel>
-                        <Select
-                          multiple
-                          value={selectedRole.propRequirements || []}
-                          MenuProps={selectMenuProps}
-                          onChange={(e) => setSelectedRole({ ...selectedRole, propRequirements: e.target.value as string[] })}
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <EquipmentIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                            </InputAdornment>
-                          }
-                          renderValue={(selected) => (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {(selected as string[]).map((propId) => (
-                                <Chip key={propId} label={(currentProject?.props || []).find(p => p.id === propId)?.name || propId} size="small" sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff', height: 22 }} />
-                              ))}
-                            </Box>
-                          )}
-                          sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
-                        >
-                          {(currentProject?.props || []).map((prop) => (
-                            <MenuItem key={prop.id} value={prop.id}>{prop.name}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5 }}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleCrewLabel}</InputLabel>
+                          <Select
+                            multiple
+                            value={selectedRole.crewRequirements || []}
+                            MenuProps={selectMenuProps}
+                            onChange={(e) => setSelectedRole({ ...selectedRole, crewRequirements: e.target.value as string[] })}
+                            startAdornment={
+                              <InputAdornment position="start">
+                                <GroupsIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                              </InputAdornment>
+                            }
+                            renderValue={(selected) => (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {(selected as string[]).map((crewId) => (
+                                  <Chip key={crewId} label={(currentProject?.crew || []).find(c => c.id === crewId)?.name || crewId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
+                                ))}
+                              </Box>
+                            )}
+                            sx={roleDialogSelectStyles}
+                          >
+                            {(currentProject?.crew || []).map((crew) => (
+                              <MenuItem key={crew.id} value={crew.id}>{crew.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <FormControl fullWidth size="small">
+                          <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleLocationsLabel}</InputLabel>
+                          <Select
+                            multiple
+                            value={selectedRole.locationRequirements || []}
+                            MenuProps={selectMenuProps}
+                            onChange={(e) => setSelectedRole({ ...selectedRole, locationRequirements: e.target.value as string[] })}
+                            startAdornment={
+                              <InputAdornment position="start">
+                                <LocationIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                              </InputAdornment>
+                            }
+                            renderValue={(selected) => (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {(selected as string[]).map((locId) => (
+                                  <Chip key={locId} label={(currentProject?.locations || []).find(l => l.id === locId)?.name || locId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
+                                ))}
+                              </Box>
+                            )}
+                            sx={roleDialogSelectStyles}
+                          >
+                            {(currentProject?.locations || []).map((loc) => (
+                              <MenuItem key={loc.id} value={loc.id}>{loc.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <FormControl fullWidth size="small" sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
+                          <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.rolePropsLabel}</InputLabel>
+                          <Select
+                            multiple
+                            value={selectedRole.propRequirements || []}
+                            MenuProps={selectMenuProps}
+                            onChange={(e) => setSelectedRole({ ...selectedRole, propRequirements: e.target.value as string[] })}
+                            startAdornment={
+                              <InputAdornment position="start">
+                                <EquipmentIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                              </InputAdornment>
+                            }
+                            renderValue={(selected) => (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {(selected as string[]).map((propId) => (
+                                  <Chip key={propId} label={(currentProject?.props || []).find(p => p.id === propId)?.name || propId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
+                                ))}
+                              </Box>
+                            )}
+                            sx={roleDialogSelectStyles}
+                          >
+                            {(currentProject?.props || []).map((prop) => (
+                              <MenuItem key={prop.id} value={prop.id}>{prop.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Box>
                     </>
                   )}
                 </Stack>
@@ -3188,7 +3320,15 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+        <DialogActions
+          sx={{
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            px: { xs: 2, sm: 3 },
+            py: { xs: 1.5, sm: 2 },
+            gap: 1.5,
+            flexWrap: 'wrap',
+          }}
+        >
           <Button
             onClick={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
             sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE }}
@@ -3199,7 +3339,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             onClick={handleSaveRole}
             variant="contained"
             startIcon={<SaveIcon />}
-            sx={{ bgcolor: '#00d4ff', color: '#000', fontWeight: 600, minHeight: TOUCH_TARGET_SIZE, '&:hover': { bgcolor: '#00b8e6' } }}
+            sx={{ bgcolor: roleDialogAccentColor, color: '#000', fontWeight: 600, minHeight: TOUCH_TARGET_SIZE, '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)' } }}
           >
             {branding.tokens.labels.saveRoleLabel}
           </Button>
@@ -3222,7 +3362,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           setCandidateDialogOpen(false);
           setSelectedCandidate(null);
         }}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
         container={() => document.body}
         TransitionComponent={Grow}
@@ -3236,7 +3376,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             bgcolor: '#1c2128',
             color: '#fff',
             width: '100%',
-            maxWidth: '90vw',
+            maxWidth: { xs: '96vw', sm: '92vw', md: '90vw', lg: 1120 },
             zIndex: Z_INDEX.dialog,
             willChange: 'transform, opacity',
             transformOrigin: 'center center',
@@ -3278,9 +3418,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3, px: 2.5, pb: 2, overflow: 'visible' }}>
+        <DialogContent sx={{ pt: { xs: 2.75, sm: 3.25 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3, sm: 3.5 }, overflow: 'visible' }}>
           {selectedCandidate && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, sm: 2.75, md: 3 } }}>
               <TextField
                 label={branding.tokens.labels.nameLabel}
                 value={selectedCandidate.name}
@@ -3461,7 +3601,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 }}
               />
               
-              <FormControl fullWidth sx={{ mt: 2 }}>
+              <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>
                   {branding.tokens.labels.assignedRolesLabel}
                 </InputLabel>
@@ -3488,16 +3628,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                       })}
                     </Box>
                   )}
-                  sx={{
-                    color: '#fff',
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                    minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                      py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
-                    },
-                  }}
+                  sx={roleDialogSelectStyles}
                 >
                   {roles.map((role) => (
                     <MenuItem key={role.id} value={role.id} sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
@@ -3510,7 +3641,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 </Select>
               </FormControl>
               
-              <FormControl fullWidth sx={{ mt: 2 }}>
+              <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.statusLabel}</InputLabel>
                 <Select
                   value={selectedCandidate.status}
@@ -3519,16 +3650,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     ...selectedCandidate,
                     status: e.target.value as Candidate['status'],
                   })}
-                  sx={{
-                    color: '#fff',
-                    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                    minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                      py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
-                    },
-                  }}
+                  sx={roleDialogSelectStyles}
                 >
                   <MenuItem value="pending" sx={{ fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 }, py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
@@ -3698,8 +3820,10 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         </DialogContent>
         <DialogActions sx={{ 
           borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-          gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.5, xl: 2 },
+          px: { xs: 2, sm: 3 },
+          py: { xs: 1.5, sm: 2 },
+          gap: { xs: 1.5, sm: 2 },
+          flexWrap: 'wrap',
         }}>
           <Button
             onClick={() => {
@@ -3760,7 +3884,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           setScheduleDialogOpen(false);
           setSelectedSchedule(null);
         }}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
         container={() => document.body}
         TransitionComponent={Grow}
@@ -3774,7 +3898,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             bgcolor: '#1c2128',
             color: '#fff',
             width: '100%',
-            maxWidth: '90vw',
+            maxWidth: { xs: '96vw', sm: '92vw', md: '90vw', lg: 1120 },
             zIndex: Z_INDEX.dialog,
             willChange: 'transform, opacity',
             transformOrigin: 'center center',
@@ -3816,60 +3940,48 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3, px: 2.5, pb: 2, overflow: 'visible' }}>
+        <DialogContent sx={{ pt: { xs: 2.75, sm: 3.25 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3, sm: 3.5 }, overflow: 'visible' }}>
           {selectedSchedule && currentProject && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: isDesktop ? 3 : 2 }}>
-              <FormControl fullWidth>
-                <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.candidateLabel}</InputLabel>
-                <Select
-                  value={selectedSchedule.candidateId}
-                  MenuProps={selectMenuProps}
-                  onChange={(e) => setSelectedSchedule({ ...selectedSchedule, candidateId: e.target.value })}
-                  sx={{
-                    color: '#fff',
-                    fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    },
-                  }}
-                >
-                  {candidates.map((c) => (
-                    <MenuItem key={c.id} value={c.id}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <PersonIcon sx={{ fontSize: '1rem' }} />
-                        <span>{c.name}</span>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              <FormControl fullWidth>
-                <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleLabel}</InputLabel>
-                <Select
-                  value={selectedSchedule.roleId}
-                  MenuProps={selectMenuProps}
-                  onChange={(e) => setSelectedSchedule({ ...selectedSchedule, roleId: e.target.value })}
-                  sx={{
-                    color: '#fff',
-                    fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    },
-                  }}
-                >
-                  {roles.map((r) => (
-                    <MenuItem key={r.id} value={r.id}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <AssignmentIcon sx={{ fontSize: '1rem' }} />
-                        <span>{r.name}</span>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, sm: 2.75, md: 3 } }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.candidateLabel}</InputLabel>
+                  <Select
+                    value={selectedSchedule.candidateId}
+                    MenuProps={selectMenuProps}
+                    onChange={(e) => setSelectedSchedule({ ...selectedSchedule, candidateId: e.target.value })}
+                    sx={roleDialogSelectStyles}
+                  >
+                    {candidates.map((c) => (
+                      <MenuItem key={c.id} value={c.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <PersonIcon sx={{ fontSize: '1rem' }} />
+                          <span>{c.name}</span>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                <FormControl fullWidth size="small">
+                  <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleLabel}</InputLabel>
+                  <Select
+                    value={selectedSchedule.roleId}
+                    MenuProps={selectMenuProps}
+                    onChange={(e) => setSelectedSchedule({ ...selectedSchedule, roleId: e.target.value })}
+                    sx={roleDialogSelectStyles}
+                  >
+                    {roles.map((r) => (
+                      <MenuItem key={r.id} value={r.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <AssignmentIcon sx={{ fontSize: '1rem' }} />
+                          <span>{r.name}</span>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
               
               <TextField
                 label={branding.tokens.labels.dateLabel}
@@ -3909,7 +4021,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 }}
               />
               
-              <FormControl fullWidth>
+              <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.locationLabel}</InputLabel>
                 <Select
                   value={selectedSchedule.locationId || ''}
@@ -3923,14 +4035,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                       location: selectedLocation?.name || '',
                     });
                   }}
-                  sx={{
-                    color: '#fff',
-                    fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    },
-                  }}
+                  sx={roleDialogSelectStyles}
                 >
                   <MenuItem value="">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3981,7 +4086,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 }}
               />
               
-              <FormControl fullWidth sx={{ mt: 2 }}>
+              <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.sceneOptionalLabel}</InputLabel>
                 <Select
                   value={selectedSchedule.sceneId || ''}
@@ -3990,14 +4095,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     ...selectedSchedule,
                     sceneId: e.target.value || undefined,
                   })}
-                  sx={{
-                    color: '#fff',
-                    fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    },
-                  }}
+                  sx={roleDialogSelectStyles}
                 >
                   <MenuItem value="">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4062,7 +4160,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 />
               </Box>
               
-              <FormControl fullWidth sx={{ mt: 2 }}>
+              <FormControl fullWidth size="small">
                 <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.statusLabel}</InputLabel>
                 <Select
                   value={selectedSchedule.status}
@@ -4071,14 +4169,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     ...selectedSchedule,
                     status: e.target.value as Schedule['status'],
                   })}
-                  sx={{
-                    color: '#fff',
-                    fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '& .MuiSelect-select': {
-                      fontSize: isDesktop ? '1.25rem' : isTablet ? '1rem' : '0.875rem',
-                    },
-                  }}
+                  sx={roleDialogSelectStyles}
                 >
                   <MenuItem value="scheduled">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4105,8 +4196,10 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         </DialogContent>
         <DialogActions sx={{ 
           borderTop: '1px solid rgba(255,255,255,0.1)', 
-          p: isDesktop ? 3 : 2,
-          gap: isDesktop ? 2 : 1,
+          px: { xs: 2, sm: 3 },
+          py: { xs: 1.5, sm: 2 },
+          gap: { xs: 1.5, sm: 2 },
+          flexWrap: 'wrap',
         }}>
           <Button
             onClick={() => {

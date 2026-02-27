@@ -108,6 +108,9 @@ function RoleManagementPanelInner({
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
   const branding = useBrandingSettings();
+  const roleTabAccent = '#f48fb1';
+  const roleTabAccentHover = '#f06292';
+  const roleTabAccentSoft = 'rgba(244,143,177,0.15)';
 
   // Unique IDs for accessibility
   const panelTitleId = useId();
@@ -216,6 +219,11 @@ function RoleManagementPanelInner({
   // Load favorites from database (with settings cache fallback)
   useEffect(() => {
     const loadFavorites = async () => {
+      if (!projectId) {
+        setFavorites(new Set());
+        setFavoritesLoaded(true);
+        return;
+      }
       try {
         const { favoritesApi } = await import('@/services/castingApiService');
         const dbFavorites = await favoritesApi.get(projectId, 'role');
@@ -242,6 +250,7 @@ function RoleManagementPanelInner({
   // Save favorites to database and settings cache
   useEffect(() => {
     const saveFavorites = async () => {
+      if (!projectId) return;
       const values = [...favorites];
       await settingsService.setSetting(FAVORITES_NAMESPACE, values, { projectId });
       try {
@@ -1012,11 +1021,16 @@ function RoleManagementPanelInner({
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: showStats ? '#00d4ff' : 'rgba(255,255,255,0.7)',
-                borderColor: showStats ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                color: showStats ? roleTabAccent : 'rgba(255,255,255,0.7)',
+                borderColor: showStats ? roleTabAccent : 'rgba(255,255,255,0.2)',
+                bgcolor: showStats ? roleTabAccentSoft : 'transparent',
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                '&:hover': {
+                  borderColor: roleTabAccent,
+                  bgcolor: roleTabAccentSoft,
+                },
                 ...focusVisibleStyles,
               }}
             >
@@ -1030,7 +1044,7 @@ function RoleManagementPanelInner({
               onClick={onCreateRole}
               aria-label="Legg til ny rolle"
               sx={{
-                bgcolor: '#00d4ff',
+                bgcolor: roleTabAccent,
                 color: '#000',
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 fontWeight: 600,
@@ -1039,7 +1053,7 @@ function RoleManagementPanelInner({
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: '#00b8e6' },
+                '&:hover': { bgcolor: roleTabAccentHover },
               }}
             >
               <AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
