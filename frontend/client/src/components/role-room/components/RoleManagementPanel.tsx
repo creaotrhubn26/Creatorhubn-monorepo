@@ -898,7 +898,7 @@ function RoleManagementPanelInner({
     <Box
       component="section"
       aria-labelledby={panelTitleId}
-      sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+      sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box', background: 'radial-gradient(circle at 20% -20%, rgba(0,212,255,0.16), transparent 52%), radial-gradient(circle at 85% 0%, rgba(147,51,234,0.12), transparent 48%)' }}
     >
       {/* Header - Responsive */}
       <Box
@@ -909,6 +909,13 @@ function RoleManagementPanelInner({
           alignItems: { xs: 'stretch', sm: 'center' },
           mb: 2,
           gap: { xs: 1.5, sm: 2 },
+          px: { xs: 1.5, sm: 2 },
+          py: { xs: 1.25, sm: 1.5 },
+          border: '1px solid rgba(0,212,255,0.2)',
+          borderRadius: 2,
+          bgcolor: 'rgba(7,14,24,0.72)',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
         }}
       >
         {/* Enhanced Title with gradient - matches ProductionDayView */}
@@ -925,22 +932,22 @@ function RoleManagementPanelInner({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.25) 0%, rgba(233, 30, 99, 0.15) 100%)',
-              border: '2px solid rgba(233, 30, 99, 0.4)',
+              background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.25) 0%, rgba(0, 212, 255, 0.12) 100%)',
+              border: '2px solid rgba(0, 212, 255, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(233, 30, 99, 0.2)',
+              boxShadow: '0 4px 12px rgba(0, 212, 255, 0.2)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(233, 30, 99, 0.3)',
+                boxShadow: '0 6px 16px rgba(0, 212, 255, 0.3)',
               },
             }}
           >
             <TheaterComedyIcon
               sx={{
-                color: '#f48fb1',
+                color: '#4dd0e1',
                 fontSize: { xs: 26, sm: 32, md: 30, lg: 36, xl: 42 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
               }}
@@ -958,7 +965,7 @@ function RoleManagementPanelInner({
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #f48fb1 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #4dd0e1 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -1085,11 +1092,11 @@ function RoleManagementPanelInner({
           onClick={() => setPoolMode('project')}
           sx={{
             minHeight: 36,
-            bgcolor: poolMode === 'project' ? '#f48fb1' : 'transparent',
-            color: poolMode === 'project' ? '#000' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'project' ? '#f48fb1' : 'rgba(255,255,255,0.3)',
+            bgcolor: poolMode === 'project' ? 'rgba(0,212,255,0.2)' : 'transparent',
+            color: poolMode === 'project' ? '#00d4ff' : 'rgba(255,255,255,0.7)',
+            borderColor: poolMode === 'project' ? '#00d4ff' : 'rgba(255,255,255,0.3)',
             '&:hover': {
-              bgcolor: poolMode === 'project' ? '#f06292' : 'rgba(255,255,255,0.1)',
+              bgcolor: poolMode === 'project' ? 'rgba(0,212,255,0.28)' : 'rgba(255,255,255,0.1)',
             },
           }}
         >
@@ -1101,11 +1108,11 @@ function RoleManagementPanelInner({
           onClick={() => setPoolMode('pool')}
           sx={{
             minHeight: 36,
-            bgcolor: poolMode === 'pool' ? '#a78bfa' : 'transparent',
-            color: poolMode === 'pool' ? '#000' : 'rgba(255,255,255,0.7)',
+            bgcolor: poolMode === 'pool' ? 'rgba(147,51,234,0.22)' : 'transparent',
+            color: poolMode === 'pool' ? '#d8b4fe' : 'rgba(255,255,255,0.7)',
             borderColor: poolMode === 'pool' ? '#a78bfa' : 'rgba(255,255,255,0.3)',
             '&:hover': {
-              bgcolor: poolMode === 'pool' ? '#8b5cf6' : 'rgba(255,255,255,0.1)',
+              bgcolor: poolMode === 'pool' ? 'rgba(167,139,250,0.3)' : 'rgba(255,255,255,0.1)',
             },
           }}
         >
@@ -1272,8 +1279,9 @@ function RoleManagementPanelInner({
             gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-            bgcolor: 'rgba(255,255,255,0.03)',
+            bgcolor: 'rgba(0,212,255,0.05)',
             borderRadius: 2,
+            border: '1px solid rgba(0,212,255,0.14)',
           }}
           role="region"
           aria-label="Statistikk over roller"
@@ -1335,6 +1343,11 @@ function RoleManagementPanelInner({
           gap: { xs: 1, sm: 2 },
           mb: 2,
           alignItems: { xs: 'stretch', sm: 'center' },
+          px: { xs: 1.25, sm: 1.5 },
+          py: { xs: 1, sm: 1.25 },
+          border: '1px solid rgba(0,212,255,0.14)',
+          borderRadius: 2,
+          bgcolor: 'rgba(8,16,28,0.64)',
         }}
       >
         <TextField
@@ -1483,8 +1496,8 @@ function RoleManagementPanelInner({
         <TableContainer
           component={Paper}
           sx={{
-            bgcolor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            bgcolor: 'rgba(7,14,24,0.65)',
+            border: '1px solid rgba(0,212,255,0.16)',
             borderRadius: 2,
             overflowX: 'auto',
             WebkitOverflowScrolling: 'touch',
@@ -1885,7 +1898,7 @@ function RoleManagementPanelInner({
                             <Typography
                               variant="subtitle2"
                               sx={{
-                                color: '#f48fb1',
+                                color: '#4dd0e1',
                                 fontWeight: 700,
                                 mb: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                                 fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.77rem', lg: '0.85rem', xl: '0.95rem' },
@@ -1902,12 +1915,12 @@ function RoleManagementPanelInner({
                                   label={skill}
                                   size="small"
                                   sx={{
-                                    bgcolor: 'rgba(244,143,177,0.15)',
-                                    color: '#f48fb1',
+                                    bgcolor: 'rgba(0,212,255,0.15)',
+                                    color: '#4dd0e1',
                                     fontSize: { xs: '10px', sm: '11px', md: '10.5px', lg: '12px', xl: '14px' },
                                     height: { xs: 24, sm: 26, md: 25, lg: 28, xl: 32 },
                                     fontWeight: 600,
-                                    border: '1px solid rgba(244,143,177,0.3)',
+                                    border: '1px solid rgba(0,212,255,0.3)',
                                   }}
                                 />
                               ))}
@@ -2047,8 +2060,8 @@ function RoleManagementPanelInner({
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
-                              color: '#f48fb1',
-                              '&:hover': { bgcolor: 'rgba(244,143,177,0.1)' },
+                              color: '#4dd0e1',
+                              '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
                               ...focusVisibleStyles,
                             }}
                           >
