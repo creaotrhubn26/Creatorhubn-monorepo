@@ -26,6 +26,31 @@ export interface FrameAnnotationData {
 
 export type FrameImageSource = 'ai' | 'captured' | 'drawn' | 'uploaded';
 
+export type AuthoringLicense =
+  | 'all-rights-reserved'
+  | 'cc-by'
+  | 'cc-by-sa'
+  | 'cc-by-nc'
+  | 'cc-by-nc-sa'
+  | 'cc0'
+  | 'custom';
+
+export interface AuthoringMetadata {
+  authorName: string;
+  authorId?: string;
+  signatureDataUrl?: string;
+  license: AuthoringLicense;
+  customLicense?: string;
+  createdAt: string;
+  notes?: string;
+}
+
+export const DEFAULT_AUTHORING_METADATA: AuthoringMetadata = {
+  authorName: '',
+  license: 'all-rights-reserved',
+  createdAt: new Date().toISOString(),
+};
+
 export interface FrameAssetLayer {
   id: string;
   kind: 'stroke' | 'vector' | 'annotation' | 'reference';
@@ -71,6 +96,7 @@ export interface FrameAssetPackage {
   layers: FrameAssetLayer[];
   renderSettings: FrameAssetRenderSettings;
   exports: FrameAssetExport[];
+  authoringMetadata?: AuthoringMetadata;
   updatedAt: string;
 }
 
@@ -533,6 +559,7 @@ export interface FrameDrawingData {
   deviceType?: 'pencil' | 'touch' | 'mouse';
   conceptArt?: FrameConceptArtData;
   decisionData?: FrameDecisionData;
+  authoringMetadata?: AuthoringMetadata;
   createdAt: string;
   updatedAt: string;
 }

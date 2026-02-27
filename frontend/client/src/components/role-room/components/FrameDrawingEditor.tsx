@@ -94,7 +94,9 @@ import {
   FrameConceptArtData,
   FrameDecisionData,
   DEFAULT_FRAME_DECISION_DATA,
+  DEFAULT_AUTHORING_METADATA,
   cloneFrameDecisionData,
+  type AuthoringMetadata,
   type CameraAngle,
   type CameraMovement,
 } from '../state/storyboardStore';
@@ -173,6 +175,7 @@ const buildFrameAssetPackage = (params: {
   annotations: Array<{ id: string; type: string; label?: string; notes?: string; x: number; y: number; rotation?: number; color?: string }>;
   shapes?: Shape[];
   textAnnotations?: TextAnnotation[];
+  authoringMetadata?: AuthoringMetadata;
   canvasEl?: HTMLCanvasElement | null;
 }): FrameAssetPackage => {
   const now = new Date().toISOString();
@@ -358,6 +361,7 @@ const buildFrameAssetPackage = (params: {
       overlay: params.overlaySettings,
     },
     exports: prunedExports,
+    authoringMetadata: params.authoringMetadata,
     updatedAt: now,
   };
 };
@@ -371,6 +375,7 @@ const migrateFrameAssetPackage = (assetPackage?: FrameDrawingData['assetPackage'
     layers: (input.layers || []).map((layer) => ({ ...layer, locked: layer.locked ?? false })),
     renderSettings: input.renderSettings || {},
     exports: input.exports || [],
+    authoringMetadata: input.authoringMetadata,
     updatedAt: input.updatedAt || new Date().toISOString(),
   });
 
@@ -534,6 +539,7 @@ const parseFrameAssetPackage = (assetPackage?: FrameDrawingData['assetPackage'])
     shapes,
     textAnnotations,
     activeLayerId: vectorState?.drawingState?.activeLayerId,
+    authoringMetadata: migrated.authoringMetadata ?? null,
     reference: referenceLayer?.referenceSrc
       ? {
           src: referenceLayer.referenceSrc,
@@ -1222,7 +1228,17 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         activeLayerId: assetState.activeLayerId ?? assetState.drawingLayers[0]?.id ?? prev.activeLayerId,
         // Restore text annotations into DrawingState
         ...(assetState.textAnnotations?.length ? { textAnnotations: assetState.textAnnotations } : {}),
+        // Restore authoring metadata
+        ...(assetState.authoringMetadata ? { authoringMetadata: assetState.authoringMetadata } : {}),
       }));
+    } else if (assetState?.authoringMetadata) {
+      // Even if no drawing layers, restore authoring metadata
+      setDrawingStateSnapshot((prev) => ({ ...prev, authoringMetadata: assetState.authoringMetadata }));
+    }
+
+    // Fallback: restore authoring metadata from drawingData if asset package didn't have it
+    if (!assetState?.authoringMetadata && currentFrame.drawingData.authoringMetadata) {
+      setDrawingStateSnapshot((prev) => ({ ...prev, authoringMetadata: currentFrame.drawingData!.authoringMetadata! }));
     }
 
     // Restore shapes (vector objects)
@@ -1332,11 +1348,17 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         })),
         shapes: shapesSnapshot,
         textAnnotations: drawingStateSnapshot.textAnnotations,
+        authoringMetadata: drawingStateSnapshot.authoringMetadata.authorName
+          ? drawingStateSnapshot.authoringMetadata
+          : undefined,
         canvasEl,
       }),
       deviceType: device.hasPencilSupport ? 'pencil' : device.hasTouchScreen ? 'touch' : 'mouse',
       conceptArt: conceptArt && conceptArt.variants.length > 0 ? conceptArt : undefined,
       decisionData: nextDecisionData,
+      authoringMetadata: drawingStateSnapshot.authoringMetadata.authorName
+        ? drawingStateSnapshot.authoringMetadata
+        : undefined,
       createdAt: currentFrame?.drawingData?.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1383,7 +1405,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
     
     setLastSavedImage(imageData);
     setHasUnsavedChanges(false);
-  }, [strokes, brushSettings, proBrushSettings, proMode, decisionData, device, frameId, storyboardId, updateFrame, onSave, conceptArt, storyboardActivePackId, storyboardActiveSlotId, storyboardCinematography, storyboardOverlaySettings, referenceImage, drawingStateSnapshot.layers, drawingStateSnapshot.activeLayerId, drawingStateSnapshot.textAnnotations, currentFrame?.annotations, shapesSnapshot, assetPackageServerVersion]);
+  }, [strokes, brushSettings, proBrushSettings, proMode, decisionData, device, frameId, storyboardId, updateFrame, onSave, conceptArt, storyboardActivePackId, storyboardActiveSlotId, storyboardCinematography, storyboardOverlaySettings, referenceImage, drawingStateSnapshot.layers, drawingStateSnapshot.activeLayerId, drawingStateSnapshot.textAnnotations, drawingStateSnapshot.authoringMetadata, currentFrame?.annotations, shapesSnapshot, assetPackageServerVersion]);
 
   const handleApplyCinematicPack = useCallback((packId: Exclude<CinematicBrushPresetId, 'none'>) => {
     const pack = CINEMATIC_BRUSH_PRESETS[packId];

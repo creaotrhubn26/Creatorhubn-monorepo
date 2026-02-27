@@ -48,6 +48,7 @@ import {
   Movie,
   AspectRatio,
   LibraryBooks,
+  Person,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -70,13 +71,16 @@ import { PencilStroke } from '../../hooks/useApplePencil';
 import { ConceptArtPanel } from './ConceptArtPanel';
 import { VisualStoryDecisionPanel } from './VisualStoryDecisionPanel';
 import { PropSketchLibrary } from './PropSketchLibrary';
+import { AuthoringPanel } from './AuthoringPanel';
 import {
   DEFAULT_FRAME_DECISION_DATA,
+  DEFAULT_AUTHORING_METADATA,
   cloneFrameDecisionData,
 } from '../../state/storyboardStore';
 import type {
   FrameConceptArtData,
   FrameDecisionData,
+  AuthoringMetadata,
 } from '../../state/storyboardStore';
 
 // =============================================================================
@@ -124,6 +128,7 @@ export interface DrawingState {
   customTemplates: StoryboardTemplate[];
   decisionData: FrameDecisionData;
   conceptArt: FrameConceptArtData;
+  authoringMetadata: AuthoringMetadata;
   scriptContext: ScriptContext | null;
 }
 
@@ -228,6 +233,7 @@ export const DEFAULT_DRAWING_STATE: DrawingState = {
     variants: [],
     selectedVariantId: null,
   },
+  authoringMetadata: { ...DEFAULT_AUTHORING_METADATA },
   scriptContext: null,
 };
 
@@ -342,6 +348,7 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
     pressure: false,
     onion: false,
     gestures: false,
+    authoring: false,
     export: false,
   });
   
@@ -973,6 +980,24 @@ export const DrawingToolsPanel: React.FC<DrawingToolsPanelProps> = ({
             settings={state.gestureSettings}
             onSettingsChange={(settings) => onStateChange({ gestureSettings: settings })}
             onGestureAction={handleGestureAction}
+          />
+        </Collapse>
+
+        {/* Authoring / Attribution Section */}
+        <SectionHeader onClick={() => toggleSection('authoring')}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <Person sx={{ fontSize: 16 }} />
+            <Typography variant="body2" sx={{ fontSize: 12 }}>Authoring</Typography>
+            {state.authoringMetadata.authorName && (
+              <Badge color="primary" variant="dot" />
+            )}
+          </Stack>
+          {expandedSections.authoring ? <ExpandLess /> : <ExpandMore />}
+        </SectionHeader>
+        <Collapse in={expandedSections.authoring}>
+          <AuthoringPanel
+            metadata={state.authoringMetadata}
+            onChange={(authoringMetadata) => onStateChange({ authoringMetadata })}
           />
         </Collapse>
       </TabPanel>

@@ -153,6 +153,7 @@ function buildFrameAssetPackage(params) {
       overlay: params.overlaySettings,
     },
     exports,
+    authoringMetadata: params.authoringMetadata,
     updatedAt: now,
   };
 }
@@ -165,6 +166,7 @@ function migrateFrameAssetPackage(assetPackage) {
     layers: (input.layers || []).map(l => ({ ...l, locked: l.locked ?? false })),
     renderSettings: input.renderSettings || {},
     exports: input.exports || [],
+    authoringMetadata: input.authoringMetadata,
     updatedAt: input.updatedAt || now,
   });
   const migrateV1ToV2 = (input) => {
@@ -277,6 +279,7 @@ function parseFrameAssetPackage(assetPackage) {
       width: referenceRect?.width ?? 0,
       height: referenceRect?.height ?? 0,
     } : null,
+    authoringMetadata: migrated.authoringMetadata ?? null,
     exports: migrated.exports,
   };
 }
@@ -637,7 +640,64 @@ console.log('\n═══ Test 10: Large payload boundary ═══');
   assert(layer2Count === 166, `Layer 2 has 166 strokes (got ${layer2Count})`);
 }
 
-console.log('\n═══ Test 11: Full combined roundtrip (the confidence gate) ═══');
+console.log('\n═══ Test 11: Authoring metadata roundtrip ═══');
+{
+  const authoringMetadata = {
+    authorName: 'Jane Doe',
+    authorId: 'user-abc-123',
+    signatureDataUrl: 'data:image/png;base64,sig-mock',
+    license: 'cc-by-sa',
+    customLicense: undefined,
+    createdAt: now,
+    notes: 'Concept art for scene 3',
+  };
+
+  const pkg = buildFrameAssetPackage({
+    imageData: 'data:image/png;base64,auth-test',
+    strokes: [],
+    activePackId: '',
+    activeSlotId: '',
+    activeCinematography: {},
+    overlaySettings: {},
+    referenceImage: null,
+    drawingLayers: [{ id: 'layer-default', name: 'Layer 1', visible: true, locked: false, opacity: 1, blendMode: 'normal', strokes: [] }],
+    annotations: [],
+    shapes: [],
+    textAnnotations: [],
+    authoringMetadata,
+  });
+
+  assert(pkg.authoringMetadata !== undefined, 'Package carries authoringMetadata');
+  assert(pkg.authoringMetadata.authorName === 'Jane Doe', 'Author name preserved in package');
+  assert(pkg.authoringMetadata.signatureDataUrl === 'data:image/png;base64,sig-mock', 'Signature data URL preserved');
+  assert(pkg.authoringMetadata.license === 'cc-by-sa', 'License preserved');
+  assert(pkg.authoringMetadata.notes === 'Concept art for scene 3', 'Notes preserved');
+
+  const out = parseFrameAssetPackage(pkg);
+  assert(out.authoringMetadata !== null, 'Parsed authoring metadata is not null');
+  assert(out.authoringMetadata.authorName === 'Jane Doe', 'Roundtrip: author name');
+  assert(out.authoringMetadata.authorId === 'user-abc-123', 'Roundtrip: author ID');
+  assert(out.authoringMetadata.signatureDataUrl === 'data:image/png;base64,sig-mock', 'Roundtrip: signature');
+  assert(out.authoringMetadata.license === 'cc-by-sa', 'Roundtrip: license');
+  assert(out.authoringMetadata.notes === 'Concept art for scene 3', 'Roundtrip: notes');
+
+  // Without metadata — should be null
+  const pkgNoAuth = buildFrameAssetPackage({
+    imageData: 'data:image/png;base64,no-auth',
+    strokes: [],
+    activePackId: '',
+    activeSlotId: '',
+    activeCinematography: {},
+    overlaySettings: {},
+    referenceImage: null,
+    drawingLayers: [{ id: 'layer-default', name: 'Layer 1', visible: true, locked: false, opacity: 1, blendMode: 'normal', strokes: [] }],
+    annotations: [],
+  });
+  const outNoAuth = parseFrameAssetPackage(pkgNoAuth);
+  assert(outNoAuth.authoringMetadata === null, 'No authoring metadata when omitted');
+}
+
+console.log('\n═══ Test 12: Full combined roundtrip (the confidence gate) ═══');
 {
   // Build with ALL features active simultaneously
   const fullPkg = buildFrameAssetPackage({
@@ -653,6 +713,12 @@ console.log('\n═══ Test 11: Full combined roundtrip (the confidence gate) 
     annotations: frameAnnotations,
     shapes,
     textAnnotations,
+    authoringMetadata: {
+      authorName: 'Full Test Artist',
+      license: 'cc-by',
+      signatureDataUrl: 'data:image/png;base64,full-sig',
+      createdAt: now,
+    },
   });
 
   const out = parseFrameAssetPackage(fullPkg);
@@ -686,6 +752,11 @@ console.log('\n═══ Test 11: Full combined roundtrip (the confidence gate) 
   assert(deepEqual(out.textAnnotations, textAnnotations), 'Full: text annotations deep equal');
   // Deep equality check on frame annotations
   assert(deepEqual(out.annotations, frameAnnotations), 'Full: frame annotations deep equal');
+  // Authoring metadata
+  assert(out.authoringMetadata !== null, 'Full: authoring metadata present');
+  assert(out.authoringMetadata.authorName === 'Full Test Artist', 'Full: author name');
+  assert(out.authoringMetadata.license === 'cc-by', 'Full: license');
+  assert(out.authoringMetadata.signatureDataUrl === 'data:image/png;base64,full-sig', 'Full: signature');
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
