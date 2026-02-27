@@ -107,6 +107,8 @@ export const useApplePencil = (
 
   // P-5 fix: Cache bounding rect, invalidate on resize/scroll
   const rectCacheRef = useRef<{ rect: DOMRect; ts: number } | null>(null);
+  /** Explicitly invalidate rect cache — call after layout changes (zoom, dock, fullscreen) */
+  const invalidateRectCache = useCallback(() => { rectCacheRef.current = null; }, []);
   const getCachedRect = useCallback((canvas: HTMLCanvasElement): DOMRect => {
     const now = Date.now();
     // Refresh every 500ms or on first call
@@ -193,15 +195,29 @@ export const useApplePencil = (
     const handlePointerMove = (event: PointerEvent) => {
       if (shouldReject(event)) return;
       event.preventDefault();
-      const point = createPoint(event, canvas);
+
+      // H1 fix: Process all coalesced events for smoother high-speed strokes.
+      // Browsers batch multiple pointer samples into a single dispatch;
+      // getCoalescedEvents() returns the full sub-pixel path.
+      const coalescedEvents = typeof event.getCoalescedEvents === 'function'
+        ? event.getCoalescedEvents()
+        : null;
+      const events = (coalescedEvents && coalescedEvents.length > 0) ? coalescedEvents : [event];
+
       const inputType = getInputType(event);
 
       if (stateRef.current.isDrawing && currentStrokeRef.current) {
-        currentStrokeRef.current.points.push(point);
+        for (const evt of events) {
+          const pt = createPoint(evt, canvas);
+          currentStrokeRef.current.points.push(pt);
+        }
+        // Only fire the callback / state update once per dispatch with the latest point
+        const latestPoint = createPoint(event, canvas);
         // Throttle state updates — only update pressure (avoids re-render flood)
-        setPencilState(prev => prev.currentPressure === point.pressure ? prev : { ...prev, currentPressure: point.pressure });
-        callbacksRef.current.onStrokeMove?.(point, inputType);
+        setPencilState(prev => prev.currentPressure === latestPoint.pressure ? prev : { ...prev, currentPressure: latestPoint.pressure });
+        callbacksRef.current.onStrokeMove?.(latestPoint, inputType);
       } else {
+        const point = createPoint(event, canvas);
         // B-5 fix: Check enableHover config
         if (configRef.current.enableHover !== false && inputType === 'pen' && !stateRef.current.isDrawing) {
           if (!stateRef.current.isHovering) {
@@ -298,6 +314,10 @@ export const useApplePencil = (
     // B-1 fix: Return React state (reactive) instead of ref.current (stale)
     state: pencilState,
     currentStroke: currentStrokeRef.current,
+    /** Stable getter — always reads the live ref, not a stale render-time snapshot */
+    getCurrentStroke: () => currentStrokeRef.current,
+    /** Invalidate cached bounding rect after layout changes (zoom, dock, fullscreen) */
+    invalidateRectCache,
     getStrokeWidth,
     getOpacity,
   };

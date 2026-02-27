@@ -241,7 +241,56 @@ export class WebGLBrushEngine {
     });
     glCanvas.addEventListener('webglcontextrestored', () => {
       this._contextLost = false;
-      // Re-initialise state that's lost with context
+
+      // H7 fix: Full re-initialisation — all GPU resources are invalidated on context loss.
+      // Recompile programs
+      this.stampProgram = createProgram(gl, STAMP_VERT, STAMP_FRAG);
+      this.compositeProgram = createProgram(gl, COMPOSITE_VERT, COMPOSITE_FRAG);
+
+      // Rebuild quad VAO
+      const vao = gl.createVertexArray();
+      if (vao) {
+        this.quadVAO = vao;
+        gl.bindVertexArray(vao);
+        const buf = gl.createBuffer();
+        const positions = new Float32Array([
+          -1, -1, 0, 0, 1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 1,
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+        gl.bindVertexArray(null);
+      }
+
+      // Resolve uniform locations
+      this.loc_center = gl.getUniformLocation(this.stampProgram, 'u_center')!;
+      this.loc_size = gl.getUniformLocation(this.stampProgram, 'u_size')!;
+      this.loc_resolution = gl.getUniformLocation(this.stampProgram, 'u_resolution')!;
+      this.loc_color = gl.getUniformLocation(this.stampProgram, 'u_color')!;
+      this.loc_hardness = gl.getUniformLocation(this.stampProgram, 'u_hardness')!;
+      this.loc_grain = gl.getUniformLocation(this.stampProgram, 'u_grain')!;
+      this.loc_compTex = gl.getUniformLocation(this.compositeProgram, 'u_texture')!;
+
+      // Rebuild FBO + texture
+      const fbo = gl.createFramebuffer();
+      const tex = gl.createTexture();
+      if (fbo && tex) {
+        this.fbo = fbo;
+        this.fboTexture = tex;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     });

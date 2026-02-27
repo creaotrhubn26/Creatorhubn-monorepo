@@ -865,6 +865,11 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   const symmetryCanvasRef = useRef<HTMLCanvasElement>(null);
   const onionCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // HiDPI support — scale canvas buffers to native resolution
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+  const bufferWidth = Math.round(width * dpr);
+  const bufferHeight = Math.round(height * dpr);
   
   // Brush engine
   const brushEngineRef = useRef<AdvancedBrushEngine | null>(null);
@@ -877,6 +882,8 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   const refImageCacheRef = useRef<{ src: string; img: HTMLImageElement } | null>(null);
   // Cached background image element
   const bgImageCacheRef = useRef<{ src: string; img: HTMLImageElement } | null>(null);
+  /** Generation counter to discard stale async background image loads */
+  const redrawGenRef = useRef(0);
   
   // Canvas transform state (zoom, pan, rotation)
   const [canvasTransform, setCanvasTransform] = useState({ zoom: 1, panX: 0, panY: 0, rotation: 0 });
@@ -892,6 +899,10 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     ...initialBrushSettings,
   });
   const [strokes, setStrokes] = useState<PencilStroke[]>(initialStrokes);
+  /** Stable ref mirror — always holds the latest strokes for use in closures that
+   *  may fire before a batched React state update has flushed. */
+  const strokesRef = useRef(strokes);
+  strokesRef.current = strokes;
   const [undoStack, setUndoStack] = useState<PencilStroke[][]>([]);
   const [redoStack, setRedoStack] = useState<PencilStroke[][]>([]);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
@@ -935,8 +946,20 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     setDrawingState(initialDrawingState);
   }, [initialDrawingState]);
 
+  // Debounce drawing state change notifications to the parent to avoid
+  // excessive re-renders when sub-fields change rapidly (H6 fix).
+  const drawingStateChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestDrawingStateRef = useRef(drawingState);
+  latestDrawingStateRef.current = drawingState;
   useEffect(() => {
-    onDrawingStateChange?.(drawingState);
+    if (!onDrawingStateChange) return;
+    if (drawingStateChangeTimerRef.current) clearTimeout(drawingStateChangeTimerRef.current);
+    drawingStateChangeTimerRef.current = setTimeout(() => {
+      onDrawingStateChange(latestDrawingStateRef.current);
+    }, 60); // ~1 frame at 16 Hz
+    return () => {
+      if (drawingStateChangeTimerRef.current) clearTimeout(drawingStateChangeTimerRef.current);
+    };
   }, [drawingState, onDrawingStateChange]);
   
   // Clipboard for copy/paste
@@ -949,6 +972,15 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   useEffect(() => {
     if (initialShapes) setShapes(initialShapes);
   }, [initialShapes]);
+
+  // M6: Sync initialStrokes when parent provides new data (e.g., loading a different frame)
+  const prevInitialStrokesRef = useRef(initialStrokes);
+  useEffect(() => {
+    if (initialStrokes !== prevInitialStrokesRef.current) {
+      prevInitialStrokesRef.current = initialStrokes;
+      setStrokes(initialStrokes);
+    }
+  }, [initialStrokes]);
 
   useEffect(() => {
     onShapesChange?.(shapes);
@@ -1055,28 +1087,36 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     ref: pencilRef,
     state: pencilState,
     currentStroke,
+    getCurrentStroke,
+    invalidateRectCache,
     getStrokeWidth,
     getOpacity,
   } = useApplePencil({
     onStrokeStart: (point: PencilPoint) => {
       const previewCtx = previewCanvasRef.current?.getContext('2d');
       if (previewCtx) {
-        previewCtx.clearRect(0, 0, width, height);
+        previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+        previewCtx.clearRect(0, 0, bufferWidth, bufferHeight);
+        previewCtx.scale(dpr, dpr);
       }
       const adjustedPoint = applyInputPointAdjustments(point);
       brushEngineRef.current?.startStroke(adjustedPoint);
     },
     
     onStrokeMove: (point: PencilPoint) => {
-      if (currentStroke && previewCanvasRef.current && brushEngineRef.current) {
+      // Use the live ref getter to avoid stale render-time snapshot
+      const liveStroke = getCurrentStroke();
+      if (liveStroke && previewCanvasRef.current && brushEngineRef.current) {
         const adjustedCurrentPoint = applyInputPointAdjustments(point);
         setHoverPosition({ x: adjustedCurrentPoint.x, y: adjustedCurrentPoint.y });
         const ctx = previewCanvasRef.current.getContext('2d');
         if (!ctx) return;
         
-        ctx.clearRect(0, 0, width, height);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, bufferWidth, bufferHeight);
+        ctx.scale(dpr, dpr);
         
-        const adjustedPoints = currentStroke.points.map(applyInputPointAdjustments);
+        const adjustedPoints = liveStroke.points.map(applyInputPointAdjustments);
         
         // Apply symmetry if enabled
         if (drawingState.symmetrySettings.type !== 'none') {
@@ -1140,7 +1180,8 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
       
       const previewCtx = previewCanvasRef.current?.getContext('2d');
       if (previewCtx) {
-        previewCtx.clearRect(0, 0, width, height);
+        previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+        previewCtx.clearRect(0, 0, bufferWidth, bufferHeight);
       }
       redrawMainCanvas();
     },
@@ -1277,7 +1318,14 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     const engine = brushEngineRef.current;
     if (!canvas || !ctx || !engine) return;
 
-    ctx.clearRect(0, 0, width, height);
+    // HiDPI: reset transform, clear at buffer resolution, then apply DPR scale
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bufferWidth, bufferHeight);
+    ctx.scale(dpr, dpr);
+    // M2: Explicit smoothing control for consistent cross-browser rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
     paintCanvasSurface(ctx, width, height, canvasSurface, surfaceTextureTile);
 
     const renderContent = () => {
@@ -1342,6 +1390,8 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     };
 
     // Draw background image if provided (cached to avoid re-creating Image)
+    // Uses a generation counter to discard stale async loads (C4 fix).
+    const gen = ++redrawGenRef.current;
     if (backgroundImage) {
       if (bgImageCacheRef.current && bgImageCacheRef.current.src === backgroundImage) {
         ctx.drawImage(bgImageCacheRef.current.img, 0, 0, width, height);
@@ -1349,6 +1399,7 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
       } else {
         const img = new window.Image();
         img.onload = () => {
+          if (redrawGenRef.current !== gen) return; // stale — discard
           bgImageCacheRef.current = { src: backgroundImage, img };
           ctx.drawImage(img, 0, 0, width, height);
           renderContent();
@@ -1361,6 +1412,9 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   }, [
     width,
     height,
+    dpr,
+    bufferWidth,
+    bufferHeight,
     backgroundImage,
     strokes,
     shapes,
@@ -1393,6 +1447,7 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     const handleShapeDown = (e: PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation(); // prevent pencil hook from seeing this event
       const pt = getCanvasPoint(e);
       const id = `shape-${Date.now()}`;
       const newShape: Shape = {
@@ -1440,12 +1495,13 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
 
     canvas.addEventListener('pointerdown', handleShapeDown, { capture: true });
     canvas.addEventListener('pointermove', handleShapeMove, { capture: true });
-    canvas.addEventListener('pointerup', handleShapeUp, { capture: true });
+    // Attach pointerup to window so it fires even if pointer leaves the canvas (M5 fix)
+    window.addEventListener('pointerup', handleShapeUp);
 
     return () => {
       canvas.removeEventListener('pointerdown', handleShapeDown, { capture: true });
       canvas.removeEventListener('pointermove', handleShapeMove, { capture: true });
-      canvas.removeEventListener('pointerup', handleShapeUp, { capture: true });
+      window.removeEventListener('pointerup', handleShapeUp);
     };
   }, [
     drawingState.activeTool,
@@ -1463,7 +1519,9 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     const ctx = referenceCanvasRef.current.getContext('2d');
     if (!ctx) return;
     
-    ctx.clearRect(0, 0, width, height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bufferWidth, bufferHeight);
+    ctx.scale(dpr, dpr);
     
     if (referenceImage && referenceImage.visible) {
       const drawRefImage = (img: HTMLImageElement) => {
@@ -1499,7 +1557,9 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     const ctx = gridCanvasRef.current.getContext('2d');
     if (!ctx) return;
     
-    ctx.clearRect(0, 0, width, height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bufferWidth, bufferHeight);
+    ctx.scale(dpr, dpr);
 
     const gridEnabled = showGrid || drawingState.decisionData.overlays.grid;
 
@@ -1541,7 +1601,9 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     const ctx = symmetryCanvasRef.current.getContext('2d');
     if (!ctx) return;
     
-    ctx.clearRect(0, 0, width, height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bufferWidth, bufferHeight);
+    ctx.scale(dpr, dpr);
 
     const decisionGuides = buildGuidesFromDecision(drawingState.decisionData);
     if (decisionGuides.enabled) {
@@ -1614,7 +1676,9 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     const ctx = onionCanvasRef.current.getContext('2d');
     if (!ctx) return;
     
-    ctx.clearRect(0, 0, width, height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bufferWidth, bufferHeight);
+    ctx.scale(dpr, dpr);
     
     if (drawingState.onionSkinSettings.enabled) {
       const frames = getOnionFrames(currentFrameIndex, totalFrames, drawingState.onionSkinSettings);
@@ -1661,32 +1725,39 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   }, [brushSettings.size]);
   
   // Undo/Redo — bounded to prevent O(n²) memory growth
+  // Uses strokesRef so the snapshot is always accurate even when React batches
+  // multiple state updates in the same frame (e.g., rapid strokes).
   const MAX_UNDO_DEPTH = 80;
   const saveToUndo = useCallback(() => {
+    const snapshot = strokesRef.current;
     setUndoStack(prev => {
-      const next = [...prev, strokes];
+      const next = [...prev, snapshot];
       return next.length > MAX_UNDO_DEPTH ? next.slice(next.length - MAX_UNDO_DEPTH) : next;
     });
     setRedoStack([]);
-  }, [strokes]);
+  }, []);
   
   const undo = useCallback(() => {
-    if (undoStack.length === 0) return;
-    const previous = undoStack[undoStack.length - 1];
-    setRedoStack(prev => [...prev, strokes]);
-    setUndoStack(prev => prev.slice(0, -1));
-    setStrokes(previous);
-    onStrokesChange?.(previous);
-  }, [undoStack, strokes, onStrokesChange]);
+    setUndoStack(prevUndo => {
+      if (prevUndo.length === 0) return prevUndo;
+      const previous = prevUndo[prevUndo.length - 1];
+      setRedoStack(prevRedo => [...prevRedo, strokesRef.current]);
+      setStrokes(previous);
+      onStrokesChange?.(previous);
+      return prevUndo.slice(0, -1);
+    });
+  }, [onStrokesChange]);
   
   const redo = useCallback(() => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[redoStack.length - 1];
-    setUndoStack(prev => [...prev, strokes]);
-    setRedoStack(prev => prev.slice(0, -1));
-    setStrokes(next);
-    onStrokesChange?.(next);
-  }, [redoStack, strokes, onStrokesChange]);
+    setRedoStack(prevRedo => {
+      if (prevRedo.length === 0) return prevRedo;
+      const next = prevRedo[prevRedo.length - 1];
+      setUndoStack(prevUndo => [...prevUndo, strokesRef.current]);
+      setStrokes(next);
+      onStrokesChange?.(next);
+      return prevRedo.slice(0, -1);
+    });
+  }, [onStrokesChange]);
   
   // Clipboard operations — selection-aware
 
@@ -1802,9 +1873,10 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
-      // Ignore keyboard shortcuts when typing in an input/textarea
+      // Ignore keyboard shortcuts when typing in an input/textarea/contentEditable
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
 
       if (ctrl && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -1832,6 +1904,17 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, copySelection, pasteClipboard, cutSelection, deleteSelection, updateDrawingState]);
+
+  // L1: Invalidate rect cache and reset hover on tab visibility change
+  useEffect(() => {
+    const handler = () => {
+      if (document.hidden) {
+        invalidateRectCache();
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [invalidateRectCache]);
 
   // Gesture handler hook
   useGestureHandler({
@@ -1988,48 +2071,49 @@ export const PencilCanvasPro = forwardRef<PencilCanvasProHandle, PencilCanvasPro
       {/* Reference image layer */}
       <ReferenceLayer
         ref={referenceCanvasRef}
-        width={width}
-        height={height}
-        style={{ opacity: refOpacity }}
+        width={bufferWidth}
+        height={bufferHeight}
+        style={{ opacity: refOpacity, width, height }}
       />
       
       {/* Main canvas with completed strokes */}
       <CanvasLayer
         ref={mainCanvasRef}
-        width={width}
-        height={height}
-        style={{ cursor: 'crosshair' }}
+        width={bufferWidth}
+        height={bufferHeight}
+        style={{ cursor: 'crosshair', width, height }}
       />
       
       {/* Preview canvas for current stroke */}
       <CanvasLayer
         ref={previewCanvasRef}
-        width={width}
-        height={height}
-        style={{ pointerEvents: 'none' }}
+        width={bufferWidth}
+        height={bufferHeight}
+        style={{ pointerEvents: 'none', width, height }}
       />
       
       {/* Grid overlay */}
       <GridOverlay
         ref={gridCanvasRef}
-        width={width}
-        height={height}
+        width={bufferWidth}
+        height={bufferHeight}
+        style={{ width, height }}
       />
       
       {/* Onion skinning layer */}
       <CanvasLayer
         ref={onionCanvasRef}
-        width={width}
-        height={height}
-        style={{ pointerEvents: 'none', opacity: 0.5 }}
+        width={bufferWidth}
+        height={bufferHeight}
+        style={{ pointerEvents: 'none', opacity: 0.5, width, height }}
       />
       
       {/* Symmetry guides layer */}
       <CanvasLayer
         ref={symmetryCanvasRef}
-        width={width}
-        height={height}
-        style={{ pointerEvents: 'none' }}
+        width={bufferWidth}
+        height={bufferHeight}
+        style={{ pointerEvents: 'none', width, height }}
       />
       </Box>{/* End transformable canvas wrapper */}
       
