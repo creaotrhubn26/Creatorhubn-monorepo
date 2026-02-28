@@ -34,6 +34,17 @@ import {
   Menu,
   Divider,
   Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItemButton,
+  ListItemText,
+  Tabs,
+  Tab,
+  Skeleton,
+  Alert,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -63,6 +74,15 @@ import {
   MoreVert as MoreVertIcon,
   BookmarkBorder as PoolIcon,
   HelpOutline as HelpIcon,
+  ViewTimeline as TimelineViewIcon,
+  ViewKanban as PipelineViewIcon,
+  KeyboardCommandKey as CommandIcon,
+  WarningAmber as WarningIcon,
+  Share as ShareIcon,
+  CompareArrows as CompareIcon,
+  Save as SaveIcon,
+  PlaylistAdd as PlaylistAddIcon,
+  ContentPaste as PasteIcon,
 } from '@mui/icons-material';
 import { RolesIcon as TheaterComedyIcon, AuditionsIcon, CandidatesIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, StatsIcon } from './icons/CastingIcons';
 import { Schedule, Role, Candidate } from '../models/casting';
@@ -99,7 +119,7 @@ const escapeHtml = (s: string): string =>
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #ffb800',
+    outline: '3px solid #b86bff',
     outlineOffset: 2,
   },
 };
@@ -108,6 +128,45 @@ type SortField = ReducerSortField;
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table' | 'compact';
 type StatusFilter = ReducerStatusFilter;
+type WorkspaceView = 'standard' | 'pro';
+type ProSortField = 'priority' | 'date' | 'candidate' | 'role' | 'status';
+
+const PRO_STATUS_COLUMNS: Array<{
+  status: Schedule['status'];
+  label: string;
+}> = [
+  { status: 'scheduled', label: 'Planlagt' },
+  { status: 'confirmed', label: 'Bekreftet' },
+  { status: 'awaiting_callback', label: 'Callback' },
+  { status: 'completed', label: 'Fullført' },
+  { status: 'cancelled', label: 'Kansellert' },
+  { status: 'pool', label: 'Pool' },
+];
+
+type ProViewMode = 'pipeline' | 'timeline';
+type ProTimelineMode = 'day' | 'week';
+
+interface ProSavedView {
+  id: string;
+  name: string;
+  sortField: ProSortField;
+  sortDirection: SortDirection;
+  statusFilter: StatusFilter;
+  viewMode: ProViewMode;
+  timelineMode: ProTimelineMode;
+}
+
+interface ProActivityRecord {
+  id: string;
+  timestamp: number;
+  action: string;
+  details: string;
+}
+
+interface ProConflict {
+  severity: 'warning' | 'error';
+  issues: string[];
+}
 
 interface AuditionSchedulePanelProps {
   projectId: string;
@@ -123,6 +182,8 @@ interface AuditionSchedulePanelProps {
   profession?: 'photographer' | 'videographer' | null;
   /** Optional – enables per-user favorite persistence via DB */
   userId?: string;
+  /** Disable role-room API usage (guest/demo mode) */
+  enableRoleRoomApi?: boolean;
 }
 
 function AuditionSchedulePanelInner({
@@ -135,11 +196,12 @@ function AuditionSchedulePanelInner({
   onEditSchedule,
   onCreateSchedule,
   onNavigateToTab,
+  profession,
   userId,
+  enableRoleRoomApi = true,
 }: AuditionSchedulePanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const titleId = useId();
   const statsId = useId();
   
@@ -174,6 +236,27 @@ function AuditionSchedulePanelInner({
   const hasActiveFilters = computeHasActiveFilters(uiState);
 
   // Per-render state (not part of filter/sort/view)
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
+  const [proSortField, setProSortField] = useState<ProSortField>('priority');
+  const [proSortDirection, setProSortDirection] = useState<SortDirection>('desc');
+  const [proStatusFilter, setProStatusFilter] = useState<StatusFilter>('all');
+  const [selectedProScheduleId, setSelectedProScheduleId] = useState<string | null>(null);
+  const [proViewMode, setProViewMode] = useState<ProViewMode>('pipeline');
+  const [proTimelineMode, setProTimelineMode] = useState<ProTimelineMode>('week');
+  const [proTimelineDate, setProTimelineDate] = useState<string>('');
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, Schedule['status']>>({});
+  const [dragOverStatus, setDragOverStatus] = useState<Schedule['status'] | null>(null);
+  const [proCommandOpen, setProCommandOpen] = useState(false);
+  const [proCommandQuery, setProCommandQuery] = useState('');
+  const [proCompareIds, setProCompareIds] = useState<Set<string>>(new Set());
+  const [proSavedViews, setProSavedViews] = useState<ProSavedView[]>([]);
+  const [selectedProViewId, setSelectedProViewId] = useState<string>('none');
+  const [statusUndoOpen, setStatusUndoOpen] = useState(false);
+  const [statusUndoRecord, setStatusUndoRecord] = useState<{ scheduleId: string; from: Schedule['status']; to: Schedule['status'] } | null>(null);
+  const [proActivityLog, setProActivityLog] = useState<ProActivityRecord[]>([]);
+  const [bulkPlanDate, setBulkPlanDate] = useState('');
+  const [bulkPlanStart, setBulkPlanStart] = useState('09:00');
+  const [bulkPlanInterval, setBulkPlanInterval] = useState(30);
   const [undoSnackbarOpen, setUndoSnackbarOpen] = useState(false);
   const [lastDeleted, setLastDeleted] = useState<Schedule | null>(null);
   const [poolAuditions, setPoolAuditions] = useState<PoolAudition[]>([]);
@@ -181,8 +264,24 @@ function AuditionSchedulePanelInner({
   const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; schedule: Schedule } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const { showSuccess, showError } = useToast();
-  const containerPadding = isMobile ? 2 : isTablet ? 3 : 4;
+  const { showSuccess, showError, showInfo } = useToast();
+  const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
+  const roleTabAccent = '#b86bff';
+  const roleTabAccentHover = '#a855f7';
+  const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
+  const roleSurface = 'rgba(20,14,48,0.84)';
+  const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
+  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleText = '#f3eaff';
+  const roleTextMuted = 'rgba(220,205,255,0.82)';
+  const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
+  const auditionContextLabel = profession === 'photographer'
+    ? 'Planlegg auditions og callbacks for foto-casting'
+    : profession === 'videographer'
+      ? 'Planlegg auditions og callbacks for video-casting'
+      : 'Planlegg auditions, callbacks og oppfølging';
+  const proViewsStorageKey = `roleRoom:auditionProViews:${projectId}`;
+  const proActivityStorageKey = `roleRoom:auditionProActivity:${projectId}`;
 
   // Stable ref so the keyboard effect never becomes stale without re-subscribing
   const handleExportCSVRef = useRef<() => void>(() => {});
@@ -195,13 +294,13 @@ function AuditionSchedulePanelInner({
     items: hookItems,
     counts: serverCounts,
     createMutation,
-    updateMutation: _updateMutation,
+    updateMutation,
     patchMutation,
     deleteMutation,
     bulkDeleteMutation,
     favoriteMutation,
     isFetching,
-  } = useAuditionSchedules(projectId, apiFilters, userId);
+  } = useAuditionSchedules(projectId, apiFilters, userId, enableRoleRoomApi);
 
   /**
    * When the hook resolves, use server-filtered items.
@@ -334,7 +433,7 @@ function AuditionSchedulePanelInner({
       case 'completed':         return '#10b981';  // green
       case 'cancelled':         return '#ef4444';  // red
       case 'pool':              return '#94a3b8';  // neutral
-      default:                  return '#ffb800';  // amber (scheduled)
+      default:                  return roleTabAccent;
     }
   };
 
@@ -463,6 +562,277 @@ function AuditionSchedulePanelInner({
     [schedules],
   );
 
+  const getScheduleTimestamp = useCallback((schedule: Schedule) => {
+    const timestamp = Date.parse(`${schedule.date}T${schedule.time || '00:00'}`);
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }, []);
+
+  const getProPriorityScore = useCallback((schedule: Schedule) => {
+    const statusWeight: Record<Schedule['status'], number> = {
+      confirmed: 34,
+      awaiting_callback: 30,
+      scheduled: 26,
+      completed: 8,
+      cancelled: 0,
+      pool: 14,
+    };
+    const now = Date.now();
+    const scheduleTime = getScheduleTimestamp(schedule);
+    const daysToAudition = scheduleTime > 0 ? Math.max(0, (scheduleTime - now) / (1000 * 60 * 60 * 24)) : 365;
+    const urgency = daysToAudition <= 1 ? 26 : daysToAudition <= 3 ? 20 : daysToAudition <= 7 ? 12 : 6;
+    const noteStrength = schedule.notes ? Math.min(14, Math.ceil(schedule.notes.length / 40)) : 0;
+    const favoriteBoost = favorites.has(schedule.id) ? 14 : 0;
+    const callbackBoost = schedule.status === 'awaiting_callback' ? 8 : 0;
+    return Math.max(0, Math.min(100, statusWeight[schedule.status] + urgency + noteStrength + favoriteBoost + callbackBoost));
+  }, [favorites, getScheduleTimestamp]);
+
+  const getPriorityBreakdown = useCallback((schedule: Schedule) => {
+    const now = Date.now();
+    const scheduleTime = getScheduleTimestamp(schedule);
+    const daysToAudition = scheduleTime > 0 ? Math.max(0, (scheduleTime - now) / (1000 * 60 * 60 * 24)) : 365;
+    const urgency = daysToAudition <= 1 ? 26 : daysToAudition <= 3 ? 20 : daysToAudition <= 7 ? 12 : 6;
+    const noteStrength = schedule.notes ? Math.min(14, Math.ceil(schedule.notes.length / 40)) : 0;
+    const favoriteBoost = favorites.has(schedule.id) ? 14 : 0;
+    const callbackBoost = schedule.status === 'awaiting_callback' ? 8 : 0;
+    const statusWeight: Record<string, number> = {
+      confirmed: 34,
+      awaiting_callback: 30,
+      scheduled: 26,
+      completed: 8,
+      cancelled: 0,
+      pool: 14,
+    };
+    const statusScore = statusWeight[schedule.status || 'scheduled'] ?? 0;
+    const total = Math.max(0, Math.min(100, statusScore + urgency + noteStrength + favoriteBoost + callbackBoost));
+    const nextAction = schedule.status === 'scheduled'
+      ? 'Bekreft tidspunkt med kandidat'
+      : schedule.status === 'awaiting_callback'
+        ? 'Legg inn callback-notat og beslutning'
+        : schedule.status === 'confirmed'
+          ? 'Forbered gjennomføring'
+          : schedule.status === 'completed'
+            ? 'Arkiver eller markér oppfølging'
+            : 'Replanlegg audition';
+    return { total, statusScore, urgency, noteStrength, favoriteBoost, callbackBoost, nextAction };
+  }, [favorites, getScheduleTimestamp]);
+
+  const effectiveSchedules = useMemo(
+    () => filteredAndSortedSchedules.map((schedule) => ({
+      ...schedule,
+      status: statusOverrides[schedule.id] ?? schedule.status,
+    })),
+    [filteredAndSortedSchedules, statusOverrides],
+  );
+
+  const proSchedules = useMemo(() => {
+    let result = [...effectiveSchedules];
+
+    if (proStatusFilter !== 'all') {
+      result = result.filter((schedule) => schedule.status === proStatusFilter);
+    }
+
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (proSortField === 'priority') {
+        comparison = getProPriorityScore(a) - getProPriorityScore(b);
+      } else if (proSortField === 'date') {
+        comparison = getScheduleTimestamp(a) - getScheduleTimestamp(b);
+      } else if (proSortField === 'candidate') {
+        comparison = getCandidateName(a.candidateId).localeCompare(getCandidateName(b.candidateId));
+      } else if (proSortField === 'role') {
+        comparison = getRoleName(a.roleId).localeCompare(getRoleName(b.roleId));
+      } else if (proSortField === 'status') {
+        const aRank = PRO_STATUS_COLUMNS.findIndex((column) => column.status === a.status);
+        const bRank = PRO_STATUS_COLUMNS.findIndex((column) => column.status === b.status);
+        comparison = (aRank === -1 ? PRO_STATUS_COLUMNS.length : aRank) - (bRank === -1 ? PRO_STATUS_COLUMNS.length : bRank);
+      }
+      return proSortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [
+    effectiveSchedules,
+    getCandidateName,
+    getProPriorityScore,
+    getRoleName,
+    getScheduleTimestamp,
+    proSortDirection,
+    proSortField,
+    proStatusFilter,
+  ]);
+
+  const proBoardColumns = useMemo(() => {
+    return PRO_STATUS_COLUMNS.map((column) => ({
+      ...column,
+      color: getStatusColor(column.status),
+      schedules: proSchedules.filter((schedule) => schedule.status === column.status),
+    }));
+  }, [proSchedules]);
+
+  const todayIsoDate = useMemo(() => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${now.getFullYear()}-${month}-${day}`;
+  }, []);
+
+  const proMetrics = useMemo(() => ({
+    total: proSchedules.length,
+    hoyPrioritet: proSchedules.filter((schedule) => getProPriorityScore(schedule) >= 70).length,
+    iDag: proSchedules.filter((schedule) => schedule.date === todayIsoDate).length,
+    callback: proSchedules.filter((schedule) => schedule.status === 'awaiting_callback').length,
+  }), [getProPriorityScore, proSchedules, todayIsoDate]);
+
+  const proConflicts = useMemo(() => {
+    const byId = new Map<string, ProConflict>();
+    const bySlot = new Map<string, string[]>();
+
+    proSchedules.forEach((schedule) => {
+      const candidateKey = schedule.candidateId || '';
+      const dateKey = schedule.date || '';
+      const timeKey = schedule.time || '';
+      if (!candidateKey || !dateKey || !timeKey) return;
+      const slotKey = `${candidateKey}::${dateKey}::${timeKey}`;
+      const list = bySlot.get(slotKey) || [];
+      list.push(schedule.id);
+      bySlot.set(slotKey, list);
+    });
+
+    proSchedules.forEach((schedule) => {
+      const issues: string[] = [];
+      const candidate = candidates.find((item) => item.id === schedule.candidateId);
+      const contactInfo = (candidate as any)?.contactInfo || {};
+      if (!schedule.location) issues.push('Mangler lokasjon');
+      if (!contactInfo?.email && !contactInfo?.phone) issues.push('Mangler kontaktinfo på kandidat');
+      if (schedule.status === 'awaiting_callback' && !schedule.notes) issues.push('Callback uten notat');
+
+      const slotKey = `${schedule.candidateId || ''}::${schedule.date || ''}::${schedule.time || ''}`;
+      const duplicates = bySlot.get(slotKey);
+      if (duplicates && duplicates.length > 1) {
+        issues.push('Dobbelbooking samme tidspunkt');
+      }
+
+      if (issues.length > 0) {
+        const severity = issues.some((issue) => issue.includes('Dobbelbooking')) ? 'error' : 'warning';
+        byId.set(schedule.id, { severity, issues });
+      }
+    });
+
+    return byId;
+  }, [candidates, proSchedules]);
+
+  const conflictMetrics = useMemo(() => ({
+    total: proConflicts.size,
+    critical: Array.from(proConflicts.values()).filter((conflict) => conflict.severity === 'error').length,
+  }), [proConflicts]);
+
+  const proTimelineBuckets = useMemo(() => {
+    const buckets = new Map<string, Schedule[]>();
+    const now = new Date();
+    const rangeStart = new Date(now);
+    rangeStart.setHours(0, 0, 0, 0);
+    const rangeEnd = new Date(rangeStart);
+    if (proTimelineMode === 'week') {
+      rangeEnd.setDate(rangeEnd.getDate() + 6);
+    }
+
+    proSchedules.forEach((schedule) => {
+      const key = schedule.date || '';
+      if (!key) return;
+      const date = new Date(key);
+      if (Number.isNaN(date.getTime())) return;
+      if (proTimelineMode === 'day') {
+        if (key !== (proTimelineDate || todayIsoDate)) return;
+      } else if (date < rangeStart || date > rangeEnd) {
+        return;
+      }
+      const list = buckets.get(key) || [];
+      list.push(schedule);
+      buckets.set(key, list);
+    });
+
+    return Array.from(buckets.entries())
+      .sort((a, b) => Date.parse(a[0]) - Date.parse(b[0]))
+      .map(([date, items]) => ({
+        date,
+        label: new Date(date).toLocaleDateString('nb-NO', { weekday: 'short', day: '2-digit', month: 'short' }),
+        items: items.sort((a, b) => (a.time || '').localeCompare(b.time || '')),
+      }));
+  }, [proSchedules, proTimelineDate, proTimelineMode, todayIsoDate]);
+
+  const selectedProSchedule = useMemo(() => {
+    if (proSchedules.length === 0) return null;
+    if (!selectedProScheduleId) return proSchedules[0];
+    return proSchedules.find((schedule) => schedule.id === selectedProScheduleId) ?? proSchedules[0];
+  }, [proSchedules, selectedProScheduleId]);
+
+  const proCompareSchedules = useMemo(
+    () => proSchedules.filter((schedule) => proCompareIds.has(schedule.id)).slice(0, 3),
+    [proCompareIds, proSchedules],
+  );
+
+  useEffect(() => {
+    setStatusOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      filteredAndSortedSchedules.forEach((schedule) => {
+        const override = prev[schedule.id];
+        if (override && override === schedule.status) {
+          delete next[schedule.id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [filteredAndSortedSchedules]);
+
+  useEffect(() => {
+    if (!proTimelineDate) {
+      setProTimelineDate(todayIsoDate);
+    }
+  }, [proTimelineDate, todayIsoDate]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(proViewsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ProSavedView[];
+        if (Array.isArray(parsed)) {
+          setProSavedViews(parsed);
+        }
+      }
+    } catch (error) {
+      console.warn('Kunne ikke laste lagrede audition-visninger:', error);
+    }
+    try {
+      const raw = localStorage.getItem(proActivityStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ProActivityRecord[];
+        if (Array.isArray(parsed)) {
+          setProActivityLog(parsed.slice(0, 120));
+        }
+      }
+    } catch (error) {
+      console.warn('Kunne ikke laste aktivitetslogg:', error);
+    }
+  }, [proActivityStorageKey, proViewsStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(proViewsStorageKey, JSON.stringify(proSavedViews));
+    } catch (error) {
+      console.warn('Kunne ikke lagre pro-visninger:', error);
+    }
+  }, [proSavedViews, proViewsStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(proActivityStorageKey, JSON.stringify(proActivityLog.slice(0, 120)));
+    } catch (error) {
+      console.warn('Kunne ikke lagre aktivitetslogg:', error);
+    }
+  }, [proActivityLog, proActivityStorageKey]);
+
   // Stable refs for keyboard handler (avoids stale closure)
   const filteredAndSortedSchedulesRef = useRef(filteredAndSortedSchedules);
   useEffect(() => { filteredAndSortedSchedulesRef.current = filteredAndSortedSchedules; }, [filteredAndSortedSchedules]);
@@ -535,21 +905,378 @@ function AuditionSchedulePanelInner({
     openDrawer(scheduleId);
   };
 
-  /** Called from the Details Drawer when user picks a new status */
-  const handleStatusChange = useCallback(async (id: string, status: Schedule['status']) => {
+  const appendProActivity = useCallback((action: string, details: string) => {
+    setProActivityLog((prev) => [
+      {
+        id: `activity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: Date.now(),
+        action,
+        details,
+      },
+      ...prev,
+    ].slice(0, 120));
+  }, []);
+
+  const applyStatusUpdate = useCallback(async (
+    scheduleId: string,
+    nextStatus: Schedule['status'],
+    options?: { reason?: string; allowUndo?: boolean },
+  ) => {
+    const schedule = effectiveSchedules.find((item) => item.id === scheduleId);
+    if (!schedule) return;
+    const previousStatus = schedule.status as Schedule['status'];
+    if (previousStatus === nextStatus) return;
+
+    setStatusOverrides((prev) => ({ ...prev, [scheduleId]: nextStatus }));
+    if (options?.allowUndo !== false) {
+      setStatusUndoRecord({ scheduleId, from: previousStatus, to: nextStatus });
+      setStatusUndoOpen(true);
+    }
+
+    appendProActivity(
+      'Status endret',
+      `${getCandidateName(schedule.candidateId)}: ${getStatusLabel(previousStatus)} → ${getStatusLabel(nextStatus)}${options?.reason ? ` (${options.reason})` : ''}`,
+    );
+
     try {
-      await patchMutation.mutateAsync({ scheduleId: id, patch: { status } });
+      await patchMutation.mutateAsync({ scheduleId, patch: { status: nextStatus } });
       onSchedulesChange();
     } catch (error) {
       console.error('Failed to update status:', error);
+      setStatusOverrides((prev) => ({ ...prev, [scheduleId]: previousStatus }));
+      showError('Kunne ikke oppdatere status', 3000);
     }
-  }, [patchMutation, onSchedulesChange]);
+  }, [appendProActivity, effectiveSchedules, getCandidateName, onSchedulesChange, patchMutation, showError]);
+
+  /** Called from the Details Drawer when user picks a new status */
+  const handleStatusChange = useCallback(async (id: string, status: Schedule['status']) => {
+    await applyStatusUpdate(id, status, { allowUndo: true });
+  }, [applyStatusUpdate]);
+
+  const handleStatusDrop = useCallback(async (scheduleId: string, targetStatus: Schedule['status']) => {
+    const schedule = proSchedules.find((item) => item.id === scheduleId);
+    if (!schedule || schedule.status === targetStatus) return;
+    await applyStatusUpdate(scheduleId, targetStatus, { reason: 'Drag & drop', allowUndo: true });
+  }, [applyStatusUpdate, proSchedules]);
+
+  const handleUndoStatusChange = useCallback(async () => {
+    if (!statusUndoRecord) return;
+    const { scheduleId, from } = statusUndoRecord;
+    setStatusUndoOpen(false);
+    setStatusUndoRecord(null);
+    await applyStatusUpdate(scheduleId, from, { reason: 'Angret statusendring', allowUndo: false });
+  }, [applyStatusUpdate, statusUndoRecord]);
+
+  const handleToggleCompare = useCallback((scheduleId: string) => {
+    setProCompareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(scheduleId)) {
+        next.delete(scheduleId);
+      } else {
+        if (next.size >= 3) {
+          const first = next.values().next().value;
+          if (first) next.delete(first);
+        }
+        next.add(scheduleId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSaveCurrentProView = useCallback(() => {
+    const suggested = `Pro ${new Date().toLocaleDateString('nb-NO')} ${new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`;
+    const name = window.prompt('Navn på visning', suggested);
+    if (!name) return;
+    const record: ProSavedView = {
+      id: `view-${Date.now()}`,
+      name,
+      sortField: proSortField,
+      sortDirection: proSortDirection,
+      statusFilter: proStatusFilter,
+      viewMode: proViewMode,
+      timelineMode: proTimelineMode,
+    };
+    setProSavedViews((prev) => [record, ...prev.filter((item) => item.name !== record.name)].slice(0, 24));
+    setSelectedProViewId(record.id);
+    appendProActivity('Pro-visning lagret', record.name);
+    showSuccess(`Lagret visning: ${record.name}`, 2500);
+  }, [appendProActivity, proSortDirection, proSortField, proStatusFilter, proTimelineMode, proViewMode, showSuccess]);
+
+  const handleApplySavedView = useCallback((viewId: string) => {
+    setSelectedProViewId(viewId);
+    if (viewId === 'none') return;
+    const found = proSavedViews.find((item) => item.id === viewId);
+    if (!found) return;
+    setProSortField(found.sortField);
+    setProSortDirection(found.sortDirection);
+    setProStatusFilter(found.statusFilter);
+    setProViewMode(found.viewMode);
+    setProTimelineMode(found.timelineMode);
+    appendProActivity('Pro-visning brukt', found.name);
+  }, [appendProActivity, proSavedViews]);
+
+  const handleShareCurrentView = useCallback(async () => {
+    const payload = {
+      sortField: proSortField,
+      sortDirection: proSortDirection,
+      statusFilter: proStatusFilter,
+      viewMode: proViewMode,
+      timelineMode: proTimelineMode,
+    };
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      await navigator.clipboard.writeText(encoded);
+      showSuccess('Visningskode kopiert til utklippstavle', 2500);
+    } catch (error) {
+      console.error('Failed to copy view payload:', error);
+      showError('Kunne ikke kopiere visningskode', 2500);
+    }
+  }, [proSortDirection, proSortField, proStatusFilter, proTimelineMode, proViewMode, showError, showSuccess]);
+
+  const handleImportSharedView = useCallback(() => {
+    const encoded = window.prompt('Lim inn visningskode');
+    if (!encoded) return;
+    try {
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded)))) as Partial<ProSavedView>;
+      if (decoded.sortField) setProSortField(decoded.sortField);
+      if (decoded.sortDirection) setProSortDirection(decoded.sortDirection);
+      if (decoded.statusFilter) setProStatusFilter(decoded.statusFilter);
+      if (decoded.viewMode) setProViewMode(decoded.viewMode);
+      if (decoded.timelineMode) setProTimelineMode(decoded.timelineMode);
+      appendProActivity('Visningskode importert', 'Ekstern pro-visning aktivert');
+      showSuccess('Visning importert', 2500);
+    } catch (error) {
+      console.error('Failed to import view payload:', error);
+      showError('Ugyldig visningskode', 2500);
+    }
+  }, [appendProActivity, showError, showSuccess]);
+
+  const getBulkPlanTimeSuggestions = useCallback((count: number) => {
+    const [hourRaw, minuteRaw] = bulkPlanStart.split(':');
+    const startMinutes = (Number(hourRaw) * 60) + Number(minuteRaw);
+    const safeCount = Math.max(1, count);
+    return Array.from({ length: safeCount }).map((_, index) => {
+      const minutes = startMinutes + (index * bulkPlanInterval);
+      const hour = Math.floor(minutes / 60) % 24;
+      const minute = minutes % 60;
+      return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    });
+  }, [bulkPlanInterval, bulkPlanStart]);
+
+  const handleApplyBulkPlanning = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      showInfo('Velg minst én audition først', 2200);
+      return;
+    }
+    const targetDate = bulkPlanDate || todayIsoDate;
+    const suggestions = getBulkPlanTimeSuggestions(ids.length);
+
+    try {
+      await Promise.all(ids.map((id, index) => updateMutation.mutateAsync({
+        scheduleId: id,
+        data: {
+          date: targetDate,
+          startTime: suggestions[index] || bulkPlanStart,
+        },
+      })));
+      appendProActivity('Bulk-planlegging', `${ids.length} auditions flyttet til ${targetDate}`);
+      showSuccess(`${ids.length} auditions planlagt`, 2800);
+      onSchedulesChange();
+    } catch (error) {
+      console.error('Failed bulk planning update:', error);
+      showError('Kunne ikke fullføre bulk-planlegging', 2800);
+    }
+  }, [appendProActivity, bulkPlanDate, bulkPlanStart, getBulkPlanTimeSuggestions, onSchedulesChange, selectedIds, showError, showInfo, showSuccess, todayIsoDate, updateMutation]);
+
+  const proCommandActions = useMemo(() => {
+    const schedule = selectedProSchedule;
+    return [
+      {
+        id: 'new-schedule',
+        label: 'Ny avtale',
+        description: 'Opprett ny audition-avtale',
+        run: () => onCreateSchedule(),
+      },
+      {
+        id: 'status-confirmed',
+        label: 'Sett status: Bekreftet',
+        description: 'Marker valgt audition som bekreftet',
+        run: () => schedule ? void handleStatusChange(schedule.id, 'confirmed') : undefined,
+      },
+      {
+        id: 'status-callback',
+        label: 'Sett status: Callback',
+        description: 'Marker valgt audition for callback',
+        run: () => schedule ? void handleStatusChange(schedule.id, 'awaiting_callback') : undefined,
+      },
+      {
+        id: 'status-completed',
+        label: 'Sett status: Fullført',
+        description: 'Marker valgt audition som fullført',
+        run: () => schedule ? void handleStatusChange(schedule.id, 'completed') : undefined,
+      },
+      {
+        id: 'edit-selected',
+        label: 'Rediger valgt audition',
+        description: 'Åpne redigering for valgt audition',
+        run: () => schedule ? onEditSchedule(schedule) : undefined,
+      },
+      {
+        id: 'toggle-timeline',
+        label: proViewMode === 'pipeline' ? 'Bytt til timeline' : 'Bytt til pipeline',
+        description: 'Skift pro-view modus',
+        run: () => setProViewMode((prev) => (prev === 'pipeline' ? 'timeline' : 'pipeline')),
+      },
+      {
+        id: 'save-view',
+        label: 'Lagre pro-visning',
+        description: 'Lagrer nåværende sortering/filter',
+        run: () => handleSaveCurrentProView(),
+      },
+      {
+        id: 'share-view',
+        label: 'Kopier visningskode',
+        description: 'Del konfigurasjonen med teamet',
+        run: () => void handleShareCurrentView(),
+      },
+      {
+        id: 'import-view',
+        label: 'Importer visningskode',
+        description: 'Lim inn delt kode',
+        run: () => handleImportSharedView(),
+      },
+      {
+        id: 'bulk-plan',
+        label: 'Bulk-planlegg valgte',
+        description: 'Flytt alle valgte auditions',
+        run: () => void handleApplyBulkPlanning(),
+      },
+    ];
+  }, [
+    handleApplyBulkPlanning,
+    handleImportSharedView,
+    handleSaveCurrentProView,
+    handleShareCurrentView,
+    handleStatusChange,
+    onCreateSchedule,
+    onEditSchedule,
+    proViewMode,
+    selectedProSchedule,
+  ]);
+
+  const filteredProCommandActions = useMemo(() => {
+    const query = proCommandQuery.trim().toLowerCase();
+    if (!query) return proCommandActions;
+    return proCommandActions.filter((action) => (
+      action.label.toLowerCase().includes(query)
+      || action.description.toLowerCase().includes(query)
+    ));
+  }, [proCommandActions, proCommandQuery]);
+
+  useEffect(() => {
+    if (workspaceView !== 'pro') return;
+    if (proSchedules.length === 0) {
+      if (selectedProScheduleId !== null) setSelectedProScheduleId(null);
+      return;
+    }
+    if (!selectedProScheduleId || !proSchedules.some((schedule) => schedule.id === selectedProScheduleId)) {
+      setSelectedProScheduleId(proSchedules[0].id);
+    }
+  }, [proSchedules, selectedProScheduleId, workspaceView]);
+
+  useEffect(() => {
+    setProCompareIds((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set(proSchedules.map((schedule) => schedule.id));
+      const next = new Set(Array.from(prev).filter((id) => valid.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [proSchedules]);
+
+  useEffect(() => {
+    if (workspaceView !== 'pro') return;
+
+    const handleProKeyboard = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setProCommandOpen((prev) => !prev);
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const isTextInput = !!target && (
+        target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.getAttribute('contenteditable') === 'true'
+      );
+      if (event.key === 'Escape' && proCommandOpen) {
+        event.preventDefault();
+        setProCommandOpen(false);
+        return;
+      }
+      if (isTextInput || proSchedules.length === 0) return;
+
+      const currentIndex = proSchedules.findIndex((schedule) => schedule.id === selectedProSchedule?.id);
+      if (event.key.toLowerCase() === 'j') {
+        event.preventDefault();
+        const nextIndex = Math.min(proSchedules.length - 1, Math.max(0, currentIndex + 1));
+        if (proSchedules[nextIndex]) setSelectedProScheduleId(proSchedules[nextIndex].id);
+        return;
+      }
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        const nextIndex = Math.max(0, currentIndex <= 0 ? 0 : currentIndex - 1);
+        if (proSchedules[nextIndex]) setSelectedProScheduleId(proSchedules[nextIndex].id);
+        return;
+      }
+      if (!selectedProSchedule) return;
+
+      if (event.key.toLowerCase() === 'e') {
+        event.preventDefault();
+        onEditSchedule(selectedProSchedule);
+        return;
+      }
+      if (event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        toggleFavorite(selectedProSchedule.id);
+        return;
+      }
+      if (event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        void handleStatusChange(selectedProSchedule.id, 'confirmed');
+        return;
+      }
+      if (event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        void handleStatusChange(selectedProSchedule.id, 'awaiting_callback');
+        return;
+      }
+      if (event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        void handleStatusChange(selectedProSchedule.id, 'scheduled');
+        return;
+      }
+      if (event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        void handleStatusChange(selectedProSchedule.id, 'cancelled');
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        void handleStatusChange(selectedProSchedule.id, 'completed');
+      }
+    };
+
+    window.addEventListener('keydown', handleProKeyboard);
+    return () => window.removeEventListener('keydown', handleProKeyboard);
+  }, [handleStatusChange, onEditSchedule, proCommandOpen, proSchedules, selectedProSchedule, toggleFavorite, workspaceView]);
 
   const handleDeleteWithUndo = async (schedule: Schedule) => {
     setLastDeleted(schedule);
     try {
       await deleteMutation.mutateAsync(schedule.id);
       onSchedulesChange();
+      appendProActivity('Slettet audition', `${getCandidateName(schedule.candidateId)} · ${getRoleName(schedule.roleId)}`);
       setUndoSnackbarOpen(true);
     } catch (error) {
       console.error('Failed to delete schedule:', error);
@@ -627,9 +1354,10 @@ function AuditionSchedulePanelInner({
   const handleBulkStatusChange = async (status: Schedule['status']) => {
     const ids = Array.from(selectedIds);
     try {
-      await Promise.all(ids.map(id => patchMutation.mutateAsync({ scheduleId: id, patch: { status } })));
+      await Promise.all(ids.map(id => applyStatusUpdate(id, status, { reason: 'Bulk-status', allowUndo: false })));
       dispatch({ type: 'DESELECT_ALL' });
       onSchedulesChange();
+      appendProActivity('Bulk-status', `${ids.length} auditions satt til ${getStatusLabel(status)}`);
       showSuccess(`${ids.length} oppdatert til "${getStatusLabel(status)}"`, 3000);
     } catch {
       showError('Noen oppdateringer feilet', 4000);
@@ -911,42 +1639,100 @@ function AuditionSchedulePanelInner({
     <Box
       component="section"
       aria-labelledby={titleId}
-      sx={{ p: containerPadding, width: '100%', maxWidth: '100%' }}
+      sx={{
+        p: containerPadding,
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        borderRadius: 2.5,
+        backgroundImage: [
+          'linear-gradient(180deg, rgba(9,6,26,0.9) 0%, rgba(10,7,30,0.92) 100%)',
+          'radial-gradient(circle at 18% -25%, rgba(184,107,255,0.3), transparent 55%)',
+          'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.28), transparent 46%)',
+          rolePanelBackdrop,
+        ].join(', '),
+        backgroundSize: 'auto, auto, auto, cover',
+        backgroundPosition: 'center, center, center, center',
+        backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat',
+      }}
     >
       {/* ── Header ─────────────────────────────────────────── */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          mb: 2,
+          gap: { xs: 1.5, sm: 2 },
+          px: { xs: 1.5, sm: 2 },
+          py: { xs: 1.25, sm: 1.5 },
+          border: `1px solid ${roleBorder}`,
+          borderRadius: 2,
+          bgcolor: roleSurface,
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box
             sx={{
-              width: { xs: 48, sm: 56 },
-              height: { xs: 48, sm: 56 },
+              width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
+              height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: 2,
-              bgcolor: 'rgba(255, 184, 0, 0.15)',
+              background: 'linear-gradient(145deg, rgba(184,107,255,0.34) 0%, rgba(110,75,52,0.32) 100%)',
+              border: '1px solid rgba(184,107,255,0.48)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.28)',
             }}
           >
-            <InterpreterModeIcon sx={{ fontSize: { xs: 24, sm: 28 }, color: '#ffb800' }} />
+            <InterpreterModeIcon sx={{ fontSize: { xs: 24, sm: 28, md: 30, lg: 36, xl: 42 }, color: '#e5c29c' }} />
           </Box>
           <Box>
             <Typography
               variant="h5"
               component="h2"
               id={titleId}
-              sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem' }, lineHeight: 1.2, mb: 0.25 }}
+              sx={{
+                color: roleText,
+                fontWeight: 800,
+                fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.4rem', lg: '1.6rem', xl: '2rem' },
+                lineHeight: 1.2,
+                letterSpacing: '-0.5px',
+                textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                background: 'linear-gradient(135deg, #f7e7d5 0%, #b86bff 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
             >
-              Audition Schedule
+              Audition-planlegging
+            </Typography>
+            <Typography
+              sx={{
+                color: roleTextMuted,
+                fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.9rem', xl: '1rem' },
+                fontWeight: 500,
+                mt: 0.25,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
+              <ScheduleIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 17, xl: 20 }, opacity: 0.7 }} />
+              {auditionContextLabel}
             </Typography>
             {/* Meta info row: total · showing · favorites · upcoming */}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center', mt: 0.25 }}>
+              <Typography variant="caption" sx={{ color: roleTextMuted }}>
                 {statistics.total} totalt
               </Typography>
               {filteredAndSortedSchedules.length !== statistics.total && (
                 <>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.2)' }}>·</Typography>
-                  <Typography variant="caption" sx={{ color: '#ffb800' }}>
+                  <Typography variant="caption" sx={{ color: roleTabAccent }}>
                     Viser {filteredAndSortedSchedules.length}
                   </Typography>
                 </>
@@ -976,12 +1762,12 @@ function AuditionSchedulePanelInner({
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Tooltip title="Open guide">
+          <Tooltip title="Åpne guide">
             <IconButton
               onClick={() => setGuideOpen(true)}
               size="small"
-              sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#ffb800' } }}
-              aria-label="Open Audition Planner guide"
+              sx={{ color: roleTextMuted, '&:hover': { color: roleTabAccent } }}
+              aria-label="Åpne audition-guide"
             >
               <HelpIcon />
             </IconButton>
@@ -994,9 +1780,10 @@ function AuditionSchedulePanelInner({
                 onClick={handleExportCSV}
                 disabled={filteredAndSortedSchedules.length === 0}
                 sx={{
-                  borderColor: 'rgba(255,255,255,0.2)',
-                  color: '#fff',
+                  borderColor: roleBorder,
+                  color: roleText,
                   minHeight: TOUCH_TARGET_SIZE,
+                  '&:hover': { borderColor: roleTabAccent, bgcolor: roleTabAccentSoft },
                   ...focusVisibleStyles,
                 }}
               >
@@ -1010,10 +1797,14 @@ function AuditionSchedulePanelInner({
               startIcon={<StatsIcon />}
               onClick={() => setShowStats(!showStats)}
               sx={{
-                borderColor: 'rgba(255,255,255,0.2)',
-                color: showStats ? '#000' : '#fff',
-                bgcolor: showStats ? '#ffb800' : 'transparent',
+                borderColor: showStats ? roleTabAccent : roleBorder,
+                color: showStats ? '#160a24' : roleText,
+                bgcolor: showStats ? roleTabAccent : 'transparent',
                 minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': {
+                  borderColor: roleTabAccent,
+                  bgcolor: showStats ? roleTabAccentHover : roleTabAccentSoft,
+                },
                 ...focusVisibleStyles,
               }}
             >
@@ -1027,16 +1818,16 @@ function AuditionSchedulePanelInner({
               onClick={onCreateSchedule}
               disabled={candidates.length === 0 || roles.length === 0}
               sx={{
-                bgcolor: '#ffb800',
-                color: '#000',
+                bgcolor: roleTabAccent,
+                color: '#160a24',
                 fontWeight: 700,
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { bgcolor: '#e6a600' },
-                '&:disabled': { bgcolor: 'rgba(255,184,0,0.3)' },
+                '&:hover': { bgcolor: roleTabAccentHover },
+                '&:disabled': { bgcolor: 'rgba(184,107,255,0.3)', color: 'rgba(22,10,36,0.75)' },
                 ...focusVisibleStyles,
               }}
             >
-              {isMobile ? '' : '+ New Schedule'}
+              {isMobile ? '' : 'Ny avtale'}
             </Button>
           </Tooltip>
         </Box>
@@ -1048,24 +1839,39 @@ function AuditionSchedulePanelInner({
           sx={{
             mb: 1,
             borderRadius: 1,
-            bgcolor: 'rgba(255,184,0,0.1)',
-            '& .MuiLinearProgress-bar': { bgcolor: '#ffb800' },
+            bgcolor: roleTabAccentSoft,
+            '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent },
           }}
         />
       )}
 
-      {/* Project/Templates Toggle */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+      {/* Prosjekt-/mal-velger */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+          mb: 2,
+          p: 1,
+          bgcolor: roleSurfaceMuted,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+        }}
+      >
+        <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
+          Vis:
+        </Typography>
         <Button
           variant={poolMode === 'project' ? 'contained' : 'outlined'}
           onClick={() => setPoolMode('project')}
           startIcon={<CalendarIcon />}
           sx={{
-            bgcolor: poolMode === 'project' ? '#ffb800' : 'transparent',
-            color: poolMode === 'project' ? '#000' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'project' ? '#ffb800' : 'rgba(255,255,255,0.2)',
-            minHeight: TOUCH_TARGET_SIZE,
-            '&:hover': { bgcolor: poolMode === 'project' ? '#e6a600' : 'rgba(255,255,255,0.05)' },
+            minHeight: 36,
+            bgcolor: poolMode === 'project' ? roleTabAccentSoft : 'transparent',
+            color: poolMode === 'project' ? roleTabAccent : roleTextMuted,
+            borderColor: poolMode === 'project' ? roleTabAccent : roleBorder,
+            '&:hover': { bgcolor: poolMode === 'project' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.05)' },
             ...focusVisibleStyles,
           }}
         >
@@ -1081,11 +1887,11 @@ function AuditionSchedulePanelInner({
           onClick={() => { setPoolMode('pool'); loadPoolAuditions(); }}
           startIcon={<InventoryIcon />}
           sx={{
-            bgcolor: poolMode === 'pool' ? '#9c27b0' : 'transparent',
-            color: poolMode === 'pool' ? '#fff' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'pool' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
-            minHeight: TOUCH_TARGET_SIZE,
-            '&:hover': { bgcolor: poolMode === 'pool' ? '#7b1fa2' : 'rgba(255,255,255,0.05)' },
+            minHeight: 36,
+            bgcolor: poolMode === 'pool' ? roleTabAccentSoft : 'transparent',
+            color: poolMode === 'pool' ? roleTabAccent : roleTextMuted,
+            borderColor: poolMode === 'pool' ? roleTabAccent : roleBorder,
+            '&:hover': { bgcolor: poolMode === 'pool' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.05)' },
             ...focusVisibleStyles,
           }}
         >
@@ -1098,6 +1904,58 @@ function AuditionSchedulePanelInner({
         </Button>
       </Box>
 
+      {poolMode === 'project' && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 1,
+            mb: 2,
+            p: 1,
+            bgcolor: roleSurfaceMuted,
+            borderRadius: 1.5,
+            border: `1px solid ${roleBorder}`,
+          }}
+        >
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
+            Visning:
+          </Typography>
+          <Button
+            variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setWorkspaceView('standard')}
+            sx={{
+              minHeight: 36,
+              bgcolor: workspaceView === 'standard' ? roleTabAccentSoft : 'transparent',
+              color: workspaceView === 'standard' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+              borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
+              '&:hover': {
+                bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              },
+            }}
+          >
+            Standard
+          </Button>
+          <Button
+            variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setWorkspaceView('pro')}
+            sx={{
+              minHeight: 36,
+              bgcolor: workspaceView === 'pro' ? roleTabAccentSoft : 'transparent',
+              color: workspaceView === 'pro' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+              borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
+              '&:hover': {
+                bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+              },
+            }}
+          >
+            Pro-visning
+          </Button>
+        </Box>
+      )}
+
       {/* Statistics Panel */}
       <Collapse in={showStats}>
         <Box
@@ -1105,64 +1963,769 @@ function AuditionSchedulePanelInner({
           sx={{
             display: 'grid',
             gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(6, 1fr)' },
-            gap: { xs: 1, sm: 2 },
+            gap: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             mb: 3,
             p: { xs: 1.5, sm: 2 },
-            bgcolor: 'rgba(255, 184, 0, 0.05)',
+            bgcolor: roleSurfaceMuted,
             borderRadius: 2,
-            border: '1px solid rgba(255, 184, 0, 0.2)',
+            border: `1px solid ${roleBorder}`,
           }}
         >
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffb800' }} />
+              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: roleTabAccent }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#ffb800', fontWeight: 700 }}>{statistics.total}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Totalt</Typography>
+            <Typography variant="h4" sx={{ color: roleTabAccent, fontWeight: 700 }}>{statistics.total}</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Totalt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#00d4ff' }} />
+              <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#46d9ff' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#00d4ff', fontWeight: 700 }}>{statistics.upcoming}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Kommende</Typography>
+            <Typography variant="h4" sx={{ color: '#46d9ff', fontWeight: 700 }}>{statistics.upcoming}</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Kommende</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#00d4ff' }} />
+              <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#46d9ff' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#00d4ff', fontWeight: 700 }}>{statistics.scheduled}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Planlagt</Typography>
+            <Typography variant="h4" sx={{ color: '#46d9ff', fontWeight: 700 }}>{statistics.scheduled}</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Planlagt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#10b981' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700 }}>{statistics.completed}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Fullført</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Fullført</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <AuditionsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ef4444' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#ef4444', fontWeight: 700 }}>{statistics.cancelled}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Kansellert</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Kansellert</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <StarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffc107' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#ffc107', fontWeight: 700 }}>{statistics.favorites}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Favoritter</Typography>
+            <Typography variant="caption" sx={{ color: roleTextMuted }}>Favoritter</Typography>
           </Box>
         </Box>
       </Collapse>
 
-      {/* Project View - only shown when in project mode */}
+      {/* Prosjektvisning */}
       {poolMode === 'project' && (
+      workspaceView === 'pro' ? (
       <>
-      {/* ── Row 1: Search + Sort + View Toggles ── */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.35fr) auto auto auto' },
+          gap: 1.25,
+          mb: 1.5,
+          p: 1.25,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+          bgcolor: roleSurfaceMuted,
+          alignItems: 'center',
+        }}
+      >
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          <Chip
+            label={`${proSchedules.length} auditions`}
+            sx={{
+              color: roleTabAccent,
+              bgcolor: roleTabAccentSoft,
+              border: `1px solid ${roleBorder}`,
+              fontWeight: 700,
+            }}
+          />
+          <Chip
+            label="J/K naviger • E rediger • F favoritt • B bekreft • V callback • A planlagt • X avbryt • Cmd+Enter fullført"
+            sx={{
+              color: roleTextMuted,
+              bgcolor: 'rgba(255,255,255,0.04)',
+              border: `1px solid ${roleBorder}`,
+              maxWidth: '100%',
+              fontWeight: 500,
+            }}
+          />
+          <Chip
+            label={`Konflikter: ${conflictMetrics.total}${conflictMetrics.critical > 0 ? ` (${conflictMetrics.critical} kritiske)` : ''}`}
+            sx={{
+              color: conflictMetrics.critical > 0 ? '#ffb4b4' : roleTextMuted,
+              bgcolor: conflictMetrics.critical > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${conflictMetrics.critical > 0 ? 'rgba(239,68,68,0.4)' : roleBorder}`,
+              fontWeight: 600,
+            }}
+          />
+        </Stack>
+        <FormControl size="small" sx={{ minWidth: 170 }}>
+          <Select
+            value={proSortField}
+            onChange={(event) => setProSortField(event.target.value as ProSortField)}
+            sx={{
+              color: roleText,
+              bgcolor: roleSurface,
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+            }}
+          >
+            <MenuItem value="priority">Sorter: Prioritet</MenuItem>
+            <MenuItem value="date">Sorter: Dato</MenuItem>
+            <MenuItem value="candidate">Sorter: Kandidat</MenuItem>
+            <MenuItem value="role">Sorter: Rolle</MenuItem>
+            <MenuItem value="status">Sorter: Status</MenuItem>
+          </Select>
+        </FormControl>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <Select
+              value={proStatusFilter}
+              onChange={(event) => setProStatusFilter(event.target.value as StatusFilter)}
+              sx={{
+                color: roleText,
+                bgcolor: roleSurface,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+              }}
+            >
+              <MenuItem value="all">Alle statuser</MenuItem>
+              <MenuItem value="scheduled">Planlagt</MenuItem>
+              <MenuItem value="confirmed">Bekreftet</MenuItem>
+              <MenuItem value="awaiting_callback">Callback</MenuItem>
+              <MenuItem value="completed">Fullført</MenuItem>
+              <MenuItem value="cancelled">Kansellert</MenuItem>
+              <MenuItem value="pool">Pool</MenuItem>
+            </Select>
+          </FormControl>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => setProSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+            sx={{ color: roleText, borderColor: roleBorder, minHeight: 38 }}
+          >
+            {proSortDirection === 'asc' ? 'Stigende' : 'Synkende'}
+          </Button>
+        </Stack>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
+          <Button
+            size="small"
+            variant={proViewMode === 'pipeline' ? 'contained' : 'outlined'}
+            onClick={() => setProViewMode('pipeline')}
+            startIcon={<PipelineViewIcon sx={{ fontSize: 16 }} />}
+            sx={{
+              minHeight: 38,
+              borderColor: roleBorder,
+              color: proViewMode === 'pipeline' ? '#160a24' : roleText,
+              bgcolor: proViewMode === 'pipeline' ? roleTabAccent : 'transparent',
+            }}
+          >
+            Pipeline
+          </Button>
+          <Button
+            size="small"
+            variant={proViewMode === 'timeline' ? 'contained' : 'outlined'}
+            onClick={() => setProViewMode('timeline')}
+            startIcon={<TimelineViewIcon sx={{ fontSize: 16 }} />}
+            sx={{
+              minHeight: 38,
+              borderColor: roleBorder,
+              color: proViewMode === 'timeline' ? '#160a24' : roleText,
+              bgcolor: proViewMode === 'timeline' ? roleTabAccent : 'transparent',
+            }}
+          >
+            Timeline
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => setProCommandOpen(true)}
+            startIcon={<CommandIcon sx={{ fontSize: 16 }} />}
+            sx={{ minHeight: 38, color: roleText, borderColor: roleBorder }}
+          >
+            Kommando
+          </Button>
+          <FormControl size="small" sx={{ minWidth: 165 }}>
+            <Select
+              value={selectedProViewId}
+              onChange={(event) => handleApplySavedView(event.target.value)}
+              sx={{
+                color: roleText,
+                bgcolor: roleSurface,
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+              }}
+            >
+              <MenuItem value="none">Lagrede visninger</MenuItem>
+              {proSavedViews.map((view) => (
+                <MenuItem key={view.id} value={view.id}>{view.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleSaveCurrentProView}
+            startIcon={<SaveIcon sx={{ fontSize: 15 }} />}
+            sx={{ minHeight: 38, color: roleText, borderColor: roleBorder }}
+          >
+            Lagre
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleShareCurrentView}
+            startIcon={<ShareIcon sx={{ fontSize: 15 }} />}
+            sx={{ minHeight: 38, color: roleText, borderColor: roleBorder }}
+          >
+            Del
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleImportSharedView}
+            startIcon={<PasteIcon sx={{ fontSize: 15 }} />}
+            sx={{ minHeight: 38, color: roleText, borderColor: roleBorder }}
+          >
+            Importer
+          </Button>
+        </Stack>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(5, minmax(0, 1fr))' },
+          gap: 1,
+          mb: 2,
+        }}
+      >
+        <Box sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Totalt i pro view</Typography>
+          <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.2rem' }}>{proMetrics.total}</Typography>
+        </Box>
+        <Box sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Høy prioritet</Typography>
+          <Typography sx={{ color: '#f59e0b', fontWeight: 700, fontSize: '1.2rem' }}>{proMetrics.hoyPrioritet}</Typography>
+        </Box>
+        <Box sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>I dag</Typography>
+          <Typography sx={{ color: '#46d9ff', fontWeight: 700, fontSize: '1.2rem' }}>{proMetrics.iDag}</Typography>
+        </Box>
+        <Box sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Venter callback</Typography>
+          <Typography sx={{ color: roleTabAccent, fontWeight: 700, fontSize: '1.2rem' }}>{proMetrics.callback}</Typography>
+        </Box>
+        <Box sx={{ p: 1.25, borderRadius: 1.5, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Konflikter</Typography>
+          <Typography sx={{ color: conflictMetrics.critical > 0 ? '#ef4444' : '#f59e0b', fontWeight: 700, fontSize: '1.2rem' }}>
+            {conflictMetrics.total}
+          </Typography>
+        </Box>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', xl: '1.35fr 0.9fr' },
+          gap: { xs: 2, lg: 2.5 },
+          mb: 2.5,
+        }}
+      >
+        <Box
+          sx={{
+            border: `1px solid ${roleBorder}`,
+            borderRadius: 2,
+            bgcolor: roleSurface,
+            p: 1.5,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+          }}
+        >
+          <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.05rem' }}>
+            {proViewMode === 'pipeline' ? 'Pipeline' : 'Timeline'}
+          </Typography>
+
+          {proViewMode === 'pipeline' ? (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
+                gap: { xs: 1.5, md: 2 },
+              }}
+            >
+              {proBoardColumns.map((column) => (
+                <Box
+                  key={`pro-column-${column.status}`}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOverStatus(column.status);
+                  }}
+                  onDragLeave={() => setDragOverStatus((prev) => (prev === column.status ? null : prev))}
+                  onDrop={async (event) => {
+                    event.preventDefault();
+                    setDragOverStatus(null);
+                    const scheduleId = event.dataTransfer.getData('text/plain');
+                    if (scheduleId) {
+                      await handleStatusDrop(scheduleId, column.status);
+                    }
+                  }}
+                  sx={{
+                    border: `1px solid ${dragOverStatus === column.status ? column.color : roleBorder}`,
+                    borderRadius: 1.5,
+                    bgcolor: roleSurfaceMuted,
+                    p: 1,
+                    minHeight: 180,
+                    maxHeight: 460,
+                    overflowY: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1,
+                  }}
+                >
+                  <Box sx={{ position: 'sticky', top: 0, zIndex: 2, py: 0.25, bgcolor: roleSurfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                    <Typography sx={{ color: column.color, fontWeight: 700, fontSize: '0.85rem' }}>
+                      {column.label}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={column.schedules.length}
+                      sx={{ height: 20, bgcolor: `${column.color}22`, color: column.color, border: `1px solid ${column.color}55` }}
+                    />
+                  </Box>
+                  {isFetching ? (
+                    <Stack spacing={0.75}>
+                      {Array.from({ length: 3 }).map((_, skeletonIndex) => (
+                        <Skeleton key={`pro-skeleton-${column.status}-${skeletonIndex}`} variant="rounded" height={66} sx={{ bgcolor: 'rgba(255,255,255,0.08)' }} />
+                      ))}
+                    </Stack>
+                  ) : column.schedules.length === 0 ? (
+                    <Typography sx={{ color: roleTextMuted, fontSize: '0.75rem', py: 1 }}>
+                      Ingen auditions
+                    </Typography>
+                  ) : (
+                    <Stack spacing={1} sx={{ minHeight: 0 }}>
+                      {column.schedules.map((schedule) => {
+                        const isFocused = selectedProSchedule?.id === schedule.id;
+                        const isSelected = selectedIds.has(schedule.id);
+                        const priorityScore = getProPriorityScore(schedule);
+                        const conflict = proConflicts.get(schedule.id);
+                        const compareActive = proCompareIds.has(schedule.id);
+                        return (
+                          <Card
+                            key={schedule.id}
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData('text/plain', schedule.id);
+                            }}
+                            onClick={() => setSelectedProScheduleId(schedule.id)}
+                            sx={{
+                              cursor: 'pointer',
+                              bgcolor: isFocused ? 'rgba(184,107,255,0.18)' : roleSurface,
+                              border: isFocused ? `1px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
+                              borderLeft: `3px solid ${getStatusColor(schedule.status)}`,
+                              borderRadius: 1.25,
+                              '&:hover': { borderColor: roleTabAccentSoft },
+                            }}
+                          >
+                            <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.82rem' }} noWrap>
+                                  {getCandidateName(schedule.candidateId)}
+                                </Typography>
+                                <Chip
+                                  size="small"
+                                  label={priorityScore}
+                                  sx={{
+                                    height: 18,
+                                    bgcolor: priorityScore >= 70 ? 'rgba(245,158,11,0.18)' : roleTabAccentSoft,
+                                    color: priorityScore >= 70 ? '#f59e0b' : roleTabAccent,
+                                    fontWeight: 700,
+                                  }}
+                                />
+                              </Box>
+                              <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }} noWrap>
+                                {getRoleName(schedule.roleId)}
+                              </Typography>
+                              <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
+                                {new Date(schedule.date).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })} · {schedule.time || '—'}
+                              </Typography>
+                              {conflict && (
+                                <Chip
+                                  size="small"
+                                  icon={<WarningIcon sx={{ fontSize: '12px !important' }} />}
+                                  label={`${conflict.issues.length} konflikt`}
+                                  sx={{
+                                    mt: 0.5,
+                                    height: 18,
+                                    bgcolor: conflict.severity === 'error' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)',
+                                    color: conflict.severity === 'error' ? '#ffb4b4' : '#facc15',
+                                    border: `1px solid ${conflict.severity === 'error' ? 'rgba(239,68,68,0.45)' : 'rgba(245,158,11,0.45)'}`,
+                                  }}
+                                />
+                              )}
+                              <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleToggleSelect(schedule.id, filteredAndSortedSchedules.findIndex((item) => item.id === schedule.id), false);
+                                  }}
+                                  sx={{ minHeight: 26, px: 0.5, color: isSelected ? roleTabAccent : roleTextMuted, fontSize: '0.7rem' }}
+                                >
+                                  {isSelected ? 'Valgt' : 'Velg'}
+                                </Button>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleToggleCompare(schedule.id);
+                                    }}
+                                    sx={{ p: 0.25, color: compareActive ? roleTabAccent : roleTextMuted }}
+                                  >
+                                    <CompareIcon sx={{ fontSize: 14 }} />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleFavorite(schedule.id);
+                                    }}
+                                    sx={{ p: 0.25, color: favorites.has(schedule.id) ? '#ffc107' : roleTextMuted }}
+                                  >
+                                    {favorites.has(schedule.id) ? <StarIcon sx={{ fontSize: 15 }} /> : <StarBorderIcon sx={{ fontSize: 15 }} />}
+                                  </IconButton>
+                                </Box>
+                              </Box>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
+                <Button
+                  size="small"
+                  variant={proTimelineMode === 'day' ? 'contained' : 'outlined'}
+                  onClick={() => setProTimelineMode('day')}
+                  sx={{ minHeight: 34, borderColor: roleBorder, color: proTimelineMode === 'day' ? '#160a24' : roleText, bgcolor: proTimelineMode === 'day' ? roleTabAccent : 'transparent' }}
+                >
+                  Dag
+                </Button>
+                <Button
+                  size="small"
+                  variant={proTimelineMode === 'week' ? 'contained' : 'outlined'}
+                  onClick={() => setProTimelineMode('week')}
+                  sx={{ minHeight: 34, borderColor: roleBorder, color: proTimelineMode === 'week' ? '#160a24' : roleText, bgcolor: proTimelineMode === 'week' ? roleTabAccent : 'transparent' }}
+                >
+                  Uke
+                </Button>
+                <TextField
+                  size="small"
+                  type="date"
+                  value={proTimelineDate}
+                  onChange={(event) => setProTimelineDate(event.target.value)}
+                  sx={{
+                    minWidth: 170,
+                    '& .MuiOutlinedInput-root': {
+                      color: roleText,
+                      bgcolor: roleSurfaceMuted,
+                      '& fieldset': { borderColor: roleBorder },
+                    },
+                  }}
+                />
+              </Stack>
+              {proTimelineBuckets.length === 0 ? (
+                <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem', py: 1 }}>
+                  Ingen auditions i valgt tidsrom.
+                </Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {proTimelineBuckets.map((bucket) => (
+                    <Box key={`timeline-${bucket.date}`} sx={{ border: `1px solid ${roleBorder}`, borderRadius: 1.25, bgcolor: roleSurfaceMuted, p: 1 }}>
+                      <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.85rem', mb: 0.5 }}>
+                        {bucket.label}
+                      </Typography>
+                      <Stack spacing={0.5}>
+                        {bucket.items.map((schedule) => (
+                          <Box
+                            key={`timeline-item-${schedule.id}`}
+                            onClick={() => setSelectedProScheduleId(schedule.id)}
+                            sx={{
+                              p: 0.75,
+                              borderRadius: 1,
+                              border: `1px solid ${selectedProSchedule?.id === schedule.id ? roleTabAccent : roleBorder}`,
+                              bgcolor: selectedProSchedule?.id === schedule.id ? 'rgba(184,107,255,0.14)' : roleSurface,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Typography sx={{ color: roleText, fontSize: '0.82rem', fontWeight: 600 }}>
+                              {schedule.time || '—'} · {getCandidateName(schedule.candidateId)}
+                            </Typography>
+                            <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
+                              {getRoleName(schedule.roleId)} · {getStatusLabel(schedule.status)}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          )}
+        </Box>
+
+        <Box
+          sx={{
+            border: `1px solid ${roleBorder}`,
+            borderRadius: 2,
+            bgcolor: roleSurface,
+            p: 1.5,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.25,
+          }}
+        >
+          <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.05rem' }}>
+            Pro-detaljer
+          </Typography>
+          {selectedProSchedule ? (
+            <>
+              <Box sx={{ p: 1, borderRadius: 1.25, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1rem' }}>
+                  {getCandidateName(selectedProSchedule.candidateId)}
+                </Typography>
+                <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                  Rolle: {getRoleName(selectedProSchedule.roleId)}
+                </Typography>
+                <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                  {new Date(selectedProSchedule.date).toLocaleDateString('nb-NO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} · {selectedProSchedule.time || '—'}
+                </Typography>
+                <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                  Sted: {selectedProSchedule.location || 'Ikke satt'}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={getStatusLabel(selectedProSchedule.status)}
+                  sx={{
+                    mt: 1,
+                    bgcolor: `${getStatusColor(selectedProSchedule.status)}22`,
+                    color: getStatusColor(selectedProSchedule.status),
+                    border: `1px solid ${getStatusColor(selectedProSchedule.status)}66`,
+                    fontWeight: 700,
+                  }}
+                />
+                {!!proConflicts.get(selectedProSchedule.id) && (
+                  <Alert
+                    severity={proConflicts.get(selectedProSchedule.id)?.severity === 'error' ? 'error' : 'warning'}
+                    sx={{ mt: 1, bgcolor: 'rgba(255,255,255,0.04)', color: roleText, border: `1px solid ${roleBorder}` }}
+                  >
+                    {(proConflicts.get(selectedProSchedule.id)?.issues || []).join(' • ')}
+                  </Alert>
+                )}
+              </Box>
+
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Button size="small" variant="contained" onClick={() => onEditSchedule(selectedProSchedule)} sx={{ bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}>
+                  Rediger
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => void handleStatusChange(selectedProSchedule.id, 'confirmed')} sx={{ color: '#46d9ff', borderColor: 'rgba(70,217,255,0.45)' }}>
+                  Bekreft
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => void handleStatusChange(selectedProSchedule.id, 'awaiting_callback')} sx={{ color: roleTabAccent, borderColor: roleBorder }}>
+                  Callback
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => void handleStatusChange(selectedProSchedule.id, 'completed')} sx={{ color: '#10b981', borderColor: 'rgba(16,185,129,0.4)' }}>
+                  Fullført
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => void handleStatusChange(selectedProSchedule.id, 'cancelled')} sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.45)' }}>
+                  Avbryt
+                </Button>
+                <Button
+                  size="small"
+                  variant={proCompareIds.has(selectedProSchedule.id) ? 'contained' : 'outlined'}
+                  onClick={() => handleToggleCompare(selectedProSchedule.id)}
+                  startIcon={<CompareIcon sx={{ fontSize: 14 }} />}
+                  sx={{
+                    color: proCompareIds.has(selectedProSchedule.id) ? '#160a24' : roleText,
+                    bgcolor: proCompareIds.has(selectedProSchedule.id) ? roleTabAccent : 'transparent',
+                    borderColor: roleBorder,
+                  }}
+                >
+                  Sammenlign
+                </Button>
+              </Stack>
+
+              <Box sx={{ p: 1, borderRadius: 1.25, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.9rem', mb: 0.75 }}>
+                  Prioritetsscore forklaring
+                </Typography>
+                {(() => {
+                  const breakdown = getPriorityBreakdown(selectedProSchedule);
+                  return (
+                    <Stack spacing={0.4}>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Total: <strong style={{ color: roleText }}>{breakdown.total}</strong></Typography>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Status-vekt: {breakdown.statusScore}</Typography>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Tidsurgens: {breakdown.urgency}</Typography>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Notatstyrke: {breakdown.noteStrength}</Typography>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Favorittboost: {breakdown.favoriteBoost}</Typography>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Callback-boost: {breakdown.callbackBoost}</Typography>
+                      <Typography sx={{ color: roleTabAccent, fontSize: '0.8rem', fontWeight: 700, mt: 0.5 }}>
+                        Neste anbefalte handling: {breakdown.nextAction}
+                      </Typography>
+                    </Stack>
+                  );
+                })()}
+              </Box>
+
+              <Box sx={{ p: 1, borderRadius: 1.25, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.9rem', mb: 0.75 }}>
+                  Notater
+                </Typography>
+                {selectedProSchedule.notes ? (
+                  <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                    {renderFormattedNotes(selectedProSchedule.notes)}
+                  </Typography>
+                ) : (
+                  <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                    Ingen notater lagt inn.
+                  </Typography>
+                )}
+              </Box>
+
+              <Box sx={{ p: 1, borderRadius: 1.25, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.9rem', mb: 0.75 }}>
+                  Bulk-planlegging
+                </Typography>
+                <Stack spacing={1}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="Dato"
+                      value={bulkPlanDate}
+                      onChange={(event) => setBulkPlanDate(event.target.value)}
+                      sx={{
+                        flex: 1,
+                        '& .MuiOutlinedInput-root': { color: roleText, '& fieldset': { borderColor: roleBorder } },
+                        '& .MuiInputLabel-root': { color: roleTextMuted },
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      type="time"
+                      label="Start"
+                      value={bulkPlanStart}
+                      onChange={(event) => setBulkPlanStart(event.target.value)}
+                      sx={{
+                        flex: 1,
+                        '& .MuiOutlinedInput-root': { color: roleText, '& fieldset': { borderColor: roleBorder } },
+                        '& .MuiInputLabel-root': { color: roleTextMuted },
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      type="number"
+                      label="Intervall (min)"
+                      value={bulkPlanInterval}
+                      onChange={(event) => setBulkPlanInterval(Math.max(10, Number(event.target.value) || 30))}
+                      sx={{
+                        width: 140,
+                        '& .MuiOutlinedInput-root': { color: roleText, '& fieldset': { borderColor: roleBorder } },
+                        '& .MuiInputLabel-root': { color: roleTextMuted },
+                      }}
+                    />
+                  </Stack>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => void handleApplyBulkPlanning()}
+                    startIcon={<PlaylistAddIcon sx={{ fontSize: 15 }} />}
+                    sx={{ color: roleText, borderColor: roleBorder }}
+                  >
+                    Planlegg valgte ({selectedIds.size})
+                  </Button>
+                </Stack>
+              </Box>
+
+              <Box sx={{ p: 1, borderRadius: 1.25, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.9rem', mb: 0.75 }}>
+                  Aktivitet
+                </Typography>
+                <Stack spacing={0.75} sx={{ maxHeight: 170, overflowY: 'auto' }}>
+                  {proActivityLog.slice(0, 8).map((record) => (
+                    <Box key={record.id} sx={{ p: 0.75, borderRadius: 1, border: `1px solid ${roleBorder}`, bgcolor: roleSurface }}>
+                      <Typography sx={{ color: roleText, fontSize: '0.76rem', fontWeight: 700 }}>{record.action}</Typography>
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>{record.details}</Typography>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem' }}>
+                        {new Date(record.timestamp).toLocaleString('nb-NO')}
+                      </Typography>
+                    </Box>
+                  ))}
+                  {proActivityLog.length === 0 && (
+                    <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Ingen aktivitet enda.</Typography>
+                  )}
+                </Stack>
+              </Box>
+
+              {proCompareSchedules.length > 1 && (
+                <Box sx={{ p: 1, borderRadius: 1.25, border: `1px solid ${roleBorder}`, bgcolor: roleSurfaceMuted }}>
+                  <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.9rem', mb: 0.75 }}>
+                    Sammenligning
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {proCompareSchedules.map((schedule) => (
+                      <Box key={`compare-${schedule.id}`} sx={{ p: 0.75, borderRadius: 1, border: `1px solid ${roleBorder}`, bgcolor: roleSurface }}>
+                        <Typography sx={{ color: roleText, fontSize: '0.78rem', fontWeight: 700 }}>
+                          {getCandidateName(schedule.candidateId)} · {getRoleName(schedule.roleId)}
+                        </Typography>
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
+                          {new Date(schedule.date).toLocaleDateString('nb-NO')} {schedule.time || ''} · Score {getProPriorityScore(schedule)}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </>
+          ) : (
+            <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
+              Velg en audition i pipeline for detaljer.
+            </Typography>
+          )}
+        </Box>
+      </Box>
+      </>
+      ) : (
+      <>
+      {/* ── Rad 1: Søk + sortering + visning ── */}
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 1,
+          mb: 1.5,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          p: 1.25,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+          bgcolor: roleSurfaceMuted,
+        }}
+      >
         {/* Search field – press / to focus */}
         <TextField
           inputRef={searchInputRef}
@@ -1187,7 +2750,7 @@ function AuditionSchedulePanelInner({
               color: '#fff',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
-              '&.Mui-focused fieldset': { borderColor: '#ffb800' },
+              '&.Mui-focused fieldset': { borderColor: roleTabAccent },
             },
           }}
         />
@@ -1199,15 +2762,15 @@ function AuditionSchedulePanelInner({
           onChange={(e) => setDateFilter(e.target.value)}
           size="small"
           slotProps={{
-            input: { sx: { minHeight: TOUCH_TARGET_SIZE, color: dateFilter ? '#ffb800' : '#fff' } },
+            input: { sx: { minHeight: TOUCH_TARGET_SIZE, color: dateFilter ? roleTabAccent : '#fff' } },
             htmlInput: { 'aria-label': 'Filtrer på dato' },
           }}
           sx={{
             minWidth: { xs: '100%', sm: 155 },
             '& .MuiOutlinedInput-root': {
-              color: dateFilter ? '#ffb800' : '#fff',
-              '& fieldset': { borderColor: dateFilter ? 'rgba(255,184,0,0.5)' : 'rgba(255,255,255,0.15)' },
-              '&.Mui-focused fieldset': { borderColor: '#ffb800' },
+              color: dateFilter ? roleTabAccent : '#fff',
+              '& fieldset': { borderColor: dateFilter ? 'rgba(184,107,255,0.5)' : 'rgba(255,255,255,0.15)' },
+              '&.Mui-focused fieldset': { borderColor: roleTabAccent },
             },
           }}
         />
@@ -1219,13 +2782,13 @@ function AuditionSchedulePanelInner({
               value={candidateFilter}
               onChange={(e) => setCandidateFilter(e.target.value)}
               displayEmpty
-              startAdornment={<CandidatesIcon sx={{ fontSize: 18, color: candidateFilter !== 'all' ? '#ffb800' : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
+              startAdornment={<CandidatesIcon sx={{ fontSize: 18, color: candidateFilter !== 'all' ? roleTabAccent : 'rgba(255,255,255,0.5)', mr: 0.75, ml: -0.5 }} />}
               aria-label="Filtrer på kandidat"
               sx={{
-                color: candidateFilter !== 'all' ? '#ffb800' : '#fff',
+                color: candidateFilter !== 'all' ? roleTabAccent : '#fff',
                 minHeight: TOUCH_TARGET_SIZE,
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: candidateFilter !== 'all' ? 'rgba(255,184,0,0.5)' : 'rgba(255,255,255,0.15)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: candidateFilter !== 'all' ? 'rgba(184,107,255,0.5)' : 'rgba(255,255,255,0.15)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 '& .MuiSvgIcon-root:last-child': { color: 'rgba(255,255,255,0.5)' },
               }}
               MenuProps={{ slotProps: { paper: { sx: { bgcolor: '#1c2128', color: '#fff' } } } }}
@@ -1306,7 +2869,7 @@ function AuditionSchedulePanelInner({
               color: '#fff',
               minHeight: TOUCH_TARGET_SIZE,
               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.15)' },
-              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
               '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' },
             }}
           >
@@ -1334,11 +2897,11 @@ function AuditionSchedulePanelInner({
                   width: TOUCH_TARGET_SIZE,
                   height: TOUCH_TARGET_SIZE,
                   borderRadius: 1,
-                  color: viewMode === mode ? '#ffb800' : 'rgba(255,255,255,0.4)',
-                  bgcolor: viewMode === mode ? 'rgba(255,184,0,0.12)' : 'transparent',
+                  color: viewMode === mode ? roleTabAccent : 'rgba(255,255,255,0.4)',
+                  bgcolor: viewMode === mode ? 'rgba(184,107,255,0.12)' : 'transparent',
                   border: '1px solid',
-                  borderColor: viewMode === mode ? 'rgba(255,184,0,0.4)' : 'rgba(255,255,255,0.12)',
-                  '&:hover': { bgcolor: 'rgba(255,184,0,0.08)', borderColor: 'rgba(255,184,0,0.3)' },
+                  borderColor: viewMode === mode ? 'rgba(184,107,255,0.4)' : 'rgba(255,255,255,0.12)',
+                  '&:hover': { bgcolor: 'rgba(184,107,255,0.08)', borderColor: 'rgba(184,107,255,0.3)' },
                   ...focusVisibleStyles,
                 }}
               >
@@ -1349,21 +2912,33 @@ function AuditionSchedulePanelInner({
         </Box>
       </Box>
 
-      {/* ── Row 2: Filter chips ── */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2, alignItems: 'center' }}>
+      {/* ── Rad 2: Hurtigfiltre ── */}
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 0.75,
+          mb: 2,
+          alignItems: 'center',
+          p: 1,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+          bgcolor: roleSurfaceMuted,
+        }}
+      >
         {/* Favorites chip */}
         <Chip
           size="small"
-          icon={<StarIcon sx={{ fontSize: '14px !important', color: favoritesOnly ? '#ffb800 !important' : 'rgba(255,255,255,0.5) !important' }} />}
+          icon={<StarIcon sx={{ fontSize: '14px !important', color: favoritesOnly ? `${roleTabAccent} !important` : 'rgba(255,255,255,0.5) !important' }} />}
           label={`Favoritter${serverCounts?.favorites != null ? ` (${serverCounts.favorites})` : statistics.favorites > 0 ? ` (${statistics.favorites})` : ''}`}
           onClick={() => setFavoritesOnly(!favoritesOnly)}
           variant={favoritesOnly ? 'filled' : 'outlined'}
           sx={{
             cursor: 'pointer',
-            bgcolor: favoritesOnly ? 'rgba(255,184,0,0.2)' : 'transparent',
-            color: favoritesOnly ? '#ffb800' : 'rgba(255,255,255,0.6)',
-            borderColor: favoritesOnly ? 'rgba(255,184,0,0.5)' : 'rgba(255,255,255,0.15)',
-            '&:hover': { bgcolor: 'rgba(255,184,0,0.15)', borderColor: 'rgba(255,184,0,0.4)' },
+            bgcolor: favoritesOnly ? 'rgba(184,107,255,0.2)' : 'transparent',
+            color: favoritesOnly ? roleTabAccent : 'rgba(255,255,255,0.6)',
+            borderColor: favoritesOnly ? 'rgba(184,107,255,0.5)' : 'rgba(255,255,255,0.15)',
+            '&:hover': { bgcolor: 'rgba(184,107,255,0.15)', borderColor: 'rgba(184,107,255,0.4)' },
           }}
         />
 
@@ -1425,28 +3000,28 @@ function AuditionSchedulePanelInner({
         {searchQuery && (
           <Chip size="small" label={`"${searchQuery}"`}
             onDelete={() => setSearchQuery('')}
-            icon={<SearchIcon sx={{ fontSize: '13px !important', color: '#ffb800 !important' }} />}
-            sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', borderColor: 'rgba(255,184,0,0.3)', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+            icon={<SearchIcon sx={{ fontSize: '13px !important', color: `${roleTabAccent} !important` }} />}
+            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: roleTabAccent, borderColor: 'rgba(184,107,255,0.3)', '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {dateFilter && (
           <Chip size="small" label={`📅 ${dateFilter}`}
             onDelete={() => setDateFilter('')}
-            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {candidateFilter !== 'all' && (
           <Chip size="small" label={getCandidateName(candidateFilter)}
             onDelete={() => setCandidateFilter('all')}
-            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {roleFilter !== 'all' && (
           <Chip size="small" label={getRoleName(roleFilter)}
             onDelete={() => setRoleFilter('all')}
-            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
         {locationFilter !== 'all' && (
           <Chip size="small" label={`📍 ${locationFilter}`}
             onDelete={() => setLocationFilter('all')}
-            sx={{ bgcolor: 'rgba(255,184,0,0.12)', color: '#ffb800', '& .MuiChip-deleteIcon': { color: '#ffb800' } }} />
+            sx={{ bgcolor: 'rgba(184,107,255,0.12)', color: roleTabAccent, '& .MuiChip-deleteIcon': { color: roleTabAccent } }} />
         )}
 
         {/* Clear all */}
@@ -1473,7 +3048,7 @@ function AuditionSchedulePanelInner({
           subtitle={candidates.length === 0 || roles.length === 0
             ? 'Du trenger minst én rolle og én kandidat for å opprette avtaler.'
             : `Du har ${candidates.length} kandidat${candidates.length > 1 ? 'er' : ''} klare for planlegging.`}
-          color="#ffb800"
+          color={roleTabAccent}
           buttonLabel="Opprett avtale"
           onAction={onCreateSchedule}
           disabled={candidates.length === 0 || roles.length === 0}
@@ -1491,7 +3066,7 @@ function AuditionSchedulePanelInner({
                 px: 4,
                 py: 1.5,
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#ffb800', bgcolor: 'rgba(255,184,0,0.1)' },
+                '&:hover': { borderColor: roleTabAccent, bgcolor: 'rgba(184,107,255,0.1)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -1513,7 +3088,7 @@ function AuditionSchedulePanelInner({
                           indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedSchedules.length}
                           onChange={handleSelectAll}
                           size="small"
-                          sx={{ color: 'rgba(255,255,255,0.4)', '&.Mui-checked': { color: '#ffb800' }, '&.MuiCheckbox-indeterminate': { color: '#ffb800' } }}
+                          sx={{ color: 'rgba(255,255,255,0.4)', '&.Mui-checked': { color: roleTabAccent }, '&.MuiCheckbox-indeterminate': { color: roleTabAccent } }}
                         />
                       </TableCell>
                       {/* ⭐ Favourite */}
@@ -1521,7 +3096,7 @@ function AuditionSchedulePanelInner({
                       {/* Date */}
                       <TableCell sx={{ width: 120, borderColor: 'rgba(255,255,255,0.07)' }}>
                         <TableSortLabel active={sortField === 'date'} direction={sortField === 'date' ? sortDirection : 'asc'} onClick={() => handleSort('date')}
-                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: roleTabAccent }, '& .MuiTableSortLabel-icon': { color: `${roleTabAccent} !important` } }}>
                           Dato
                         </TableSortLabel>
                       </TableCell>
@@ -1532,21 +3107,21 @@ function AuditionSchedulePanelInner({
                       {/* Candidate */}
                       <TableCell sx={{ borderColor: 'rgba(255,255,255,0.07)' }}>
                         <TableSortLabel active={sortField === 'candidate'} direction={sortField === 'candidate' ? sortDirection : 'asc'} onClick={() => handleSort('candidate')}
-                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: roleTabAccent }, '& .MuiTableSortLabel-icon': { color: `${roleTabAccent} !important` } }}>
                           Kandidat
                         </TableSortLabel>
                       </TableCell>
                       {/* Role */}
                       <TableCell sx={{ width: 150, borderColor: 'rgba(255,255,255,0.07)' }}>
                         <TableSortLabel active={sortField === 'role'} direction={sortField === 'role' ? sortDirection : 'asc'} onClick={() => handleSort('role')}
-                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: roleTabAccent }, '& .MuiTableSortLabel-icon': { color: `${roleTabAccent} !important` } }}>
                           Rolle
                         </TableSortLabel>
                       </TableCell>
                       {/* Status */}
                       <TableCell sx={{ width: 130, borderColor: 'rgba(255,255,255,0.07)' }}>
                         <TableSortLabel active={sortField === 'status'} direction={sortField === 'status' ? sortDirection : 'asc'} onClick={() => handleSort('status')}
-                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: '#ffb800' }, '& .MuiTableSortLabel-icon': { color: '#ffb800 !important' } }}>
+                          sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', '&.Mui-active': { color: roleTabAccent }, '& .MuiTableSortLabel-icon': { color: `${roleTabAccent} !important` } }}>
                           Status
                         </TableSortLabel>
                       </TableCell>
@@ -1583,9 +3158,9 @@ function AuditionSchedulePanelInner({
                           sx={{
                             height: 56,
                             cursor: 'pointer',
-                            bgcolor: isSelected ? 'rgba(255,184,0,0.07)' : 'transparent',
-                            '&:hover': { bgcolor: isSelected ? 'rgba(255,184,0,0.11)' : 'rgba(255,255,255,0.03)' },
-                            '&:focus-within': { outline: '2px solid rgba(255,184,0,0.4)', outlineOffset: -1 },
+                            bgcolor: isSelected ? 'rgba(184,107,255,0.07)' : 'transparent',
+                            '&:hover': { bgcolor: isSelected ? 'rgba(184,107,255,0.11)' : 'rgba(255,255,255,0.03)' },
+                            '&:focus-within': { outline: '2px solid rgba(184,107,255,0.4)', outlineOffset: -1 },
                             transition: 'background-color 0.15s',
                           }}
                         >
@@ -1595,7 +3170,7 @@ function AuditionSchedulePanelInner({
                               checked={isSelected}
                               onChange={(e) => handleToggleSelect(schedule.id, index, (e.nativeEvent as MouseEvent).shiftKey)}
                               size="small"
-                              sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#ffb800' } }}
+                              sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: roleTabAccent } }}
                             />
                           </TableCell>
                           {/* ⭐ Favourite */}
@@ -1604,7 +3179,7 @@ function AuditionSchedulePanelInner({
                               size="small"
                               onClick={() => toggleFavorite(schedule.id)}
                               aria-label={isFav ? 'Fjern favoritt' : 'Legg til favoritt'}
-                              sx={{ color: isFav ? '#ffb800' : 'rgba(255,255,255,0.2)', p: 0.5, '&:hover': { color: '#ffb800' } }}
+                              sx={{ color: isFav ? roleTabAccent : 'rgba(255,255,255,0.2)', p: 0.5, '&:hover': { color: roleTabAccent } }}
                             >
                               {isFav ? <StarIcon sx={{ fontSize: 16 }} /> : <StarBorderIcon sx={{ fontSize: 16 }} />}
                             </IconButton>
@@ -1682,7 +3257,7 @@ function AuditionSchedulePanelInner({
                 PaperProps={{ sx: { bgcolor: '#1e1e2e', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', minWidth: 180 } }}
               >
                 <MenuItem onClick={() => { if (rowMenuAnchor) { closeDrawer(); onEditSchedule(rowMenuAnchor.schedule); } setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
-                  <EditIcon sx={{ fontSize: 16, color: '#ffb800' }} /> Rediger
+                  <EditIcon sx={{ fontSize: 16, color: roleTabAccent }} /> Rediger
                 </MenuItem>
                 <MenuItem onClick={() => { if (rowMenuAnchor) handleDuplicate(rowMenuAnchor.schedule); setRowMenuAnchor(null); }} sx={{ gap: 1.5, fontSize: 14 }}>
                   <DuplicateIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.6)' }} /> Dupliser
@@ -1723,9 +3298,9 @@ function AuditionSchedulePanelInner({
                   px: 1.5,
                   height: 40,
                   cursor: 'pointer',
-                  bgcolor: isSelected ? 'rgba(255,184,0,0.07)' : 'transparent',
+                  bgcolor: isSelected ? 'rgba(184,107,255,0.07)' : 'transparent',
                   borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  '&:hover': { bgcolor: isSelected ? 'rgba(255,184,0,0.1)' : 'rgba(255,255,255,0.03)' },
+                  '&:hover': { bgcolor: isSelected ? 'rgba(184,107,255,0.1)' : 'rgba(255,255,255,0.03)' },
                   transition: 'background-color 0.12s',
                 }}
               >
@@ -1735,12 +3310,12 @@ function AuditionSchedulePanelInner({
                     checked={isSelected}
                     onChange={(e) => handleToggleSelect(schedule.id, index, (e.nativeEvent as MouseEvent).shiftKey)}
                     size="small"
-                    sx={{ p: 0.25, color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#ffb800' } }}
+                    sx={{ p: 0.25, color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: roleTabAccent } }}
                   />
                 </Box>
                 {/* ⭐ */}
                 <Box onClick={(e) => e.stopPropagation()} sx={{ flexShrink: 0 }}>
-                  <IconButton size="small" onClick={() => toggleFavorite(schedule.id)} sx={{ p: 0.25, color: isFav ? '#ffb800' : 'rgba(255,255,255,0.2)', '&:hover': { color: '#ffb800' } }}>
+                  <IconButton size="small" onClick={() => toggleFavorite(schedule.id)} sx={{ p: 0.25, color: isFav ? roleTabAccent : 'rgba(255,255,255,0.2)', '&:hover': { color: roleTabAccent } }}>
                     {isFav ? <StarIcon sx={{ fontSize: 14 }} /> : <StarBorderIcon sx={{ fontSize: 14 }} />}
                   </IconButton>
                 </Box>
@@ -1773,7 +3348,7 @@ function AuditionSchedulePanelInner({
                 {/* ⋮ actions */}
                 <Box onClick={(e) => e.stopPropagation()} sx={{ flexShrink: 0 }}>
                   <Tooltip title="Rediger">
-                    <IconButton size="small" onClick={() => { closeDrawer(); onEditSchedule(schedule); }} sx={{ p: 0.25, color: 'rgba(255,255,255,0.3)', '&:hover': { color: '#ffb800' } }}>
+                    <IconButton size="small" onClick={() => { closeDrawer(); onEditSchedule(schedule); }} sx={{ p: 0.25, color: 'rgba(255,255,255,0.3)', '&:hover': { color: roleTabAccent } }}>
                       <EditIcon sx={{ fontSize: 15 }} />
                     </IconButton>
                   </Tooltip>
@@ -1783,8 +3358,20 @@ function AuditionSchedulePanelInner({
           })}
         </Box>
       ) : (
-        /* Grid View - Responsive for iPad and Desktop */
-        <Grid container spacing={{ xs: 2, sm: 2.5, md: 3 }}>
+        /* Kortvisning */
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              lg: 'repeat(3, minmax(0, 1fr))',
+              xl: 'repeat(4, minmax(0, 1fr))',
+            },
+            gap: { xs: 2.5, sm: 3, md: 3.25, lg: 3.5, xl: 4 },
+            alignItems: 'stretch',
+          }}
+        >
           {filteredAndSortedSchedules.map((schedule, index) => {
             const isExpanded = expandedCards.has(schedule.id);
             const sceneName = getSceneName(schedule.sceneId);
@@ -1794,15 +3381,15 @@ function AuditionSchedulePanelInner({
             const roleName = getRoleName(schedule.roleId);
 
             return (
-              <Grid key={schedule.id} size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 3 }}>
+              <Box key={schedule.id}>
                 <Card
                   component="article"
                   sx={{
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
-                    bgcolor: selectedIds.has(schedule.id) ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.05)',
-                    border: selectedIds.has(schedule.id) ? '2px solid #ffb800' : '1px solid rgba(255,255,255,0.1)',
+                    bgcolor: selectedIds.has(schedule.id) ? 'rgba(184,107,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    border: selectedIds.has(schedule.id) ? `2px solid ${roleTabAccent}` : '1px solid rgba(255,255,255,0.1)',
                     borderLeft: `4px solid ${statusColor}`,
                     borderRadius: 2,
                     transition: 'all 0.2s ease',
@@ -1907,7 +3494,7 @@ function AuditionSchedulePanelInner({
                           sx={{
                             p: 0.5,
                             color: 'rgba(255,255,255,0.6)',
-                            '&.Mui-checked': { color: '#ffb800' },
+                            '&.Mui-checked': { color: roleTabAccent },
                             '& .MuiSvgIcon-root': { fontSize: { xs: 20, md: 24 } },
                           }}
                         />
@@ -2069,11 +3656,11 @@ function AuditionSchedulePanelInner({
                           onClick={(e) => { e.stopPropagation(); toggleCardExpanded(schedule.id); }}
                           endIcon={isExpanded ? <CollapseIcon /> : <ExpandIcon />}
                           sx={{
-                            color: '#ffb800',
+                            color: roleTabAccent,
                             p: 0,
                             minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
                             fontSize: { xs: '0.75rem', md: '0.8rem' },
-                            '&:hover': { color: '#ffc933', bgcolor: 'rgba(255,184,0,0.1)' },
+                            '&:hover': { color: roleTabAccentHover, bgcolor: 'rgba(184,107,255,0.1)' },
                             '@keyframes writing': {
                               '0%, 100%': { transform: 'rotate(-5deg) translateY(0px)' },
                               '25%': { transform: 'rotate(0deg) translateY(-1px)' },
@@ -2094,9 +3681,9 @@ function AuditionSchedulePanelInner({
                               mt: 1,
                               p: { xs: 2, md: 2.5 },
                               borderRadius: 2,
-                              bgcolor: 'rgba(255,184,0,0.08)',
-                              border: '2px solid rgba(255,184,0,0.3)',
-                              boxShadow: '0 4px 16px rgba(255,184,0,0.1)',
+                              bgcolor: 'rgba(184,107,255,0.08)',
+                              border: '2px solid rgba(184,107,255,0.3)',
+                              boxShadow: '0 4px 16px rgba(184,107,255,0.1)',
                               position: 'relative',
                               overflow: 'hidden',
                               '&::before': {
@@ -2106,7 +3693,7 @@ function AuditionSchedulePanelInner({
                                 left: 0,
                                 width: '5px',
                                 height: '100%',
-                                bgcolor: '#ffb800',
+                                bgcolor: roleTabAccent,
                                 borderRadius: '2px 0 0 2px',
                               },
                             }}
@@ -2118,8 +3705,8 @@ function AuditionSchedulePanelInner({
                                   width: { xs: 36, md: 40 },
                                   height: { xs: 36, md: 40 },
                                   borderRadius: 2,
-                                  bgcolor: 'rgba(255,184,0,0.2)',
-                                  border: '2px solid rgba(255,184,0,0.4)',
+                                  bgcolor: 'rgba(184,107,255,0.2)',
+                                  border: '2px solid rgba(184,107,255,0.4)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -2134,15 +3721,15 @@ function AuditionSchedulePanelInner({
                                 <NoteIcon
                                   sx={{
                                     fontSize: { xs: 20, md: 24 },
-                                    color: '#ffb800',
+                                    color: roleTabAccent,
                                     animation: 'writing 2.5s ease-in-out infinite',
-                                    filter: 'drop-shadow(0 2px 4px rgba(255,184,0,0.3))',
+                                    filter: 'drop-shadow(0 2px 4px rgba(184,107,255,0.3))',
                                   }}
                                 />
                               </Box>
                               <Typography
                                 sx={{
-                                  color: '#ffb800',
+                                  color: roleTabAccent,
                                   fontWeight: 700,
                                   fontSize: { xs: '0.875rem', md: '1rem' },
                                 }}
@@ -2185,7 +3772,7 @@ function AuditionSchedulePanelInner({
                             sx={{
                               minWidth: { xs: TOUCH_TARGET_SIZE, md: 48 },
                               minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
-                              color: '#ffb800',
+                              color: roleTabAccent,
                               ...focusVisibleStyles,
                             }}
                           >
@@ -2242,12 +3829,12 @@ function AuditionSchedulePanelInner({
                         size="small"
                         onClick={(e) => { e.stopPropagation(); onEditSchedule(schedule); }}
                         sx={{
-                          color: '#ffb800',
+                          color: roleTabAccent,
                           fontSize: { xs: '0.75rem', md: '0.85rem' },
                           fontWeight: 600,
                           minHeight: { xs: TOUCH_TARGET_SIZE, md: 48 },
                           px: { xs: 1, md: 2 },
-                          '&:hover': { bgcolor: 'rgba(255,184,0,0.1)' },
+                          '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
                           ...focusVisibleStyles,
                         }}
                       >
@@ -2256,15 +3843,16 @@ function AuditionSchedulePanelInner({
                     </Box>
                   </CardContent>
                 </Card>
-              </Grid>
+              </Box>
             );
           })}
-        </Grid>
+        </Box>
       )}
       </>
+      )
       )}
 
-      {/* Templates View - shows saved audition templates when in templates mode */}
+      {/* Malvisning */}
       {poolMode === 'pool' && (
         <Box>
           {/* Guide Box */}
@@ -2442,12 +4030,96 @@ function AuditionSchedulePanelInner({
         onClose={() => setUndoSnackbarOpen(false)}
         message="Avtale slettet"
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#ffb800' }}>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: roleTabAccent }}>
             Angre
           </Button>
         }
         sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#333' } }}
       />
+
+      <Snackbar
+        open={statusUndoOpen}
+        autoHideDuration={4500}
+        onClose={() => setStatusUndoOpen(false)}
+        message={statusUndoRecord ? `Status oppdatert: ${getStatusLabel(statusUndoRecord.from)} → ${getStatusLabel(statusUndoRecord.to)}` : 'Status oppdatert'}
+        action={(
+          <Button color="secondary" size="small" onClick={() => void handleUndoStatusChange()} sx={{ color: roleTabAccent }}>
+            Angre
+          </Button>
+        )}
+        sx={{ '& .MuiSnackbarContent-root': { bgcolor: '#261d37' } }}
+      />
+
+      <Dialog
+        open={proCommandOpen}
+        onClose={() => setProCommandOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            bgcolor: roleSurface,
+            border: `1px solid ${roleBorder}`,
+            color: roleText,
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CommandIcon sx={{ color: roleTabAccent }} />
+          Kommandoer
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            placeholder="Søk kommando..."
+            value={proCommandQuery}
+            onChange={(event) => setProCommandQuery(event.target.value)}
+            sx={{
+              mb: 1.25,
+              '& .MuiOutlinedInput-root': {
+                color: roleText,
+                bgcolor: roleSurfaceMuted,
+                '& fieldset': { borderColor: roleBorder },
+                '&:hover fieldset': { borderColor: roleTabAccentSoft },
+                '&.Mui-focused fieldset': { borderColor: roleTabAccent },
+              },
+            }}
+          />
+          <List dense sx={{ maxHeight: 360, overflowY: 'auto' }}>
+            {filteredProCommandActions.map((action) => (
+              <ListItemButton
+                key={action.id}
+                onClick={() => {
+                  action.run();
+                  setProCommandOpen(false);
+                  setProCommandQuery('');
+                }}
+                sx={{
+                  borderRadius: 1,
+                  mb: 0.5,
+                  border: `1px solid ${roleBorder}`,
+                  bgcolor: roleSurfaceMuted,
+                  '&:hover': { borderColor: roleTabAccentSoft, bgcolor: 'rgba(184,107,255,0.1)' },
+                }}
+              >
+                <ListItemText
+                  primary={action.label}
+                  secondary={action.description}
+                  primaryTypographyProps={{ sx: { color: roleText, fontWeight: 700, fontSize: '0.86rem' } }}
+                  secondaryTypographyProps={{ sx: { color: roleTextMuted, fontSize: '0.76rem' } }}
+                />
+              </ListItemButton>
+            ))}
+            {filteredProCommandActions.length === 0 && (
+              <Typography sx={{ color: roleTextMuted, p: 1 }}>Ingen treff.</Typography>
+            )}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProCommandOpen(false)} sx={{ color: roleTextMuted }}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Bulk Action Bar (sticky bottom, slides up when items selected) ── */}
       <Slide direction="up" in={selectedIds.size > 0} mountOnEnter unmountOnExit>
@@ -2526,7 +4198,7 @@ function AuditionSchedulePanelInner({
                 color: '#fff',
                 fontSize: 12,
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ffb800' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.5)' },
               }}
             >

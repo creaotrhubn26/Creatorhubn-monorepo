@@ -85,6 +85,32 @@ interface ShotListManagerProps {
   onShotCompleteNotify?: (shot: Shot) => void // Notify when shot is completed
 }
 
+const normalizeShotListResponse = (response: unknown): Shot[] => {
+  if (Array.isArray(response)) {
+    return response as Shot[];
+  }
+
+  if (response && typeof response === 'object') {
+    const payload = response as {
+      data?: unknown;
+      shots?: unknown;
+      items?: unknown;
+    };
+
+    if (Array.isArray(payload.data)) {
+      return payload.data as Shot[];
+    }
+    if (Array.isArray(payload.shots)) {
+      return payload.shots as Shot[];
+    }
+    if (Array.isArray(payload.items)) {
+      return payload.items as Shot[];
+    }
+  }
+
+  return [];
+};
+
 export default function ShotListManager({ 
   projectId, 
   onShotUpdate, 
@@ -163,11 +189,12 @@ export default function ShotListManager({
   }, [showDialog]);
 
   // Database connection for ShotListManager
-  const { data: shots = [], isLoading } = useQuery<Shot[]>({
+  const { data: shotListResponse, isLoading } = useQuery<unknown>({
     queryKey: ['/api/shot-list', projectId || 'default'],
     queryFn: () => apiRequest(`/api/shot-list/${projectId || 'default'}`),
     retry: false,
   });
+  const shots = normalizeShotListResponse(shotListResponse);
 
   // Mutation for updating shot data
   const updateShotListManager = useMutation({

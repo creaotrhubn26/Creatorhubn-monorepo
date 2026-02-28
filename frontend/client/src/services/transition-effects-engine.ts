@@ -918,6 +918,23 @@ class TransitionEffectsEngine {
   /**
    * Get transition duration recommendation
    */
+  getRecommendedDuration(type: TransitionType): number {
+    return TransitionEffectsEngine.getRecommendedDuration(type);
+  }
+
+  /**
+   * Get transition categories (instance API for runtime consumers)
+   */
+  getTransitionCategories(): Array<{
+    name: string;
+    transitions: Array<{ type: TransitionType; name: string; duration: number }>;
+  }> {
+    return TransitionEffectsEngine.getTransitionCategories();
+  }
+
+  /**
+   * Get transition duration recommendation
+   */
   static getRecommendedDuration(type: TransitionType): number {
     const durations: Record<TransitionType, number> = {
       // Basic
@@ -1050,4 +1067,3 @@ class TransitionEffectsEngine {
 }
 
 export const transitionEngine = new TransitionEffectsEngine();
-

@@ -116,7 +116,7 @@ export default function SplitSheetAnalytics({
 
   // Calculate analytics
   const analytics = useMemo(() => {
-    let totalRevenue = 0;
+    const totalRevenue = 0;
     let totalContributors = 0;
     const revenueBySource: Record<string, number> = {};
     const revenueByMonth: Record<string, number> = {};

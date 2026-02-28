@@ -1,6 +1,6 @@
 import { useTheming } from '../utils/theming-helper';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Box,
@@ -37,8 +37,10 @@ import {
   DialogContent,
   DialogActions,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
+  Switch,
 } from '@mui/material';
 import {
   Search,
@@ -72,6 +74,7 @@ import {
   KeyboardArrowLeft,
 } from '@mui/icons-material';
 import { UniversalFileUpload } from './universal/UniversalFileUpload';
+import { FileManagementStatusProvider } from '../contexts/FileManagementStatusContext';
 import StoryArcDataIntegration, { StoryArc, BeatClip, Track } from '../services/storyArcDataIntegration';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -79,7 +82,7 @@ interface AssetBrowserProps {
   onTemplateSelect?: (templateId: string) => void;
   onSnippetDrag?: (snippetId: string) => void;
   onMediaSelect?: (mediaFile: MediaFile) => void;
-  height?: number;
+  height?: number | string;
   // Integration props for unified workflow connectivity
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;
@@ -144,6 +147,7 @@ interface MediaFile {
   size: number;
   duration?: number;
   url: string;
+  file?: File;
   thumbnail?: string;
   uploadedAt: string;
   tags: string[];
@@ -746,7 +750,7 @@ export default function AssetBrowser({
   onTemplateSelect, 
   onSnippetDrag, 
   onMediaSelect, 
-  height = 600,
+  height = '100%',
   onMeetingCreate,
   onProjectUpdate,
   onWorklogCreate,
@@ -775,6 +779,9 @@ export default function AssetBrowser({
   const [proxyMap, setProxyMap] = useState<Record<string, string>>({});
   const [storyArcName, setStoryArcName] = useState<string | null>(null);
   const [folderHistory, setFolderHistory] = useState<string[]>([]); // Track folder navigation history
+  const [localMediaFiles, setLocalMediaFiles] = useState<MediaFile[]>([]);
+  const localObjectUrlsRef = React.useRef<string[]>([]);
+  const autoSelectedVideoRef = React.useRef(false);
   
   // Hover preview state
   const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null);
@@ -814,6 +821,25 @@ export default function AssetBrowser({
         setCurrentUser(json);
       } catch {}
     })();
+  }, []);
+
+  React.useEffect(() => {
+    const releaseObjectUrls = () => {
+      localObjectUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // Ignore URL cleanup failures during page teardown.
+        }
+      });
+      localObjectUrlsRef.current = [];
+    };
+
+    window.addEventListener('beforeunload', releaseObjectUrls);
+
+    return () => {
+      window.removeEventListener('beforeunload', releaseObjectUrls);
+    };
   }, []);
 
   // Fetch story arc data when storyArcId is available
@@ -867,12 +893,33 @@ export default function AssetBrowser({
 }, [searchQuery]);
 
   const filteredMedia = useMemo(() => {
-    return SAMPLE_MEDIA_FILES.filter(media =>
-      media.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      media.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      media.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-}, [searchQuery]);
+    const query = searchQuery.toLowerCase();
+    const localMatches = localMediaFiles.filter((media) => {
+      return (
+        media.name.toLowerCase().includes(query) ||
+        media.type.toLowerCase().includes(query) ||
+        media.tags.some((tag) => tag.toLowerCase().includes(query))
+      );
+    });
+
+    const sampleMatches = SAMPLE_MEDIA_FILES.filter((media) => {
+      return (
+        media.name.toLowerCase().includes(query) ||
+        media.type.toLowerCase().includes(query) ||
+        media.tags.some((tag) => tag.toLowerCase().includes(query))
+      );
+    });
+
+    if (sampleMatches.length === 0) {
+      return localMatches;
+    }
+
+    const deduped = new Map<string, MediaFile>();
+    [...localMatches, ...sampleMatches].forEach((media) => {
+      deduped.set(media.id, media);
+    });
+    return Array.from(deduped.values());
+  }, [localMediaFiles, searchQuery]);
 
   // Google Drive Integration - Browse media files
   // When storyArcId is available, show project-specific folders
@@ -1015,16 +1062,200 @@ export default function AssetBrowser({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ', ' + sizes[i];
 };
 
-  const handleMediaUpload = (files: File[]) => {
-    console.log('📁 Media files selected for upload, :', files);
-    // Convert to MediaFile format when upload completes
-};
+  const inferMediaTypeFromFile = useCallback((file: File): MediaFile['type'] => {
+    const mime = (file.type || '').toLowerCase();
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('image/')) return 'image';
 
-  const handleUploadComplete = (results: any[]) => {
-    console.log('✅ Media upload completed, :', results);
+    const fileName = file.name.toLowerCase();
+    if (/\.(mp4|mov|mkv|webm|m4v|avi)$/.test(fileName)) return 'video';
+    if (/\.(mp3|wav|aac|m4a|ogg|flac)$/.test(fileName)) return 'audio';
+    if (/\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|tiff)$/.test(fileName)) return 'image';
+    return 'document';
+  }, []);
+
+  const inferDurationFromMedia = useCallback(
+    (id: string, url: string, mediaType: MediaFile['type']) => {
+      if (mediaType !== 'video' && mediaType !== 'audio') {
+        return;
+      }
+
+      const mediaElement = document.createElement(mediaType === 'video' ? 'video' : 'audio');
+      mediaElement.preload = 'metadata';
+      mediaElement.src = url;
+      mediaElement.onloadedmetadata = () => {
+        const durationSeconds = Number(mediaElement.duration);
+        if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+          setLocalMediaFiles((previous) =>
+            previous.map((item) => (item.id === id ? { ...item, duration: durationSeconds } : item))
+          );
+        }
+      };
+      mediaElement.onerror = () => {
+        // Ignore metadata parsing failures for unsupported codecs.
+      };
+    },
+    []
+  );
+
+  const createLocalMediaFile = useCallback(
+    (file: File): MediaFile => {
+      const objectUrl = URL.createObjectURL(file);
+      localObjectUrlsRef.current.push(objectUrl);
+      return {
+        id: `local-${file.name}-${file.size}-${file.lastModified}`,
+        name: file.name,
+        type: inferMediaTypeFromFile(file),
+        size: file.size,
+        url: objectUrl,
+        file,
+        uploadedAt: new Date().toISOString(),
+        tags: ['local_upload'],
+        isFavorite: false,
+        source: 'local',
+        mimeType: file.type || undefined,
+      };
+    },
+    [inferMediaTypeFromFile]
+  );
+
+  const readFirstString = (record: Record<string, unknown>, keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return undefined;
+  };
+
+  const handleMediaUpload = (files: File[]) => {
+    if (!Array.isArray(files) || files.length === 0) {
+      return;
+    }
+
+    const createdMedia = files.map((file) => createLocalMediaFile(file));
+    setLocalMediaFiles((previous) => {
+      const merged = new Map(previous.map((item) => [item.id, item]));
+      createdMedia.forEach((item) => merged.set(item.id, item));
+      return Array.from(merged.values()).sort(
+        (left, right) => new Date(right.uploadedAt).getTime() - new Date(left.uploadedAt).getTime()
+      );
+    });
+
+    createdMedia.forEach((mediaFile) => {
+      inferDurationFromMedia(mediaFile.id, mediaFile.url, mediaFile.type);
+      onFileUpload?.({
+        id: mediaFile.id,
+        name: mediaFile.name,
+        type: mediaFile.type,
+        source: mediaFile.url,
+        mimeType: mediaFile.mimeType,
+        size: mediaFile.size,
+      });
+    });
+
+    const firstVideo = createdMedia.find((item) => item.type === 'video');
+    if (firstVideo && !autoSelectedVideoRef.current) {
+      autoSelectedVideoRef.current = true;
+      onMediaSelect?.(firstVideo);
+      showToast({
+        title: 'Video valgt',
+        description: `${firstVideo.name} lastet i Source Monitor`,
+        variant: 'success',
+      });
+    }
+  };
+
+  const handleUploadComplete = (results: unknown[] = []) => {
     setShowUpload(false);
-    // Refresh media list or add new files to SAMPLE_MEDIA_FILES
-};
+
+    if (!Array.isArray(results) || results.length === 0) {
+      return;
+    }
+
+    setLocalMediaFiles((previous) => {
+      const merged = new Map(previous.map((item) => [item.id, item]));
+
+      results.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return;
+        }
+
+        const payload = entry as Record<string, unknown>;
+        const fileValue = payload.file;
+        if (!(fileValue instanceof File)) {
+          return;
+        }
+
+        const resultValue = payload.result;
+        const resultRecord =
+          resultValue && typeof resultValue === 'object' ? (resultValue as Record<string, unknown>) : null;
+        const completionStatus = typeof payload.status === 'string' ? payload.status : '';
+        const isSuccessful =
+          payload.success === true || completionStatus === 'completed' || completionStatus === 'queued';
+        if (!isSuccessful) {
+          return;
+        }
+
+        const localId = `local-${fileValue.name}-${fileValue.size}-${fileValue.lastModified}`;
+        const existing = merged.get(localId);
+        const remoteUrl = resultRecord
+          ? readFirstString(resultRecord, ['url', 'fileUrl', 'webViewLink', 'downloadUrl', 'signedUrl'])
+          : undefined;
+        // Keep the in-session local object URL as primary source for editor playback/captions.
+        // Remote URLs can be metadata endpoints during background uploads and may not be
+        // directly streamable as media.
+        const resolvedUrl = existing?.url || remoteUrl;
+        if (!resolvedUrl) {
+          return;
+        }
+
+        const inferredType = existing?.type || inferMediaTypeFromFile(fileValue);
+        const durationRaw = resultRecord?.duration;
+        const duration = typeof durationRaw === 'number' && Number.isFinite(durationRaw) ? durationRaw : existing?.duration;
+        merged.set(localId, {
+          id: localId,
+          name: existing?.name || fileValue.name,
+          type: inferredType,
+          size: existing?.size || fileValue.size,
+          duration,
+          url: resolvedUrl,
+          file: existing?.file || fileValue,
+          uploadedAt: existing?.uploadedAt || new Date().toISOString(),
+          tags: existing?.tags || ['local_upload'],
+          isFavorite: existing?.isFavorite || false,
+          source: existing?.source || 'local',
+          mimeType:
+            existing?.mimeType ||
+            fileValue.type ||
+            (resultRecord ? readFirstString(resultRecord, ['mimeType', 'contentType']) : undefined),
+        });
+      });
+
+      return Array.from(merged.values()).sort(
+        (left, right) => new Date(right.uploadedAt).getTime() - new Date(left.uploadedAt).getTime()
+      );
+    });
+  };
+
+  useEffect(() => {
+    if (autoSelectedVideoRef.current) {
+      return;
+    }
+
+    const firstVideo = localMediaFiles.find(
+      (media) => media.type === 'video' && typeof media.url === 'string' && media.url.trim().length > 0
+    );
+
+    if (!firstVideo) {
+      return;
+    }
+
+    autoSelectedVideoRef.current = true;
+    onMediaSelect?.(firstVideo);
+  }, [localMediaFiles, onMediaSelect]);
 
   // Drive import mutation (requires storyArcId)
   const importGoogleDriveFile = useMutation({
@@ -1150,7 +1381,7 @@ export default function AssetBrowser({
   };
 
   return (
-    <Box sx={{ height, display: 'flex', flexDirection: 'column'}}>
+    <Box data-testid="storyarc-asset-browser" sx={{ height, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Header */}
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
         <Typography variant="subtitle2" fontWeight={600} gutterBottom>
@@ -1186,10 +1417,10 @@ export default function AssetBrowser({
               fontWeight: 500,
             }}}
         >
-          <Tab label="Story Arcs" icon={<Timeline fontSize="small" />} iconPosition="start" />
-          <Tab label="Templates" icon={<Movie fontSize="small" />} iconPosition="start" />
-          <Tab label="Snippets" icon={<ContentCut fontSize="small" />} iconPosition="start" />
-          <Tab label="Media" icon={<PermMedia fontSize="small" />} iconPosition="start" />
+          <Tab data-testid="asset-tab-story-arcs" label="Story Arcs" icon={<Timeline fontSize="small" />} iconPosition="start" />
+          <Tab data-testid="asset-tab-templates" label="Templates" icon={<Movie fontSize="small" />} iconPosition="start" />
+          <Tab data-testid="asset-tab-snippets" label="Snippets" icon={<ContentCut fontSize="small" />} iconPosition="start" />
+          <Tab data-testid="asset-tab-media" label="Media" icon={<PermMedia fontSize="small" />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -1425,12 +1656,14 @@ export default function AssetBrowser({
                     fontWeight: 500,
                   }}}
               >
-                <Tab 
+                <Tab
+                  data-testid="asset-subtab-local"
                   label="Lokale Filer" 
                   icon={<Folder fontSize="small" />}
                   iconPosition="start" 
                 />
-                <Tab 
+                <Tab
+                  data-testid="asset-subtab-google-drive"
                   label="Google Drive" 
                   icon={<CloudQueue fontSize="small" />}
                   iconPosition="start" 
@@ -1447,6 +1680,7 @@ export default function AssetBrowser({
                       Media Upload
                     </Typography>
                     <Button
+                      data-testid="asset-upload-toggle"
                       size="small"
                       variant={showUpload ? "outlined" : "contained"}
                       startIcon={<CloudUpload fontSize="small" />}
@@ -1458,16 +1692,18 @@ export default function AssetBrowser({
                   
                   {showUpload && (
                     <Box sx={{ mt:  2 }}>
-                      <UniversalFileUpload
-                        onFilesSelected={handleMediaUpload}
-                        onUploadComplete={handleUploadComplete}
-                        maxFiles={10}
-                        maxFileSizeMB={500}
-                        allowedTypes="all"
-                        profession="videographer"
-                        enableBackgroundUpload={true}
-                        showFormatInfo={false}
-                      />
+                      <FileManagementStatusProvider>
+                        <UniversalFileUpload
+                          onFilesSelected={handleMediaUpload}
+                          onUploadComplete={handleUploadComplete}
+                          maxFiles={10}
+                          maxFileSizeMB={500}
+                          allowedTypes="all"
+                          profession="videographer"
+                          enableBackgroundUpload={true}
+                          showFormatInfo={false}
+                        />
+                      </FileManagementStatusProvider>
                     </Box>
                   )}
                 </CardContent>
@@ -1650,9 +1886,28 @@ export default function AssetBrowser({
                 
                 return (
                 <Card 
+                  data-testid={isFolder ? undefined : `asset-media-card-${media.id}`}
                   key={media.id}
                   variant="outlined"
-                  sx={{ cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
+                  sx={{ cursor: isFolder ? 'pointer' : 'grab', '&:hover': { borderColor: 'primary.main' }, '&:active': { cursor: isFolder ? 'pointer' : 'grabbing' } }}
+                  draggable={!isFolder}
+                  onDragStart={(event) => {
+                    if (isFolder) return;
+                    const dragPayload = {
+                      id: media.id,
+                      name: media.name,
+                      url: media.url,
+                      type: media.type,
+                      mimeType: media.mimeType,
+                      duration: media.duration,
+                      camera: media.camera,
+                      syncGroup: media.syncGroup,
+                      tags: media.tags || [],
+                    };
+                    event.dataTransfer.effectAllowed = 'copy';
+                    event.dataTransfer.setData('application/x-storyarc-media', JSON.stringify(dragPayload));
+                    event.dataTransfer.setData('text/plain', media.name || media.id || 'media');
+                  }}
                   onClick={() => {
                     if (isFolder && googleDriveTab === 1) {
                       // Navigate into folder
@@ -1732,7 +1987,10 @@ export default function AssetBrowser({
                         onClick={(e) => { e.stopPropagation(); const link = document.createElement('a'); link.href = media.url; link.download = media.name; link.click(); }}>Download</Button>
                       <Button size="small" startIcon={<Share fontSize="small" />}
                         onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(media.url); }}>Share</Button>
-                      <Button size="small" variant="outlined"
+                      <Button
+                        data-testid={`asset-add-to-timeline-${media.id}`}
+                        size="small"
+                        variant="outlined"
                         onClick={(e) => { e.stopPropagation(); setAddTargetMedia(media); setAddDialogOpen(true); }}>
                         Add to timeline…
                       </Button>
@@ -1854,9 +2112,12 @@ export default function AssetBrowser({
               size="small"
               fullWidth
               label="Tags (comma-separated)"
-              value={addTags.join('')}
+              value={addTags.join(', ')}
               onChange={(e) => {
-                const tags = e.target.value.split('').map(t => t.trim()).filter(Boolean);
+                const tags = e.target.value
+                  .split(',')
+                  .map((tag) => tag.trim())
+                  .filter(Boolean);
                 setAddTags(tags);
               }}
               placeholder="e.g. scene-1, take-2, master"
@@ -1867,11 +2128,11 @@ export default function AssetBrowser({
         <DialogActions>
           <Button onClick={() => {
             setAddDialogOpen(false);
-            setAddCamera(', ');
-            setAddSyncGroup(', ');
+            setAddCamera('');
+            setAddSyncGroup('');
             setAddTags([]);
           }}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
+          <Button data-testid="asset-add-dialog-confirm" variant="contained" onClick={() => {
             if (!addTargetMedia) return;
             const detail = { 
               media: {
@@ -1887,7 +2148,7 @@ export default function AssetBrowser({
             window.dispatchEvent(new CustomEvent('storyarc:add-media', { detail }));
             setAddDialogOpen(false);
             setAddCamera('');
-            setAddSyncGroup(', ');
+            setAddSyncGroup('');
             setAddTags([]);
             showToast({ title: 'Lagt til', description: `La til ${addTargetMedia.name} i tidslinjen`, variant: 'success' });
           }}>Add</Button>

@@ -74,11 +74,6 @@ const preloadCriticalAssets = () => {
   if (typeof document !== "undefined") {
     const preloadLinks = [
       { rel: "preload", href: "/creatorhub-logo-amber.svg", as: "image" },
-      {
-        rel: "preload",
-        href: "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap",
-        as: "style",
-    },
     ];
 
     preloadLinks.forEach((link) => {

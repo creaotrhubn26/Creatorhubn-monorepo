@@ -173,22 +173,26 @@ export function RichTextEditor({
           }}
         />
         <Tooltip title="Angre (Ctrl+Z)" enterDelay={500}>
-          <IconButton
-            onClick={() => editor.chain().focus().undo().run()}
-            disabled={!editor.can().undo()}
-            sx={{ ...buttonStyle, '&.Mui-disabled': { color: 'rgba(255,255,255,0.6)' } }}
-          >
-            <UndoIcon sx={{ fontSize: iconSize }} />
-          </IconButton>
+          <span>
+            <IconButton
+              onClick={() => editor.chain().focus().undo().run()}
+              disabled={!editor.can().undo()}
+              sx={{ ...buttonStyle, '&.Mui-disabled': { color: 'rgba(255,255,255,0.6)' } }}
+            >
+              <UndoIcon sx={{ fontSize: iconSize }} />
+            </IconButton>
+          </span>
         </Tooltip>
         <Tooltip title="Gjør om (Ctrl+Y)" enterDelay={500}>
-          <IconButton
-            onClick={() => editor.chain().focus().redo().run()}
-            disabled={!editor.can().redo()}
-            sx={{ ...buttonStyle, '&.Mui-disabled': { color: 'rgba(255,255,255,0.6)' } }}
-          >
-            <RedoIcon sx={{ fontSize: iconSize }} />
-          </IconButton>
+          <span>
+            <IconButton
+              onClick={() => editor.chain().focus().redo().run()}
+              disabled={!editor.can().redo()}
+              sx={{ ...buttonStyle, '&.Mui-disabled': { color: 'rgba(255,255,255,0.6)' } }}
+            >
+              <RedoIcon sx={{ fontSize: iconSize }} />
+            </IconButton>
+          </span>
         </Tooltip>
       </Box>
 
@@ -256,7 +260,7 @@ export function RichTextEditor({
               opacity: 0.7,
             },
             // Placeholder styling
-            '& p.is-editor-empty:first-child::before': {
+            '& p.is-editor-empty:first-of-type::before': {
               content: 'attr(data-placeholder)',
               color: 'rgba(255,255,255,0.35)',
               pointerEvents: 'none',
@@ -272,4 +276,3 @@ export function RichTextEditor({
     </Box>
   );
 }
-

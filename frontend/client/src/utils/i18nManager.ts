@@ -120,7 +120,7 @@ class I18nManager {
 
       // Try to load preferred language from server user preferences
       try {
-        const res = await fetch('/api/user/ui-preferences, ', { credentials: 'include' });
+        const res = await fetch('/api/user/ui-preferences', { credentials: 'include' });
         if (res.ok) {
           const j = await res.json();
           const serverLang = j?.data?.i18n_language;
@@ -642,7 +642,6 @@ export const isRTL = (language?: string) => {
 };
 
 export default i18nManager;
-
 
 
 

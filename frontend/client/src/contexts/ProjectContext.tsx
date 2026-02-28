@@ -1392,12 +1392,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         params.append('end', dateRange.end.toISOString());
     }
 
-      const response = await fetch(`/api/projects/${projectId}/analytics?${params}`, {
+      const queryString = params.toString();
+      const response = await fetch(
+        `/api/projects/${projectId}/analytics${queryString ? `?${queryString}` : ''}`,
+        {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${user?.id}`,
       },
-    });
+      });
 
       if (!response.ok) {
         throw new Error('Failed to get project analytics');

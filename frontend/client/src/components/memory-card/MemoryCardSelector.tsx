@@ -5,16 +5,12 @@
 
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
   Card as MuiCard,
   CardContent,
   Typography,
   Button,
-  Grid,
   Chip,
   Alert,
   Paper,
@@ -22,32 +18,26 @@ import {
   Stack,
   Divider,
   TextField,
-  Autocomplete,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   List,
-  ListItem,
   ListItemText,
   ListItemButton,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Memory,
   PhotoCamera,
-  Add,
-  Remove,
-  Info,
   Storage,
   Check,
-  Search,
 } from '@mui/icons-material';
 import { 
   WORLD_CAMERA_DATABASE, 
   calculateCapacityEstimates, 
   searchCameras, 
-  getCameraByName,
-  type CameraSpec 
+  getCameraByName
 } from '../../../../shared/camera-database';
 
 interface MemoryCardConfig {
@@ -83,7 +73,7 @@ const CAPACITY_ESTIMATES = {
 };
 
 export default function MemoryCardSelector({
-  equipment = 'Canon EOS R5, ',
+  equipment = 'Canon EOS R5',
   profession,
   onCardsSelected,
   onCameraChanged,
@@ -99,12 +89,17 @@ export default function MemoryCardSelector({
   
   // Get camera specs and calculate estimates
   const cameraSpec = getCameraByName(selectedCamera) || WORLD_CAMERA_DATABASE[0];
-  const estimates = calculateCapacityEstimates(cameraSpec);
+  const staticEstimateKey = Object.keys(CAPACITY_ESTIMATES).find((key) =>
+    selectedCamera.toLowerCase().includes(key.toLowerCase())
+  ) as keyof typeof CAPACITY_ESTIMATES | undefined;
+  const estimates = staticEstimateKey
+    ? CAPACITY_ESTIMATES[staticEstimateKey]
+    : calculateCapacityEstimates(cameraSpec);
 
   const updateCardCount = (capacity: string, delta: number) => {
     setSelectedCards(prev => {
       const existing = prev.find(card => card.capacity === capacity);
-      const newCount = Math.max((existing?.count || 0) + delta);
+      const newCount = Math.max(0, (existing?.count || 0) + delta);
       
       if (newCount === 0) {
         const updated = prev.filter(card => card.capacity !== capacity);
@@ -164,7 +159,8 @@ export default function MemoryCardSelector({
           {cameraSpec.megapixels}MP • {cameraSpec.averageRawSize}MB per RAW fil • {cameraSpec.cardTypes.join(', ')}
         </Typography>
         <Typography variant="body2">
-          Minnekort anbefalinger er optimalisert for dette kameraet.
+          Minnekort anbefalinger er optimalisert for{' '}
+          {profession === 'videographer' ? 'videoopptak' : 'fotoopptak'} med dette kameraet.
         </Typography>
       </Alert>
 
@@ -185,7 +181,7 @@ export default function MemoryCardSelector({
             {WORLD_CAMERA_DATABASE.length} kameraer tilgjengelig fra hele verden
           </Typography>
           
-          <Box sx={{ maxHeight: 40, overflow: 'auto'}}>
+          <Box sx={{ maxHeight: 400, overflow: 'auto'}}>
             <List dense>
               {(cameraSearch ? searchCameras(cameraSearch) : WORLD_CAMERA_DATABASE)
                 .slice(0, 50) // Limit to first 50 results
@@ -235,7 +231,7 @@ export default function MemoryCardSelector({
           const isSelected = count > 0;
           
           return (
-            <Grid size={{ xs: 12 }} sm={6} md={4} key={capacity}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={capacity}>
               <MuiCard 
                 sx={{ 
                   height: '100%',
@@ -303,21 +299,21 @@ export default function MemoryCardSelector({
           </Typography>
           
           <Grid container spacing={2} sx={{ mb:  2 }}>
-            <Grid size={{ xs:  6 }} sm={3}>
+            <Grid size={{ xs: 6, sm: 3 }}>
               <Typography variant="body2" color="text.secondary">
                 Totalt kort: </Typography>
               <Typography variant="h5" color="success.800" sx={{ color: theming.colors.primary }}>
                 {getTotalCards()}
               </Typography>
             </Grid>
-            <Grid size={{ xs:  6 }} sm={3}>
+            <Grid size={{ xs: 6, sm: 3 }}>
               <Typography variant="body2" color="text.secondary">
                 Estimerte RAW bilder: </Typography>
               <Typography variant="h5" color="success.800" sx={{ color: theming.colors.primary }}>
                 {getTotalEstimate().toLocaleString()}
               </Typography>
             </Grid>
-            <Grid size={{ xs: 12 }} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
                 Valgte kort: </Typography>
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap:  1 }}>

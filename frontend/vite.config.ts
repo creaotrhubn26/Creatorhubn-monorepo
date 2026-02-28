@@ -105,11 +105,17 @@ export default defineConfig({
   ],
   root: './client',
   resolve: {
+    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled'],
     alias: {
       // @/* is handled by customPathResolver plugin
       '@shared': path.resolve(__dirname, 'shared'),
       '@assets': path.resolve(__dirname, 'client/src/assets'),
       '@server': path.resolve(__dirname, 'shared'),
+      // Keep @mui/system aligned with @mui/material's major version (v6 here).
+      '@mui/system': path.resolve(
+        __dirname,
+        '../node_modules/@mui/material/node_modules/@mui/system'
+      ),
       'react-quill$': path.resolve(__dirname, 'client/src/components/QuillWrapper.tsx'),
       'react-quill': path.resolve(__dirname, 'client/src/components/QuillWrapper.tsx'),
       // Buffer polyfill for browser
@@ -222,7 +228,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5000,
+    port: 5001,
     allowedHosts: true,
     hmr: {
       overlay: false,
@@ -264,6 +270,6 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',
-    port: 5000,
+    port: 5001,
   },
 });

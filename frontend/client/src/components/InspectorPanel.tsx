@@ -67,12 +67,12 @@ interface InspectorPanelProps {
   selectedClips: BeatClip[];
   onClipUpdate: (clipId: string, updates: Partial<BeatClip>) => void;
   onBulkUpdate?: (clipIds: string[], updates: Partial<BeatClip>) => void;
-  height?: number;
+  height?: number | string;
   metaMap?: Record<string, ClipMeta>;
   onMetaUpdate?: (clipId: string, updates: Partial<ClipMeta>) => void;
 }
 
-export default function InspectorPanel({ selectedClips, onClipUpdate, onBulkUpdate, height = 600, metaMap = {}, onMetaUpdate }: InspectorPanelProps) {
+export default function InspectorPanel({ selectedClips, onClipUpdate, onBulkUpdate, height = '100%', metaMap = {}, onMetaUpdate }: InspectorPanelProps) {
   const clip = selectedClips && selectedClips.length > 0 ? selectedClips[0] : null;
 
   if (!clip) {

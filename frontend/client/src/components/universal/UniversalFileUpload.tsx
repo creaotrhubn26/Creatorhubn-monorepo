@@ -98,6 +98,7 @@ interface UniversalFileUploadProps {
   maxFileSizeMB?: number;
   allowedTypes?: 'images' | 'videos' | 'audio' | 'documents' | 'design' | 'archives' | '3d' | 'all';
   showFormatInfo?: boolean;
+  showFeatureMeta?: boolean;
   uploadEndpoint?: string;
   additionalMetadata?: Record<string, any>;
   className?: string;
@@ -143,6 +144,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   maxFileSizeMB = 100,
   allowedTypes = 'all',
   showFormatInfo = true,
+  showFeatureMeta = true,
   uploadEndpoint = '/api/upload',
   additionalMetadata = {},
   className = '',
@@ -181,6 +183,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
 }) => {
   const { user } = useAuth();
   const effectiveUserId = userId || user?.id || user?.email || 'current-user';
+  const normalizedEffectiveUserId = String(effectiveUserId || 'guest').trim().replace(/,+$/, '') || 'guest';
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
@@ -196,9 +199,9 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const theming = useTheming('photographer');
 
   // Comprehensive Feature System for Universal File Upload
-  const universalFileUploadAccess = features.checkFeatureAccess('universal-file-upload,');
-  const fileUploadAccess = features.checkFeatureAccess('file-upload,');
-  const backgroundUploadAccess = features.checkFeatureAccess('background-upload, ');
+  const universalFileUploadAccess = features.checkFeatureAccess('universal-file-upload');
+  const fileUploadAccess = features.checkFeatureAccess('file-upload');
+  const backgroundUploadAccess = features.checkFeatureAccess('background-upload');
   const googleDriveUploadAccess = features.checkFeatureAccess('google-drive-upload');
   const uploadQueueAccess = features.checkFeatureAccess('upload-queue');
   const uploadProgressAccess = features.checkFeatureAccess('upload-progress');
@@ -220,10 +223,10 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const { 
     connectionState, 
     isConnected 
-} = usePhotoEnhancementWebSocket({ userId: effectiveUserId });
+} = usePhotoEnhancementWebSocket({ userId: normalizedEffectiveUserId });
 
   const { data: fileManagementStats = {}, isLoading: isFileStatsLoading } = useQuery({
-    queryKey: ['/api/file-management/stats', effectiveUserId],
+    queryKey: ['/api/file-management/stats', normalizedEffectiveUserId],
     queryFn: () => apiRequest('/api/file-management/stats'),
     retry: false,
     refetchInterval: 20000
@@ -753,61 +756,65 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
 
   return (
     <Box className={className}>
-      {/* Feature Analytics Display */}
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 1, mb:  2,
-        p:  1,
-        backgroundColor: 'blur\(\s*([0-9]+px)\s*,\s*\)00.02)',
-        borderRadius:  1,
-        border: '1px solid blur\(\s*([0-9]+px)\s*,\s*\)00.1)'
-    }}>
-        <Typography variant="caption" color="text.secondary">
-          Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
-        </Typography>
-        <Chip 
-          label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
-          size="small"
-          variant="outlined"
-          sx={{ fontSize: '10px', height: 18}}
-        />
-        {isFileStatsLoading ? (
-          <Chip size="small" label="Laster lagring..." variant="outlined" />
-        ) : (
-          <Chip
-            size="small"
-            label={storagePercent ? `Lagring ${storagePercent.toFixed(0)}%` : 'Lagring ok'}
-            color={storagePercent >= 90 ? 'warning' : 'default'}
-            icon={storagePercent >= 90 ? <WarningIcon /> : <StorageIcon />}
-            variant="outlined"
-          />
-        )}
-        <Chip
-          size="small"
-          label={`Formater: ${databaseSupportedFormats}`}
-          variant="outlined"
-          icon={<InfoIcon />}
-        />
-      </Box>
+      {showFeatureMeta && (
+        <>
+          {/* Feature Analytics Display */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1, mb:  2,
+            p:  1,
+            backgroundColor: 'blur\(\s*([0-9]+px)\s*,\s*\)00.02)',
+            borderRadius:  1,
+            border: '1px solid blur\(\s*([0-9]+px)\s*,\s*\)00.1)'
+        }}>
+            <Typography variant="caption" color="text.secondary">
+              Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
+            </Typography>
+            <Chip 
+              label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
+              size="small"
+              variant="outlined"
+              sx={{ fontSize: '10px', height: 18}}
+            />
+            {isFileStatsLoading ? (
+              <Chip size="small" label="Laster lagring..." variant="outlined" />
+            ) : (
+              <Chip
+                size="small"
+                label={storagePercent ? `Lagring ${storagePercent.toFixed(0)}%` : 'Lagring ok'}
+                color={storagePercent >= 90 ? 'warning' : 'default'}
+                icon={storagePercent >= 90 ? <WarningIcon /> : <StorageIcon />}
+                variant="outlined"
+              />
+            )}
+            <Chip
+              size="small"
+              label={`Formater: ${databaseSupportedFormats}`}
+              variant="outlined"
+              icon={<InfoIcon />}
+            />
+          </Box>
 
-      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-        <Chip size="small" label="Universal" color={universalFileUploadAccess ? 'success' : 'default'} />
-        <Chip size="small" label="File upload" color={fileUploadAccess ? 'success' : 'default'} />
-        <Chip size="small" label="Background" color={backgroundUploadAccess ? 'success' : 'default'} />
-        <Chip size="small" label="Drive" color={googleDriveUploadAccess ? 'success' : 'default'} />
-        <Chip size="small" label="Queue" color={uploadQueueAccess ? 'success' : 'default'} />
-        <Chip size="small" label="Progress" color={uploadProgressAccess ? 'success' : 'default'} />
-        <Chip size="small" label="Analytics" color={uploadAnalyticsAccess ? 'success' : 'default'} />
-        <Chip size="small" label="Scheduling" color={uploadSchedulingAccess ? 'success' : 'default'} />
-        <Chip size="small" label={`Sync: ${enableRealTimeSync ? 'Pa' : 'Av'}`} variant="outlined" />
-        {collaborationSessionId && (
-          <Chip size="small" label={`Session: ${collaborationSessionId}`} variant="outlined" />
-        )}
-        {enableAIAnalysis && <Chip size="small" label="AI analyse" color="primary" />}
-        {enableAutoTagging && <Chip size="small" label="Auto-tag" color="primary" />}
-        {enableSmartCollections && <Chip size="small" label="Smart collections" color="primary" />}
-      </Stack>
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+            <Chip size="small" label="Universal" color={universalFileUploadAccess ? 'success' : 'default'} />
+            <Chip size="small" label="File upload" color={fileUploadAccess ? 'success' : 'default'} />
+            <Chip size="small" label="Background" color={backgroundUploadAccess ? 'success' : 'default'} />
+            <Chip size="small" label="Drive" color={googleDriveUploadAccess ? 'success' : 'default'} />
+            <Chip size="small" label="Queue" color={uploadQueueAccess ? 'success' : 'default'} />
+            <Chip size="small" label="Progress" color={uploadProgressAccess ? 'success' : 'default'} />
+            <Chip size="small" label="Analytics" color={uploadAnalyticsAccess ? 'success' : 'default'} />
+            <Chip size="small" label="Scheduling" color={uploadSchedulingAccess ? 'success' : 'default'} />
+            <Chip size="small" label={`Sync: ${enableRealTimeSync ? 'Pa' : 'Av'}`} variant="outlined" />
+            {collaborationSessionId && (
+              <Chip size="small" label={`Session: ${collaborationSessionId}`} variant="outlined" />
+            )}
+            {enableAIAnalysis && <Chip size="small" label="AI analyse" color="primary" />}
+            {enableAutoTagging && <Chip size="small" label="Auto-tag" color="primary" />}
+            {enableSmartCollections && <Chip size="small" label="Smart collections" color="primary" />}
+          </Stack>
+        </>
+      )}
 
       {/* Google Workspace Storage Information */}
       {showStorageInfo && (
@@ -915,6 +922,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
 
       {/* File Drop Zone */}
       <Paper
+        data-testid="universal-file-upload-dropzone"
         elevation={2}
         onDrop={enableDragDrop ? handleDrop : undefined}
         onDragOver={enableDragDrop ? handleDragOver : undefined}
@@ -944,6 +952,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
 
         {/* Hidden file input */}
         <input
+          data-testid="universal-file-upload-input"
           ref={fileInputRef}
           type="file"
           multiple={enableMultipleFiles}
@@ -1084,6 +1093,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
           <Stack direction="row" spacing={2} justifyContent="center" alignItems="center">
             <Box sx={{ position: 'relative', display: 'inline-block' }}>
               <Button
+                data-testid="universal-file-upload-submit"
                 variant="contained"
                 onClick={uploadFiles}
                 disabled={uploading}

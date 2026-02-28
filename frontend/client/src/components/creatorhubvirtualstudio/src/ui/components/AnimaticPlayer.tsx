@@ -260,7 +260,7 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
       const now = performance.now();
       const elapsed = ((now - startTime) / 1000) * settings.playbackSpeed;
       const frameDuration = currentFrame.duration;
-      let newProgress = startProgress + elapsed / frameDuration;
+      const newProgress = startProgress + elapsed / frameDuration;
 
       // Handle transition
       if (newProgress > 1 - settings.transitionDuration / frameDuration) {

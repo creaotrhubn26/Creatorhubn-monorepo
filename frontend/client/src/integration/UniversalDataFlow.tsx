@@ -441,7 +441,7 @@ export const DATA_FILTERS = {
   
   // Value filters
   IS_TRUTHY: (data: any) => Boolean(data),
-  IS_FALSY: (data: any) => !Boolean(data),
+  IS_FALSY: (data: any) => !data,
   IS_EMPTY: (data: any) => data === null || data === undefined || data ==='',
   
   // Custom filters

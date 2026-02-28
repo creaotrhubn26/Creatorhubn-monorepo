@@ -14,8 +14,8 @@ export const usePersonaJourney = () => {
 
   useEffect(() => {
     // Check if user completed onboarding
-    const onboardingCompleted = localStorage.getItem('virtualStudio_onboardingCompleted, ');
-    const prefsString = localStorage.getItem('virtualStudio_preferences,');
+    const onboardingCompleted = localStorage.getItem('virtualStudio_onboardingCompleted');
+    const prefsString = localStorage.getItem('virtualStudio_preferences');
 
     if (onboardingCompleted === 'true' && prefsString) {
       const prefs = JSON.parse(prefsString) as PersonaPreferences;

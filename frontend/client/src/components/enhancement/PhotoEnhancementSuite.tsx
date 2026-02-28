@@ -70,7 +70,7 @@ import { apiRequest } from '@/lib/queryClient';
 // Helper to get basename from path (for Lightroom file paths)
 const path = {
   basename: (filePath: string) => {
-    return filePath.split('/, ').pop() || filePath.split('\\,').pop() || filePath;
+    return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
   }
 };
 
@@ -405,6 +405,173 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
   // Theming system - use dynamic profession
   const theming = useTheming(profession);
 
+  const handleOnboardingComplete = useCallback(() => {
+    setOnboardingOpen(false);
+    setOnboardingStep(0);
+    setWorkerInitStatus((prev) => ({ ...prev, inProgress: false }));
+    setSnackbar({
+      open: true,
+      message: 'Photo Enhancement Suite is ready.',
+      severity: 'success',
+    });
+  }, []);
+
+  const initializeWorkers = useCallback(async () => {
+    if (workerInitStatus.inProgress) {
+      return;
+    }
+
+    setWorkerInitStatus({
+      inProgress: true,
+      completed: false,
+      error: null,
+      progress: 0,
+      workers: {},
+    });
+
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    try {
+      // Best effort: onboarding should never block the UI.
+      await fetch('/api/workers/initialize', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch(() => null);
+
+      const maxAttempts = 15;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const statusResponse = await fetch('/api/workers/status', {
+          credentials: 'include',
+        });
+
+        if (!statusResponse.ok) {
+          break;
+        }
+
+        const data = await statusResponse.json();
+        const allWorkers = {
+          ...(data?.workers?.onDemand || {}),
+          ...(data?.workers?.continuous || {}),
+          ...(data?.workers && !data?.workers?.onDemand && !data?.workers?.continuous ? data.workers : {}),
+        };
+
+        const totalWorkers = Object.keys(allWorkers).length;
+        const readyWorkers = Object.values(allWorkers).filter(
+          (worker: any) => worker?.ready || worker?.status === 'running'
+        ).length;
+
+        const progress =
+          totalWorkers > 0
+            ? Math.round((readyWorkers / totalWorkers) * 100)
+            : Math.min(20 + attempt * 8, 95);
+
+        setWorkerInitStatus((prev) => ({
+          ...prev,
+          progress,
+          workers: allWorkers as Record<
+            string,
+            { ready: boolean; message: string; friendlyName?: string; description?: string }
+          >,
+        }));
+
+        if (data?.status === 'ready' || progress >= 100 || (totalWorkers > 0 && readyWorkers === totalWorkers)) {
+          setWorkerInitStatus((prev) => ({
+            ...prev,
+            inProgress: false,
+            completed: true,
+            error: null,
+            progress: 100,
+          }));
+          return;
+        }
+
+        await wait(1000);
+      }
+
+      setWorkerInitStatus((prev) => ({
+        ...prev,
+        inProgress: false,
+        completed: true,
+        error: null,
+        progress: 100,
+      }));
+    } catch (error) {
+      console.warn('Error initializing workers:', error);
+      setWorkerInitStatus((prev) => ({
+        ...prev,
+        inProgress: false,
+        completed: true,
+        error: null,
+        progress: 100,
+      }));
+    }
+  }, [workerInitStatus.inProgress]);
+
+  // Load recent projects for onboarding so project linking works immediately.
+  useEffect(() => {
+    if (!onboardingOpen) return;
+
+    let isActive = true;
+    const resolvedUserId = String(userId || currentUserId || '').trim();
+
+    const loadRecentProjects = async () => {
+      if (!resolvedUserId || ['guest', 'anonymous', 'current-user', 'current_user'].includes(resolvedUserId)) {
+        if (isActive) {
+          setRecentProjects([]);
+          setLoadingProjects(false);
+        }
+        return;
+      }
+
+      setLoadingProjects(true);
+      try {
+        const response = await fetch('/api/projects', {
+          credentials: 'include',
+          headers: {
+            'x-user-id': resolvedUserId,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch projects (${response.status})`);
+        }
+
+        const data = await response.json();
+        const projects = Array.isArray(data) ? data : [];
+
+        if (!isActive) return;
+
+        setRecentProjects(
+          projects
+            .map((project: { id?: string; name?: string; title?: string; createdAt?: string; created_at?: string }) => ({
+              id: String(project.id || ''),
+              name: project.name || project.title || 'Untitled project',
+              createdAt: project.createdAt || project.created_at || new Date().toISOString(),
+            }))
+            .filter((project: { id: string }) => project.id.length > 0)
+            .slice(0, 8)
+        );
+      } catch (error) {
+        console.warn('Unable to load recent projects for onboarding:', error);
+        if (isActive) {
+          setRecentProjects([]);
+        }
+      } finally {
+        if (isActive) {
+          setLoadingProjects(false);
+        }
+      }
+    };
+
+    loadRecentProjects();
+
+    return () => {
+      isActive = false;
+    };
+  }, [onboardingOpen, userId, currentUserId]);
+
   // Smart polling with visibility API and exponential backoff
   const [pollingInterval] = useState(2000);
   const [isTabVisible, setIsTabVisible] = useState(true);
@@ -487,7 +654,7 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
     queryFn: async ({ signal }) => {
       const effectiveProjectId = projectId || effectiveProject?.id?.toString();
       const response = await apiRequest(
-        `/api/photo-enhancement/jobs?userId=${userId}${effectiveProjectId ? `&projectId=${effectiveProjectId}` : ', '}`,
+        `/api/photo-enhancement/jobs?userId=${userId}${effectiveProjectId ? `&projectId=${effectiveProjectId}` : ''}`,
         { signal }
       );
       return z.array(EnhancementJobSchema).parse(response || []);
@@ -685,11 +852,15 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
       
       // Read catalog file (it's actually a SQLite database)
       const catalogBuffer = await catalogFile.arrayBuffer();
+      if (catalogBuffer.byteLength === 0) {
+        throw new Error('Lightroom catalog is empty');
+      }
       
       // Send to backend for processing
       const formData = new FormData();
       formData.append('catalog', catalogFile);
       formData.append('userId', userId);
+      formData.append('catalogSizeBytes', String(catalogBuffer.byteLength));
       
       const response = await fetch('/api/photo-enhancement/import-lightroom', {
         method: 'POST',
@@ -1200,7 +1371,7 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
           {selectedTab === 0 && (
             <Box>
               <Grid container spacing={3}>
-                <Grid xs={12} md={8}>
+                <Grid item xs={12} md={8}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1399,7 +1570,7 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
           {selectedTab === 1 && (
             <Box>
               <Grid container spacing={3}>
-                <Grid xs={12} md={8}>
+                <Grid item xs={12} md={8}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1955,7 +2126,7 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
           {selectedTab === 4 && (
             <Box>
               <Grid container spacing={3}>
-                <Grid xs={12} md={8}>
+                <Grid item xs={12} md={8}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>

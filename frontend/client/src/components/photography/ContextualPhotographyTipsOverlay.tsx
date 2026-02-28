@@ -50,6 +50,8 @@ import {
   FlashOn,
   FlashOff,
   Tune,
+  EventNote,
+  Download,
   Help,
   Star,
   BookmarkAdd,
@@ -145,12 +147,21 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
       setIsOverlayOpen(true);
   };
 
-    window.addEventListener('openPhotographyTips, ', handleOpenTips);
+    window.addEventListener('openPhotographyTips', handleOpenTips);
 
     return () => {
-      window.removeEventListener('openPhotographyTips,', handleOpenTips);
+      window.removeEventListener('openPhotographyTips', handleOpenTips);
   };
 }, []);
+
+  useEffect(() => {
+    onSettingsUpdate?.({
+      component: 'ContextualPhotographyTipsOverlay',
+      autoSuggest,
+      context,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [autoSuggest, context, onSettingsUpdate]);
 
   const photographyTips: PhotographyTip[] = [
     {
@@ -277,14 +288,38 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
   }
 };
 
+  const handleShareTip = (tip: PhotographyTip) => {
+    const sharePayload = {
+      title: tip.title,
+      description: tip.description,
+      context,
+      profession: currentProfession,
+      timestamp: new Date().toISOString(),
+    };
+    onShowcaseCreate?.({
+      type: 'photography-tip-share',
+      payload: sharePayload,
+    });
+    onFileDownload?.({
+      filename: `${tip.id}.json`,
+      mimeType: 'application/json',
+      content: JSON.stringify(sharePayload, null, 2),
+    });
+    onNotificationCreate?.({
+      type: 'tip_shared',
+      message: `Tip "${tip.title}" ble delt`,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'exposure': return <CameraAlt />;
       case 'composition': return <CameraRoll />;
-      case 'lighting': return theming.getThemedIcon(',');
-      case 'equipment': return theming.getThemedIcon('settings');
-      case 'technique': return theming.getThemedIcon('tune');
-      default: return theming.getThemedIcon(', ');
+      case 'lighting': return <WbSunny />;
+      case 'equipment': return <Settings />;
+      case 'technique': return <Tune />;
+      default: return <Lightbulb />;
   }
 };
 
@@ -299,18 +334,35 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
 
   const getLightConditionIcon = (condition: string) => {
     switch (condition) {
-      case 'bright_sunlight': return theming.getThemedIcon(', ');
+      case 'bright_sunlight': return <WbSunny />;
       case 'overcast': return <Cloud />;
       case 'golden_hour': return <WbSunny style={{ color: '#ffa726' }} />;
       case 'blue_hour': return <NightsStay />;
-      case 'indoor': return theming.getThemedIcon('settings');
+      case 'indoor': return <Settings />;
       case 'low_light': return <NightsStay />;
-      default: return theming.getThemedIcon(', ');
+      default: return <Lightbulb />;
   }
 };
 
   return (
     <Box>
+      <Slide direction="up" in={!isOverlayOpen} mountOnEnter unmountOnExit>
+        <Box sx={{ position: 'fixed', bottom: 96, right: 24, zIndex: 1200 }}>
+          <Tooltip title="Åpne fotograferingstips">
+            <Fab
+              color="primary"
+              onClick={() => setIsOverlayOpen(true)}
+              sx={{
+                bgcolor: professionColor,
+                '&:hover': { bgcolor: theming.colors.accent },
+              }}
+            >
+              <PhotoCamera />
+            </Fab>
+          </Tooltip>
+        </Box>
+      </Slide>
+
       {/* Main Overlay Dialog */}
       <Dialog
         open={isOverlayOpen}
@@ -331,6 +383,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                 {professionIcon}
               </Box>
             )}
+            <Settings />
             <Lightbulb />
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>
               {enhancedProfessionConfig?.displayName || professionConfig?.displayName
@@ -339,7 +392,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
             </Typography>
           </Box>
           <IconButton onClick={() => setIsOverlayOpen(false)}>
-            {theming.getThemedIcon('close')}
+            <Close />
           </IconButton>
         </DialogTitle>
 
@@ -360,7 +413,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                         <InputLabel>Lysforhold</InputLabel>
                         <Select
                           value={context.lightCondition}
-                          onChange={(e) => setContext({...context, lightCondition: e.target.value as any})}
+                          onChange={(e) => setContext({...context, lightCondition: e.target.value as ShootingContext['lightCondition']})}
                         >
                           <MenuItem value="bright_sunlight">
                             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -397,7 +450,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                         <InputLabel>Motiv</InputLabel>
                         <Select
                           value={context.subject}
-                          onChange={(e) => setContext({...context, subject: e.target.value as any})}
+                          onChange={(e) => setContext({...context, subject: e.target.value as ShootingContext['subject']})}
                         >
                           <MenuItem value="portrait">
                             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -440,7 +493,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                         <InputLabel>Erfaring</InputLabel>
                         <Select
                           value={context.experience}
-                          onChange={(e) => setContext({...context, experience: e.target.value as any})}
+                          onChange={(e) => setContext({...context, experience: e.target.value as ShootingContext['experience']})}
                         >
                           <MenuItem value="beginner">Nybegynner</MenuItem>
                           <MenuItem value="intermediate">Middels</MenuItem>
@@ -474,7 +527,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
 
               <Grid container spacing={2}>
                 {currentTips.map((tip) => (
-                  <Grid size={{ xs: 12 }} md={6} key={tip.id}>
+                  <Grid size={{ xs: 12, md: 6 }} key={tip.id}>
                     <Card variant="outlined" sx={{ ...theming.getThemedCardSx(), height: '100%' }}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  1 }}>
@@ -508,26 +561,34 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                             <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
                               Anbefalte innstillinger:
                             </Typography>
-                            {tip.cameraSettings.aperture && (
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                📷 Blender: {tip.cameraSettings.aperture}
-                              </Typography>
-                            )}
-                            {tip.cameraSettings.shutter && (
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                ⚡ Lukkertid: {tip.cameraSettings.shutter}
-                              </Typography>
-                            )}
-                            {tip.cameraSettings.iso && (
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                📊 ISO: {tip.cameraSettings.iso}
-                              </Typography>
-                            )}
-                            {tip.cameraSettings.focus && (
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                🎯 Fokus: {tip.cameraSettings.focus}
-                              </Typography>
-                            )}
+                            <List dense>
+                              {tip.cameraSettings.aperture && (
+                                <ListItem>
+                                  <ListItemIcon><Tune fontSize="small" /></ListItemIcon>
+                                  <ListItemText primary={`Blender: ${tip.cameraSettings.aperture}`} />
+                                </ListItem>
+                              )}
+                              {tip.cameraSettings.shutter && (
+                                <ListItem>
+                                  <ListItemIcon><Timer fontSize="small" /></ListItemIcon>
+                                  <ListItemText primary={`Lukkertid: ${tip.cameraSettings.shutter}`} />
+                                </ListItem>
+                              )}
+                              {tip.cameraSettings.iso && (
+                                <ListItem>
+                                  <ListItemIcon><Iso fontSize="small" /></ListItemIcon>
+                                  <ListItemText primary={`ISO: ${tip.cameraSettings.iso}`} />
+                                </ListItem>
+                              )}
+                              {tip.cameraSettings.focus && (
+                                <ListItem>
+                                  <ListItemIcon>
+                                    {context.lightCondition === 'low_light' ? <FlashOn fontSize="small" /> : <FlashOff fontSize="small" />}
+                                  </ListItemIcon>
+                                  <ListItemText primary={`Fokus: ${tip.cameraSettings.focus}`} />
+                                </ListItem>
+                              )}
+                            </List>
                           </Paper>
                         )}
 
@@ -542,7 +603,8 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                           </Button>
                           <Button
                             size="small"
-                            startIcon={theming.getThemedIcon('share')}
+                            startIcon={<Share />}
+                            onClick={() => handleShareTip(tip)}
                           >
                             Del
                           </Button>
@@ -555,6 +617,81 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
             </Grid>
 
             {/* Quick Tips */}
+            <Grid size={{ xs: 12 }}>
+              <Card variant="outlined" sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="subtitle1" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Star color="warning" /> Hurtighandlinger
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    <Button
+                      size="small"
+                      startIcon={<EventNote />}
+                      onClick={() => onMeetingCreate?.({
+                        title: `Fotograferingsgjennomgang (${context.subject})`,
+                        projectId: selectedProject?.id || null,
+                        clientId: selectedClient?.id || null,
+                        timestamp: new Date().toISOString(),
+                      })}
+                    >
+                      Opprett møte
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<BookmarkAdd />}
+                      onClick={() => onWorklogCreate?.({
+                        type: 'tip-session',
+                        projectId: selectedProject?.id || null,
+                        details: context,
+                        timestamp: new Date().toISOString(),
+                      })}
+                    >
+                      Logg arbeid
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<CameraAlt />}
+                      onClick={() => {
+                        onProjectSelect?.(selectedProject || { id: 'tip-preview', name: 'Tips Preview' });
+                        onClientSelect?.(selectedClient || { id: 'tip-client', name: 'Tip Client' });
+                        onClientUpdate?.({
+                          ...(selectedClient || {}),
+                          lastPhotographyContext: context,
+                          updatedAt: new Date().toISOString(),
+                        });
+                      }}
+                    >
+                      Synk prosjekt/klient
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<Share />}
+                      onClick={() => onFileUpload?.({
+                        type: 'context-snapshot',
+                        context,
+                        tips: currentTips.map((tip) => tip.id),
+                        timestamp: new Date().toISOString(),
+                      })}
+                    >
+                      Lagre snapshot
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<Download />}
+                      onClick={() => onFileDownload?.({
+                        type: 'context-export',
+                        context,
+                        savedTips,
+                        timestamp: new Date().toISOString(),
+                      })}
+                    >
+                      Eksporter
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
             <Grid size={{ xs: 12 }}>
               <Alert severity="info">
                 <Typography variant="body2">

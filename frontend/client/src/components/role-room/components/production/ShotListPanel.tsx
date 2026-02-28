@@ -155,6 +155,7 @@ export function ShotListPanel({ projectId, projectName, onUpdate }: ShotListPane
   // ── Dialog state ──────────────────────────────────────────────────────────
   const [dialog, dispatchDialog] = useReducer(dialogReducer, { kind: 'none' });
   const [dialogLoading, setDialogLoading] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   // ── Derived filter results ────────────────────────────────────────────────
   const filteredSummaries = useMemo(

@@ -139,6 +139,7 @@ function CastingStandaloneAppContent() {
               console.log('Fullscreen toggle not available in standalone mode');
             }}
             isStandalone={!guestMode}
+            isGuestMode={guestMode}
           />
         </ToastProvider>
       )}

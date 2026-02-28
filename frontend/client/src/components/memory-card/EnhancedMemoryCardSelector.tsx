@@ -3,7 +3,7 @@
  * Camera-aware memory card selection with intelligent recommendations
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Card,
@@ -24,12 +24,10 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
   Paper,
   Stack,
   Tooltip,
   IconButton,
-  Badge,
   LinearProgress,
   Switch,
   FormControlLabel,
@@ -38,52 +36,12 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
-import {
-  Memory,
-  ExpandMore,
-  CheckCircle,
-  Warning,
-  Info,
-  Speed as Speed,
-  Storage,
-  Security,
-  PriceCheck,
-  CameraAlt,
-  Videocam,
-  AutoAwesome,
-  Refresh,
-  Help,
-  ReadMore,
-  TrendingUp,
-  TrendingDown,
-  Business,
-  Assessment,
-  Settings,
-  Delete,
-} from '@mui/icons-material';
+import { ExpandMore, Security, AutoAwesome, Help, ReadMore, Settings } from '@mui/icons-material';
 import { 
-  CREATOR_HUB_ICONS,
   MemoryCardIcon,
   CameraTemplateIcon,
   CameraSetupIcon,
-  WorkflowIcon,
-  TemplateManagerIcon,
-  CameraGearIcon,
-  LensIcon,
-  TripodIcon,
-  GimbalIcon,
-  LightingIcon,
   CameraSettingsIcon,
-  VideoSettingsIcon,
-  PhotoSettingsIcon,
-  TemplateCategoryIcon,
-  TemplateShareIcon,
-  TemplateImportIcon,
-  TemplateExportIcon,
-  TemplateSearchIcon,
-  TemplateFilterIcon,
-  TemplateRatingIcon,
-  TemplateUsageIcon
 } from '../shared/CreatorHubIcons';
 import {
   MemoryCardRecommendationEngine,
@@ -94,16 +52,29 @@ import {
   MemoryCardType,
   MemoryCardRecommendation,
   formatCurrency,
-  convertCurrency,
   getScandinavianReferences,
 } from '../../data/memory-card-database';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import MemoryCardPricingBenefits from './MemoryCardPricingBenefits';
 import UpdateFrequencyRecommendations from './UpdateFrequencyRecommendations';
 
+interface SelectedCamera {
+  id: string;
+  name?: string;
+  brand?: string;
+  model?: string;
+}
+
+interface DiscoveredCameraStatus {
+  id: string;
+  name: string;
+  supportedCardTypes: string[];
+  missingCompatibility: boolean;
+  isNew: boolean;
+}
+
 interface EnhancedMemoryCardSelectorProps {
-  selectedCameras: any[];
+  selectedCameras: SelectedCamera[];
   projectType: string;
   profession: 'photographer' | 'videographer' | 'both';
   totalDays: number;
@@ -132,6 +103,8 @@ interface CustomMemoryCard {
   purpose: string 
 }
 
+type BackupStrategy = MemoryCardSelection['backupStrategy'];
+
 const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   selectedCameras,
   projectType,
@@ -141,13 +114,6 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   onSelectionChange,
   initialSelection
 }) => {
-  const { 
-    integration, 
-    communication, 
-    dataFlow, 
-    componentRegistry
-} = useEnhancedMasterIntegration();
-  
   const [selection, setSelection] = useState<MemoryCardSelection>(
     initialSelection || {
       recommendations: [],
@@ -172,8 +138,15 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   const [showPriceSources, setShowPriceSources] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'error'>('idle');
-  const [priceUpdateInterval, setPriceUpdateInterval] = useState<NodeJS.Timeout | null>(null);
-  const [discoveredCameras, setDiscoveredCameras] = useState<any[]>([]);
+  const [priceUpdateInterval, setPriceUpdateInterval] = useState<number | null>(null);
+  const [discoveredCameras, setDiscoveredCameras] = useState<DiscoveredCameraStatus[]>([]);
+  const [currencyReferences, setCurrencyReferences] = useState<{
+    NOK: string;
+    SEK: string;
+    DKK: string;
+    USD: string;
+  } | null>(null);
+  const onSelectionChangeRef = useRef(onSelectionChange);
 
   // Feature system integration (simplified)
   const isAdvancedFeaturesEnabled = true;
@@ -207,6 +180,32 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
     return Array.from(allCompatible);
 }, [selectedCameras, profession]);
 
+  const safeCompatibleCardTypes = useMemo(
+    () =>
+      compatibleCardTypes.filter(
+        (cardType): cardType is MemoryCardType =>
+          Boolean(cardType) &&
+          typeof cardType.id === 'string' &&
+          cardType.id.trim().length > 0 &&
+          Array.isArray(cardType.commonCapacities) &&
+          cardType.commonCapacities.length > 0
+      ),
+    [compatibleCardTypes]
+  );
+
+  const selectedCardTypeDetails = useMemo(
+    () => safeCompatibleCardTypes.find((cardType) => cardType.id === selectedCardType) || null,
+    [safeCompatibleCardTypes, selectedCardType]
+  );
+
+  const availableCapacities = useMemo(
+    () =>
+      (selectedCardTypeDetails?.commonCapacities || []).filter(
+        (capacity): capacity is string => typeof capacity === 'string' && capacity.trim().length > 0
+      ),
+    [selectedCardTypeDetails]
+  );
+
   // Get optimal configuration
   const optimalConfig = useMemo(() => {
     return MemoryCardRecommendationEngine.getOptimalConfiguration(selectedCameras, {
@@ -219,85 +218,270 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
 
   // Component lifecycle registration (simplified)
   useEffect(() => {
-    console.log('EnhancedMemoryCardSelector mounted, ');
+    console.log('EnhancedMemoryCardSelector mounted');
     return () => {
-      console.log('EnhancedMemoryCardSelector unmounted, ');
+      console.log('EnhancedMemoryCardSelector unmounted');
   };
 }, []);
 
-  // Camera discovery integration (simplified for now)
-  useEffect(() => {
-    // For now, we'll use a simplified approach without camera discovery
-    // This can be enhanced later when the integration system is fully implemented
-    setDiscoveredCameras([]);
-    console.log('Camera discovery integration placeholder, ');
-}, []);
+  const parseCapacityToGB = (capacity: string): number => {
+    const normalized = capacity.trim().toUpperCase();
+    if (normalized.endsWith('TB')) {
+      const terabytes = Number.parseFloat(normalized.replace('TB', ''));
+      return Number.isFinite(terabytes) ? terabytes * 1024 : 0;
+    }
+    if (normalized.endsWith('GB')) {
+      const gigabytes = Number.parseFloat(normalized.replace('GB', ''));
+      return Number.isFinite(gigabytes) ? gigabytes : 0;
+    }
+    const numericOnly = Number.parseFloat(normalized);
+    return Number.isFinite(numericOnly) ? numericOnly : 0;
+  };
 
-  // Real-time price updates (only if feature is enabled)
+  const getBaseCost = useCallback((
+    cardType: MemoryCardType,
+    capacity: string,
+    budgetTier: 'budget' | 'mid' | 'premium' | 'professional' = budget
+  ): number => {
+    const capacityGB = parseCapacityToGB(capacity);
+    const pricePerGB = cardType.pricePerGB[budgetTier];
+    return Math.round(capacityGB * pricePerGB);
+  }, [budget]);
+
+  const recalculateSelectionTotals = useCallback((currentSelection: MemoryCardSelection): MemoryCardSelection => {
+    const allCards = [...currentSelection.recommendations, ...currentSelection.customCards];
+    const totalCards = allCards.reduce((sum, card) => sum + card.quantity, 0);
+    const totalCapacityGB = allCards.reduce(
+      (sum, card) => sum + parseCapacityToGB(card.capacity) * card.quantity,
+      0
+    );
+    const estimatedCost = allCards.reduce(
+      (sum, card) => sum + getBaseCost(card.cardType, card.capacity) * card.quantity,
+      0
+    );
+
+    return {
+      ...currentSelection,
+      totalCards,
+      totalCapacity: `${Math.round(totalCapacityGB)}GB`,
+      estimatedCost,
+    };
+  }, [getBaseCost]);
+
+  const updateSelection = useCallback((
+    updates:
+      | Partial<MemoryCardSelection>
+      | ((current: MemoryCardSelection) => Partial<MemoryCardSelection>)
+  ) => {
+    setSelection((currentSelection) => {
+      const patch = typeof updates === 'function' ? updates(currentSelection) : updates;
+      const mergedSelection = { ...currentSelection, ...patch };
+      return recalculateSelectionTotals(mergedSelection);
+    });
+  }, [recalculateSelectionTotals]);
+
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
+
+  useEffect(() => {
+    onSelectionChangeRef.current(selection);
+  }, [selection]);
+
+  // Camera discovery integration based on selected cameras and compatibility matrix.
+  useEffect(() => {
+    const knownCamerasStorageKey = 'creatorhub-known-camera-ids';
+    const knownCameraIds = new Set<string>();
+
+    try {
+      const stored = localStorage.getItem(knownCamerasStorageKey);
+      const parsed = stored ? JSON.parse(stored) : [];
+      if (Array.isArray(parsed)) {
+        parsed.forEach((id) => {
+          if (typeof id === 'string' && id.trim().length > 0) {
+            knownCameraIds.add(id.trim());
+          }
+        });
+      }
+    } catch {
+      // Ignore malformed persisted camera state.
+    }
+
+    const nextKnownCameraIds = new Set(knownCameraIds);
+    const discovered = selectedCameras
+      .filter((camera) => typeof camera?.id === 'string' && camera.id.trim().length > 0)
+      .map((camera) => {
+        const cameraId = camera.id.trim();
+        const compatibility = getCameraCompatibility(cameraId);
+        const supportedCardTypes = compatibility?.supportedCardTypes ?? [];
+        const isNew = !knownCameraIds.has(cameraId);
+        nextKnownCameraIds.add(cameraId);
+
+        return {
+          id: cameraId,
+          name:
+            camera.name ||
+            [camera.brand, camera.model].filter((value): value is string => Boolean(value)).join(' ') ||
+            cameraId,
+          supportedCardTypes,
+          missingCompatibility: supportedCardTypes.length === 0,
+          isNew,
+        };
+      });
+
+    setDiscoveredCameras(discovered);
+
+    try {
+      localStorage.setItem(
+        knownCamerasStorageKey,
+        JSON.stringify(Array.from(nextKnownCameraIds.values()))
+      );
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [selectedCameras]);
+
+  // Periodically re-evaluate pricing using the active card mix and budget tier.
   useEffect(() => {
     if (!isRealTimePricingEnabled) {
-      setLastUpdated(new Date()); // Set initial timestamp
+      setLastUpdated(new Date());
       return;
-  }
+    }
 
-    const updatePrices = async () => {
+    const refreshPricing = () => {
       setUpdateStatus('updating');
       try {
-        // Simulate price update - in real implementation, this would call price service
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        updateSelection(() => ({}));
         setLastUpdated(new Date());
         setUpdateStatus('idle');
-        
         if (isAnalyticsEnabled) {
           console.log('Price update completed');
-      }
-    } catch (error) {
+        }
+      } catch (error) {
         setUpdateStatus('error');
-        console.error('Price update failed: ', error);
-        if (isAnalyticsEnabled) {
-          console.log('Price update failed');
+        console.error('Price update failed:', error);
       }
-    }
-  };
+    };
 
-    // Start price updates every 30 minutes (frequent frequency)
-    const interval = setInterval(updatePrices, 30 * 60 * 1000);
-    setPriceUpdateInterval(interval);
-
-    // Initial price update
-    updatePrices();
+    refreshPricing();
+    const intervalId = window.setInterval(refreshPricing, 30 * 60 * 1000);
+    setPriceUpdateInterval(intervalId);
 
     return () => {
-      if (interval) clearInterval(interval);
-  };
-}, [isRealTimePricingEnabled, isAnalyticsEnabled]);
+      window.clearInterval(intervalId);
+      setPriceUpdateInterval(null);
+    };
+}, [isRealTimePricingEnabled, isAnalyticsEnabled, updateSelection]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadCurrencyReferences = async () => {
+      if (selection.estimatedCost <= 0) {
+        if (isActive) {
+          setCurrencyReferences(null);
+        }
+        return;
+      }
+
+      try {
+        const references = await getScandinavianReferences(selection.estimatedCost);
+        if (isActive) {
+          setCurrencyReferences(references);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Scandinavian price references:', error);
+        if (isActive) {
+          setCurrencyReferences(null);
+        }
+      }
+    };
+
+    loadCurrencyReferences();
+    return () => {
+      isActive = false;
+    };
+  }, [selection.estimatedCost]);
 
   // Update selection when recommendations change
   useEffect(() => {
-    if (recommendations.length > 0 && selection.recommendations.length === 0) {
-      const newSelection = {
-        ...selection,
-        recommendations: recommendations.filter(rec => rec.priority === 'essential'),
-        totalCards: optimalConfig.totalCards,
-        totalCapacity: optimalConfig.totalCapacity,
-        estimatedCost: optimalConfig.estimatedCost
-    };
-      setSelection(newSelection);
-      onSelectionChange(newSelection);
-      
-      // Track feature usage
+    if (recommendations.length === 0 || selection.recommendations.length > 0) {
+      return;
+    }
+
+    const essentialRecommendations = recommendations.filter((rec) => rec.priority === 'essential');
+    const recommendationSeed =
+      essentialRecommendations.length > 0 ? essentialRecommendations : recommendations.slice(0, 1);
+
+    updateSelection({
+      recommendations: recommendationSeed,
+      totalCards: optimalConfig.totalCards,
+      totalCapacity: optimalConfig.totalCapacity,
+      estimatedCost: optimalConfig.estimatedCost,
+    });
+
+    if (isAnalyticsEnabled) {
       console.log('Memory card recommendation generated:', recommendations.length);
-  }
-}, [recommendations, optimalConfig, projectType, profession, budget]);
+    }
+  }, [
+    recommendations,
+    selection.recommendations.length,
+    optimalConfig,
+    isAnalyticsEnabled,
+    updateSelection,
+  ]);
+
+  useEffect(() => {
+    if (safeCompatibleCardTypes.length === 0) {
+      if (selectedCardType !== '') setSelectedCardType('');
+      return;
+    }
+
+    const isCurrentCardTypeValid = safeCompatibleCardTypes.some(
+      (cardType) => cardType.id === selectedCardType
+    );
+    if (!isCurrentCardTypeValid) {
+      setSelectedCardType(safeCompatibleCardTypes[0].id);
+    }
+  }, [safeCompatibleCardTypes, selectedCardType]);
+
+  useEffect(() => {
+    if (availableCapacities.length === 0) {
+      if (customCapacity !== '') setCustomCapacity('');
+      return;
+    }
+    if (!availableCapacities.includes(customCapacity)) {
+      setCustomCapacity(availableCapacities[0]);
+    }
+  }, [availableCapacities, customCapacity]);
+
+  useEffect(() => {
+    const validQuantities = [1, 2, 4, 8, 16];
+    if (!validQuantities.includes(customQuantity)) {
+      setCustomQuantity(2);
+    }
+  }, [customQuantity]);
 
   const handleRecommendationToggle = (recommendation: MemoryCardRecommendation, enabled: boolean) => {
     const startTime = performance.now();
-    
-    const newRecommendations = enabled
-      ? [...selection.recommendations, recommendation]
-      : selection.recommendations.filter(rec => rec.cardType.id !== recommendation.cardType.id);
-    
-    updateSelection({ recommendations: newRecommendations });
+
+    updateSelection((currentSelection) => {
+      const isAlreadySelected = currentSelection.recommendations.some(
+        (rec) => rec.cardType.id === recommendation.cardType.id
+      );
+
+      if (enabled && isAlreadySelected) {
+        return {};
+      }
+
+      const newRecommendations = enabled
+        ? [...currentSelection.recommendations, recommendation]
+        : currentSelection.recommendations.filter(
+            (rec) => rec.cardType.id !== recommendation.cardType.id
+          );
+
+      return { recommendations: newRecommendations };
+    });
     
     // Track user interaction
     console.log('Memory card recommendation toggled:', recommendation.cardType.id, enabled);
@@ -309,7 +493,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   const handleCustomCardAdd = () => {
     if (!selectedCardType) return;
     
-    const cardType = getMemoryCardTypeById(selectedCardType);
+    const cardType = selectedCardTypeDetails || getMemoryCardTypeById(selectedCardType);
     if (!cardType) return;
 
     const newCustomCard: CustomMemoryCard = {
@@ -321,51 +505,20 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
       purpose: 'Custom configuration'
   };
 
-    const newCustomCards = [...selection.customCards, newCustomCard];
-    updateSelection({ customCards: newCustomCards });
+    updateSelection((currentSelection) => ({
+      customCards: [...currentSelection.customCards, newCustomCard],
+    }));
     
     // Reset form
     setSelectedCardType('');
-    setCustomCapacity('128GB');
+    setCustomCapacity((cardType.commonCapacities && cardType.commonCapacities[0]) || '128GB');
     setCustomQuantity(2);
 };
 
   const handleCustomCardRemove = (cardId: string) => {
-    const newCustomCards = selection.customCards.filter(card => card.id !== cardId);
-    updateSelection({ customCards: newCustomCards });
-};
-
-  const updateSelection = (updates: Partial<MemoryCardSelection>) => {
-    const newSelection = { ...selection, ...updates };
-    
-    // Recalculate totals
-    const allCards = [...newSelection.recommendations, ...newSelection.customCards];
-    const totalCards = allCards.reduce((sum, card) => sum + card.quantity, 0);
-    const totalCapacityGB = allCards.reduce((sum, card) => {
-      const capacityGB = parseInt(card.capacity.replace('GB',', '));
-      return sum + (capacityGB * card.quantity);
-  }, 0);
-    const totalCapacity = `${totalCapacityGB}GB`;
-    const estimatedCost = allCards.reduce((sum, card) => {
-      const baseCost = getBaseCost(card.cardType, card.capacity);
-      return sum + (baseCost * card.quantity);
-  }, 0);
-
-    const finalSelection = {
-      ...newSelection,
-      totalCards,
-      totalCapacity,
-      estimatedCost
-  };
-
-    setSelection(finalSelection);
-    onSelectionChange(finalSelection);
-};
-
-  const getBaseCost = (cardType: MemoryCardType, capacity: string, budget: string = 'mid'): number => {
-    const capacityGB = parseInt(capacity.replace('GB', ', '));
-    const pricePerGB = cardType.pricePerGB[budget as keyof typeof cardType.pricePerGB];
-    return Math.round(capacityGB * pricePerGB);
+    updateSelection((currentSelection) => ({
+      customCards: currentSelection.customCards.filter((card) => card.id !== cardId),
+    }));
 };
 
   const getPriorityColor = (priority: string) => {
@@ -418,14 +571,21 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
             />
           )}
           {/* Feature indicators */}
-          {isRealTimePricingEnabled && (
-            <Chip 
-              label="Real-time Pricing" 
-              color="success" 
-              size="small" 
-              icon={theming.getThemedIcon('trendingUp','photographer','primary') as React.ReactElement}
-            />
-          )}
+                  {isRealTimePricingEnabled && (
+                    <Chip 
+                      label="Real-time Pricing" 
+                      color="success" 
+                      size="small" 
+                      icon={theming.getThemedIcon('trendingUp','photographer','primary') as React.ReactElement}
+                    />
+                  )}
+                  {priceUpdateInterval && (
+                    <Chip
+                      label="Auto update: 30m"
+                      color="default"
+                      size="small"
+                    />
+                  )}
           {isCameraDiscoveryEnabled && (
             <Chip 
               label="Camera Discovery" 
@@ -470,6 +630,68 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
             {discoveredCameras.filter(c => c.isNew).length} new cameras available.
           </Typography>
         </Alert>
+      )}
+
+      {isAdvancedFeaturesEnabled && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Tooltip title="Vis detaljert kompatibilitet og oppdagede kamera-profiler">
+            <Help fontSize="small" color="action" />
+          </Tooltip>
+          <Button
+            size="small"
+            startIcon={<Settings />}
+            onClick={() => setShowAdvanced((previous) => !previous)}
+          >
+            {showAdvanced ? 'Skjul avansert visning' : 'Vis avansert visning'}
+          </Button>
+        </Box>
+      )}
+
+      {showAdvanced && (
+        <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.default', ...theming.getThemedCardSx() }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, color: theming.colors.primary }}>
+            Avansert kompatibilitetsoversikt
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', gap: 1 }}>
+            <Chip
+              label={`Valgte kameraer: ${selectedCameras.length}`}
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
+            <Chip
+              label={`Støttede korttyper: ${safeCompatibleCardTypes.length}`}
+              size="small"
+              color="info"
+              variant="outlined"
+            />
+            <Chip
+              label={`Uten profil: ${discoveredCameras.filter((camera) => camera.missingCompatibility).length}`}
+              size="small"
+              color={
+                discoveredCameras.some((camera) => camera.missingCompatibility) ? 'warning' : 'success'
+              }
+              variant="outlined"
+            />
+          </Stack>
+          {discoveredCameras.length > 0 && (
+            <List dense>
+              {discoveredCameras.map((camera) => (
+                <ListItem key={camera.id} divider>
+                  <ListItemText
+                    primary={camera.name}
+                    secondary={
+                      camera.missingCompatibility
+                        ? 'Ingen kompatibilitetsprofil funnet ennå'
+                        : `Kortstøtte: ${camera.supportedCardTypes.join(', ')}`
+                    }
+                  />
+                  {camera.isNew && <Chip label="Ny" size="small" color="success" />}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </Paper>
       )}
 
       {/* Optimal Configuration Summary */}
@@ -543,6 +765,44 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                     <strong>Reasoning: </strong> {recommendation.reasoning}
                   </Typography>
 
+                  <Button
+                    size="small"
+                    endIcon={
+                      <ExpandMore
+                        sx={{
+                          transform:
+                            expandedRecommendation === recommendation.cardType.id
+                              ? 'rotate(180deg)'
+                              : 'rotate(0deg)',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                    }
+                    onClick={() =>
+                      setExpandedRecommendation((current) =>
+                        current === recommendation.cardType.id ? null : recommendation.cardType.id
+                      )
+                    }
+                    sx={{ mb: 1 }}
+                  >
+                    {expandedRecommendation === recommendation.cardType.id
+                      ? 'Skjul detaljer'
+                      : 'Vis detaljer'}
+                  </Button>
+
+                  {expandedRecommendation === recommendation.cardType.id && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Anbefalt for:
+                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                        {recommendation.cardType.recommendedFor.map((useCase) => (
+                          <Chip key={useCase} label={useCase} size="small" />
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
                     <Chip
                       icon={theming.getThemedIcon('speed','photographer','primary') as React.ReactElement}
@@ -600,10 +860,19 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
               <FormControl fullWidth>
                 <InputLabel>Card Type</InputLabel>
                 <Select
-                  value={selectedCardType}
+                  value={
+                    safeCompatibleCardTypes.some((cardType) => cardType.id === selectedCardType)
+                      ? selectedCardType
+                      : ''
+                  }
                   onChange={(e) => setSelectedCardType(e.target.value)}
                 >
-                  {compatibleCardTypes.map((cardType: MemoryCardType) => (
+                  {safeCompatibleCardTypes.length === 0 && (
+                    <MenuItem value="" disabled>
+                      Ingen kompatible korttyper
+                    </MenuItem>
+                  )}
+                  {safeCompatibleCardTypes.map((cardType: MemoryCardType) => (
                     <MenuItem key={cardType.id} value={cardType.id}>
                       {cardType.icon} {cardType.fullName}
                     </MenuItem>
@@ -615,14 +884,20 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
               <FormControl fullWidth>
                 <InputLabel>Capacity</InputLabel>
                 <Select
-                  value={customCapacity}
+                  value={availableCapacities.includes(customCapacity) ? customCapacity : ''}
                   onChange={(e) => setCustomCapacity(e.target.value)}
                 >
-                  {selectedCardType && getMemoryCardTypeById(selectedCardType)?.commonCapacities.map((capacity: string) => (
-                    <MenuItem key={capacity} value={capacity}>
-                      {capacity}
+                  {availableCapacities.length === 0 ? (
+                    <MenuItem value="" disabled>
+                      Velg korttype først
                     </MenuItem>
-                  ))}
+                  ) : (
+                    availableCapacities.map((capacity: string) => (
+                      <MenuItem key={capacity} value={capacity}>
+                        {capacity}
+                      </MenuItem>
+                    ))
+                  )}
                 </Select>
               </FormControl>
             </Grid>
@@ -630,11 +905,11 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
               <FormControl fullWidth>
                 <InputLabel>Quantity</InputLabel>
                 <Select
-                  value={customQuantity}
+                  value={String(customQuantity)}
                   onChange={(e) => setCustomQuantity(Number(e.target.value))}
                 >
-                  {[1358, 10].map((qty) => (
-                    <MenuItem key={qty} value={qty}>
+                  {[1, 2, 4, 8, 16].map((qty) => (
+                    <MenuItem key={qty} value={String(qty)}>
                       {qty}
                     </MenuItem>
                   ))}
@@ -699,7 +974,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                 <InputLabel>Backup Strategy</InputLabel>
                 <Select
                   value={selection.backupStrategy}
-                  onChange={(e) => updateSelection({ backupStrategy: e.target.value as any })}
+                  onChange={(e) => updateSelection({ backupStrategy: e.target.value as BackupStrategy })}
                 >
                   <MenuItem value="none">No Backup</MenuItem>
                   <MenuItem value="basic">Basic (1 backup)</MenuItem>
@@ -747,11 +1022,11 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
           </Grid>
             <Grid item xs={12} sm={3}>
             <Typography variant="body2">
-              <strong>Estimated Cost: </strong> NOK {selection.estimatedCost.toLocaleString()}
+              <strong>Estimated Cost: </strong>{' '}
+              {currencyReferences?.NOK || formatCurrency(selection.estimatedCost, 'NOK')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              🇸🇪 SEK {Math.round(selection.estimatedCost * 0.9).toLocaleString()} | 
-              🇩🇰 DKK {Math.round(selection.estimatedCost * 0.7).toLocaleString()}
+              🇸🇪 {currencyReferences?.SEK || '-'} | 🇩🇰 {currencyReferences?.DKK || '-'}
             </Typography>
           </Grid>
             <Grid item xs={12} sm={3}>

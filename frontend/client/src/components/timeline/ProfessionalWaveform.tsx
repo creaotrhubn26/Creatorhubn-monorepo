@@ -49,6 +49,26 @@ export default function ProfessionalWaveform({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isReady, setIsReady] = useState(false);
+
+  const isAbortError = (error: unknown): boolean => {
+    if (error instanceof DOMException) {
+      return error.name === 'AbortError';
+    }
+    if (typeof error === 'object' && error !== null && 'name' in error) {
+      return (error as { name?: string }).name === 'AbortError';
+    }
+    return false;
+  };
+
+  const isEncodingError = (error: unknown): boolean => {
+    if (error instanceof DOMException) {
+      return error.name === 'EncodingError';
+    }
+    if (typeof error === 'object' && error !== null && 'name' in error) {
+      return (error as { name?: string }).name === 'EncodingError';
+    }
+    return false;
+  };
   
   useEffect(() => {
     if (!containerRef.current) return;
@@ -96,8 +116,39 @@ export default function ProfessionalWaveform({
       });
     }
     
-    // Load audio
-    wavesurfer.load(audioUrl);
+    // Surface decode/runtime errors through component-level handling.
+    wavesurfer.on('error', (error: unknown) => {
+      if (isAbortError(error)) return;
+      if (isEncodingError(error)) {
+        setIsReady(false);
+        console.warn('Waveform decode error: unsupported/corrupt audio source', error);
+        return;
+      }
+      console.error('Waveform runtime error:', error);
+    });
+
+    // Load audio (catch promise rejections from StrictMode unmount/abort race)
+    if (typeof audioUrl === 'string' && audioUrl.trim().length > 0) {
+      const loadResult = wavesurfer.load(audioUrl);
+      if (
+        loadResult &&
+        typeof loadResult === 'object' &&
+        'then' in loadResult &&
+        typeof loadResult.then === 'function'
+      ) {
+        void (loadResult as Promise<unknown>).catch((error: unknown) => {
+          if (isAbortError(error)) return;
+          if (isEncodingError(error)) {
+            setIsReady(false);
+            console.warn('Waveform load failed: unable to decode audio data', error);
+            return;
+          }
+          console.error('Waveform load failed:', error);
+        });
+      }
+    } else {
+      setIsReady(false);
+    }
     
     // Event listeners
     wavesurfer.on('ready', () => {
@@ -124,7 +175,26 @@ export default function ProfessionalWaveform({
     wavesurferRef.current = wavesurfer;
     
     return () => {
-      wavesurfer.destroy();
+      wavesurferRef.current = null;
+      try {
+        const destroyResult = wavesurfer.destroy();
+        if (
+          destroyResult &&
+          typeof destroyResult === 'object' &&
+          'then' in destroyResult &&
+          typeof destroyResult.then === 'function'
+        ) {
+          void (destroyResult as Promise<unknown>).catch((error: unknown) => {
+            if (!isAbortError(error)) {
+              console.warn('WaveSurfer destroy error:', error);
+            }
+          });
+        }
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.warn('WaveSurfer cleanup failed:', error);
+        }
+      }
     };
   }, [audioUrl, height, waveColor, progressColor, cursorColor, enableRegions]);
   
@@ -216,5 +286,3 @@ export default function ProfessionalWaveform({
     </Box>
   );
 }
-
-

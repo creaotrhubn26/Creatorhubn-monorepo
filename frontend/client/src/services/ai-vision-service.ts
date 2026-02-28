@@ -934,7 +934,7 @@ export class AIVisionService {
     // Scene type heuristics based on model output
     let type: SceneClassification['type'] = 'indoor';
     let lighting: SceneClassification['lighting'] = 'natural';
-    let activity: SceneClassification['activity'] = 'candid';
+    const activity: SceneClassification['activity'] = 'candid';
 
     // This would be more sophisticated with actual model labels
     if (maxIdx < 100) type = 'outdoor';

@@ -17,7 +17,7 @@ import { FEATURE_COMPONENT_MAP } from './feature-component-map';
 import { getFeatureMetadata } from './feature-metadata';
 
 // Token cache for impersonated access tokens
-let cachedToken = { token: "", exp: 0 };
+const cachedToken = { token: "", exp: 0 };
 
 /**
  * Get impersonated access token via backend proxy
@@ -383,6 +383,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
   const renderCounts = useRef<Map<string, number>>(new Map());
   const debugMode = useRef(enableDebugMode);
   const analyticsData = useRef<any[]>([]);
+  const lastHealthStatus = useRef<IntegrationHealth['status']>('healthy');
   
   // ✅ GA4 Integration - Automatic tracking for all events
   const ga4 = useGA4Tracking();
@@ -673,14 +674,33 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
       .reduce((sum, time) => sum + time, 0) / 
       Array.from(performanceMetrics.current.values()).flat().length || 0;
     
-    const memoryUsage = (performance as any).memory ? 
-      ((performance as any).memory.usedJSHeapSize / 1024 / 1024) : 0; // MB
+    type PerformanceMemoryInfo = {
+      usedJSHeapSize: number;
+      jsHeapSizeLimit: number;
+    };
+    type PerformanceWithMemory = Performance & {
+      memory?: PerformanceMemoryInfo;
+    };
+    const runtimePerformance = globalThis.performance as PerformanceWithMemory;
+    const memoryInfo = runtimePerformance.memory;
+    const memoryUsage = memoryInfo ? (memoryInfo.usedJSHeapSize / 1024 / 1024) : 0; // MB
+    const memoryUsageRatio =
+      memoryInfo && memoryInfo.jsHeapSizeLimit > 0
+        ? memoryInfo.usedJSHeapSize / memoryInfo.jsHeapSizeLimit
+        : null;
     
     const errorRate = errorComponents.length / components.length || 0;
     
     let status: 'healthy' | 'degraded' | 'critical' = 'healthy';
-    if (errorRate > 0.1 || memoryUsage > 100) status = 'degraded';
-    if (errorRate > 0.3 || memoryUsage > 200) status = 'critical';
+    const degradedByMemory =
+      memoryUsageRatio !== null ? memoryUsageRatio > 0.75 : memoryUsage > 512;
+    const criticalByMemory =
+      memoryUsageRatio !== null ? memoryUsageRatio > 0.9 : memoryUsage > 768;
+    const degradedByLatency = avgResponseTime > 500;
+    const criticalByLatency = avgResponseTime > 1200;
+
+    if (errorRate > 0.3 || criticalByMemory || criticalByLatency) status = 'critical';
+    else if (errorRate > 0.1 || degradedByMemory || degradedByLatency) status = 'degraded';
     
     const newHealth: IntegrationHealth = {
       status,
@@ -700,9 +720,13 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     
     setHealth(newHealth);
     
-    if (status !== 'healthy') {
+    if (status !== 'healthy' && status !== lastHealthStatus.current) {
       logIntegration('warn', `Health check failed: ${status}`, newHealth);
-  }
+    }
+    if (status === 'healthy' && lastHealthStatus.current !== 'healthy') {
+      logIntegration('info', 'Health check recovered to healthy', newHealth);
+    }
+    lastHealthStatus.current = status;
     
     trackEvent('health_check', newHealth);
 }, [getAllComponents, logIntegration, trackEvent]);

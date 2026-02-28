@@ -7,6 +7,9 @@ build/
 uploads/
 cache/
 models/
+!frontend/client/src/components/role-room/models/
+!frontend/client/src/components/role-room/models/casting.ts
+!frontend/client/src/components/role-room/models/derivedState.ts
 pretrained_models/
 pretrained_models.backup/
 python_ml_service/models/

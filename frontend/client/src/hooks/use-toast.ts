@@ -14,7 +14,7 @@ export interface Toast extends ToastOptions {
 
 // Global toast state — shared across all useToast() consumers
 let toasts: Toast[] = [];
-let listeners: Set<() => void> = new Set();
+const listeners: Set<() => void> = new Set();
 
 function notify() {
   listeners.forEach((fn) => fn());

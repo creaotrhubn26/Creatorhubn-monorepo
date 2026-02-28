@@ -593,7 +593,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 } = useExternalData();
 
   // Comprehensive Feature System for Universal Dashboard
-  const _universalDashboardAccess = features.checkFeatureAccess('universal-dashboard');
+  const universalDashboardAccess = features.checkFeatureAccess('universal-dashboard');
   const projectsTabAccess = features.checkFeatureAccess('dashboard-projects');
   const clientsTabAccess = features.checkFeatureAccess('dashboard-clients');
   const equipmentTabAccess = features.checkFeatureAccess('dashboard-equipment');
@@ -662,7 +662,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // Fetch user session (public, minimal info)
   const { data: userSession } = useQuery({
     queryKey: ['/api/auth/public-session'],
-    queryFn: () => apiRequest('/api/auth/public-session'),
+    queryFn: async () => {
+      try {
+        return await apiRequest('/api/auth/public-session');
+      } catch {
+        return null;
+      }
+    },
+    enabled: !currentUser?.id,
     retry: false,
   });
 
@@ -762,8 +769,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       .filter(tab => !tabs.find(t => t.id === tab.id))
       .map(tab => tab.id);
     
-    if (filteredTabIds.length > 0) {
-      features.trackFeatureUsage('dashboard-tabs-filtered','info', {
+    if (universalDashboardAccess.hasAccess && filteredTabIds.length > 0) {
+      features.trackFeatureUsage('universal-dashboard','tabs-filtered', {
         filteredTabs: filteredTabIds,
         availableCount: tabs.length,
         totalCount: config.tabs.length
@@ -774,7 +781,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   }, [config.tabs, projectsTabAccess.hasAccess, clientsTabAccess.hasAccess, equipmentTabAccess.hasAccess,
       showcaseTabAccess.hasAccess, settingsTabAccess.hasAccess, timelineTabAccess.hasAccess,
       photoEnhancementAccess.hasAccess, videoEnhancementAccess.hasAccess, audioEnhancementAccess.hasAccess,
-      profession, isAdmin, isMentor, features]);
+      profession, isAdmin, isMentor, features, universalDashboardAccess.hasAccess]);
 
   // Register this component in the integration system
   useEffect(() => {
@@ -783,21 +790,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     ]);
 
     // Track feature usage
-    features.trackFeatureUsage('universal-dashboard','opened', {
-      timestamp: Date.now(),
-      profession: profession,
-      component: 'UniversalDashboard',
-      tabValue: tabValue,
-      availableTabs: availableTabs.length,
-      accessibleFeatures: {
-        projects: projectsTabAccess.hasAccess,
-        clients: clientsTabAccess.hasAccess,
-        equipment: equipmentTabAccess.hasAccess,
-        showcase: showcaseTabAccess.hasAccess,
-        settings: settingsTabAccess.hasAccess,
-        timeline: timelineTabAccess.hasAccess
-      }
-});
+    if (universalDashboardAccess.hasAccess) {
+      features.trackFeatureUsage('universal-dashboard','opened', {
+        timestamp: Date.now(),
+        profession: profession,
+        component: 'UniversalDashboard',
+        tabValue: tabValue,
+        availableTabs: availableTabs.length,
+        accessibleFeatures: {
+          projects: projectsTabAccess.hasAccess,
+          clients: clientsTabAccess.hasAccess,
+          equipment: equipmentTabAccess.hasAccess,
+          showcase: showcaseTabAccess.hasAccess,
+          settings: settingsTabAccess.hasAccess,
+          timeline: timelineTabAccess.hasAccess
+        }
+      });
+    }
 
     // Set up data flow nodes
     dataFlow.registerNode({
@@ -951,7 +960,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   });
 
   // Get session ID for preferences API
-  const sessionId = currentUser?.id || localStorage.getItem('creatorhub-session-id') || 'anonymous';
+  const sessionId = currentUser?.id || null;
   
   // Initialize session ID if not present
   useEffect(() => {
@@ -1009,14 +1018,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // Save interface preferences to localStorage and database
   useEffect(() => {
     localStorage.setItem('creatorhub-interface-prefs', JSON.stringify(interfacePrefs));
-    
+
+    if (!sessionId) return;
+
     // Debounce database save
     const timeoutId = setTimeout(() => {
       savePreferencesMutation.mutate(interfacePrefs);
     }, 1000); // Wait 1 second before saving to reduce API calls
-    
+
     return () => clearTimeout(timeoutId);
-  }, [interfacePrefs]);
+  }, [interfacePrefs, sessionId, savePreferencesMutation]);
 
   const updateInterfacePref = (key: string, value: any) => {
     setInterfacePrefs((prev: any) => ({ ...prev, [key]: value }));
@@ -1377,6 +1388,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     setProjectOverviewOpen(true);
   }, []);
 
+  // Story Arc Studio should open as a dedicated page, not inside Universal Dashboard
+  const openStoryArcStudioPage = useCallback((projectId?: string | number) => {
+    const query = projectId ? `?projectId=${encodeURIComponent(String(projectId))}` : '';
+    setLocation(`/story-arc-studio${query}`);
+  }, [setLocation]);
+
   // Handler to open in fullscreen editor
   const handleOpenInEditor = useCallback(() => {
     if (!selectedProjectForOverview) return;
@@ -1397,12 +1414,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     // Navigate based on project type
     switch (projectType) {
       case 'story-arc':
-        // Enable Pro Editor Mode for fullscreen Story Arc Studio
-        if (profession === 'videographer') {
-          setProEditorMode(true);
-          const overviewTabIndex = availableTabs.findIndex(tab => tab.id === 'overview');
-          setTabValue(overviewTabIndex >= 0 ? overviewTabIndex : 0); // Stay on overview but show fullscreen editor
-        }
+        openStoryArcStudioPage(project.id);
         break;
       case 'photo':
         {
@@ -1423,7 +1435,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         }
         break;
     }
-  }, [selectedProjectForOverview, setSelectedProject, profession, setProEditorMode, setTabValue, config.tabs, availableTabs]);
+  }, [selectedProjectForOverview, setSelectedProject, openStoryArcStudioPage, setTabValue, availableTabs]);
 
   // Handler to open in new browser tab
   const handleOpenInNewTab = useCallback(() => {
@@ -1435,7 +1447,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     let url = '';
     switch (projectType) {
       case 'story-arc':
-        url = `/story-arc/${id}`;
+        url = `/story-arc-studio${id ? `?projectId=${encodeURIComponent(String(id))}` : ''}`;
         break;
       case 'photo':
         url = `/photo-enhancement/${id}`;
@@ -1705,7 +1717,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       }
       return [];
     },
-    enabled: !!userId && profession === 'videographer',
+    enabled: !!userId && userId !== 'guest' && profession === 'videographer',
   });
 
   // Photo/Wedding Projects
@@ -1719,7 +1731,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       }
       return [];
     },
-    enabled: !!userId && (profession === 'photographer' || profession === 'admin'),
+    enabled: !!userId && userId !== 'guest' && (profession === 'photographer' || profession === 'admin'),
   });
 
   // Audio Projects (use jobs as projects)
@@ -1733,7 +1745,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       }
       return [];
     },
-    enabled: !!userId && profession !== 'vendor',
+    enabled: !!userId && userId !== 'guest' && profession !== 'vendor',
   });
 
   const { data: upcomingProjects = [], isLoading: upcomingLoading } = useQuery({
@@ -1883,13 +1895,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // selectedProjectForOverview and projectOverviewOpen moved earlier to avoid TDZ error
 
   const handleTabChange = useCallback((event: React.SyntheticEvent | null, newValue: number) => {
+    const targetTab = availableTabs[newValue];
+    if (targetTab?.id === 'story-arc-studio' || targetTab?.id === 'story_arc' || targetTab?.id === 'story-arc') {
+      openStoryArcStudioPage();
+      return;
+    }
     setTabValue(newValue);
-}, []);
+}, [availableTabs, openStoryArcStudioPage, setTabValue]);
 
   // Optimized event handlers
   const handleProEditorModeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setProEditorMode(e.target.checked);
-}, []);
+    if (e.target.checked) {
+      setProEditorMode(false);
+      openStoryArcStudioPage();
+      return;
+    }
+    setProEditorMode(false);
+}, [openStoryArcStudioPage, setProEditorMode]);
 
   const handleTimelineTabChange = useCallback((_: React.SyntheticEvent, newValue: number) => {
     setSelectedTimelineTab(newValue);
@@ -2156,7 +2178,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         {uiSettings.submissionProjectData && (
           <MuiCard sx={{ mb: 2 }}>
             <MuiCardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
+              <Typography component="div" variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
                 Ny innsending oppdaget
               </Typography>
               <Typography variant="body2" sx={{ mb: 1 }}>
@@ -4003,9 +4025,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         size="small"
                         variant="outlined"
                         onClick={() => {
-                          setProEditorMode(true);
-                          const overviewTabIndex = availableTabs.findIndex(tab => tab.id === 'overview');
-                          setTabValue(overviewTabIndex >= 0 ? overviewTabIndex : 0);
+                          openStoryArcStudioPage();
                         }}
                       >
                         View All
@@ -7133,7 +7153,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           pb: 1,
           background: `linear-gradient(135deg, ${customBranding.color}15 0%, ${customBranding.color}05 100%)`
     }}>
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h5" component="div" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             Opprett nytt prosjekt
           </Typography>
         </DialogTitle>
@@ -7187,7 +7207,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         }}
       >
         <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h5" component="div" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             📧 E-post Designer
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -7500,7 +7520,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         }}
       >
         <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography component="div" variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             🔬 Prototype Testing
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -7673,7 +7693,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         fullWidth
       >
         <DialogTitle>
-          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography component="div" variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <PhotoCamera sx={{ color: customBranding.color }} />
             {selectedProject?.title || selectedProject?.name}
           </Typography>
@@ -7795,7 +7815,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             {selectedProjectForOverview?.projectType === 'photo' && <PhotoCamera sx={{ color: customBranding.color }} />}
             {selectedProjectForOverview?.projectType === 'audio' && <LibraryMusic sx={{ color: customBranding.color }} />}
             {selectedProjectForOverview?.projectType === 'timeline' && <TimelineIcon sx={{ color: customBranding.color }} />}
-            <Typography variant="h6" sx={{ fontWeight: 700}}>
+            <Typography component="div" variant="h6" sx={{ fontWeight: 700}}>
               {selectedProjectForOverview?.storyArcName || 
                selectedProjectForOverview?.name || 
                selectedProjectForOverview?.title || 
@@ -8043,7 +8063,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Delete sx={{ color: '#f44336' }} />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography component="div" variant="h6" sx={{ color: theming.colors.primary }}>
               Slett Prosjekt
             </Typography>
           </Box>
@@ -8174,7 +8194,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Store />
-            <Typography variant="h6" fontWeight={600}>
+            <Typography component="div" variant="h6" fontWeight={600}>
               Marketplace - Oppdag Nye Verktøy
             </Typography>
           </Box>

@@ -30,6 +30,7 @@ import {
   Paper,
   Divider,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
   Feedback,
   Close,
@@ -50,9 +51,7 @@ import {
   Edit,
   ChatBubble,
   PhotoCamera,
-  LocalOffer,
   LocationOn,
-  Person,
   CheckCircle,
   Error,
 } from '@mui/icons-material';
@@ -67,7 +66,7 @@ const logPrototypeInteraction = (action: string, details?: any) => {
   const message = details ? `${action}: ${JSON.stringify(details)}` : action;
 
   // Send til backend for fullstendig console logging med PROTOTYPE TESTER IDENTIFIKASJON
-  fetch('/api/admin/log-interaction, ', {
+  fetch('/api/admin/log-interaction', {
     method: 'POST',
     headers: {
       'Content-Type' : 'application/json'
@@ -117,6 +116,15 @@ interface FeedbackData {
 };
 }
 
+interface WorkspaceStorageSummary {
+  totalStorageGB?: number;
+  usedStorageGB?: number;
+  totalStorage?: number;
+  usedStorage?: number;
+  total?: number;
+  used?: number;
+}
+
 interface UniversalPrototypeFeedbackProps {
   profession?: string;
   dashboardType?: string;
@@ -143,47 +151,47 @@ const feedbackTypes = [
     label: 'Bug/Feil',
     description: 'Rapporter feil eller problemer',
     icon: BugReport,
-    color: '#f44336'
-},
+    color: '#D9480F'
+  },
   {
     value: 'feature',
     label: 'Ønsker',
     description: 'Foreslå ny funksjonalitet',
     icon: Lightbulb,
-    color: '#ff9800'
-},
+    color: '#FF8F5C'
+  },
   {
     value: 'usability',
     label: 'Brukervennlighet',
     description: 'Forbedringer av brukeropplevelse',
     icon: Psychology,
-    color: '#9c27b0'
-},
+    color: '#C2410C'
+  },
   {
     value: 'ui_ux',
     label: 'Design',
     description: 'Visuell design og layout',
     icon: Star,
-    color: '#2196f3'
-},
+    color: '#F97316'
+  },
   {
     value: 'general',
     label: 'Generelt',
     description: 'Generelle kommentarer',
     icon: Comment,
-    color: '#4caf50'
-}
+    color: '#FF6B35'
+  }
 ];
 
 const priorityLevels = [
-  { value: 'low', label: 'Lav', color: '#4caf50' },
-  { value: 'medium', label: 'Medium', color: '#ff9800' },
-  { value: 'high', label: 'Hø', color: '#f44336' },
-  { value: 'critical', label: 'Kritisk', color: '#9c27b0' }
+  { value: 'low', label: 'Lav', color: '#16A34A', description: 'Lav påvirkning - kan håndteres senere' },
+  { value: 'medium', label: 'Medium', color: '#F97316', description: 'Merkbar påvirkning - bør prioriteres' },
+  { value: 'high', label: 'Høy', color: '#DC2626', description: 'Høy påvirkning - bør løses raskt' },
+  { value: 'critical', label: 'Kritisk', color: '#B91C1C', description: 'Kritisk feil - krever umiddelbar handling' }
 ];
 
 export default function UniversalPrototypeFeedback({
-  profession = 'photographer,',
+  profession = 'photographer',
   dashboardType = 'universal',
   component,
   isFloating = true,
@@ -199,6 +207,17 @@ export default function UniversalPrototypeFeedback({
   selectedProject,
   onProjectSelect
 }: UniversalPrototypeFeedbackProps) {
+  const theme = useTheme();
+  const brandColors = {
+    primary: theme.palette.primary.main,
+    primaryLight: theme.palette.primary.light || '#FF8F5C',
+    primaryDark: theme.palette.primary.dark || '#E85A24',
+    surface: alpha(theme.palette.primary.main, 0.08),
+    surfaceSoft: alpha(theme.palette.primary.main, 0.05),
+    border: alpha(theme.palette.primary.main, 0.28),
+    borderSoft: alpha(theme.palette.primary.main, 0.16),
+  };
+
   const [isOpen, setIsOpen] = useState(!isFloating); // Auto-open when embedded
   
   // Use open prop from parent if provided (controlled), otherwise use internal state (uncontrolled)
@@ -222,6 +241,30 @@ export default function UniversalPrototypeFeedback({
       return apiRequest('/api/auth/user');
     },
   });
+  const storageUserId = currentUser?.id || currentUser?.email || userEmail || 'guest-user';
+  const { data: workspaceStorage } = useQuery<WorkspaceStorageSummary>({
+    queryKey: ['/api/google-workspace/storage/summary', storageUserId],
+    enabled: dialogOpen,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => apiRequest(`/api/google-workspace/storage/${storageUserId}`),
+  });
+
+  const formatStorageValue = (sizeGB: number): string => {
+    if (!Number.isFinite(sizeGB) || sizeGB <= 0) return '0 MB';
+    if (sizeGB < 1) return `${Math.round(sizeGB * 1024)} MB`;
+    return `${sizeGB.toFixed(1)} GB`;
+  };
+  const usedStorage =
+    workspaceStorage?.usedStorageGB ??
+    workspaceStorage?.usedStorage ??
+    workspaceStorage?.used ??
+    0;
+  const totalStorage =
+    workspaceStorage?.totalStorageGB ??
+    workspaceStorage?.totalStorage ??
+    workspaceStorage?.total ??
+    0;
 
   const [formData, setFormData] = useState<Partial<FeedbackData>>({
     userId: currentUser?.id || userEmail || 'guest-user',
@@ -271,7 +314,7 @@ export default function UniversalPrototypeFeedback({
         description: `Hurtigrespons: ${response}\n\nKontekst: ${lastAction?.element || 'Ukjent handling'}`,
         feedbackType: contextualQuestion.category.includes('bug') ? 'bug' : 
                      contextualQuestion.category.includes('feature') ? 'feature' : 'usability',
-        component: lastAction?.element || component || currentTab ||'',
+        component: lastAction?.element || component || currentTab || '',
         tags: [contextualQuestion.category, ...(lastAction?.context?.profession ? [lastAction.context.profession] : [])]
     }));
       setIsOpen(true);
@@ -294,49 +337,10 @@ export default function UniversalPrototypeFeedback({
     if (contextInfo.length > 0) {
       setFormData(prev => ({
         ...prev,
-        component: `${component || currentTab ||''} ${contextInfo.length > 0 ? '(' + contextInfo.join(',') + ')' : ','}`.trim()
+        component: `${component || currentTab || ''} ${contextInfo.length > 0 ? `(${contextInfo.join(',')})` : ''}`.trim()
     }));
     }
   }, [currentTab, projectContext, equipmentContext, component]);
-
-  // Dynamic tags based on UniversalDashboard features and context
-  const getAvailableTags = () => {
-    const baseTags = [
-      'Dashboard','Navigation','Mobile','Desktop','Performance','Google Drive','Project Management','Client Management','Settings','UI/UX','Accessibility','Norwegian Localization'
-    ];
-
-    // Add profession-specific tags
-    const professionTags: { [key: string]: string[] } = {
-      photographer: ['Camera Equipment','Photo Editing','Wedding Timeline','RAW Processing','Lightroom Integration'],
-      videographer: ['Video Editing','Story Arc Studio','DaVinci Resolve','Audio Sync','Timeline Management'],
-      music_producer: ['Audio Mixing','Plugin Management','MIDI Controllers','Sample Library','Track Management'],
-      vendor: ['Inventory Management','Product Catalog','Order Processing','Vendor Dashboard','Sales Analytics']
-    };
-
-    // Add context-specific tags
-    const contextTags: string[] = [];
-    if (currentTab) contextTags.push(`Tab: ${currentTab}`);
-    if (projectContext) contextTags.push('Project Context, ','Project Creation');
-    if (equipmentContext) contextTags.push('Equipment Management','Hardware Detection');
-
-    // Add Google integration tags if features are being used
-    const googleTags = ['Google Photos','Google Calendar','Google Meet','Google Analytics','Google Search Console'];
-
-    // Add universal features from dashboard
-    const universalTags = [
-      'CRM System','Sales Management','Communication Hub','Email Designer','Meeting Notes','Notification Center','Smart Workflow','File Management','Business Intelligence','Contract Management','Price Administration','BRREG Integration','Universal Chat','Prototype Testing'
-    ];
-
-    return [
-      ...baseTags,
-      ...(professionTags[profession] || []),
-      ...contextTags,
-      ...googleTags,
-      ...universalTags
-    ].sort();
-  };
-
-  const [availableTags] = useState(getAvailableTags());
 
   // Submit feedback mutation using existing API
   const submitFeedbackMutation = useMutation({
@@ -411,10 +415,10 @@ export default function UniversalPrototypeFeedback({
         dashboardType,
         feedbackType: 'general',
         title: '',
-        description: ', ',
+        description: '',
         rating: 5,
         priority: 'medium',
-        component: component || currentTab || ', ',
+        component: component || currentTab || '',
         tags: [],
         isAnonymous: false,
         status: 'open'
@@ -455,17 +459,16 @@ export default function UniversalPrototypeFeedback({
     submitFeedbackMutation.mutate(formData);
   };
 
-  const handleTagToggle = (tag: string) => {
-    const currentTags = formData.tags || [];
-    const newTags = currentTags.includes(tag)
-      ? currentTags.filter(t => t !== tag)
-      : [...currentTags, tag];
-    
-    setFormData(prev => ({ ...prev, tags: newTags }));
-};
-
   const selectedFeedbackType = feedbackTypes.find(t => t.value === formData.feedbackType);
-  const selectedPriority = priorityLevels.find(p => p.value === formData.priority);
+  const sharedButtonSx = {
+    borderRadius: 2,
+    minHeight: 44,
+    px: 2.5,
+    py: 1.25,
+    fontWeight: 600,
+    textTransform: 'none' as const,
+    letterSpacing: '0.01em',
+  };
 
   // Render embedded button or floating FAB
   const feedbackTrigger = !isFloating ? (
@@ -483,11 +486,11 @@ export default function UniversalPrototypeFeedback({
             width: 300,
             zIndex: 15,
             p: 2,
-            background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.95), rgba(33, 203, 243, 0.95))',
+            background: `linear-gradient(135deg, ${alpha(brandColors.primaryDark, 0.96)} 0%, ${alpha(brandColors.primary, 0.95)} 55%, ${alpha(brandColors.primaryLight, 0.95)} 100%)`,
             backdropFilter: 'blur(15px)',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.28)}`,
             borderRadius: 2,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            boxShadow: `0 10px 36px ${alpha(brandColors.primaryDark, 0.34)}`,
             color: 'white',
             ...theming.getThemedCardSx()
           }}>
@@ -499,7 +502,11 @@ export default function UniversalPrototypeFeedback({
             <IconButton
               size="small"
               onClick={() => setShowIntelligentPrompt(false)}
-              sx={{ ml: 'auto', color: 'white' }}
+              sx={{
+                ml: 'auto',
+                color: 'white',
+                p: 0.75,
+              }}
             >
               <Close sx={{ fontSize: 16}} />
             </IconButton>
@@ -516,12 +523,18 @@ export default function UniversalPrototypeFeedback({
                 variant="contained"
                 onClick={() => handleQuickFeedback(suggestion)}
                 sx={{
-                  bgcolor: 'rgba(25, 255, 255, 0.2)',
-                  color: 'white','&:hover': {
-                    bgcolor: 'rgba(25, 255, 255, 0.3)' },
+                  ...sharedButtonSx,
+                  minHeight: 32,
+                  px: 1.25,
+                  py: 0.5,
+                  bgcolor: alpha(theme.palette.common.white, 0.2),
+                  color: 'white',
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.common.white, 0.32),
+                  },
                   fontSize: '0.75rem',
                   minWidth: 'auto',
-                  px: 1 }}
+                }}
               >
                 {suggestion}
               </Button>
@@ -532,7 +545,14 @@ export default function UniversalPrototypeFeedback({
             <Button
               size="small"
               onClick={() => setIsOpen(true)}
-              sx={{ color: 'white', fontSize: '0.75rem' }}
+              sx={{
+                ...sharedButtonSx,
+                minHeight: 30,
+                px: 1,
+                py: 0.25,
+                color: 'white',
+                fontSize: '0.75rem',
+              }}
             >
               Detaljert tilbakemelding
             </Button>
@@ -555,18 +575,21 @@ export default function UniversalPrototypeFeedback({
             height: 70,
             zIndex: 14,
             backgroundColor: showIntelligentPrompt
-              ? 'rgba(6, 175, 80, 0.9)'
-              : 'rgba(33, 150, 243, 0.9)',
+              ? alpha(theme.palette.success.main, 0.9)
+              : alpha(brandColors.primary, 0.92),
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(25, 255, 255, 0.2)','&:hover': {
+            border: `1px solid ${alpha(theme.palette.common.white, 0.25)}`,
+            boxShadow: `0 10px 24px ${alpha(brandColors.primaryDark, 0.35)}`,
+            '&:hover': {
               backgroundColor: showIntelligentPrompt
-                ? 'rgba(6, 175, 80, 1)'
-                : 'rgba(33, 150, 243, 1)',
+                ? theme.palette.success.main
+                : brandColors.primaryDark,
               transform: 'scale(1.1)'
             },
             transition: 'all 0.3s ease',
             // Pulse animation when intelligent prompt is available
-            animation: showIntelligentPrompt ? 'pulse 2s infinite' : 'none','@keyframes pulse': {
+            animation: showIntelligentPrompt ? 'pulse 2s infinite' : 'none',
+            '@keyframes pulse': {
               '0%': { transform: 'scale(1)' }, '50%': { transform: 'scale(1.05)' }, '100%': { transform: 'scale(1)' }
             }
           }}
@@ -610,18 +633,18 @@ export default function UniversalPrototypeFeedback({
         PaperProps={{
           sx: {
             borderRadius: 4,
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(250, 250, 255, 0.98))',
+            background: `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.99)} 0%, ${brandColors.surfaceSoft} 100%)`,
             backdropFilter: 'blur(20px)',
-            boxShadow: '0 24px 48px rgba(33, 150, 243, 0.15)',
+            boxShadow: `0 24px 56px ${alpha(brandColors.primaryDark, 0.18)}`,
             border: '1px solid',
-            borderColor: 'rgba(33, 150, 243, 0.1)',
+            borderColor: brandColors.borderSoft,
             overflow: 'hidden'
         }
       }}
       >
         <DialogTitle 
           sx={{ 
-            background: 'linear-gradient(135deg, #2196F3 0%, #21CBF3 100%)',
+            background: `linear-gradient(135deg, ${brandColors.primaryDark} 0%, ${brandColors.primary} 55%, ${brandColors.primaryLight} 100%)`,
             color: 'white',
             py: 3,
             px: 4,
@@ -665,7 +688,7 @@ export default function UniversalPrototypeFeedback({
                     Prototype Feedback
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.875rem' }}>
-                    CreatorHub Norge - Hjelp oss å forbedre platformen
+                    CreatorHub Norge - Hjelp oss å forbedre plattformen
                   </Typography>
                 </Box>
               </Box>
@@ -682,6 +705,7 @@ export default function UniversalPrototypeFeedback({
                 }}
                 sx={{
                   color: 'white',
+                  p: 1.1,
                   bgcolor: 'rgba(255, 255, 255, 0.15)',
                   '&:hover': {
                     bgcolor: 'rgba(255, 255, 255, 0.25)',
@@ -693,6 +717,29 @@ export default function UniversalPrototypeFeedback({
                 <Close />
               </IconButton>
             </Box>
+            <Box
+              sx={{
+                mt: 1.5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.25,
+                py: 0.55,
+                borderRadius: 999,
+                bgcolor: alpha(theme.palette.common.white, 0.16),
+                border: `1px solid ${alpha(theme.palette.common.white, 0.3)}`,
+                backdropFilter: 'blur(8px)',
+              }}
+            >
+              <Typography variant="caption" sx={{ color: 'white', fontWeight: 700, letterSpacing: '0.01em' }}>
+                Google Workspace Lagring
+              </Typography>
+              {totalStorage > 0 && (
+                <Typography variant="caption" sx={{ color: alpha(theme.palette.common.white, 0.95), fontWeight: 600 }}>
+                  {formatStorageValue(usedStorage)} / {formatStorageValue(totalStorage)}
+                </Typography>
+              )}
+            </Box>
           </Box>
         </DialogTitle>
 
@@ -702,10 +749,10 @@ export default function UniversalPrototypeFeedback({
             sx={{ 
               mb: 4,
               borderRadius: 2,
-              bgcolor: 'rgba(33, 150, 243, 0.08)',
-              border: '1px solid rgba(33, 150, 243, 0.2)',
+              bgcolor: brandColors.surface,
+              border: `1px solid ${brandColors.border}`,
               '& .MuiAlert-icon': {
-                color: '#2196F3'
+                color: brandColors.primary
               }
             }}
           >
@@ -726,10 +773,10 @@ export default function UniversalPrototypeFeedback({
                 sx={{ 
                   height: 6,
                   borderRadius: 3,
-                  bgcolor: 'rgba(33, 150, 243, 0.1)',
+                  bgcolor: brandColors.surface,
                   '& .MuiLinearProgress-bar': {
                     borderRadius: 3,
-                    background: 'linear-gradient(90deg, #2196F3, #21CBF3)'
+                    background: `linear-gradient(90deg, ${brandColors.primaryDark}, ${brandColors.primaryLight})`
                   }
                 }} 
               />
@@ -751,11 +798,22 @@ export default function UniversalPrototypeFeedback({
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
                   Type tilbakemelding
                 </Typography>
-                <Chip label="Påkrevd" size="small" color="primary" sx={{ height: 20, fontSize: '0.7rem' }} />
+                <Chip
+                  label="Påkrevd"
+                  size="small"
+                  color="primary"
+                  sx={{
+                    height: 22,
+                    px: 0.5,
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    borderRadius: 1.5
+                  }}
+                />
               </Box>
-              <Grid container spacing={1.5}>
+              <Grid container spacing={1.25} alignItems="stretch">
                 {feedbackTypes.map((type) => (
-                  <Grid key={type.value}>
+                  <Grid item key={type.value}>
                     <Tooltip title={type.description} arrow placement="top">
                       <Chip
                         icon={<type.icon />}
@@ -763,22 +821,32 @@ export default function UniversalPrototypeFeedback({
                         variant={formData.feedbackType === type.value ? "filled" : "outlined"}
                         onClick={() => setFormData(prev => ({ ...prev, feedbackType: type.value as any }))}
                         sx={{
+                          minWidth: { xs: 120, sm: 136 },
+                          minHeight: 44,
                           backgroundColor: formData.feedbackType === type.value ? type.color : 'transparent',
                           color: formData.feedbackType === type.value ? 'white' : type.color,
                           borderColor: type.color,
                           borderWidth: 2,
                           fontWeight: 600,
                           fontSize: '0.875rem',
-                          py: 2.5,
-                          px: 2,
+                          px: 1.5,
                           cursor: 'pointer',
                           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          boxShadow: formData.feedbackType === type.value ? `0 4px 12px ${type.color}40` : 'none',
+                          boxShadow: formData.feedbackType === type.value ? `0 4px 12px ${alpha(type.color, 0.32)}` : 'none',
+                          '& .MuiChip-label': {
+                            px: 0.5,
+                            lineHeight: 1.2,
+                          },
+                          '& .MuiChip-icon': {
+                            marginLeft: 0.5,
+                            marginRight: 0.5,
+                            fontSize: 18,
+                          },
                           '&:hover': {
                             backgroundColor: type.color,
                             color: 'white',
                             transform: 'translateY(-2px)',
-                            boxShadow: `0 6px 16px ${type.color}50`
+                            boxShadow: `0 6px 16px ${alpha(type.color, 0.42)}`
                           }
                         }}
                       />
@@ -808,10 +876,11 @@ export default function UniversalPrototypeFeedback({
                     borderRadius: 2,
                     bgcolor: 'background.paper',
                     '&:hover fieldset': {
-                      borderColor: '#2196F3'
+                      borderColor: brandColors.primary
                     },
                     '&.Mui-focused fieldset': {
-                      borderWidth: 2
+                      borderWidth: 2,
+                      borderColor: brandColors.primary
                     }
                   }
                 }}
@@ -840,10 +909,11 @@ export default function UniversalPrototypeFeedback({
                     borderRadius: 2,
                     bgcolor: 'background.paper',
                     '&:hover fieldset': {
-                      borderColor: '#2196F3'
+                      borderColor: brandColors.primary
                     },
                     '&.Mui-focused fieldset': {
-                      borderWidth: 2
+                      borderWidth: 2,
+                      borderColor: brandColors.primary
                     }
                   }
                 }}
@@ -860,12 +930,12 @@ export default function UniversalPrototypeFeedback({
                 bgcolor: 'background.paper',
                 transition: 'all 0.3s ease',
                 '&:hover': {
-                  borderColor: '#FFC107',
-                  boxShadow: '0 4px 12px rgba(255, 193, 7, 0.15)'
+                  borderColor: brandColors.primary,
+                  boxShadow: `0 4px 12px ${alpha(brandColors.primary, 0.18)}`
                 }
               }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Star sx={{ fontSize: 18, color: '#FFC107' }} />
+                  <Star sx={{ fontSize: 18, color: brandColors.primary }} />
                   Hvor fornøyd er du?
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -880,19 +950,22 @@ export default function UniversalPrototypeFeedback({
                     size="large"
                     sx={{
                       '& .MuiRating-iconFilled': {
-                        color: '#FFC107'
+                        color: brandColors.primary
                       },
                       '& .MuiRating-iconHover': {
-                        color: '#FFD54F'
+                        color: brandColors.primaryLight
                       }
                     }}
                   />
                   <Chip 
                     label={`${formData.rating}/5`}
-                    color="warning"
                     sx={{ 
                       fontWeight: 700,
-                      fontSize: '0.875rem'
+                      fontSize: '0.875rem',
+                      height: 32,
+                      px: 0.5,
+                      bgcolor: brandColors.primary,
+                      color: 'white'
                     }}
                   />
                 </Box>
@@ -920,11 +993,11 @@ export default function UniversalPrototypeFeedback({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Box
                             sx={{
-                              width:  12,
-                              height:  12,
-                              borderRadius: '50, %',
+                              width: 12,
+                              height: 12,
+                              borderRadius: '50%',
                               backgroundColor: level.color
-                        }}
+                            }}
                           />
                           {level.label}
                         </Box>
@@ -946,7 +1019,16 @@ export default function UniversalPrototypeFeedback({
               </Typography>
               
               {/* Screenshot Options */}
-              <Box sx={{ display: 'flex', gap: 2,mb: 2,flexWrap: 'wrap' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  columnGap: 1.5,
+                  rowGap: 1,
+                  mb: 2,
+                  flexWrap: 'wrap'
+                }}
+              >
                 <Button
                   variant="outlined"
                   startIcon={<Screenshot />}
@@ -955,17 +1037,20 @@ export default function UniversalPrototypeFeedback({
                     logPrototypeInteraction('Screenshot Capture Opened');
                 }}
                   sx={{
-                    borderColor: '#ff6b30',
-                    color: '#ff6b30','&:hover': {
-                      backgroundColor: 'rgba(25, 107, 53, 0.1)',
-                      borderColor: '#e55a2b'
-                }
-                }}
+                    ...sharedButtonSx,
+                    borderColor: brandColors.primary,
+                    color: brandColors.primary,
+                    minWidth: 170,
+                    '&:hover': {
+                      backgroundColor: brandColors.surface,
+                      borderColor: brandColors.primaryDark
+                    }
+                  }}
                 >
                   Ta Screenshot
                 </Button>
                 
-                <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
                   eller
                 </Typography>
               </Box>
@@ -982,6 +1067,8 @@ export default function UniversalPrototypeFeedback({
                 maxFileSizeMB={10}
                 allowedTypes="images"
                 showFormatInfo={false}
+                showFeatureMeta={false}
+                showStorageInfo={false}
                 profession={profession as any}
                 enableBackgroundUpload={false}
               />
@@ -995,101 +1082,6 @@ export default function UniversalPrototypeFeedback({
                   </Typography>
                 </Box>
               )}
-            </Grid>
-
-            {/* Tags */}
-            <Grid item xs={12}>
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <LocalOffer sx={{ fontSize: 18 }} />
-                  Relevante områder (valgfritt)
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Velg ett eller flere områder som er relevante for tilbakemeldingen din
-                </Typography>
-              </Box>
-              
-              <Box sx={{ 
-                p: 3, 
-                borderRadius: 2, 
-                border: '2px solid',
-                borderColor: 'divider',
-                bgcolor: 'background.paper'
-              }}>
-                {/* Selected Tags Display */}
-                {formData.tags && formData.tags.length > 0 && (
-                  <Box sx={{ mb: 2, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', mb: 1, display: 'block' }}>
-                      Valgte områder ({formData.tags.length}):
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {formData.tags.map((tag) => (
-                        <Chip
-                          key={tag}
-                          label={tag}
-                          onDelete={() => handleTagToggle(tag)}
-                          color="primary"
-                          sx={{ 
-                            fontWeight: 600,
-                            boxShadow: '0 2px 8px rgba(33, 150, 243, 0.2)'
-                          }}
-                        />
-                      ))}
-                    </Box>
-                  </Box>
-                )}
-
-                {/* Available Tags Grid */}
-                <Box sx={{ 
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                  gap: 1.5,
-                  maxHeight: 300,
-                  overflowY: 'auto',
-                  pr: 1,
-                  '&::-webkit-scrollbar': {
-                    width: '8px'
-                  },
-                  '&::-webkit-scrollbar-track': {
-                    bgcolor: 'grey.100',
-                    borderRadius: 4
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    bgcolor: 'grey.400',
-                    borderRadius: 4,
-                    '&:hover': {
-                      bgcolor: 'grey.500'
-                    }
-                  }
-                }}>
-                  {availableTags.map((tag) => (
-                    <Chip
-                      key={tag}
-                      label={tag}
-                      variant={formData.tags?.includes(tag) ? "filled" : "outlined"}
-                      onClick={() => handleTagToggle(tag)}
-                      size="medium"
-                      color={formData.tags?.includes(tag) ? "primary" : "default"}
-                      sx={{ 
-                        cursor: 'pointer',
-                        fontWeight: formData.tags?.includes(tag) ? 600 : 500,
-                        transition: 'all 0.2s ease',
-                        justifyContent: 'flex-start',
-                        '&:hover': {
-                          transform: 'translateY(-2px)',
-                          boxShadow: formData.tags?.includes(tag) 
-                            ? '0 4px 12px rgba(33, 150, 243, 0.3)'
-                            : '0 4px 12px rgba(0, 0, 0, 0.1)',
-                          borderColor: '#2196F3'
-                        },
-                        '&:active': {
-                          transform: 'translateY(0)'
-                        }
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
             </Grid>
 
             {/* Component/Page */}
@@ -1114,38 +1106,17 @@ export default function UniversalPrototypeFeedback({
                     borderRadius: 2,
                     bgcolor: 'background.paper',
                     '&:hover fieldset': {
-                      borderColor: '#2196F3'
+                      borderColor: brandColors.primary
                     },
                     '&.Mui-focused fieldset': {
-                      borderWidth: 2
+                      borderWidth: 2,
+                      borderColor: brandColors.primary
                     }
                   }
                 }}
               />
             </Grid>
 
-            {/* User Information Display - Always Required */}
-            <Grid item xs={12}>
-              <Alert 
-                severity="info" 
-                sx={{ 
-                  bgcolor: 'rgba(33, 150, 243, 0.08)',
-                  border: '2px solid rgba(33, 150, 243, 0.2)',
-                  borderRadius: 2,
-                  '& .MuiAlert-icon': {
-                    color: '#2196F3'
-                  }
-                }}
-              >
-                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Person sx={{ fontSize: 18 }} />
-                  Tilbakemelding sendes fra: {userEmail || currentUser?.email || 'Ikke pålogget'}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Alle tilbakemeldinger krever brukeridentifikasjon for bedre oppfølging.
-                </Typography>
-              </Alert>
-            </Grid>
           </Grid>
 
           {submitFeedbackMutation.isError && (
@@ -1199,10 +1170,11 @@ export default function UniversalPrototypeFeedback({
           px: 4, 
           pb: 4, 
           pt: 3,
-          bgcolor: 'grey.50',
+          bgcolor: brandColors.surfaceSoft,
           borderTop: '1px solid',
-          borderColor: 'divider',
-          gap: 2
+          borderColor: brandColors.borderSoft,
+          gap: 1.5,
+          flexWrap: 'wrap'
         }}>
           <Button 
             onClick={() => {
@@ -1214,16 +1186,13 @@ export default function UniversalPrototypeFeedback({
             }}
             variant="outlined"
             sx={{
-              borderRadius: 2,
-              px: 3,
-              py: 1.25,
-              fontWeight: 600,
-              textTransform: 'none',
-              borderColor: 'grey.300',
+              ...sharedButtonSx,
+              borderColor: 'divider',
               color: 'text.secondary',
+              minWidth: 128,
               '&:hover': {
-                borderColor: 'grey.400',
-                bgcolor: 'grey.100'
+                borderColor: brandColors.border,
+                bgcolor: alpha(theme.palette.background.paper, 0.7)
               }
             }}
           >
@@ -1235,20 +1204,20 @@ export default function UniversalPrototypeFeedback({
             disabled={!formData.title?.trim() || !formData.description?.trim() || submitFeedbackMutation.isPending}
             startIcon={<Send />}
             sx={{
-              borderRadius: 2,
+              ...sharedButtonSx,
               px: 4,
-              py: 1.25,
+              ml: { xs: 0, sm: 'auto' },
+              minWidth: { xs: '100%', sm: 220 },
               fontWeight: 700,
-              textTransform: 'none',
               color: 'white !important',
-              background: 'linear-gradient(135deg, #2196F3 0%, #21CBF3 100%)',
-              boxShadow: '0 4px 14px rgba(33, 150, 243, 0.35)',
+              background: `linear-gradient(135deg, ${brandColors.primaryDark} 0%, ${brandColors.primary} 55%, ${brandColors.primaryLight} 100%)`,
+              boxShadow: `0 4px 14px ${alpha(brandColors.primaryDark, 0.35)}`,
               '& .MuiButton-startIcon': {
                 color: 'white'
               },
               '&:hover': {
-                background: 'linear-gradient(135deg, #1976D2 0%, #2196F3 100%)',
-                boxShadow: '0 6px 20px rgba(33, 150, 243, 0.45)',
+                background: `linear-gradient(135deg, ${brandColors.primaryDark} 0%, ${brandColors.primary} 100%)`,
+                boxShadow: `0 6px 20px ${alpha(brandColors.primaryDark, 0.45)}`,
                 transform: 'translateY(-1px)',
                 color: 'white !important'
               },

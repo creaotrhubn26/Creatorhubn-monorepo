@@ -30,6 +30,10 @@ import { UniversalSessionProvider } from './contexts/UniversalSessionContext';
 import { ClientSessionProvider } from './contexts/ClientSessionContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProjectProvider } from './contexts/ProjectContext';
+import { SettingsProvider } from './contexts/SettingsContext';
+import { ThemeProvider as AppThemeProvider } from './contexts/ThemeContext';
+import { RealTimeProvider } from './contexts/RealTimeContext';
+import { VisualEditorProvider } from '@/components/admin/visual-editor/VisualEditorContext';
 import UniversalSessionManager from './components/session/UniversalSessionManager';
 import { Toaster } from '@/components/ui/toaster';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
@@ -65,7 +69,6 @@ import InviteRequestStatus from '@/pages/InviteRequestStatus';
 import LandingMobile from '@/pages/landing-mobile';
 import LandingDesktop from '@/pages/landing-desktop';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
-import LandingMobileBackupSep19 from '@/pages/landing-mobile-backup-sep19';
 import LandingResponsive from '@/pages/LandingResponsive';
 import About from '@/pages/about';
 // import OAuthSetup from '@/pages/oauth-setup'; // File doesn't exist
@@ -144,9 +147,22 @@ import IntegrationTest from './integration/IntegrationTest';
 import ResumeBuilder from '@/components/resume/ResumeBuilder';
 import LinkedInCallback from '@/pages/LinkedInCallback';
 import LoginPageSimple from '@/pages/LoginPageSimple';
+
+const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
+const StoryArcStudioRouteWrapper = () => (
+  <SettingsProvider>
+    <AppThemeProvider>
+      <RealTimeProvider>
+        <VisualEditorProvider>
+          <StoryArcStudioPage />
+        </VisualEditorProvider>
+      </RealTimeProvider>
+    </AppThemeProvider>
+  </SettingsProvider>
+);
 
 // Community Landing Page Wrapper - gets userId and profession from hooks
 const CommunityLandingPageWrapper = () => {
@@ -349,12 +365,11 @@ function App() {
                   <Route path="/invite-status" component={InviteRequestStatus as React.ComponentType<any>} />
                   <Route path="/landing-mobile" component={LandingMobile as React.ComponentType<any>} />
                   <Route path="/landing-mobile-backup-sep19" component={() => {
-                    try {
-                      return <LandingMobileBackupSep19 />;
-                    } catch (error) {
-                      console.error('Error rendering backup:', error);
-                      return <div>Error: {error instanceof Error ? error.message : String(error)}</div>;
-                    }
+                    return (
+                      <React.Suspense fallback={<div>Loading...</div>}>
+                        <LandingMobileBackupSep19 />
+                      </React.Suspense>
+                    );
                   }} />
                   <Route path="/landing-desktop" component={() => {
                     console.log('[App.tsx] Landing Desktop route matched!');
@@ -392,7 +407,7 @@ function App() {
                     component={WeddingTimelineClientResponsive}
                   />
                   <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
-                  <Route path="/story-arc-studio" component={StoryArcStudioPage as React.ComponentType<any>} />
+                  <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route
                     path="/fotograf"
                     component={() => <SmartDashboardRoute profession="photographer" />}

@@ -111,6 +111,7 @@ import type { StoryLogicState } from '../services/storyLogicService';
 import { ProductionEstimateDialog } from './ProductionEstimateDialog';
 import { castingService } from '../services/castingService';
 import { sceneNeedsService } from '../services/sceneNeedsService';
+import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 import {
   speak as ttsSpeak,
   stopTTS,
@@ -7262,6 +7263,7 @@ NOTES: ${quickNotes[scene.id] || 'No notes'}
                             width: '100%',
                             height: '100%',
                             objectFit: 'cover',
+                            objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
                           }}
                         />
                       ) : (

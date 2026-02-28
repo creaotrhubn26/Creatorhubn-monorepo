@@ -388,7 +388,7 @@ export interface PropertyAnalysis {
 }
 
 class ExternalDataService {
-  private cache: Map<string, { data: any; timestamp: number; hits: number; lastAccessed: number }> = new Map();
+  private cache: Map<string, { data: any; timestamp: number; hits: number; lastAccessed: number; ttl: number }> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private readonly LONG_CACHE_DURATION = 60 * 60 * 1000; // 1 hour for static data
   private readonly MAX_CACHE_SIZE = 1000; // Maximum cache entries
@@ -760,7 +760,7 @@ class ExternalDataService {
       // Silently fall through to fallback data
       return this.getFallbackWeatherData(params.location || 'Oslo');
   } catch (error) {
-      // Silently use fallback data without logging errors
+      console.debug('Weather fallback triggered:', error);
       return this.getFallbackWeatherData(params.location || 'Oslo');
   }
 }
@@ -807,7 +807,7 @@ class ExternalDataService {
       // Silently fall through to fallback data
       return this.getFallbackForecastData(params.location || 'Oslo', params.days || 5);
   } catch (error) {
-      // Silently use fallback data without logging errors
+      console.debug('Forecast fallback triggered:', error);
       return this.getFallbackForecastData(params.location || 'Oslo', params.days || 5);
   }
 }
@@ -1055,7 +1055,8 @@ class ExternalDataService {
       data,
       timestamp: Date.now(),
       hits: 0,
-      lastAccessed: Date.now()
+      lastAccessed: Date.now(),
+      ttl: useLongCache ? this.LONG_CACHE_DURATION : this.CACHE_DURATION
     });
   }
 
@@ -1089,7 +1090,7 @@ class ExternalDataService {
     const keysToDelete: string[] = [];
 
     for (const [key, value] of this.cache.entries()) {
-      const cacheDuration = this.CACHE_DURATION; // Use standard cache duration
+      const cacheDuration = value.ttl || this.CACHE_DURATION;
       if (now - value.timestamp > cacheDuration) {
         keysToDelete.push(key);
       }
@@ -1176,11 +1177,14 @@ class ExternalDataService {
 }
 
   private getFallbackTollData(fromAddress: string, toAddress: string, vehicleType: string): TollData {
+    const routeLabel = `${fromAddress} -> ${toAddress}`;
+    const vehicleMultiplier = vehicleType.toLowerCase().includes('electric') ? 0.6 : 1;
+    const tollCost = Math.round(45 * vehicleMultiplier);
     return {
-      totalTolls: 45,
+      totalTolls: tollCost,
       totalDistance: 35,
       tollStations: [
-        { name: 'Standard bomstasjon', cost: 45 }
+        { name: `Standard bomstasjon (${routeLabel})`, cost: tollCost }
       ],
       estimatedTime: 45,
       source: 'fallback'
@@ -1451,7 +1455,7 @@ class ExternalDataService {
     }
 
     try {
-      const cleanOrgNumber = organizationNumber.replace(/\D/g, ', ');
+      const cleanOrgNumber = organizationNumber.replace(/\D/g, '');
       const response = await apiRequest(`/api/external-data/proff/company/${cleanOrgNumber}`);
       
       if (response.success && response.data) {
@@ -1537,7 +1541,7 @@ class ExternalDataService {
       if (params?.region) queryParams.append('region', params.region);
       if (params?.period) queryParams.append('period', params.period);
       
-      const url = `/api/external-data/ssb/economic${queryParams.toString() ? '?' + queryParams.toString() : ', '}`;
+      const url = `/api/external-data/ssb/economic${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       const response = await apiRequest(url);
       
       if (response && response.success && response.data) {
@@ -1553,7 +1557,7 @@ class ExternalDataService {
       // Silently fall through to fallback data
       return this.getFallbackSSBEconomicIndicators(params?.region);
     } catch (error) {
-      // Silently use fallback data without logging errors
+      console.debug('SSB economic fallback triggered:', error);
       return this.getFallbackSSBEconomicIndicators(params?.region);
     }
   }
@@ -1577,7 +1581,7 @@ class ExternalDataService {
       if (params?.region) queryParams.append('region', params.region);
       if (params?.year) queryParams.append('year', params.year);
       
-      const url = `/api/external-data/ssb/population${queryParams.toString() ? '?' + queryParams.toString() : ', '}`;
+      const url = `/api/external-data/ssb/population${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       const response = await apiRequest(url);
       
       if (response && response.success && response.data) {
@@ -1599,7 +1603,7 @@ class ExternalDataService {
       // Silently fall through to fallback data
       return this.getFallbackSSBPopulationData(params?.region, params?.year);
     } catch (error) {
-      // Silently use fallback data without logging errors
+      console.debug('SSB population fallback triggered:', error);
       return this.getFallbackSSBPopulationData(params?.region, params?.year);
     }
   }
@@ -2043,7 +2047,7 @@ class ExternalDataService {
   private getFallbackProffCompanyData(organizationNumber: string): ProffCompanyData {
     // Realistic Norwegian company data
     return {
-      organizationNumber: organizationNumber.replace(/\D/g, ', '),
+      organizationNumber: organizationNumber.replace(/\D/g, ''),
       companyName: 'Eksempel Kreativ AS',
       status: 'active',
       revenue: {

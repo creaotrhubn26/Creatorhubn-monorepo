@@ -29,6 +29,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   CheckCircle as CheckCircleIcon,
+  Close as CloseIcon,
   Cancel as CancelIcon,
   Save as SaveIcon,
   Send as SendIcon,
@@ -41,6 +42,7 @@ import { ConsentsIcon as DescriptionIcon } from './icons/CastingIcons';
 import { Consent, ConsentType, Candidate, ConsentInvitationStatus } from '../models/casting';
 import { consentService } from '../services/consentService';
 import { castingService } from '../services/castingService';
+import { Z_INDEX } from '../config/zIndex';
 
 interface ConsentManagementPanelProps {
   projectId: string;
@@ -49,6 +51,36 @@ interface ConsentManagementPanelProps {
 }
 
 export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: ConsentManagementPanelProps) {
+  const consentModalZIndex = Z_INDEX.dialog + 50;
+  const consentModalBackdropZIndex = consentModalZIndex - 1;
+  const consentDialogAccentColor = '#b86bff';
+  const consentMenuProps = {
+    container: typeof document !== 'undefined' ? document.body : undefined,
+    sx: { zIndex: Z_INDEX.dialogSelect + 50 },
+    PaperProps: {
+      sx: { zIndex: Z_INDEX.dialogSelect + 50 },
+    },
+  };
+  const consentDialogPaperSx = {
+    '--dialog-accent-color': consentDialogAccentColor,
+    '--dialog-accent-hover': 'rgba(184,107,255,0.15)',
+    '--dialog-border-color': 'rgba(184,107,255,0.34)',
+    '--dialog-text': '#ffffff',
+    bgcolor: 'rgba(20,14,48,0.94)',
+    color: 'var(--dialog-text)',
+    border: '1px solid var(--dialog-border-color)',
+    borderRadius: 2.5,
+    backgroundImage: [
+      'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
+      'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
+      'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+    ].join(', '),
+    backgroundRepeat: 'no-repeat, no-repeat, no-repeat',
+    boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
+    zIndex: consentModalZIndex,
+    overflow: 'hidden',
+  };
+
   const [consents, setConsents] = useState<Consent[]>([]);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [status, setStatus] = useState<{
@@ -225,25 +257,33 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
     
     setGeneratingCode(true);
     try {
-      const response = await fetch('/api/consent/generate-access-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          consentId: invitingConsent.id,
-          pin: invitePin || null,
-          password: invitePassword || null,
-          expiresDays: inviteExpiresDays,
-        }),
+      const accessCode = await consentService.generateAccessCode(invitingConsent.id, {
+        pin: invitePin || undefined,
+        password: invitePassword || undefined,
+        expiresDays: inviteExpiresDays,
       });
-      
-      const data = await response.json();
-      if (data.success) {
-        setGeneratedAccessCode(data.accessCode);
-        const [loadedConsents] = await Promise.all([
-          consentService.getConsents(projectId, candidateId),
-        ]);
-        setConsents(Array.isArray(loadedConsents) ? loadedConsents : []);
+
+      if (!accessCode) return;
+
+      const updatedConsent: Consent = {
+        ...invitingConsent,
+        accessCode,
+        invitationStatus: 'sent',
+        invitationSentAt: new Date().toISOString(),
+      };
+
+      if (invitePin) {
+        updatedConsent.pin = invitePin;
       }
+      if (invitePassword) {
+        updatedConsent.password = invitePassword;
+      }
+
+      await consentService.updateConsent(projectId, candidateId, updatedConsent);
+      setGeneratedAccessCode(accessCode);
+
+      const loadedConsents = await consentService.getConsents(projectId, candidateId);
+      setConsents(Array.isArray(loadedConsents) ? loadedConsents : []);
     } catch (error) {
       console.error('Error generating access code:', error);
     } finally {
@@ -465,24 +505,65 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
         onClose={handleCloseDialog}
         maxWidth="sm"
         fullWidth
-        PaperProps={{
-          sx: {
-            bgcolor: '#1c2128',
-            color: '#fff',
+        container={() => document.body}
+        sx={{
+          zIndex: consentModalZIndex,
+          '& .MuiBackdrop-root': {
+            zIndex: consentModalBackdropZIndex,
+            bgcolor: 'rgba(8,5,20,0.86)',
+            backdropFilter: 'blur(3px)',
           },
         }}
+        PaperProps={{
+          sx: consentDialogPaperSx,
+        }}
       >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          {editingConsent ? 'Rediger samtykke' : 'Nytt samtykke'}
+        <DialogTitle sx={{ 
+          color: 'var(--dialog-text)',
+          borderBottom: '1px solid var(--dialog-border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          py: 2.5,
+          px: 3.5,
+          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
+        }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <DescriptionIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: 24 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              {editingConsent ? 'Rediger samtykke' : 'Nytt samtykke'}
+            </Typography>
+          </Stack>
+          <IconButton
+            onClick={handleCloseDialog}
+            sx={{
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ pt: 3.5, px: 3.5, pb: 3.75, maxHeight: { xs: 'none', sm: '72vh' }, overflowY: 'auto', overflowX: 'hidden' }}>
+          <Box
+            sx={{
+              p: { xs: 2, sm: 2.5, md: 2.75 },
+              borderRadius: 2.25,
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(33,24,70,0.74)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+            }}
+          >
           <Stack spacing={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth sx={{ mt: { xs: 0.5, sm: 0.75 } }}>
               <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Type</InputLabel>
               <Select
                 value={formData.type || 'photo_release'}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value as ConsentType })}
                 label="Type"
+                MenuProps={consentMenuProps}
                 sx={{
                   color: '#fff',
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
@@ -560,9 +641,27 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               }}
             />
           </Stack>
+          </Box>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
-          <Button onClick={handleCloseDialog} startIcon={<CancelIcon />} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+        <DialogActions sx={{ 
+          borderTop: '1px solid var(--dialog-border-color)',
+          px: 3,
+          py: 1.9,
+          gap: 1.2,
+          justifyContent: 'flex-end',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
+        }}>
+          <Button
+            onClick={handleCloseDialog}
+            startIcon={<CancelIcon />}
+            sx={{
+              color: 'var(--dialog-text)',
+              minHeight: 44,
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
+          >
             Avbryt
           </Button>
           <Button
@@ -570,10 +669,12 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
             onClick={handleSave}
             startIcon={<SaveIcon />}
             sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              fontWeight: 600,
-              '&:hover': { bgcolor: '#00b8e6' },
+              bgcolor: 'var(--dialog-accent-color)',
+              color: '#fff',
+              minHeight: 44,
+              fontWeight: 700,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-color)', filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
             }}
           >
             Lagre
@@ -587,22 +688,58 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
         onClose={handleCloseInviteDialog}
         maxWidth="sm"
         fullWidth
-        PaperProps={{
-          sx: {
-            bgcolor: '#1c2128',
-            color: '#fff',
-            border: '1px solid rgba(156, 39, 176, 0.3)',
+        container={() => document.body}
+        sx={{
+          zIndex: consentModalZIndex,
+          '& .MuiBackdrop-root': {
+            zIndex: consentModalBackdropZIndex,
+            bgcolor: 'rgba(8,5,20,0.86)',
+            backdropFilter: 'blur(3px)',
           },
         }}
+        PaperProps={{
+          sx: consentDialogPaperSx,
+        }}
       >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <SendIcon sx={{ color: '#9c27b0' }} />
-            <span>Send signeringsinvitasjon</span>
+        <DialogTitle sx={{ 
+          color: 'var(--dialog-text)',
+          borderBottom: '1px solid var(--dialog-border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          py: 2.5,
+          px: 3.5,
+          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
+        }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <SendIcon sx={{ color: 'var(--dialog-accent-color)' }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Send signeringsinvitasjon
+            </Typography>
           </Stack>
+          <IconButton
+            onClick={handleCloseInviteDialog}
+            sx={{
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ pt: 3.5, px: 3.5, pb: 3.75, maxHeight: { xs: 'none', sm: '72vh' }, overflowY: 'auto', overflowX: 'hidden' }}>
           {invitingConsent && (
+            <Box
+              sx={{
+                p: { xs: 2, sm: 2.5, md: 2.75 },
+                borderRadius: 2.25,
+                border: '1px solid var(--dialog-border-color)',
+                bgcolor: 'rgba(33,24,70,0.74)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+              }}
+            >
             <Stack spacing={3}>
               <Alert 
                 severity="info" 
@@ -655,6 +792,7 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                   value={inviteExpiresDays}
                   onChange={(e) => setInviteExpiresDays(Number(e.target.value))}
                   label="Utløper etter"
+                  MenuProps={consentMenuProps}
                   sx={{
                     color: '#fff',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
@@ -719,12 +857,26 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
                 </Box>
               )}
             </Stack>
+            </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+        <DialogActions sx={{ 
+          borderTop: '1px solid var(--dialog-border-color)',
+          px: 3,
+          py: 1.9,
+          gap: 1.2,
+          justifyContent: 'flex-end',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
+        }}>
           <Button 
             onClick={handleCloseInviteDialog} 
-            sx={{ color: 'rgba(255,255,255,0.87)' }}
+            sx={{ 
+              color: 'var(--dialog-text)',
+              minHeight: 44,
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
           >
             Lukk
           </Button>
@@ -735,8 +887,11 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
               disabled={generatingCode}
               startIcon={generatingCode ? <CircularProgress size={16} /> : <SendIcon />}
               sx={{
-                bgcolor: '#9c27b0',
-                '&:hover': { bgcolor: '#7b1fa2' },
+                bgcolor: 'var(--dialog-accent-color)',
+                minHeight: 44,
+                fontWeight: 700,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+                '&:hover': { bgcolor: 'var(--dialog-accent-color)', filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
               }}
             >
               {generatingCode ? 'Genererer...' : 'Generer tilgangskode'}
@@ -747,8 +902,3 @@ export function ConsentManagementPanel({ projectId, candidateId, onUpdate }: Con
     </Box>
   );
 }
-
-
-
-
-

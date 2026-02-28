@@ -2150,7 +2150,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                               }
 
                               const dateStr = day.date.split('T')[0];
-                              let dayForecast = day.weatherForecast.forecast.find(
+                              const dayForecast = day.weatherForecast.forecast.find(
                                 f => f.date && f.date.startsWith(dateStr)
                               ) || day.weatherForecast.forecast[0];
 

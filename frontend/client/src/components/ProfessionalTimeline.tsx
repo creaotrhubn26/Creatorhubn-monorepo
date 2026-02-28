@@ -46,7 +46,12 @@ interface ProfessionalTimelineProps {
   selectedClips: Set<string>;
   onClipSelect: (clipId: string, multiSelect?: boolean) => void;
   onClipMove: (clipId: string, newStart: number, newTrackId: string) => void;
-  onClipResize?: (clipId: string, newStart: number, newDuration: number) => void;
+  onClipResize?: (
+    clipId: string,
+    newStart: number,
+    newDuration: number,
+    mode?: 'resize-left' | 'resize-right'
+  ) => void;
   onTimelineClick: (time: number) => void;
   onCurrentTimeChange?: (time: number) => void;
   onZoomChange?: (zoom: number) => void;
@@ -67,6 +72,21 @@ interface ProfessionalTimelineProps {
   collabLocks?: Record<string, { user?: string }>;
   // Compare overlay
   compareClips?: BeatClip[];
+  onMediaDrop?: (payload: {
+    media: {
+      id?: string;
+      name?: string;
+      url?: string;
+      type?: string;
+      mimeType?: string;
+      duration?: number;
+      camera?: string;
+      syncGroup?: string;
+      tags?: string[];
+    };
+    trackId: string;
+    startTime: number;
+  }) => void;
 }
 
 type DragMode = 'move' | 'resize-left' | 'resize-right';
@@ -112,8 +132,10 @@ export default function ProfessionalTimeline({
   reviewerMode = false,
   collabLocks = {},
   compareClips = [],
+  onMediaDrop,
 }: ProfessionalTimelineProps) {
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [dropTrackId, setDropTrackId] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
   const isScrubbingRef = useRef(false);
@@ -198,7 +220,7 @@ export default function ProfessionalTimeline({
       const newStartPx = snapPx(timeToPixels(newStartRaw), dragState.clipId);
       const newStart = Math.min(originalEnd - 0.1, Math.max(0, pixelsToTime(newStartPx)));
       const newDuration = Math.max(0.1, originalEnd - newStart);
-      onClipResize(dragState.clipId, newStart, newDuration);
+      onClipResize(dragState.clipId, newStart, newDuration, 'resize-left');
       return;
     }
 
@@ -207,15 +229,15 @@ export default function ProfessionalTimeline({
       const newEndPx = snapPx(timeToPixels(newEndRaw), dragState.clipId);
       const newEnd = Math.max(dragState.startTime + 0.1, pixelsToTime(newEndPx));
       const newDuration = Math.max(0.1, newEnd - dragState.startTime);
-      onClipResize(dragState.clipId, dragState.startTime, newDuration);
+      onClipResize(dragState.clipId, dragState.startTime, newDuration, 'resize-right');
       return;
     }
   }, [dragState, tracks, onClipMove, onClipResize, pixelsToTime, timeToPixels, snapPx, trackHeightScale]);
 
   const handleMouseUp = useCallback(() => {
     setDragState(null);
-    window.removeEventListener('mousemove, ', handleMouseMove);
-    window.removeEventListener('mouseup,', handleMouseUp);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
   }, [handleMouseMove]);
 
   const beginDrag = useCallback((e: React.MouseEvent, clipId: string, mode: DragMode = 'move') => {
@@ -320,6 +342,46 @@ export default function ProfessionalTimeline({
     closeContextMenu();
   };
 
+  const parseDroppedMedia = useCallback((event: React.DragEvent): {
+    id?: string;
+    name?: string;
+    url?: string;
+    type?: string;
+    mimeType?: string;
+    duration?: number;
+    camera?: string;
+    syncGroup?: string;
+    tags?: string[];
+  } | null => {
+    const rawPayload = event.dataTransfer.getData('application/x-storyarc-media');
+    if (!rawPayload) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(rawPayload) as Record<string, unknown>;
+      const url = typeof parsed.url === 'string' ? parsed.url : '';
+      if (!url) {
+        return null;
+      }
+      return {
+        id: typeof parsed.id === 'string' ? parsed.id : undefined,
+        name: typeof parsed.name === 'string' ? parsed.name : undefined,
+        url,
+        type: typeof parsed.type === 'string' ? parsed.type : undefined,
+        mimeType: typeof parsed.mimeType === 'string' ? parsed.mimeType : undefined,
+        duration:
+          Number.isFinite(Number(parsed.duration)) ? Number(parsed.duration) : undefined,
+        camera: typeof parsed.camera === 'string' ? parsed.camera : undefined,
+        syncGroup: typeof parsed.syncGroup === 'string' ? parsed.syncGroup : undefined,
+        tags: Array.isArray(parsed.tags)
+          ? parsed.tags.filter((tag): tag is string => typeof tag === 'string')
+          : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Ruler */}
@@ -339,7 +401,6 @@ export default function ProfessionalTimeline({
                     onTimelineClick(m.time);
                     onCurrentTimeChange?.(m.time);
                   }}
-                  title={m.label || ', '}
                   sx={{
                     position: 'absolute',
                     left: HEADER_WIDTH + timeToPixels(m.time) - (isFaceMarker ? 4 : 1),
@@ -452,8 +513,59 @@ export default function ProfessionalTimeline({
             {/* Tracks rows backgrounds */}
             {tracks.map((t) => {
               const off = trackOffsets[t.id];
+              const isDropTarget = dropTrackId === t.id;
               return (
-                <Box key={`row-${t.id}`} sx={{ position: 'absolute', left: HEADER_WIDTH, top: off.top, right: 0, height: off.height, bgcolor: t.type === 'audio' ? 'rgba(0,0,0,0.03)' : 'transparent', borderBottom: '1px solid', borderColor: 'divider' }} />
+                <Box
+                  key={`row-${t.id}`}
+                  onDragOver={(event) => {
+                    if (!onMediaDrop) return;
+                    const hasPayload = Array.from(event.dataTransfer.types).includes('application/x-storyarc-media');
+                    if (!hasPayload) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'copy';
+                    if (dropTrackId !== t.id) {
+                      setDropTrackId(t.id);
+                    }
+                  }}
+                  onDragLeave={(event) => {
+                    if (!onMediaDrop) return;
+                    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+                      setDropTrackId((previous) => (previous === t.id ? null : previous));
+                    }
+                  }}
+                  onDrop={(event) => {
+                    if (!onMediaDrop) return;
+                    event.preventDefault();
+                    const media = parseDroppedMedia(event);
+                    setDropTrackId(null);
+                    if (!media || !timelineRef.current) {
+                      return;
+                    }
+                    const rect = timelineRef.current.getBoundingClientRect();
+                    const x = event.clientX - rect.left + timelineRef.current.scrollLeft;
+                    const startTime = Math.max(0, Math.min(totalDuration, pixelsToTime(Math.max(0, x))));
+                    onMediaDrop({
+                      media,
+                      trackId: t.id,
+                      startTime,
+                    });
+                  }}
+                  sx={{
+                    position: 'absolute',
+                    left: HEADER_WIDTH,
+                    top: off.top,
+                    right: 0,
+                    height: off.height,
+                    bgcolor: isDropTarget
+                      ? 'rgba(25, 118, 210, 0.18)'
+                      : t.type === 'audio'
+                        ? 'rgba(0,0,0,0.03)'
+                        : 'transparent',
+                    borderBottom: '1px solid',
+                    borderColor: isDropTarget ? 'primary.main' : 'divider',
+                    transition: 'background-color 120ms ease, border-color 120ms ease',
+                  }}
+                />
               );
             })}
 
@@ -479,12 +591,19 @@ export default function ProfessionalTimeline({
               return (
                 <Box
                   key={clip.id}
+                  data-testid={`timeline-clip-${clip.id}`}
+                  data-clip-id={clip.id}
+                  data-track-id={clip.trackId}
+                  data-start={clip.start.toFixed(4)}
+                  data-duration={clip.duration.toFixed(4)}
+                  data-in-point={typeof clip.metadata?.inPoint === 'number' ? clip.metadata.inPoint.toFixed(4) : ''}
+                  data-out-point={typeof clip.metadata?.outPoint === 'number' ? clip.metadata.outPoint.toFixed(4) : ''}
                   onMouseDown={(e) => {
                     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
                     const xWithin = e.clientX - rect.left;
                     if (reviewerMode || locked) return; // block edits
-                    if (xWithin < 6) return beginDrag(e, clip.id, 'resize-left');
-                    if (xWithin > rect.width - 6) return beginDrag(e, clip.id, 'resize-right');
+                    if (xWithin < 10) return beginDrag(e, clip.id, 'resize-left');
+                    if (xWithin > rect.width - 10) return beginDrag(e, clip.id, 'resize-right');
                     beginDrag(e, clip.id, 'move');
                   }}
                   onClick={(e) => {
@@ -494,6 +613,36 @@ export default function ProfessionalTimeline({
                   onContextMenu={(e) => openContextMenu(e, clip.id)}
                   sx={{ position: 'absolute', left: leftPx, top: off.top + 2, width: widthPx, height: off.height - 4, bgcolor: selected ? 'primary.main' : clip.color || 'grey.500', opacity: trackStates[clip.trackId]?.visible === false ? 0.4 : 1, color: 'white', borderRadius: 0.5, boxShadow: selected ? 2 : 0, cursor: reviewerMode || locked ? 'not-allowed' : 'grab' }}
                 >
+                  {!reviewerMode && !locked && (
+                    <Box
+                      data-testid={`timeline-clip-left-handle-${clip.id}`}
+                      onMouseDown={(e) => beginDrag(e, clip.id, 'resize-left')}
+                      sx={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: 14,
+                        height: '100%',
+                        cursor: 'ew-resize',
+                        zIndex: 2,
+                      }}
+                    />
+                  )}
+                  {!reviewerMode && !locked && (
+                    <Box
+                      data-testid={`timeline-clip-right-handle-${clip.id}`}
+                      onMouseDown={(e) => beginDrag(e, clip.id, 'resize-right')}
+                      sx={{
+                        position: 'absolute',
+                        right: 0,
+                        top: 0,
+                        width: 14,
+                        height: '100%',
+                        cursor: 'ew-resize',
+                        zIndex: 2,
+                      }}
+                    />
+                  )}
                   {/* Label + metadata */}
                   <Box sx={{ px: 0.5, py: 0.25, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <Typography variant="caption" sx={{ fontWeight: 600, textShadow: '0 1px 1px rgba(0,0,0,0.4)' }} noWrap>

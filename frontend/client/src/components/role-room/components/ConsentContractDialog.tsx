@@ -114,6 +114,7 @@ import {
 import { ConsentsIcon } from './icons/CastingIcons';
 import { Consent, ConsentType, Candidate, CastingProject, ConsentInvitationStatus } from '../models/casting';
 import { consentService } from '../services/consentService';
+import { Z_INDEX } from '../config/zIndex';
 
 // TikTok icon (not available in MUI)
 const TikTokIcon = () => (
@@ -124,6 +125,7 @@ const TikTokIcon = () => (
 
 // WCAG 2.2 compliant touch target size
 const TOUCH_TARGET_SIZE = 44;
+const CONSENT_DIALOG_ACCENT = '#b86bff';
 
 interface ConsentContractDialogProps {
   open: boolean;
@@ -583,23 +585,16 @@ export function ConsentContractDialog({
       }
 
       // Generate access code
-      const response = await fetch('/api/consent/generate-access-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          consentId: consent.id,
-          pin: includePin ? pin : null,
-          expiresDays,
-        }),
+      const accessCode = await consentService.generateAccessCode(consent.id, {
+        pin: includePin ? pin : undefined,
+        expiresDays,
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setGeneratedCode(data.accessCode);
+      if (accessCode) {
+        setGeneratedCode(accessCode);
         
         // Update consent with invitation status
-        consent.accessCode = data.accessCode;
+        consent.accessCode = accessCode;
         consent.invitationStatus = 'sent' as ConsentInvitationStatus;
         consent.invitationSentAt = new Date().toISOString();
         if (includePin) consent.pin = pin;
@@ -625,7 +620,7 @@ export function ConsentContractDialog({
           onConsentUpdated();
         }
       } else {
-        throw new Error(data.error || 'Kunne ikke generere tilgangskode');
+        throw new Error('Kunne ikke generere tilgangskode');
       }
     } catch (err) {
       console.error('Error sending consent:', err);
@@ -637,6 +632,15 @@ export function ConsentContractDialog({
 
   const config = consentTypeConfig[consentType];
   const effectiveTitle = customTitle || config.defaultTitle;
+  const consentModalZIndex = Z_INDEX.dialog + 40;
+  const consentModalBackdropZIndex = consentModalZIndex - 1;
+  const consentMenuProps = {
+    container: typeof document !== 'undefined' ? document.body : undefined,
+    sx: { zIndex: Z_INDEX.dialogSelect + 40 },
+    PaperProps: {
+      sx: { zIndex: Z_INDEX.dialogSelect + 40 },
+    },
+  };
 
   // Contract preview content - GDPR compliant
   const ContractPreview = () => {
@@ -1122,52 +1126,84 @@ return (
       onClose={onClose}
       maxWidth="md"
       fullWidth
+      container={() => document.body}
+      sx={{
+        zIndex: consentModalZIndex,
+        '& .MuiBackdrop-root': {
+          zIndex: consentModalBackdropZIndex,
+          bgcolor: 'rgba(8,5,20,0.86)',
+          backdropFilter: 'blur(3px)',
+        },
+      }}
       PaperProps={{
         sx: {
-          bgcolor: '#1c2128',
-          color: '#fff',
-          borderRadius: 3,
+          '--dialog-accent-color': CONSENT_DIALOG_ACCENT,
+          '--dialog-accent-hover': 'rgba(184,107,255,0.15)',
+          '--dialog-border-color': 'rgba(184,107,255,0.34)',
+          '--dialog-text': '#ffffff',
+          bgcolor: 'rgba(20,14,48,0.94)',
+          color: 'var(--dialog-text)',
+          border: '1px solid var(--dialog-border-color)',
+          borderRadius: { xs: 0, sm: 2.5 },
+          backgroundImage: [
+            'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
+            'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
+            'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+          ].join(', '),
+          backgroundRepeat: 'no-repeat, no-repeat, no-repeat',
+          boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
           maxHeight: '90vh',
+          zIndex: consentModalZIndex,
+          overflow: 'hidden',
         },
       }}
     >
       <DialogTitle sx={{ 
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        borderBottom: '1px solid var(--dialog-border-color)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        py: 2,
-        px: 3,
+        py: { xs: 2.25, sm: 2.5 },
+        px: { xs: 2.5, sm: 3.5 },
+        background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box sx={{
             width: 44,
             height: 44,
             borderRadius: 2,
-            bgcolor: config.color + '20',
+            bgcolor: 'rgba(184,107,255,0.2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-            <ConsentsIcon sx={{ color: config.color, fontSize: 24 }} />
+            <ConsentsIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: 24 }} />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
               {existingConsent ? 'Send samtykkekontrakt' : 'Ny samtykkekontrakt'}
             </Typography>
             {candidate && (
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+              <Typography variant="body2" sx={{ color: 'var(--dialog-text)' }}>
                 Til: {candidate.name}
               </Typography>
             )}
           </Box>
         </Box>
-        <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+        <IconButton
+          onClick={onClose}
+          sx={{
+            color: 'var(--dialog-text)',
+            border: '1px solid var(--dialog-border-color)',
+            bgcolor: 'rgba(255,255,255,0.02)',
+            '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+          }}
+        >
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 0 }}>
+      <DialogContent sx={{ pt: { xs: 3, sm: 3.5 }, px: { xs: 0, sm: 0 }, pb: { xs: 3.25, sm: 3.75 }, maxHeight: { xs: 'none', sm: '72vh' }, overflowY: 'auto' }}>
         {/* Stepper */}
         <Box sx={{ px: 3, pt: 3, pb: 2 }}>
           <Stepper activeStep={activeStep} alternativeLabel>
@@ -1850,6 +1886,7 @@ return (
                           value={retentionSettings.retentionPeriod}
                           onChange={(e) => setRetentionSettings({...retentionSettings, retentionPeriod: e.target.value as RetentionSettings['retentionPeriod']})}
                           label="Lagringsperiode"
+                          MenuProps={consentMenuProps}
                           sx={{
                             color: '#fff',
                             '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
@@ -2155,6 +2192,7 @@ return (
                             value={minorSettings.guardianRelation}
                             onChange={(e) => setMinorSettings({...minorSettings, guardianRelation: e.target.value as MinorConsentSettings['guardianRelation']})}
                             label="Relasjon til barnet"
+                            MenuProps={consentMenuProps}
                             sx={{
                               color: '#fff',
                               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
@@ -2359,6 +2397,7 @@ return (
                           value={expiresDays}
                           onChange={(e) => setExpiresDays(Number(e.target.value))}
                           label="Utløper etter"
+                          MenuProps={consentMenuProps}
                           sx={{
                             color: '#fff',
                             '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
@@ -2518,15 +2557,26 @@ return (
       </DialogContent>
 
       <DialogActions sx={{ 
-        borderTop: '1px solid rgba(255,255,255,0.1)', 
-        p: 2,
-        gap: 1,
+        borderTop: '1px solid var(--dialog-border-color)',
+        px: { xs: 2.25, sm: 3, md: 3.25 },
+        py: { xs: 1.6, sm: 1.85, md: 1.95 },
+        gap: 1.2,
+        flexWrap: { xs: 'wrap', sm: 'nowrap' },
+        justifyContent: 'flex-end',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
       }}>
         {activeStep > 0 && !success && (
           <Button
             onClick={handleBack}
             startIcon={<BackIcon />}
-            sx={{ color: 'rgba(255,255,255,0.87)', mr: 'auto' }}
+            sx={{
+              color: 'var(--dialog-text)',
+              minHeight: TOUCH_TARGET_SIZE,
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              mr: 'auto',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
           >
             Tilbake
           </Button>
@@ -2534,7 +2584,13 @@ return (
 
         <Button
           onClick={onClose}
-          sx={{ color: 'rgba(255,255,255,0.87)' }}
+          sx={{
+            color: 'var(--dialog-text)',
+            minHeight: TOUCH_TARGET_SIZE,
+            border: '1px solid var(--dialog-border-color)',
+            bgcolor: 'rgba(255,255,255,0.02)',
+            '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+          }}
         >
           {success ? 'Lukk' : 'Avbryt'}
         </Button>
@@ -2546,10 +2602,12 @@ return (
               onClick={handleNext}
               endIcon={<NextIcon />}
               sx={{
-                bgcolor: config.color,
+                bgcolor: 'var(--dialog-accent-color)',
                 color: '#fff',
-                fontWeight: 600,
-                '&:hover': { bgcolor: config.color, filter: 'brightness(0.9)' },
+                minHeight: TOUCH_TARGET_SIZE,
+                fontWeight: 700,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+                '&:hover': { bgcolor: 'var(--dialog-accent-color)', filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
               }}
             >
               Neste
@@ -2563,7 +2621,8 @@ return (
               sx={{
                 bgcolor: '#10b981',
                 color: '#fff',
-                fontWeight: 600,
+                minHeight: TOUCH_TARGET_SIZE,
+                fontWeight: 700,
                 '&:hover': { bgcolor: '#059669' },
               }}
             >

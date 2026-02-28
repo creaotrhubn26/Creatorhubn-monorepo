@@ -70,7 +70,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
   userId,
   compact = false,
   showDetailsButton = true,
-  profession: _profession = 'photographer',
+  profession = 'photographer',
   onMeetingCreate: _onMeetingCreate,
   onProjectUpdate: _onProjectUpdate,
   onWorklogCreate: _onWorklogCreate,
@@ -86,13 +86,14 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
   // Theming system
   const theming = useTheming('photographer');
   const [showDetails, setShowDetails] = useState(false);
+  const normalizedUserId = String(userId || 'guest').trim().replace(/,+$/, '') || 'guest';
 
   // ✅ REAL API CALL: Hent Google Workspace storage informasjon
   const { data: storageData, isLoading, error, refetch } = useQuery<GoogleWorkspaceStorageData>({
-    queryKey: ['/api/google-workspace/storage', userId],
+    queryKey: ['/api/google-workspace/storage', normalizedUserId],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest(`/api/google-workspace/storage/${userId}`, {
+      return apiRequest(`/api/google-workspace/storage/${normalizedUserId}`, {
         headers,
       });
     },

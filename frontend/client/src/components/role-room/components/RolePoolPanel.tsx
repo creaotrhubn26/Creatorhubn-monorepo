@@ -19,6 +19,7 @@ import {
   FormControl,
   InputLabel,
   Stack,
+  Divider,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -34,12 +35,15 @@ import { ROLE_WORKFLOW_ORDER, RoleWorkflowStatus, getRoleWorkflowMeta } from '..
 import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';
 import { roleQueryKeys } from '../services/roleQueryKeys';
 import { RoleTemplate, createTemplateImportAuditEntry } from '../config/roleDomain';
+import { Z_INDEX } from '../config/zIndex';
 
 interface RolePoolPanelProps {
   projects: CastingProject[];
   currentProjectId?: string;
   onImport?: (roleId: string) => void;
 }
+
+type WorkspaceView = 'standard' | 'pro';
 
 export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   projects,
@@ -60,11 +64,21 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   const [castingWindowStart, setCastingWindowStart] = useState('');
   const [castingWindowEnd, setCastingWindowEnd] = useState('');
   const [importAuditNote, setImportAuditNote] = useState('');
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   const TOUCH_TARGET = 44;
-  const roleTabAccent = '#f48fb1';
-  const roleTabAccentHover = '#f06292';
-  const roleTabAccentSoft = 'rgba(244,143,177,0.2)';
+  const roleTabAccent = '#b86bff';
+  const roleTabAccentHover = '#a855f7';
+  const roleTabAccentSoft = 'rgba(184,107,255,0.24)';
+  const roleSurface = 'rgba(20,14,48,0.84)';
+  const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
+  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleText = '#f3eaff';
+  const roleTextMuted = 'rgba(220,205,255,0.82)';
+  const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
+  const roleTexture =
+    `linear-gradient(180deg, rgba(9,6,26,0.9) 0%, rgba(10,7,30,0.92) 100%), radial-gradient(circle at 18% -25%, rgba(184,107,255,0.3), transparent 55%), radial-gradient(circle at 82% -10%, rgba(106,76,207,0.28), transparent 46%), ${rolePanelBackdrop}`;
 
   const {
     data: poolRoles = [],
@@ -182,28 +196,60 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
     );
   }, [poolRoles, normalizedQuery]);
 
+  useEffect(() => {
+    if (filteredRoles.length === 0) {
+      setSelectedTemplateId(null);
+      return;
+    }
+    setSelectedTemplateId((prev) => {
+      if (prev && filteredRoles.some((role) => role.id === prev)) {
+        return prev;
+      }
+      return filteredRoles[0].id;
+    });
+  }, [filteredRoles]);
+
+  const selectedTemplate = useMemo(() => {
+    if (filteredRoles.length === 0) return null;
+    if (!selectedTemplateId) return filteredRoles[0];
+    return filteredRoles.find((role) => role.id === selectedTemplateId) ?? filteredRoles[0];
+  }, [filteredRoles, selectedTemplateId]);
+
   const cardStyles = {
-    bgcolor: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 2,
+    bgcolor: roleSurface,
+    border: `1px solid ${roleBorder}`,
+    borderRadius: 2.25,
     transition: 'all 0.2s ease',
     '&:hover': {
-      bgcolor: 'rgba(255,255,255,0.08)',
+      bgcolor: 'rgba(41,30,86,0.86)',
       borderColor: roleTabAccentSoft,
+      transform: 'translateY(-1px)',
+      boxShadow: '0 8px 18px rgba(0,0,0,0.24)',
     },
   };
 
   const getRoleTypeColor = (type?: string): string => {
     switch (type?.toLowerCase()) {
       case 'hovedrolle': return '#f59e0b';
-      case 'birolle': return '#8b5cf6';
+      case 'birolle': return '#8f6b52';
       case 'statist': return '#6b7280';
-      default: return '#00d4ff';
+      default: return '#b86bff';
     }
   };
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
+    <Box
+      sx={{
+        p: { xs: 2, sm: 3 },
+        borderRadius: 2.5,
+        border: `1px solid ${roleBorder}`,
+        background: roleTexture,
+        backgroundSize: 'auto, auto, auto, cover',
+        backgroundPosition: 'center, center, center, center',
+        backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat',
+        boxShadow: '0 18px 44px rgba(0,0,0,0.34)',
+      }}
+    >
       <Box sx={{ 
         display: 'flex', 
         flexDirection: { xs: 'column', sm: 'row' },
@@ -211,9 +257,15 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
         alignItems: { xs: 'stretch', sm: 'center' }, 
         mb: 3,
         gap: 2,
+        px: { xs: 1.25, sm: 1.5 },
+        py: { xs: 1, sm: 1.25 },
+        borderRadius: 2,
+        border: `1px solid ${roleBorder}`,
+        bgcolor: roleSurfaceMuted,
+        boxShadow: '0 8px 22px rgba(0,0,0,0.2)',
       }}>
         <Typography variant="h6" sx={{ 
-          color: '#fff', 
+          color: roleText, 
           fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
@@ -240,46 +292,362 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)' }} />
+                <SearchIcon sx={{ color: roleTextMuted }} />
               </InputAdornment>
             ),
           }}
           sx={{
             width: { xs: '100%', sm: 300 },
             '& .MuiOutlinedInput-root': {
-              bgcolor: 'rgba(255,255,255,0.05)',
-              color: '#fff',
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+              bgcolor: 'rgba(255,255,255,0.04)',
+              color: roleText,
+              '& fieldset': { borderColor: roleBorder },
+              '&:hover fieldset': { borderColor: roleTabAccentSoft },
               '&.Mui-focused fieldset': { borderColor: roleTabAccent },
             },
-            '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.87)' },
+            '& .MuiInputBase-input::placeholder': { color: roleTextMuted },
           }}
         />
       </Box>
 
-      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
+      <Typography variant="body2" sx={{ color: roleTextMuted, mb: 3 }}>
         Global rollepool - gjenbruk rollebeskrivelser på tvers av prosjekter.
         Lagre roller til poolen fra prosjekter, eller importer fra poolen til nye prosjekter.
       </Typography>
 
-      {loading ? (
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+          mb: 2,
+          p: 1,
+          bgcolor: roleSurfaceMuted,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+        }}
+      >
+        <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
+          Visning:
+        </Typography>
+        <Button
+          variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
+          size="small"
+          onClick={() => setWorkspaceView('standard')}
+          sx={{
+            minHeight: 36,
+            bgcolor: workspaceView === 'standard' ? roleTabAccentSoft : 'transparent',
+            color: workspaceView === 'standard' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
+            '&:hover': {
+              bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+            },
+          }}
+        >
+          Standard
+        </Button>
+        <Button
+          variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
+          size="small"
+          onClick={() => setWorkspaceView('pro')}
+          sx={{
+            minHeight: 36,
+            bgcolor: workspaceView === 'pro' ? roleTabAccentSoft : 'transparent',
+            color: workspaceView === 'pro' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
+            '&:hover': {
+              bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+            },
+          }}
+        >
+          Pro-visning
+        </Button>
+      </Box>
+
+      {workspaceView === 'pro' && (
+        loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <Typography sx={{ color: roleTextMuted }}>Laster roller...</Typography>
+          </Box>
+        ) : filteredRoles.length === 0 ? (
+          <Box
+            sx={{
+              textAlign: 'center',
+              py: 6,
+              bgcolor: roleSurfaceMuted,
+              borderRadius: 2,
+              border: `1px dashed ${roleBorder}`,
+              mb: 2.5,
+            }}
+          >
+            <RoleIcon sx={{ fontSize: 48, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
+            <Typography sx={{ color: roleText, mb: 1 }}>
+              {searchQuery ? 'Ingen roller matcher søket' : 'Ingen roller i poolen ennå'}
+            </Typography>
+            <Typography variant="body2" sx={{ color: roleTextMuted }}>
+              Lagre roller fra prosjekter for å fylle poolen
+            </Typography>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.4fr) 360px' },
+              gap: 2,
+              minHeight: { xs: 'auto', lg: 540 },
+              mb: 2.5,
+            }}
+          >
+            <Box
+              sx={{
+                border: `1px solid ${roleBorder}`,
+                borderRadius: 2,
+                bgcolor: roleSurface,
+                p: 1.25,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1,
+              }}
+            >
+              <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.1rem', px: 0.5, py: 0.25 }}>
+                Rollemaler
+              </Typography>
+              <Box sx={{ overflowY: 'auto', maxHeight: { xs: 380, lg: 520 }, pr: 0.5 }}>
+                <Stack spacing={1}>
+                  {filteredRoles.map((role) => {
+                    const isSelected = selectedTemplateId === role.id;
+                    return (
+                      <Card
+                        key={role.id}
+                        onClick={() => setSelectedTemplateId(role.id)}
+                        sx={{
+                          cursor: 'pointer',
+                          bgcolor: isSelected ? 'rgba(184,107,255,0.16)' : roleSurfaceMuted,
+                          border: isSelected ? `1px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
+                          borderRadius: 1.5,
+                          '&:hover': { borderColor: roleTabAccentSoft },
+                        }}
+                      >
+                        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 1,
+                                bgcolor: `${getRoleTypeColor(role.roleType)}25`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <RoleIcon sx={{ color: getRoleTypeColor(role.roleType), fontSize: 20 }} />
+                            </Box>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Typography sx={{ color: roleText, fontWeight: 700 }} noWrap>
+                                {role.name}
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 0.5, mt: 0.4, flexWrap: 'wrap' }}>
+                                {role.roleType && (
+                                  <Chip
+                                    label={role.roleType}
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      fontSize: '0.7rem',
+                                      bgcolor: `${getRoleTypeColor(role.roleType)}22`,
+                                      color: getRoleTypeColor(role.roleType),
+                                    }}
+                                  />
+                                )}
+                                {role.tags && role.tags.length > 0 && (
+                                  <Chip
+                                    label={`${role.tags.length} tags`}
+                                    size="small"
+                                    sx={{ height: 20, fontSize: '0.7rem', bgcolor: 'rgba(184,107,255,0.2)', color: roleTabAccent }}
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 0.25 }}>
+                              <IconButton
+                                size="small"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleImportClick(role);
+                                }}
+                                sx={{ color: roleTabAccent, minWidth: 30, minHeight: 30 }}
+                              >
+                                <DownloadIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDeleteFromPool(role);
+                                }}
+                                sx={{ color: roleTextMuted, minWidth: 30, minHeight: 30 }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                border: `1px solid ${roleBorder}`,
+                borderRadius: 2,
+                bgcolor: roleSurface,
+                p: 1.5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25,
+              }}
+            >
+              {selectedTemplate ? (
+                <>
+                  <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.35rem', lineHeight: 1.2 }}>
+                    {selectedTemplate.name}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                    {selectedTemplate.roleType && (
+                      <Chip
+                        label={selectedTemplate.roleType}
+                        sx={{
+                          bgcolor: `${getRoleTypeColor(selectedTemplate.roleType)}22`,
+                          color: getRoleTypeColor(selectedTemplate.roleType),
+                          fontWeight: 700,
+                        }}
+                      />
+                    )}
+                    <Chip
+                      label={`${selectedTemplate.tags?.length ?? 0} tags`}
+                      sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent }}
+                    />
+                  </Box>
+                  <Typography sx={{ color: roleTextMuted, fontSize: '0.92rem', minHeight: 48 }}>
+                    {selectedTemplate.description || 'Ingen beskrivelse lagt inn.'}
+                  </Typography>
+                  <Box>
+                    <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.75 }}>
+                      Tags
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {selectedTemplate.tags && selectedTemplate.tags.length > 0 ? selectedTemplate.tags.map((tag) => (
+                        <Chip
+                          key={tag}
+                          label={tag}
+                          size="small"
+                          sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent }}
+                        />
+                      )) : (
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>Ingen tags satt</Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Divider sx={{ borderColor: roleBorder }} />
+                  <Stack spacing={1}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel sx={{ color: roleTextMuted }}>Prosjekt</InputLabel>
+                      <Select
+                        value={targetProjectId}
+                        onChange={(event) => setTargetProjectId(event.target.value)}
+                        label="Prosjekt"
+                        MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
+                        sx={{
+                          color: roleText,
+                          '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                        }}
+                      >
+                        {projects.map((project) => (
+                          <MenuItem key={project.id} value={project.id}>
+                            {project.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth size="small">
+                      <InputLabel sx={{ color: roleTextMuted }}>Status</InputLabel>
+                      <Select
+                        value={importStatus}
+                        onChange={(event) => setImportStatus(event.target.value as RoleWorkflowStatus)}
+                        label="Status"
+                        MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
+                        sx={{
+                          color: roleText,
+                          '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                        }}
+                      >
+                        {ROLE_WORKFLOW_ORDER.map((status) => (
+                          <MenuItem key={status} value={status}>
+                            {getRoleWorkflowMeta(status).label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        onClick={() => handleImportClick(selectedTemplate)}
+                        sx={{
+                          bgcolor: roleTabAccent,
+                          color: '#160a24',
+                          fontWeight: 700,
+                          '&:hover': { bgcolor: roleTabAccentHover },
+                        }}
+                      >
+                        Importer
+                      </Button>
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        onClick={() => handleDeleteFromPool(selectedTemplate)}
+                        sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
+                      >
+                        Slett
+                      </Button>
+                    </Box>
+                  </Stack>
+                </>
+              ) : (
+                <Typography sx={{ color: roleTextMuted }}>Velg en mal for detaljer.</Typography>
+              )}
+            </Box>
+          </Box>
+        )
+      )}
+
+      {workspaceView === 'standard' && (loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>Laster roller...</Typography>
+          <Typography sx={{ color: roleTextMuted }}>Laster roller...</Typography>
         </Box>
       ) : filteredRoles.length === 0 ? (
         <Box sx={{ 
           textAlign: 'center', 
           py: 6, 
-          bgcolor: 'rgba(255,255,255,0.02)', 
+          bgcolor: roleSurfaceMuted,
           borderRadius: 2,
-          border: '1px dashed rgba(255,255,255,0.1)',
+          border: `1px dashed ${roleBorder}`,
         }}>
           <RoleIcon sx={{ fontSize: 48, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
-          <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 1 }}>
+          <Typography sx={{ color: roleText, mb: 1 }}>
             {searchQuery ? 'Ingen roller matcher søket' : 'Ingen roller i poolen ennå'}
           </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+          <Typography variant="body2" sx={{ color: roleTextMuted }}>
             Lagre roller fra prosjekter for å fylle poolen
           </Typography>
         </Box>
@@ -292,7 +660,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             md: 'repeat(3, 1fr)',
             lg: 'repeat(4, 1fr)',
           },
-          gap: 2,
+          gap: { xs: 1.5, sm: 2, md: 2.25 },
         }}>
           {filteredRoles.map((role) => (
             <Card key={role.id} sx={cardStyles}>
@@ -313,7 +681,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                   
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ 
-                      color: '#fff', 
+                      color: roleText, 
                       fontWeight: 600,
                       fontSize: '0.95rem',
                       overflow: 'hidden',
@@ -343,7 +711,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                   <Typography 
                     variant="body2" 
                     sx={{ 
-                      color: 'rgba(255,255,255,0.87)',
+                      color: roleTextMuted,
                       mt: 1.5,
                       fontSize: '0.8rem',
                       display: '-webkit-box',
@@ -366,8 +734,8 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                         sx={{
                           height: 20,
                           fontSize: '0.7rem',
-                          bgcolor: 'rgba(0,212,255,0.2)',
-                          color: '#00d4ff',
+                          bgcolor: 'rgba(184,107,255,0.26)',
+                          color: '#b86bff',
                         }}
                       />
                     ))}
@@ -378,8 +746,8 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                         sx={{
                           height: 20,
                           fontSize: '0.7rem',
-                          bgcolor: 'rgba(255,255,255,0.1)',
-                          color: 'rgba(255,255,255,0.87)',
+                          bgcolor: 'rgba(255,255,255,0.08)',
+                          color: roleTextMuted,
                         }}
                       />
                     )}
@@ -400,8 +768,12 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                     onClick={() => handleImportClick(role)}
                     sx={{
                       color: roleTabAccent,
-                      fontSize: '0.75rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
                       minHeight: TOUCH_TARGET,
+                      borderRadius: 1.25,
+                      border: `1px solid ${roleBorder}`,
+                      px: 1.25,
                       '&:hover': { bgcolor: roleTabAccentSoft },
                     }}
                   >
@@ -412,7 +784,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                     size="small"
                     onClick={() => handleDeleteFromPool(role)}
                     sx={{
-                      color: 'rgba(255,255,255,0.7)',
+                      color: roleTextMuted,
                       minWidth: TOUCH_TARGET,
                       minHeight: TOUCH_TARGET,
                       '&:hover': { 
@@ -428,20 +800,23 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             </Card>
           ))}
         </Box>
-      )}
+      ))}
 
       <Dialog 
         open={importDialogOpen} 
         onClose={() => setImportDialogOpen(false)}
+        sx={{ zIndex: Z_INDEX.dialog }}
+        slotProps={{ backdrop: { sx: { zIndex: Z_INDEX.backdrop } } }}
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a2e',
-            border: '1px solid rgba(255,255,255,0.1)',
+            bgcolor: roleSurface,
+            border: `1px solid ${roleBorder}`,
             minWidth: { xs: '90vw', sm: 400 },
+            zIndex: Z_INDEX.dialog,
           },
         }}
       >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle sx={{ color: roleText, borderBottom: `1px solid ${roleBorder}` }}>
           Importer rolle til prosjekt
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
@@ -464,7 +839,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                     {selectedRole.name}
                   </Typography>
                   {selectedRole.roleType && (
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+                    <Typography variant="body2" sx={{ color: roleTextMuted }}>
                       {selectedRole.roleType}
                     </Typography>
                   )}
@@ -475,15 +850,16 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
 
           <Stack spacing={2}>
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Velg prosjekt</InputLabel>
+              <InputLabel sx={{ color: roleTextMuted }}>Velg prosjekt</InputLabel>
               <Select
                 value={targetProjectId}
                 onChange={(e) => setTargetProjectId(e.target.value)}
                 label="Velg prosjekt"
+                MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
                 sx={{
-                  color: '#fff',
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  color: roleText,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 }}
               >
@@ -496,15 +872,16 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Workflow-status</InputLabel>
+              <InputLabel sx={{ color: roleTextMuted }}>Workflow-status</InputLabel>
               <Select
                 value={importStatus}
                 onChange={(e) => setImportStatus(e.target.value as RoleWorkflowStatus)}
                 label="Workflow-status"
+                MenuProps={{ PaperProps: { sx: { zIndex: Z_INDEX.dialogSelect } } }}
                 sx={{
-                  color: '#fff',
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  color: roleText,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 }}
               >
@@ -525,11 +902,11 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                 InputLabelProps={{ shrink: true }}
                 InputProps={{ startAdornment: <InputAdornment position="start"><EventIcon sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 18 }} /></InputAdornment> }}
                 sx={{
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                  '& .MuiInputLabel-root': { color: roleTextMuted },
                   '& .MuiOutlinedInput-root': {
-                    color: '#fff',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                    color: roleText,
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                   },
                 }}
@@ -542,11 +919,11 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                 InputLabelProps={{ shrink: true }}
                 InputProps={{ startAdornment: <InputAdornment position="start"><EventIcon sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 18 }} /></InputAdornment> }}
                 sx={{
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                  '& .MuiInputLabel-root': { color: roleTextMuted },
                   '& .MuiOutlinedInput-root': {
-                    color: '#fff',
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                    color: roleText,
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
                     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                   },
                 }}
@@ -557,25 +934,25 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
               label="Audit-notat (valgfritt)"
               value={importAuditNote}
               onChange={(e) => setImportAuditNote(e.target.value)}
-              placeholder="f.eks. Importert fra Sci-Fi template for audition sprint"
+              placeholder="f.eks. Importert fra Sci-Fi-mal for audition-sprint"
               multiline
               minRows={2}
               sx={{
-                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                '& .MuiInputLabel-root': { color: roleTextMuted },
                 '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                  color: roleText,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
                 },
               }}
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+        <DialogActions sx={{ borderTop: `1px solid ${roleBorder}`, p: 2 }}>
           <Button 
             onClick={() => setImportDialogOpen(false)}
-            sx={{ color: 'rgba(255,255,255,0.87)' }}
+            sx={{ color: roleTextMuted }}
           >
             Avbryt
           </Button>
@@ -586,9 +963,9 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             startIcon={<DownloadIcon />}
             sx={{
               bgcolor: roleTabAccent,
-              color: '#fff',
+              color: '#160a24',
               '&:hover': { bgcolor: roleTabAccentHover },
-              '&.Mui-disabled': { bgcolor: 'rgba(244,143,177,0.3)', color: 'rgba(255,255,255,0.87)' },
+              '&.Mui-disabled': { bgcolor: 'rgba(184,107,255,0.34)', color: 'rgba(255,255,255,0.87)' },
             }}
           >
             Importer
@@ -602,19 +979,22 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
           setDeleteDialogOpen(false);
           setRolePendingDelete(null);
         }}
+        sx={{ zIndex: Z_INDEX.dialog }}
+        slotProps={{ backdrop: { sx: { zIndex: Z_INDEX.backdrop } } }}
         PaperProps={{
           sx: {
-            bgcolor: '#1a1a2e',
-            border: '1px solid rgba(255,255,255,0.1)',
+            bgcolor: roleSurface,
+            border: `1px solid ${roleBorder}`,
             minWidth: { xs: '90vw', sm: 420 },
+            zIndex: Z_INDEX.dialog,
           },
         }}
       >
-        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle sx={{ color: roleText, borderBottom: `1px solid ${roleBorder}` }}>
           Fjern rolle fra pool
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <Typography sx={{ color: roleTextMuted }}>
             Er du sikker på at du vil fjerne{' '}
             <Box component="span" sx={{ color: roleTabAccent, fontWeight: 700 }}>
               {rolePendingDelete?.name || 'denne rollen'}
@@ -622,13 +1002,13 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
             fra rollepoolen?
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+        <DialogActions sx={{ borderTop: `1px solid ${roleBorder}`, p: 2 }}>
           <Button
             onClick={() => {
               setDeleteDialogOpen(false);
               setRolePendingDelete(null);
             }}
-            sx={{ color: 'rgba(255,255,255,0.87)' }}
+            sx={{ color: roleTextMuted }}
           >
             Avbryt
           </Button>

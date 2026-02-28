@@ -169,6 +169,13 @@ export class PixiFilterEngine {
   /**
    * Get filter presets
    */
+  getFilterPresets(): Array<{ name: string; config: FilterConfig }> {
+    return PixiFilterEngine.getFilterPresets();
+  }
+
+  /**
+   * Get filter presets
+   */
   static getFilterPresets(): Array<{ name: string; config: FilterConfig }> {
     return [
       {
@@ -218,5 +225,4 @@ export class PixiFilterEngine {
 }
 
 export const pixiFilterEngine = new PixiFilterEngine();
-
 

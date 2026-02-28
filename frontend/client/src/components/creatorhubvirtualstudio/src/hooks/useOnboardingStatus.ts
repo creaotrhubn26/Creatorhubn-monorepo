@@ -15,10 +15,10 @@ export const useOnboardingStatus = () => {
     let mounted = true;
     (async () => {
       try {
-        const res = await fetch('/api/user/kv/virtualStudio_onboardingCompleted, ', { credentials: 'include' });
+        const res = await fetch('/api/user/kv/virtualStudio_onboardingCompleted', { credentials: 'include' });
         const j = res.ok ? await res.json().catch(() => null) : null;
         const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
-        if (mounted) setIsCompleted(v === 'true,' || v === true);
+        if (mounted) setIsCompleted(v === 'true' || v === true);
       } catch {
         const completed = localStorage.getItem('virtualStudio_onboardingCompleted');
         if (mounted) setIsCompleted(completed === 'true');

@@ -792,7 +792,7 @@ const generateWorklogTemplate = (
   }
 
   // Clone template to avoid mutations
-  let template = { ...baseTemplate };
+  const template = { ...baseTemplate };
 
   // Update time estimate with dynamic pricing data
   template.timeEstimate = getDynamicTimeEstimate(profession, phase, category, pricingData);
@@ -1528,7 +1528,7 @@ useEffect(() => {
   useEffect(() => {
     const raw = initialData?.eventDates as Record<number, string> | string[] | undefined;
     if (!raw) return;
-    let normalized: Record<number, string> = {};
+    const normalized: Record<number, string> = {};
     if (Array.isArray(raw)) {
       raw.forEach((d: string, idx: number) => {
         if (d) normalized[idx + 1] = d;
@@ -1779,7 +1779,7 @@ useEffect(() => {
     
     // Try video camera first
     let cameraBrand = getCameraBrand(cameraModel);
-    let logFormats = getLogFormatsByCamera(cameraModel);
+    const logFormats = getLogFormatsByCamera(cameraModel);
     
     // If not found in video cameras, try photo cameras
     if (!cameraBrand) {

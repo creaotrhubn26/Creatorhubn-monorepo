@@ -261,7 +261,7 @@ export const productionPlanningService = {
     if ([callHours, callMinutes, wrapHours, wrapMinutes].some((value) => Number.isNaN(value))) {
       return 0;
     }
-    let start = callHours * 60 + callMinutes;
+    const start = callHours * 60 + callMinutes;
     let end = wrapHours * 60 + wrapMinutes;
     if (end < start) {
       end += 24 * 60;

@@ -3,11 +3,44 @@
  * Provides consistent theming across the application
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { createTheme, Theme, ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  createTheme,
+  type Theme,
+  ThemeProvider as MuiThemeProvider,
+} from '@mui/material/styles';
 import { useAuth } from '../hooks/useAuth';
 
-// Theme configuration interface
+interface ProfessionTheme {
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+}
+
+interface ShowcaseTheme {
+  cardStyle: 'elevated' | 'outlined' | 'filled';
+  gridSpacing: number;
+  imageAspectRatio: 'square' | 'landscape' | 'portrait' | 'auto';
+}
+
+interface ProjectCreationTheme {
+  stepIndicatorStyle: 'dots' | 'numbers' | 'lines';
+  formLayout: 'single' | 'two-column' | 'three-column';
+}
+
+interface DashboardTheme {
+  layout: 'grid' | 'list' | 'compact';
+  sidebarWidth: number;
+}
+
 export interface ThemeConfig {
   mode: 'light' | 'dark' | 'auto';
   primaryColor: string;
@@ -19,85 +52,70 @@ export interface ThemeConfig {
   fontFamily: string;
   borderRadius: number;
   spacing: number;
-  // Profession-specific themes
   professionThemes: {
-    photographer: {
-      primaryColor: string;
-      secondaryColor: string;
-      accentColor: string;
-};
-    videographer: {
-      primaryColor: string;
-      secondaryColor: string;
-      accentColor: string;
-};
-    music_producer: {
-      primaryColor: string;
-      secondaryColor: string;
-      accentColor: string;
-};
-    vendor: {
-      primaryColor: string;
-      secondaryColor: string;
-      accentColor: string;
-};
-};
-  // Component-specific themes
+    photographer: ProfessionTheme;
+    videographer: ProfessionTheme;
+    music_producer: ProfessionTheme;
+    vendor: ProfessionTheme;
+  };
   componentThemes: {
-    showcase: {
-      cardStyle: 'elevated' | 'outlined' | 'filled';
-      gridSpacing: number;
-      imageAspectRatio: 'square' | 'landscape' | 'portrait' | 'auto';
-};
-    projectCreation: {
-      stepIndicatorStyle: 'dots' | 'numbers' | 'lines';
-      formLayout: 'single' | 'two-column' | 'three-column';
-};
-    dashboard: {
-      layout: 'grid' | 'list' | 'compact';
-      sidebarWidth: number;
-};
-};
+    showcase: ShowcaseTheme;
+    projectCreation: ProjectCreationTheme;
+    dashboard: DashboardTheme;
+  };
 }
 
-// Theme context type
+type ProfessionKey = keyof ThemeConfig['professionThemes'];
+type ComponentKey = keyof ThemeConfig['componentThemes'];
+
+type ThemeConfigUpdate = Partial<
+  Omit<ThemeConfig, 'professionThemes' | 'componentThemes'>
+> & {
+  professionThemes?: Partial<
+    Record<ProfessionKey, Partial<ThemeConfig['professionThemes'][ProfessionKey]>>
+  >;
+  componentThemes?: Partial<
+    Record<ComponentKey, Partial<ThemeConfig['componentThemes'][ComponentKey]>>
+  >;
+};
+
 export interface ThemeContextType {
-  // Current theme
   theme: Theme;
   themeConfig: ThemeConfig;
   setThemeConfig: (config: Partial<ThemeConfig>) => void;
-  
-  // Theme operations
   toggleMode: () => void;
   setMode: (mode: 'light' | 'dark' | 'auto') => void;
   setPrimaryColor: (color: string) => void;
   setSecondaryColor: (color: string) => void;
   setAccentColor: (color: string) => void;
-  
-  // Profession-specific theming
-  setProfessionTheme: (profession: string, theme: any) => void;
-  getProfessionTheme: (profession: string) => any;
-  
-  // Component-specific theming
-  setComponentTheme: (component: string, theme: any) => void;
-  getComponentTheme: (component: string) => any;
-  
-  // Theme utilities
-  getColorPalette: (baseColor: string) => { 50: string; 100: string; 200: string; 300: string; 400: string; 500: string; 600: string; 700: string; 800: string; 900: string,};
+  setProfessionTheme: (profession: string, theme: Partial<ProfessionTheme>) => void;
+  getProfessionTheme: (profession: string) => ProfessionTheme;
+  setComponentTheme: (component: string, theme: Record<string, unknown>) => void;
+  getComponentTheme: (component: string) =>
+    | ShowcaseTheme
+    | ProjectCreationTheme
+    | DashboardTheme;
+  getColorPalette: (baseColor: string) => {
+    50: string;
+    100: string;
+    200: string;
+    300: string;
+    400: string;
+    500: string;
+    600: string;
+    700: string;
+    800: string;
+    900: string;
+  };
   getContrastColor: (backgroundColor: string) => string;
   getAccessibleColor: (foreground: string, background: string) => string;
-  
-  // Theme persistence
   saveTheme: () => void;
   loadTheme: () => void;
   resetTheme: () => void;
-  
-  // Theme state
   isDarkMode: boolean;
   isSystemTheme: boolean;
 }
 
-// Default theme configuration
 const defaultThemeConfig: ThemeConfig = {
   mode: 'auto',
   primaryColor: '#1976d2',
@@ -106,7 +124,7 @@ const defaultThemeConfig: ThemeConfig = {
   backgroundColor: '#ffffff',
   surfaceColor: '#f5f5f5',
   textColor: '#212121',
-  fontFamily: '"Roboto""Helvetica","Arial", sans-serif',
+  fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
   borderRadius: 8,
   spacing: 8,
   professionThemes: {
@@ -114,368 +132,591 @@ const defaultThemeConfig: ThemeConfig = {
       primaryColor: '#1976d2',
       secondaryColor: '#dc004e',
       accentColor: '#ff6b35',
-  },
+    },
     videographer: {
-      primaryColor: '#9c27b',
-      secondaryColor: '#e91e6',
-      accentColor: '#ff572',
-  },
+      primaryColor: '#9c27b0',
+      secondaryColor: '#e91e63',
+      accentColor: '#ff5722',
+    },
     music_producer: {
-      primaryColor: '#4caf5',
-      secondaryColor: '#ff980',
-      accentColor: '#f4433',
-  },
+      primaryColor: '#4caf50',
+      secondaryColor: '#ff9800',
+      accentColor: '#f44336',
+    },
     vendor: {
-      primaryColor: '#607d8',
-      secondaryColor: '#79554',
-      accentColor: '#ffc10',
+      primaryColor: '#607d8b',
+      secondaryColor: '#795548',
+      accentColor: '#ffc107',
+    },
   },
-},
   componentThemes: {
     showcase: {
       cardStyle: 'elevated',
       gridSpacing: 16,
       imageAspectRatio: 'square',
-  },
+    },
     projectCreation: {
       stepIndicatorStyle: 'dots',
       formLayout: 'two-column',
-  },
+    },
     dashboard: {
       layout: 'grid',
       sidebarWidth: 280,
+    },
   },
-},
 };
 
-// Create context
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-// Theme provider component
-// Helper function for color palette generation - moved outside component to avoid hoisting issues
-const generateColorPalette = (baseColor: string) => {
-  const hex = baseColor.replace('#', '');
-  const r = parseInt(hex.substr(0, 2), 16);
-  const g = parseInt(hex.substr(2, 2), 16);
-  const b = parseInt(hex.substr(4, 2), 16);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
-  const generateShade = (factor: number) => {
-    const newR = Math.round(r * factor);
-    const newG = Math.round(g * factor);
-    const newB = Math.round(b * factor);
-    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2,'0')}${newB.toString(16).padStart(2,'0')}`;
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
+
+const normalizeHex = (value: string, fallback: string): string => {
+  const normalized = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+    return normalized;
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(normalized)) {
+    const [r, g, b] = normalized.slice(1).split('');
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return fallback;
+};
+
+const readNumber = (
+  source: Record<string, unknown>,
+  key: string,
+  fallback: number
+): number => {
+  const value = source[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+};
+
+const readString = (
+  source: Record<string, unknown>,
+  key: string,
+  fallback: string
+): string => {
+  const value = source[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+};
+
+const toThemeConfigUpdate = (input: unknown): ThemeConfigUpdate | null => {
+  if (!isRecord(input)) {
+    return null;
+  }
+
+  const update: ThemeConfigUpdate = {};
+
+  if (input.mode === 'light' || input.mode === 'dark' || input.mode === 'auto') {
+    update.mode = input.mode;
+  }
+
+  update.primaryColor = normalizeHex(
+    readString(input, 'primaryColor', defaultThemeConfig.primaryColor),
+    defaultThemeConfig.primaryColor
+  );
+  update.secondaryColor = normalizeHex(
+    readString(input, 'secondaryColor', defaultThemeConfig.secondaryColor),
+    defaultThemeConfig.secondaryColor
+  );
+  update.accentColor = normalizeHex(
+    readString(input, 'accentColor', defaultThemeConfig.accentColor),
+    defaultThemeConfig.accentColor
+  );
+  update.backgroundColor = normalizeHex(
+    readString(input, 'backgroundColor', defaultThemeConfig.backgroundColor),
+    defaultThemeConfig.backgroundColor
+  );
+  update.surfaceColor = normalizeHex(
+    readString(input, 'surfaceColor', defaultThemeConfig.surfaceColor),
+    defaultThemeConfig.surfaceColor
+  );
+  update.textColor = normalizeHex(
+    readString(input, 'textColor', defaultThemeConfig.textColor),
+    defaultThemeConfig.textColor
+  );
+  update.fontFamily = readString(input, 'fontFamily', defaultThemeConfig.fontFamily);
+  update.borderRadius = clamp(
+    readNumber(input, 'borderRadius', defaultThemeConfig.borderRadius),
+    0,
+    32
+  );
+  update.spacing = clamp(readNumber(input, 'spacing', defaultThemeConfig.spacing), 4, 16);
+
+  const professionThemesRaw = isRecord(input.professionThemes)
+    ? input.professionThemes
+    : null;
+
+  if (professionThemesRaw) {
+    const professionThemes: ThemeConfigUpdate['professionThemes'] = {};
+    (Object.keys(defaultThemeConfig.professionThemes) as ProfessionKey[]).forEach(
+      (key) => {
+        const rawTheme = professionThemesRaw[key];
+        if (!isRecord(rawTheme)) {
+          return;
+        }
+        professionThemes[key] = {
+          primaryColor: normalizeHex(
+            readString(rawTheme, 'primaryColor', defaultThemeConfig.professionThemes[key].primaryColor),
+            defaultThemeConfig.professionThemes[key].primaryColor
+          ),
+          secondaryColor: normalizeHex(
+            readString(rawTheme, 'secondaryColor', defaultThemeConfig.professionThemes[key].secondaryColor),
+            defaultThemeConfig.professionThemes[key].secondaryColor
+          ),
+          accentColor: normalizeHex(
+            readString(rawTheme, 'accentColor', defaultThemeConfig.professionThemes[key].accentColor),
+            defaultThemeConfig.professionThemes[key].accentColor
+          ),
+        };
+      }
+    );
+    update.professionThemes = professionThemes;
+  }
+
+  const componentThemesRaw = isRecord(input.componentThemes)
+    ? input.componentThemes
+    : null;
+
+  if (componentThemesRaw) {
+    const componentThemes: ThemeConfigUpdate['componentThemes'] = {};
+
+    const showcaseRaw = componentThemesRaw.showcase;
+    if (isRecord(showcaseRaw)) {
+      componentThemes.showcase = {
+        cardStyle:
+          showcaseRaw.cardStyle === 'outlined' || showcaseRaw.cardStyle === 'filled'
+            ? showcaseRaw.cardStyle
+            : 'elevated',
+        gridSpacing: clamp(
+          readNumber(showcaseRaw, 'gridSpacing', defaultThemeConfig.componentThemes.showcase.gridSpacing),
+          4,
+          48
+        ),
+        imageAspectRatio:
+          showcaseRaw.imageAspectRatio === 'landscape' ||
+          showcaseRaw.imageAspectRatio === 'portrait' ||
+          showcaseRaw.imageAspectRatio === 'auto'
+            ? showcaseRaw.imageAspectRatio
+            : 'square',
+      };
+    }
+
+    const projectCreationRaw = componentThemesRaw.projectCreation;
+    if (isRecord(projectCreationRaw)) {
+      componentThemes.projectCreation = {
+        stepIndicatorStyle:
+          projectCreationRaw.stepIndicatorStyle === 'numbers' ||
+          projectCreationRaw.stepIndicatorStyle === 'lines'
+            ? projectCreationRaw.stepIndicatorStyle
+            : 'dots',
+        formLayout:
+          projectCreationRaw.formLayout === 'single' ||
+          projectCreationRaw.formLayout === 'three-column'
+            ? projectCreationRaw.formLayout
+            : 'two-column',
+      };
+    }
+
+    const dashboardRaw = componentThemesRaw.dashboard;
+    if (isRecord(dashboardRaw)) {
+      componentThemes.dashboard = {
+        layout:
+          dashboardRaw.layout === 'list' || dashboardRaw.layout === 'compact'
+            ? dashboardRaw.layout
+            : 'grid',
+        sidebarWidth: clamp(
+          readNumber(dashboardRaw, 'sidebarWidth', defaultThemeConfig.componentThemes.dashboard.sidebarWidth),
+          200,
+          420
+        ),
+      };
+    }
+
+    update.componentThemes = componentThemes;
+  }
+
+  return update;
+};
+
+const mergeThemeConfig = (
+  base: ThemeConfig,
+  update: ThemeConfigUpdate
+): ThemeConfig => ({
+  ...base,
+  ...update,
+  professionThemes: {
+    photographer: {
+      ...base.professionThemes.photographer,
+      ...(update.professionThemes?.photographer ?? {}),
+    },
+    videographer: {
+      ...base.professionThemes.videographer,
+      ...(update.professionThemes?.videographer ?? {}),
+    },
+    music_producer: {
+      ...base.professionThemes.music_producer,
+      ...(update.professionThemes?.music_producer ?? {}),
+    },
+    vendor: {
+      ...base.professionThemes.vendor,
+      ...(update.professionThemes?.vendor ?? {}),
+    },
+  },
+  componentThemes: {
+    showcase: {
+      ...base.componentThemes.showcase,
+      ...(update.componentThemes?.showcase ?? {}),
+    },
+    projectCreation: {
+      ...base.componentThemes.projectCreation,
+      ...(update.componentThemes?.projectCreation ?? {}),
+    },
+    dashboard: {
+      ...base.componentThemes.dashboard,
+      ...(update.componentThemes?.dashboard ?? {}),
+    },
+  },
+});
+
+const getProfessionKey = (user: unknown): ProfessionKey => {
+  if (!isRecord(user)) {
+    return 'photographer';
+  }
+  const profession = user.profession;
+  if (typeof profession !== 'string') {
+    return 'photographer';
+  }
+  if (
+    profession === 'photographer' ||
+    profession === 'videographer' ||
+    profession === 'music_producer' ||
+    profession === 'vendor'
+  ) {
+    return profession;
+  }
+  return 'photographer';
+};
+
+const generateColorPalette = (baseColor: string) => {
+  const hex = normalizeHex(baseColor, '#1976d2').replace('#', '');
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+
+  const shade = (factor: number) => {
+    const nr = clamp(Math.round(r * factor), 0, 255);
+    const ng = clamp(Math.round(g * factor), 0, 255);
+    const nb = clamp(Math.round(b * factor), 0, 255);
+    return `#${nr.toString(16).padStart(2, '0')}${ng
+      .toString(16)
+      .padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
   };
 
   return {
-    50: generateShade(0.9),
-    100: generateShade(0.8),
-    200: generateShade(0.7),
-    300: generateShade(0.6),
-    400: generateShade(0.5),
-    500: baseColor,
-    600: generateShade(0.4),
-    700: generateShade(0.3),
-    800: generateShade(0.2),
-    900: generateShade(0.1),
+    50: shade(1.25),
+    100: shade(1.15),
+    200: shade(1.05),
+    300: shade(0.95),
+    400: shade(0.85),
+    500: normalizeHex(baseColor, '#1976d2'),
+    600: shade(0.75),
+    700: shade(0.65),
+    800: shade(0.55),
+    900: shade(0.45),
   };
 };
 
-export const ThemeProvider: React.FC<{ children: ReactNode,}> = ({ children }) => {
+const getRelativeLuminance = (hexColor: string): number => {
+  const hex = normalizeHex(hexColor, '#000000').replace('#', '');
+  const channels = [
+    parseInt(hex.slice(0, 2), 16),
+    parseInt(hex.slice(2, 4), 16),
+    parseInt(hex.slice(4, 6), 16),
+  ].map((value) => {
+    const channel = value / 255;
+    return channel <= 0.03928
+      ? channel / 12.92
+      : Math.pow((channel + 0.055) / 1.055, 2.4);
+  });
+
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+};
+
+const getContrastRatio = (foreground: string, background: string): number => {
+  const l1 = getRelativeLuminance(foreground);
+  const l2 = getRelativeLuminance(background);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+};
+
+export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [themeConfig, setThemeConfigState] = useState<ThemeConfig>(defaultThemeConfig);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSystemTheme, setIsSystemTheme] = useState(false);
 
-  // Load theme from localStorage on mount
+  const loadTheme = useCallback(() => {
+    const applyUpdate = (rawConfig: unknown) => {
+      const parsed = toThemeConfigUpdate(rawConfig);
+      if (!parsed) {
+        return false;
+      }
+      setThemeConfigState((previous) => mergeThemeConfig(previous, parsed));
+      return true;
+    };
+
+    fetch('/api/user/ui-preferences', { credentials: 'include' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        const remoteConfig = payload?.data?.theme_config;
+        if (applyUpdate(remoteConfig)) {
+          return;
+        }
+
+        const saved = localStorage.getItem('theme-config');
+        if (!saved) {
+          return;
+        }
+        try {
+          applyUpdate(JSON.parse(saved));
+        } catch {
+          // Ignore invalid local theme JSON
+        }
+      })
+      .catch(() => {
+        const saved = localStorage.getItem('theme-config');
+        if (!saved) {
+          return;
+        }
+        try {
+          applyUpdate(JSON.parse(saved));
+        } catch {
+          // Ignore invalid local theme JSON
+        }
+      });
+  }, []);
+
   useEffect(() => {
     loadTheme();
-}, []);
+  }, [loadTheme]);
 
-  // Listen for system theme changes
   useEffect(() => {
-    if (themeConfig.mode === 'auto') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleChange = (e: MediaQueryListEvent) => {
-        setIsDarkMode(e.matches);
-        setIsSystemTheme(true);
-  };
-
-      mediaQuery.addEventListener('change, ', handleChange);
-      setIsDarkMode(mediaQuery.matches);
-      setIsSystemTheme(true);
-
-      return () => mediaQuery.removeEventListener('change, ', handleChange);
-  } else {
+    if (themeConfig.mode !== 'auto') {
       setIsDarkMode(themeConfig.mode === 'dark');
       setIsSystemTheme(false);
-  }
-}, [themeConfig.mode]);
+      return;
+    }
 
-  // Create MUI theme based on config
-  const theme = React.useMemo(() => {
-    const currentConfig = themeConfig;
-    const profession = (user as any)?.profession || 'photographer';
-    const professionTheme = currentConfig.professionThemes[profession as keyof ThemeConfig['professionThemes']];
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDarkMode(event.matches);
+      setIsSystemTheme(true);
+    };
+
+    setIsDarkMode(mediaQuery.matches);
+    setIsSystemTheme(true);
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+    };
+  }, [themeConfig.mode]);
+
+  const theme = useMemo(() => {
+    const professionKey = getProfessionKey(user);
+    const professionTheme =
+      themeConfig.professionThemes[professionKey] ??
+      defaultThemeConfig.professionThemes.photographer;
+
+    const primaryColor = professionTheme.primaryColor || themeConfig.primaryColor;
+    const secondaryColor = professionTheme.secondaryColor || themeConfig.secondaryColor;
 
     return createTheme({
       palette: {
         mode: isDarkMode ? 'dark' : 'light',
         primary: {
-          main: professionTheme?.primaryColor || currentConfig.primaryColor,
-          light: generateColorPalette(professionTheme?.primaryColor || currentConfig.primaryColor)[300],
-          dark: generateColorPalette(professionTheme?.primaryColor || currentConfig.primaryColor)[700],
-      },
+          main: primaryColor,
+          light: generateColorPalette(primaryColor)[300],
+          dark: generateColorPalette(primaryColor)[700],
+        },
         secondary: {
-          main: professionTheme?.secondaryColor || currentConfig.secondaryColor,
-          light: generateColorPalette(professionTheme?.secondaryColor || currentConfig.secondaryColor)[300],
-          dark: generateColorPalette(professionTheme?.secondaryColor || currentConfig.secondaryColor)[700],
-      },
-        error: {
-          main: '#f44336',
-      },
-        warning: {
-          main: '#ff9800',
-      },
-        info: {
-          main: '#2196f3',
-      },
-        success: {
-          main: '#4caf50',
-      },
+          main: secondaryColor,
+          light: generateColorPalette(secondaryColor)[300],
+          dark: generateColorPalette(secondaryColor)[700],
+        },
+        error: { main: '#f44336' },
+        warning: { main: '#ff9800' },
+        info: { main: '#2196f3' },
+        success: { main: '#4caf50' },
         background: {
-          default: isDarkMode ? '#121212' : currentConfig.backgroundColor,
-          paper: isDarkMode ? '#1e1e1e' : currentConfig.surfaceColor,
-      },
+          default: isDarkMode ? '#121212' : themeConfig.backgroundColor,
+          paper: isDarkMode ? '#1e1e1e' : themeConfig.surfaceColor,
+        },
         text: {
-          primary: isDarkMode ? '#ffffff' : currentConfig.textColor,
-          secondary: isDarkMode ? '#b3b3b3' : '#66666',
+          primary: isDarkMode ? '#ffffff' : themeConfig.textColor,
+          secondary: isDarkMode ? '#b3b3b3' : '#666666',
+        },
       },
-    },
       typography: {
-        fontFamily: currentConfig.fontFamily,
-        h1: {
-          fontSize: '2.5rem',
-          fontWeight: 600
+        fontFamily: themeConfig.fontFamily,
       },
-        h2: {
-          fontSize: '2rem',
-          fontWeight: 600
-      },
-        h3: {
-          fontSize: '1.75rem',
-          fontWeight: 500,
-      },
-        h4: {
-          fontSize: '1.5rem',
-          fontWeight: 500,
-      },
-        h5: {
-          fontSize: '1.25rem',
-          fontWeight: 500,
-      },
-        h6: {
-          fontSize: '1rem',
-          fontWeight: 500,
-      },
-    },
       shape: {
-        borderRadius: currentConfig.borderRadius,
-    },
-      spacing: currentConfig.spacing,
+        borderRadius: themeConfig.borderRadius,
+      },
+      spacing: themeConfig.spacing,
       components: {
         MuiButton: {
           styleOverrides: {
             root: {
-              borderRadius: currentConfig.borderRadius,
+              borderRadius: themeConfig.borderRadius,
               textTransform: 'none',
               fontWeight: 500,
+            },
           },
         },
-      },
         MuiCard: {
           styleOverrides: {
             root: {
-              borderRadius: currentConfig.borderRadius * 1.5,
+              borderRadius: themeConfig.borderRadius * 1.5,
+            },
           },
         },
       },
-        MuiPaper: {
-          styleOverrides: {
-            root: {
-              borderRadius: currentConfig.borderRadius,
-          },
-        },
-      },
-        MuiChip: {
-          styleOverrides: {
-            root: {
-              borderRadius: currentConfig.borderRadius * 2,
-          },
-        },
-      },
-    },
-  });
-}, [themeConfig, isDarkMode, user]);
+    });
+  }, [themeConfig, isDarkMode, user]);
 
-  // Set theme config
   const setThemeConfig = useCallback((config: Partial<ThemeConfig>) => {
-    setThemeConfigState(prev => ({ ...prev, ...config }));
-}, []);
+    const parsed = toThemeConfigUpdate(config);
+    if (!parsed) {
+      return;
+    }
+    setThemeConfigState((previous) => mergeThemeConfig(previous, parsed));
+  }, []);
 
-  // Toggle mode
   const toggleMode = useCallback(() => {
-    if (themeConfig.mode === 'auto') {
-      setThemeConfig({ mode: isDarkMode ? 'light' : 'dark' });
-  } else {
-      setThemeConfig({ mode: themeConfig.mode === 'light' ? 'dark' : 'light' });
-  }
-}, [themeConfig.mode, isDarkMode]);
+    setThemeConfig({ mode: isDarkMode ? 'light' : 'dark' });
+  }, [isDarkMode, setThemeConfig]);
 
-  // Set mode
-  const setMode = useCallback((mode: 'light' | 'dark' | 'auto') => {
-    setThemeConfig({ mode,});
-}, []);
-
-  // Set primary color
-  const setPrimaryColor = useCallback((color: string) => {
-    setThemeConfig({ primaryColor: color,});
-}, []);
-
-  // Set secondary color
-  const setSecondaryColor = useCallback((color: string) => {
-    setThemeConfig({ secondaryColor: color,});
-}, []);
-
-  // Set accent color
-  const setAccentColor = useCallback((color: string) => {
-    setThemeConfig({ accentColor: color,});
-}, []);
-
-  // Set profession theme
-  const setProfessionTheme = useCallback((profession: string, theme: any) => {
-    setThemeConfig({
-      professionThemes: {
-        ...themeConfig.professionThemes,
-        [profession]: {
-          ...themeConfig.professionThemes[profession as keyof typeof themeConfig.professionThemes],
-          ...theme,
-      },
+  const setMode = useCallback(
+    (mode: 'light' | 'dark' | 'auto') => {
+      setThemeConfig({ mode });
     },
-  });
-}, [themeConfig.professionThemes]);
+    [setThemeConfig]
+  );
 
-  // Get profession theme
-  const getProfessionTheme = useCallback((profession: string) => {
-    return themeConfig.professionThemes[profession as keyof typeof themeConfig.professionThemes];
-}, [themeConfig.professionThemes]);
-
-  // Set component theme
-  const setComponentTheme = useCallback((component: string, theme: any) => {
-    setThemeConfig({
-      componentThemes: {
-        ...themeConfig.componentThemes,
-        [component]: {
-          ...themeConfig.componentThemes[component as keyof typeof themeConfig.componentThemes],
-          ...theme,
-      },
+  const setPrimaryColor = useCallback(
+    (color: string) => {
+      setThemeConfig({ primaryColor: color });
     },
-  });
-}, [themeConfig.componentThemes]);
+    [setThemeConfig]
+  );
 
-  // Get component theme
-  const getComponentTheme = useCallback((component: string) => {
-    return themeConfig.componentThemes[component as keyof typeof themeConfig.componentThemes];
-}, [themeConfig.componentThemes]);
+  const setSecondaryColor = useCallback(
+    (color: string) => {
+      setThemeConfig({ secondaryColor: color });
+    },
+    [setThemeConfig]
+  );
 
-  // Get color palette - uses helper function defined outside component
+  const setAccentColor = useCallback(
+    (color: string) => {
+      setThemeConfig({ accentColor: color });
+    },
+    [setThemeConfig]
+  );
+
+  const setProfessionTheme = useCallback(
+    (profession: string, professionTheme: Partial<ProfessionTheme>) => {
+      const key = getProfessionKey({ profession });
+      setThemeConfig({
+        professionThemes: {
+          [key]: professionTheme,
+        },
+      });
+    },
+    [setThemeConfig]
+  );
+
+  const getProfessionTheme = useCallback(
+    (profession: string): ProfessionTheme => {
+      const key = getProfessionKey({ profession });
+      return (
+        themeConfig.professionThemes[key] ?? defaultThemeConfig.professionThemes.photographer
+      );
+    },
+    [themeConfig.professionThemes]
+  );
+
+  const setComponentTheme = useCallback(
+    (component: string, componentTheme: Record<string, unknown>) => {
+      const componentKey: ComponentKey =
+        component === 'showcase' || component === 'projectCreation' || component === 'dashboard'
+          ? component
+          : 'dashboard';
+
+      setThemeConfig({
+        componentThemes: {
+          [componentKey]: componentTheme,
+        },
+      });
+    },
+    [setThemeConfig]
+  );
+
+  const getComponentTheme = useCallback(
+    (component: string) => {
+      const componentKey: ComponentKey =
+        component === 'showcase' || component === 'projectCreation' || component === 'dashboard'
+          ? component
+          : 'dashboard';
+      return (
+        themeConfig.componentThemes[componentKey] ??
+        defaultThemeConfig.componentThemes.dashboard
+      );
+    },
+    [themeConfig.componentThemes]
+  );
+
   const getColorPalette = useCallback((baseColor: string) => {
     return generateColorPalette(baseColor);
   }, []);
 
-  // Get contrast color
   const getContrastColor = useCallback((backgroundColor: string) => {
-    const hex = backgroundColor.replace(', #, ',', ');
-    const r = parseInt(hex.substr(0, 2), 16);
-    const g = parseInt(hex.substr(2, 2), 16);
-    const b = parseInt(hex.substr(4, 2), 16);
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    return brightness > 128 ? '#000000' : '#ffffff';
-}, []);
+    const contrastAgainstBlack = getContrastRatio('#000000', backgroundColor);
+    const contrastAgainstWhite = getContrastRatio('#ffffff', backgroundColor);
+    return contrastAgainstBlack >= contrastAgainstWhite ? '#000000' : '#ffffff';
+  }, []);
 
-  // Get accessible color
-  const getAccessibleColor = useCallback((foreground: string, background: string) => {
-    // Simple accessibility check - in a real app, you'd use a library like color2k
-    const fg = foreground.replace('#', ', ');
-    const bg = background.replace('#', ', ');
-    
-    const getLuminance = (hex: string) => {
-      const r = parseInt(hex.substr(0, 2), 16) / 255;
-      const g = parseInt(hex.substr(2, 2), 16) / 255;
-      const b = parseInt(hex.substr(4, 2), 16) / 255;
-      
-      const [rs, gs, bs] = [rgb].map(c => 
-        c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-      );
-      
-      return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
-  };
+  const getAccessibleColor = useCallback(
+    (foreground: string, background: string) => {
+      return getContrastRatio(foreground, background) >= 4.5
+        ? foreground
+        : getContrastColor(background);
+    },
+    [getContrastColor]
+  );
 
-    const fgLuminance = getLuminance(fg);
-    const bgLuminance = getLuminance(bg);
-    const contrast = (Math.max(fgLuminance, bgLuminance) + 0.05) / (Math.min(fgLuminance, bgLuminance) + 0.05);
-
-    return contrast >= 4.5 ? foreground : getContrastColor(background);
-}, [getContrastColor]);
-
-  // Save theme (DB + local fallback)
   const saveTheme = useCallback(() => {
     fetch('/api/user/ui-preferences', {
       method: 'POST',
-      headers: { 'Content-Type' : 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ themeConfig: themeConfig }),
-    }).catch(() => {});
+      body: JSON.stringify({ themeConfig }),
+    }).catch(() => {
+      // Ignore network save failure; local persistence remains active.
+    });
+
     localStorage.setItem('theme-config', JSON.stringify(themeConfig));
   }, [themeConfig]);
 
-  // Load theme (DB first, fallback to local)
-  const loadTheme = useCallback(() => {
-    fetch('/api/user/ui-preferences', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        const cfg = j?.data?.theme_config;
-        if (cfg) {
-          setThemeConfigState(cfg);
-          return;
-        }
-        const saved = localStorage.getItem('theme-config');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            setThemeConfigState(parsed);
-          } catch (error) {
-            console.warn('Failed to load theme config:', error);
-          }
-        }
-      })
-      .catch(() => {
-        const saved = localStorage.getItem('theme-config');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            setThemeConfigState(parsed);
-          } catch (error) {
-            console.warn('Failed to load theme config:', error);
-          }
-        }
-      });
-  }, []);
-
-  // Reset theme
   const resetTheme = useCallback(() => {
     setThemeConfigState(defaultThemeConfig);
     localStorage.removeItem('theme-config');
-}, []);
+  }, []);
 
   const contextValue: ThemeContextType = {
     theme,
@@ -498,59 +739,60 @@ export const ThemeProvider: React.FC<{ children: ReactNode,}> = ({ children }) =
     resetTheme,
     isDarkMode,
     isSystemTheme,
-};
+  };
 
   return (
     <ThemeContext.Provider value={contextValue}>
-      <MuiThemeProvider theme={theme}>
-        {children}
-      </MuiThemeProvider>
+      <MuiThemeProvider theme={theme}>{children}</MuiThemeProvider>
     </ThemeContext.Provider>
   );
 };
 
-// Hook to use theme context
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
-    // Return a safe default context when used outside of ThemeProvider
-    // This allows components to work without being wrapped in a provider
-    console.warn('useTheme: Component using theme outside of ThemeProvider. Using defaults.');
-    
-    // Create a default MUI theme
-    const defaultTheme = createTheme({
-      palette: {
-        mode: 'light',
-        primary: { main: '#1976d2' },
-        secondary: { main: '#dc004e' },
-      },
-    });
-    
-    return {
-      theme: defaultTheme,
-      themeConfig: defaultThemeConfig,
-      setThemeConfig: () => {},
-      toggleMode: () => {},
-      setMode: () => {},
-      setPrimaryColor: () => {},
-      setSecondaryColor: () => {},
-      setAccentColor: () => {},
-      setProfessionTheme: () => {},
-      getProfessionTheme: (profession: string) => defaultThemeConfig.professionThemes[profession as keyof typeof defaultThemeConfig.professionThemes] || {},
-      setComponentTheme: () => {},
-      getComponentTheme: (component: string) => defaultThemeConfig.componentThemes[component as keyof typeof defaultThemeConfig.componentThemes] || {},
-      getColorPalette: generateColorPalette,
-      getContrastColor: () => '#ffffff',
-      getAccessibleColor: () => '#000000',
-      saveTheme: () => {},
-      loadTheme: () => {},
-      resetTheme: () => {},
-      isDarkMode: false,
-      isSystemTheme: false,
-    };
+  if (context) {
+    return context;
   }
-  return context;
+
+  const defaultTheme = createTheme({
+    palette: {
+      mode: 'light',
+      primary: { main: defaultThemeConfig.primaryColor },
+      secondary: { main: defaultThemeConfig.secondaryColor },
+    },
+  });
+
+  return {
+    theme: defaultTheme,
+    themeConfig: defaultThemeConfig,
+    setThemeConfig: () => undefined,
+    toggleMode: () => undefined,
+    setMode: () => undefined,
+    setPrimaryColor: () => undefined,
+    setSecondaryColor: () => undefined,
+    setAccentColor: () => undefined,
+    setProfessionTheme: () => undefined,
+    getProfessionTheme: (profession: string) => {
+      const key = getProfessionKey({ profession });
+      return defaultThemeConfig.professionThemes[key];
+    },
+    setComponentTheme: () => undefined,
+    getComponentTheme: (component: string) => {
+      const componentKey: ComponentKey =
+        component === 'showcase' || component === 'projectCreation' || component === 'dashboard'
+          ? component
+          : 'dashboard';
+      return defaultThemeConfig.componentThemes[componentKey];
+    },
+    getColorPalette: generateColorPalette,
+    getContrastColor: () => '#000000',
+    getAccessibleColor: () => '#000000',
+    saveTheme: () => undefined,
+    loadTheme: () => undefined,
+    resetTheme: () => undefined,
+    isDarkMode: false,
+    isSystemTheme: false,
+  };
 };
 
 export default ThemeContext;
-

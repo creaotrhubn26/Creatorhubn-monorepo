@@ -539,7 +539,7 @@ class PerformanceMonitor {
     let performanceScore = 100;
     let accessibilityScore = 100;
     let bestPracticesScore = 100;
-    let seoScore = 100;
+    const seoScore = 100;
 
     // Performance score based on load time
     if (metrics.navigation.loadTime > 3000) {

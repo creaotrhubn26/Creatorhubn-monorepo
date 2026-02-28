@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
-import { useDebounce } from '../hooks/useDebounce';
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, startTransition, memo, type FC, type MouseEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { Z_INDEX } from '../config/zIndex';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
@@ -131,6 +130,8 @@ import {
 
 import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
+import { AuditionSchedulePanel } from './AuditionSchedulePanel';
+import rolesBackdrop4 from './icons/Keep/roles_backdrop_4.png';
 import type { StoryLogicState } from '../services/storyLogicService';
 import { storyLogicService } from '../services/storyLogicService';
 
@@ -154,7 +155,6 @@ const StoryLogicPanel = lazy(() => import('./screenplay/StoryLogicPanel').then(m
 const RoleManagementPanel = lazy(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
 const CandidateManagementPanel = lazy(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
 const DashboardPanel = lazy(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
-const AuditionSchedulePanel = lazy(() => import('./AuditionSchedulePanel').then(m => ({ default: m.AuditionSchedulePanel })));
 const SharingPanel = lazy(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazy(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
@@ -174,7 +174,6 @@ const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const LoginDialog = lazy(() => import('./LoginDialog'));
 const CastingSharingDialog = lazy(() => import('./CastingSharingDialog').then(m => ({ default: m.CastingSharingDialog })));
 const CastingProfessionDialog = lazy(() => import('./CastingProfessionDialog').then(m => ({ default: m.CastingProfessionDialog })));
-const NewProjectCreationModal = lazy(() => import('./Planning/NewProjectCreationModal'));
 const ProfessionOnboardingDialog = lazy(() => import('./ProfessionOnboardingDialog').then(m => ({ default: m.ProfessionOnboardingDialog })));
 
 import { useProfessionOnboarding, ProfessionType } from './ProfessionOnboardingDialog';
@@ -185,12 +184,14 @@ import { ProjectProvider } from '@/contexts/ProjectContext';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
+import NewProjectCreationModal from './Planning/NewProjectCreationModal';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   isStandalone?: boolean;
+  isGuestMode?: boolean;
 }
 
 interface TabPanelProps {
@@ -275,6 +276,15 @@ const KEYFRAMES_STYLES = {
   },
 } as const;
 
+interface CandidatePhotoFocalPoint {
+  x: number;
+  y: number;
+}
+
+const DEFAULT_CANDIDATE_FOCAL_POINT: CandidatePhotoFocalPoint = { x: 50, y: 50 };
+
+const clampPercent = (value: number): number => Math.min(100, Math.max(0, value));
+
 const TAB_IDS = [
   'tabpanel-oversikt',
   'tabpanel-roller',
@@ -358,11 +368,24 @@ const ConsentStatusSummary: FC<{ projectId: string; candidateId: string }> = ({ 
   );
 };
 
-export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFullscreen, isStandalone = false }: CastingPlannerPanelProps) {
+export function CastingPlannerPanel({
+  onClose,
+  isFullscreen = false,
+  onToggleFullscreen,
+  isStandalone = false,
+  isGuestMode = false,
+}: CastingPlannerPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
+  // Responsive quick-contact tiers (7-level layout scaling)
+  const quickTier2 = useMediaQuery('(min-width:480px)');
+  const quickTier3 = useMediaQuery('(min-width:768px)');
+  const quickTier4 = useMediaQuery('(min-width:1024px)');
+  const quickTier5 = useMediaQuery('(min-width:1280px)');
+  const quickTier6 = useMediaQuery('(min-width:1600px)');
+  const quickTier7 = useMediaQuery('(min-width:2000px)');
   const toast = useToast();
   const branding = useBrandingSettings();
   
@@ -383,49 +406,88 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
   // Shared TextField styling for dialogs with responsive font sizes - memoized
   // Responsive: xs (0.875rem), sm (1rem), md (0.95rem), lg (1.05rem), xl (1.125rem)
   const textFieldStyles = useMemo(() => ({
-    '& .MuiInputLabel-root': { 
-      color: 'rgba(255,255,255,0.87)',
-      fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+    '& .MuiFormLabel-root': { 
+      color: 'var(--dialog-text, #ffffff) !important',
+      fontSize: { xs: '0.82rem', sm: '0.86rem', md: '0.84rem', lg: '0.9rem', xl: '0.96rem' },
+      '&.Mui-focused': {
+        color: 'var(--dialog-text, #ffffff) !important',
+      },
+      '&.MuiInputLabel-shrink': {
+        color: 'var(--dialog-text, #ffffff) !important',
+      },
+      '&.Mui-focused.MuiInputLabel-shrink': {
+        color: 'var(--dialog-text, #ffffff) !important',
+      },
+    },
+    '& .MuiInputBase-input::placeholder': {
+      color: 'rgba(255,255,255,0.88)',
+      opacity: 1,
     },
     '& .MuiOutlinedInput-root': {
-      color: '#fff',
-      fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-      minHeight: { xs: 40, sm: 44, md: 46, lg: 52, xl: 60 },
-      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+      color: 'var(--dialog-text, #ffffff)',
+      fontSize: { xs: '0.88rem', sm: '0.92rem', md: '0.9rem', lg: '0.95rem', xl: '1rem' },
+      minHeight: { xs: 44, sm: 48, md: 50, lg: 52, xl: 56 },
+      bgcolor: 'var(--dialog-surface-muted, rgba(33,24,70,0.72))',
+      '& fieldset': { borderColor: 'var(--dialog-border-color, rgba(184,107,255,0.32))' },
       '& input': {
-        fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-        py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+        fontSize: { xs: '0.88rem', sm: '0.92rem', md: '0.9rem', lg: '0.95rem', xl: '1rem' },
+        py: { xs: 1, sm: 1.1, md: 1.15, lg: 1.2, xl: 1.25 },
       },
       '& textarea': {
-        fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-        py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+        fontSize: { xs: '0.88rem', sm: '0.92rem', md: '0.9rem', lg: '0.95rem', xl: '1rem' },
+        py: { xs: 1, sm: 1.1, md: 1.15, lg: 1.2, xl: 1.25 },
       },
-      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-      '&.Mui-focused fieldset': { borderColor: 'var(--dialog-accent-color, #00d4ff)', borderWidth: 2 },
+      '&:hover fieldset': { borderColor: 'var(--dialog-accent-soft, rgba(184,107,255,0.45))' },
+      '&.Mui-focused fieldset': { borderColor: 'var(--dialog-accent-color, #b86bff)', borderWidth: 2 },
     },
   }), []);
   
   // Shared InputLabel styling for Select components - memoized
   const inputLabelStyles = useMemo(() => ({
-    color: 'rgba(255,255,255,0.87)',
-    fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+    color: 'var(--dialog-text, #ffffff) !important',
+    fontSize: { xs: '0.82rem', sm: '0.86rem', md: '0.84rem', lg: '0.9rem', xl: '0.96rem' },
+    '&.Mui-focused': {
+      color: 'var(--dialog-text, #ffffff) !important',
+    },
+    '&.MuiInputLabel-shrink': {
+      color: 'var(--dialog-text, #ffffff) !important',
+    },
+    '&.Mui-focused.MuiInputLabel-shrink': {
+      color: 'var(--dialog-text, #ffffff) !important',
+    },
   }), []);
 
+  const attachmentInputLabelStyles = useMemo(() => ({
+    ...inputLabelStyles,
+    lineHeight: 1,
+    transform: 'translate(14px, -9px) scale(0.84)',
+    transformOrigin: 'top left',
+    '&.MuiInputLabel-shrink': {
+      transform: 'translate(14px, -9px) scale(0.84)',
+      color: 'var(--dialog-text, #ffffff) !important',
+    },
+    '&.Mui-focused.MuiInputLabel-shrink': {
+      transform: 'translate(14px, -9px) scale(0.84)',
+      color: 'var(--dialog-text, #ffffff) !important',
+    },
+  }), [inputLabelStyles]);
+
   const roleDialogSelectStyles = useMemo(() => ({
-    color: '#fff',
-    minHeight: { xs: 44, sm: 48, md: 50, lg: 52, xl: 56 },
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
-    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--dialog-accent-color, #00d4ff)', borderWidth: 2 },
+    color: 'var(--dialog-text, #ffffff)',
+    bgcolor: 'var(--dialog-surface-muted, rgba(33,24,70,0.72))',
+    minHeight: { xs: 46, sm: 48, md: 50, lg: 52, xl: 56 },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--dialog-border-color, rgba(184,107,255,0.32))' },
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--dialog-accent-soft, rgba(184,107,255,0.45))' },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--dialog-accent-color, #b86bff)', borderWidth: 2 },
     '& .MuiSelect-select': {
       display: 'flex',
       alignItems: 'center',
       minHeight: '0 !important',
-      py: { xs: 1.05, sm: 1.2, md: 1.25, lg: 1.35, xl: 1.5 },
+      py: { xs: 1.1, sm: 1.2, md: 1.25, lg: 1.3, xl: 1.35 },
       pr: '36px !important',
     },
     '& .MuiSvgIcon-root': {
-      color: 'rgba(255,255,255,0.87)',
+      color: 'var(--dialog-text, #ffffff)',
     },
   }), []);
   
@@ -440,9 +502,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     PaperProps: {
       sx: {
         zIndex: Z_INDEX.dialogSelect + 1,
-        bgcolor: '#1c2128',
-        color: '#fff',
-        border: '1px solid rgba(255,255,255,0.1)',
+        bgcolor: 'var(--dialog-surface, rgba(20,14,48,0.95))',
+        color: 'var(--dialog-text, #f3eaff)',
+        border: '1px solid var(--dialog-border-color, rgba(184,107,255,0.32))',
         boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
         mt: 0.5,
         maxHeight: { xs: 250, sm: 300, md: 280, lg: 320, xl: 400 },
@@ -523,14 +585,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
   const [previewTutorial, setPreviewTutorial] = useState<Tutorial | null>(null);
 
   const [availableScenes, setAvailableScenes] = useState<Array<{ id: string; name: string; thumbnail?: string }>>([]);
-  const [candidateSearchQuery, setCandidateSearchQuery] = useState('');
-  const debouncedCandidateSearch = useDebounce(candidateSearchQuery, 250);
   const [candidateStatusFilter, setCandidateStatusFilter] = useState<string>('all');
   const [scheduleDateFilter, setScheduleDateFilter] = useState<string>('');
   const [scheduleCandidateFilter, setScheduleCandidateFilter] = useState<string>('all');
   const [scheduleRoleFilter, setScheduleRoleFilter] = useState<string>('all');
   const [candidateViewMode, setCandidateViewMode] = useState<'list' | 'kanban'>('list');
   const [draggedCandidate, setDraggedCandidate] = useState<Candidate | null>(null);
+  const [quickContactIds, setQuickContactIds] = useState<Set<string>>(new Set());
+  const [quickContactsLoaded, setQuickContactsLoaded] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<Awaited<ReturnType<typeof castingAuthService.getUserRole>> | null>(null);
   
   // Permissions state for role-based tab visibility
@@ -598,6 +660,96 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(true); // Open by default to let user choose project
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
+
+  // Preload lazily-rendered dialog modules after initial mount so first open
+  // does not suspend during a synchronous user interaction.
+  useEffect(() => {
+    void Promise.allSettled([
+      import('./CastingProfessionDialog'),
+      import('./CastingSharingDialog'),
+      import('./AdminDashboard'),
+      import('./LoginDialog'),
+      import('./CastingPlannerTutorial'),
+      import('./TutorialEditorPanel'),
+      import('./ConsentContractDialog'),
+      import('./ConsentManagementPanel'),
+      import('./ProfessionOnboardingDialog'),
+    ]);
+  }, []);
+
+  const blurActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  }, []);
+
+  const navigateToTab = useCallback((tabIndex: number) => {
+    startTransition(() => setActiveTab(tabIndex));
+  }, []);
+
+  const openRoleDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setRoleDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openCandidateDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setCandidateDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openScheduleDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setScheduleDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openSharingDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setSharingDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openProfessionDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setProfessionDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openAdminDashboard = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setAdminDashboardOpen(true));
+  }, [blurActiveElement]);
+
+  const openLoginDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setLoginDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openProjectCreationModal = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setProjectCreationModalOpen(true));
+  }, [blurActiveElement]);
+
+  const openConsentContractDialog = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setConsentContractDialogOpen(true));
+  }, [blurActiveElement]);
+
+  const openTutorial = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setShowTutorial(true));
+  }, [blurActiveElement]);
+
+  const openTutorialEditor = useCallback(() => {
+    blurActiveElement();
+    startTransition(() => setShowTutorialEditor(true));
+  }, [blurActiveElement]);
+
+  const openPreviewTutorial = useCallback((tutorial: Tutorial) => {
+    startTransition(() => {
+      setShowTutorialEditor(false);
+      setPreviewTutorial(tutorial);
+    });
+  }, []);
   
   // Stable callback for project ID changes to prevent infinite loops
   const handleProjectIdChange = useCallback((projectId: string | null) => {
@@ -711,8 +863,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     { color: '#06b6d4', icon: SharingTabIcon },
     { color: '#ef4444', icon: LiveSetTabIcon },
   ], [professionConfig?.color]);
-  const roleDialogAccentColor = tabConfig[1].color;
+  const roleDialogAccentColor = '#b86bff';
   const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
+  const roleDialogBackdrop = `url(${rolesBackdrop4})`;
 
   // Quick navigation links for SpeedDial - matching tabConfig icons and colors
   // SpeedDial with direction="up" displays items from first to last (nearest to farthest from FAB)
@@ -724,7 +877,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       color: professionConfig?.color || '#8b5cf6', 
       icon: AddIcon, 
       tabIndex: -1, // Special action
-      action: () => setProjectCreationModalOpen(true),
+      action: openProjectCreationModal,
       badge: null,
     },
     { 
@@ -769,7 +922,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       tabIndex: 8,
       badge: currentProject?.shotLists?.length || 0,
     },
-  ], [branding.tokens.labels, profession, professionConfig, tabConfig, currentProject]);
+  ], [branding.tokens.labels, profession, professionConfig, tabConfig, currentProject, openProjectCreationModal]);
 
   const fabIconKey = branding.tokens.labels.fabIcon;
   const fabIconMap: Record<string, ReactElement> = {
@@ -882,11 +1035,11 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         setProfession(loadedProfession);
       } else {
         // Show dialog if profession not set
-        setProfessionDialogOpen(true);
+        openProfessionDialog();
       }
     };
     initProfession();
-  }, [adminUser, loadProfession]);
+  }, [adminUser, loadProfession, openProfessionDialog]);
 
   useEffect(() => {
     // Load projects regardless of profession being set
@@ -993,6 +1146,39 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         canManageLocations: false,
         canApprove: false,
       });
+
+      // Guest bypass mode should have full tab access across the Role Room.
+      if (isGuestMode) {
+        const now = new Date().toISOString();
+        setCurrentUserRole({
+          id: `role-guest-${projectIdForRequest}`,
+          userId: 'guest',
+          projectId: projectIdForRequest,
+          role: 'producer',
+          permissions: {
+            canViewAll: true,
+            canEditCasting: true,
+            canEditProduction: true,
+            canEditShotLists: true,
+            canManageCrew: true,
+            canManageLocations: true,
+            canApprove: true,
+          },
+          createdAt: now,
+          updatedAt: now,
+        });
+        setPermissions({
+          canViewAll: true,
+          canEditCasting: true,
+          canEditProduction: true,
+          canEditShotLists: true,
+          canManageCrew: true,
+          canManageLocations: true,
+          canApprove: true,
+        });
+        setPermissionsLoading(false);
+        return;
+      }
       
       try {
         // Check if logged in as admin/owner - grant full permissions
@@ -1131,7 +1317,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         canApprove: false,
       });
     }
-  }, [currentProject, adminUser]);
+  }, [currentProject, adminUser, isGuestMode]);
 
   const loadAvailableScenes = useCallback(async () => {
     // Load scenes from casting service
@@ -1171,6 +1357,61 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       loadUserRole();
     }
   }, [currentProject, adminUser, loadUserRole]);
+
+  // Preload frequently used lazy modules to avoid sync-input suspense errors
+  useEffect(() => {
+    void import('./ConsentContractDialog');
+    void import('./ProfessionOnboardingDialog');
+    void import('./CastingSharingDialog');
+    void import('./LoginDialog');
+    void import('./AdminDashboard');
+    void import('./CastingPlannerTutorial');
+    void import('./TutorialEditorPanel');
+    void import('./RoleManagementPanel');
+    void import('./CandidateManagementPanel');
+    void import('./KanbanPanel');
+    void import('./production/CrewCalendarPanel');
+    void import('./screenplay/StoryLogicPanel');
+    void import('./ManuscriptPanel');
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadQuickContacts = async () => {
+      const projectId = currentProject?.id;
+      if (!projectId) {
+        if (isMounted) {
+          setQuickContactIds(new Set());
+          setQuickContactsLoaded(true);
+        }
+        return;
+      }
+      setQuickContactsLoaded(false);
+      const cachedQuickContacts = await settingsService.getSetting<string[]>('virtualStudio_candidateQuickContacts', { projectId });
+      if (isMounted) {
+        setQuickContactIds(new Set(cachedQuickContacts || []));
+        setQuickContactsLoaded(true);
+      }
+    };
+    void loadQuickContacts();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentProject?.id]);
+
+  useEffect(() => {
+    if (!quickContactsLoaded || !currentProject?.id) return;
+    void settingsService.setSetting('virtualStudio_candidateQuickContacts', [...quickContactIds], { projectId: currentProject.id });
+  }, [quickContactIds, currentProject?.id, quickContactsLoaded]);
+
+  useEffect(() => {
+    if (!currentProject || quickContactIds.size === 0) return;
+    const candidateIds = new Set(currentProject.candidates.map(candidate => candidate.id));
+    const prunedIds = [...quickContactIds].filter((candidateId) => candidateIds.has(candidateId));
+    if (prunedIds.length !== quickContactIds.size) {
+      setQuickContactIds(new Set(prunedIds));
+    }
+  }, [currentProject, quickContactIds]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -1236,6 +1477,12 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     }
   }, [profession, currentProject?.id]);
 
+  const handleQuickContactsChange = useCallback((ids: string[]) => {
+    startTransition(() => {
+      setQuickContactIds(new Set(ids));
+    });
+  }, []);
+
   const handleCreateRole = useCallback(() => {
     if (!currentProject) {
       toast.showWarning(branding.tokens.labels.mustCreateProject);
@@ -1249,8 +1496,109 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       status: 'draft',
     };
     setSelectedRole(newRole);
-    setRoleDialogOpen(true);
+    openRoleDialog();
   }, [currentProject, toast]);
+
+  const toRichTextContent = useCallback((value: string) => {
+    if (!value) return '';
+    const hasHtmlTags = /<[^>]+>/.test(value);
+    if (hasHtmlTags) return value;
+    const escaped = value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return `<p>${escaped.replace(/\n/g, '<br/>')}</p>`;
+  }, []);
+
+  const toPlainTextDescription = useCallback((value: string) => {
+    if (!value) return '';
+    const withLineBreaks = value
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6)>/gi, '\n')
+      .replace(/<[^>]*>/g, '');
+    if (typeof window === 'undefined') {
+      return withLineBreaks.replace(/\u00a0/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    }
+    const parserNode = document.createElement('textarea');
+    parserNode.innerHTML = withLineBreaks;
+    return parserNode.value.replace(/\u00a0/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  }, []);
+
+  const getCandidatePhotoFocalPoints = useCallback((candidate: Candidate | null): CandidatePhotoFocalPoint[] => {
+    const photos = Array.isArray(candidate?.photos) ? candidate.photos : [];
+    const rawFocalPoints = Array.isArray(candidate?.photoFocalPoints) ? candidate.photoFocalPoints : [];
+    return photos.map((_, index) => {
+      const point = rawFocalPoints[index];
+      return {
+        x: clampPercent(typeof point?.x === 'number' ? point.x : DEFAULT_CANDIDATE_FOCAL_POINT.x),
+        y: clampPercent(typeof point?.y === 'number' ? point.y : DEFAULT_CANDIDATE_FOCAL_POINT.y),
+      };
+    });
+  }, []);
+
+  const setCandidatePhotoFocalPoint = useCallback((photoIndex: number, nextPoint: CandidatePhotoFocalPoint) => {
+    setSelectedCandidate(prev => {
+      if (!prev) return prev;
+      const photos = Array.isArray(prev.photos) ? prev.photos : [];
+      if (photoIndex < 0 || photoIndex >= photos.length) return prev;
+      const nextFocalPoints = getCandidatePhotoFocalPoints(prev);
+      nextFocalPoints[photoIndex] = {
+        x: clampPercent(nextPoint.x),
+        y: clampPercent(nextPoint.y),
+      };
+      return {
+        ...prev,
+        photoFocalPoints: nextFocalPoints,
+      };
+    });
+  }, [getCandidatePhotoFocalPoints]);
+
+  const handleCandidatePhotoFocalPointClick = useCallback((event: MouseEvent<HTMLButtonElement>, photoIndex: number) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    setCandidatePhotoFocalPoint(photoIndex, { x, y });
+  }, [setCandidatePhotoFocalPoint]);
+
+  const handleDeleteCandidatePhoto = useCallback((photoIndex: number) => {
+    setSelectedCandidate(prev => {
+      if (!prev) return prev;
+      const nextPhotos = Array.isArray(prev.photos) ? [...prev.photos] : [];
+      if (photoIndex < 0 || photoIndex >= nextPhotos.length) return prev;
+      nextPhotos.splice(photoIndex, 1);
+
+      const nextFocalPoints = getCandidatePhotoFocalPoints(prev);
+      nextFocalPoints.splice(photoIndex, 1);
+
+      return {
+        ...prev,
+        photos: nextPhotos,
+        photoFocalPoints: nextFocalPoints,
+      };
+    });
+  }, [getCandidatePhotoFocalPoints]);
+
+  const handleSetPrimaryCandidatePhoto = useCallback((photoIndex: number) => {
+    setSelectedCandidate(prev => {
+      if (!prev) return prev;
+      const nextPhotos = Array.isArray(prev.photos) ? [...prev.photos] : [];
+      if (photoIndex <= 0 || photoIndex >= nextPhotos.length) return prev;
+
+      const [primaryPhoto] = nextPhotos.splice(photoIndex, 1);
+      nextPhotos.unshift(primaryPhoto);
+
+      const nextFocalPoints = getCandidatePhotoFocalPoints(prev);
+      const [primaryFocalPoint] = nextFocalPoints.splice(photoIndex, 1);
+      nextFocalPoints.unshift(primaryFocalPoint || { ...DEFAULT_CANDIDATE_FOCAL_POINT });
+
+      return {
+        ...prev,
+        photos: nextPhotos,
+        photoFocalPoints: nextFocalPoints,
+      };
+    });
+  }, [getCandidatePhotoFocalPoints]);
 
   const handleSaveRole = useCallback(async () => {
     if (!currentProject || !selectedRole) return;
@@ -1261,7 +1609,11 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     }
     
     try {
-      await castingService.saveRole(currentProject.id, selectedRole);
+      const roleToSave: Role = {
+        ...selectedRole,
+        description: toPlainTextDescription(selectedRole.description || ''),
+      };
+      await castingService.saveRole(currentProject.id, roleToSave);
       await loadProjects();
       setRoleDialogOpen(false);
       setSelectedRole(null);
@@ -1269,7 +1621,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       console.error('Error saving role:', error);
       toast.showError(branding.tokens.labels.roleSaveError);
     }
-  }, [currentProject, selectedRole, toast, loadProjects]);
+  }, [currentProject, selectedRole, toast, loadProjects, toPlainTextDescription]);
 
   const handleDeleteRole = useCallback(async (roleId: string) => {
     if (!currentProject) return;
@@ -1327,6 +1679,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       name: '',
       contactInfo: {},
       photos: [],
+      photoFocalPoints: [],
       videos: [],
       auditionNotes: '',
       status: 'pending',
@@ -1335,7 +1688,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       updatedAt: new Date().toISOString(),
     };
     setSelectedCandidate(newCandidate);
-    setCandidateDialogOpen(true);
+    openCandidateDialog();
   }, [currentProject, toast]);
 
   const handleSaveCandidate = useCallback(async () => {
@@ -1363,7 +1716,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           setSelectedCandidate(savedCandidate);
           setCandidateDialogOpen(false);
           setSendConsentOnSave(false);
-          setConsentContractDialogOpen(true);
+          openConsentContractDialog();
         } else {
           setCandidateDialogOpen(false);
           setSelectedCandidate(null);
@@ -1407,7 +1760,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       status: 'scheduled',
     };
     setSelectedSchedule(newSchedule);
-    setScheduleDialogOpen(true);
+    openScheduleDialog();
   }, [currentProject, toast]);
 
   const handleSaveSchedule = useCallback(async () => {
@@ -1437,13 +1790,35 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
   
   // Memoized filtered candidates (using debounced search for performance)
   const candidates = useMemo(() => allCandidates.filter(c => {
-    const matchesSearch = !debouncedCandidateSearch || 
-      c.name.toLowerCase().includes(debouncedCandidateSearch.toLowerCase()) ||
-      c.contactInfo?.email?.toLowerCase().includes(debouncedCandidateSearch.toLowerCase()) ||
-      c.contactInfo?.phone?.includes(debouncedCandidateSearch);
     const matchesStatus = candidateStatusFilter === 'all' || c.status === candidateStatusFilter;
-    return matchesSearch && matchesStatus;
-  }), [allCandidates, debouncedCandidateSearch, candidateStatusFilter]);
+    return matchesStatus;
+  }), [allCandidates, candidateStatusFilter]);
+
+  const quickContactCandidates = useMemo(() => {
+    const explicitlyMarked = candidates.filter((candidate) => quickContactIds.has(candidate.id));
+    if (explicitlyMarked.length > 0) return explicitlyMarked;
+    return candidates.filter((candidate) => candidate.status === 'selected' || candidate.status === 'shortlist');
+  }, [candidates, quickContactIds]);
+
+  const quickContactVisibleCount = useMemo(() => {
+    if (quickTier7) return 16;
+    if (quickTier6) return 14;
+    if (quickTier5) return 12;
+    if (quickTier4) return 10;
+    if (quickTier3) return 8;
+    if (quickTier2) return 6;
+    return 4;
+  }, [quickTier2, quickTier3, quickTier4, quickTier5, quickTier6, quickTier7]);
+
+  const quickContactGridColumns = useMemo(() => {
+    if (quickTier7) return 'repeat(8, minmax(0, 1fr))';
+    if (quickTier6) return 'repeat(7, minmax(0, 1fr))';
+    if (quickTier5) return 'repeat(6, minmax(0, 1fr))';
+    if (quickTier4) return 'repeat(5, minmax(0, 1fr))';
+    if (quickTier3) return 'repeat(4, minmax(0, 1fr))';
+    if (quickTier2) return 'repeat(3, minmax(0, 1fr))';
+    return 'repeat(1, minmax(0, 1fr))';
+  }, [quickTier2, quickTier3, quickTier4, quickTier5, quickTier6, quickTier7]);
   
   // Memoized filtered schedules
   const schedules = useMemo(() => allSchedules.filter(s => {
@@ -1460,14 +1835,21 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
     upcomingSchedules: schedules.filter(s => s.status === 'scheduled' && new Date(s.date) >= new Date()).length,
   }), [roles, candidates, schedules]);
 
+  const candidatePhotoFocalPoints = useMemo(
+    () => getCandidatePhotoFocalPoints(selectedCandidate),
+    [getCandidatePhotoFocalPoints, selectedCandidate],
+  );
+
   return (
     <>
-      <Suspense fallback={null}>
-        <CastingProfessionDialog
-          open={professionDialogOpen}
-          onSelect={handleProfessionSelect}
-        />
-      </Suspense>
+      {professionDialogOpen && (
+        <Suspense fallback={null}>
+          <CastingProfessionDialog
+            open={professionDialogOpen}
+            onSelect={handleProfessionSelect}
+          />
+        </Suspense>
+      )}
       <Box
         role="main"
         aria-label={branding.appName}
@@ -1672,7 +2054,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   onClick={(e: MouseEvent) => {
                     e.stopPropagation();
                     setProjectToEdit(project);
-                    setProjectCreationModalOpen(true);
+                    openProjectCreationModal();
                   }}
                   aria-label={branding.tokens.labels.editProjectAriaLabel.replace('{project}', project.name)}
                   title={branding.tokens.labels.editProjectLabel}
@@ -1752,7 +2134,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             size="small"
             onClick={() => {
               setProjectToEdit(null);
-              setProjectCreationModalOpen(true);
+              openProjectCreationModal();
             }}
             aria-label={branding.tokens.labels.newProjectTitle}
             data-tutorial-target="create-project-button"
@@ -1777,7 +2159,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           {/* Tutorial button */}
           <IconButton
             size="small"
-            onClick={() => setShowTutorial(true)}
+            onClick={openTutorial}
             aria-label={branding.tokens.labels.tutorialLabel}
             title={branding.tokens.labels.tutorialTitle}
             sx={{
@@ -1831,7 +2213,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               {/* Bytt profesjon - tilgjengelig for alle innloggede brukere */}
               <IconButton
                 size="small"
-                onClick={() => setProfessionDialogOpen(true)}
+                onClick={openProfessionDialog}
                 aria-label={branding.tokens.labels.switchProfessionLabel}
                 title={branding.tokens.labels.switchProfessionLabel}
                 sx={{
@@ -1846,7 +2228,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 <>
                   <IconButton
                     size="small"
-                    onClick={() => setShowTutorialEditor(true)}
+                    onClick={openTutorialEditor}
                     aria-label={branding.tokens.labels.editTutorialsLabel}
                     title={branding.tokens.labels.editTutorialsLabel}
                     sx={{
@@ -1858,7 +2240,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   </IconButton>
                   <IconButton
                     size="small"
-                    onClick={() => setAdminDashboardOpen(true)}
+                    onClick={openAdminDashboard}
                     aria-label={branding.tokens.labels.manageUsersLabel}
                     title={branding.tokens.labels.manageUsersLabel}
                     sx={{
@@ -1890,7 +2272,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 size="small"
                 onClick={() => {
                   resetOnboarding();
-                  triggerProfessionOnboarding();
+                  startTransition(() => {
+                    triggerProfessionOnboarding();
+                  });
                 }}
                 aria-label={branding.tokens.labels.showIntroLabel}
                 title={branding.tokens.labels.showIntroTitle}
@@ -1922,7 +2306,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           ) : (
             <IconButton
               size="small"
-              onClick={() => setLoginDialogOpen(true)}
+              onClick={openLoginDialog}
               aria-label={branding.tokens.labels.loginLabel}
               title={branding.tokens.labels.loginLabel}
               sx={{
@@ -2005,7 +2389,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       >
         <Tabs
           value={activeTab}
-          onChange={(_: SyntheticEvent, v: number) => setActiveTab(v)}
+          onChange={(_: SyntheticEvent, v: number) => navigateToTab(v)}
           aria-label={`${branding.appName} faner`}
           variant="scrollable"
           scrollButtons={isMobile ? true : 'auto'}
@@ -2176,11 +2560,11 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             roles={roles}
             candidates={allCandidates}
             schedules={schedules}
-            onNavigateToTab={setActiveTab}
+            onNavigateToTab={navigateToTab}
             onCreateRole={handleCreateRole}
             onCreateCandidate={handleCreateCandidate}
             onCreateSchedule={handleCreateSchedule}
-            onOpenSharing={() => setSharingDialogOpen(true)}
+            onOpenSharing={openSharingDialog}
             onUpdate={async () => {
               if (currentProject) {
                 const updated = await castingService.getProject(currentProject.id);
@@ -2191,7 +2575,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             }}
             onEditCandidate={(candidate) => {
               setSelectedCandidate(candidate);
-              setCandidateDialogOpen(true);
+              openCandidateDialog();
             }}
             onCandidatesChange={loadProjects}
             profession={profession}
@@ -2205,7 +2589,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             onRolesChange={loadProjects}
             onEditRole={(role) => {
               setSelectedRole(role);
-              setRoleDialogOpen(true);
+              openRoleDialog();
             }}
             onCreateRole={handleCreateRole}
             profession={profession}
@@ -2216,20 +2600,6 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Candidate filters & view mode toolbar */}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-              <TextField
-                placeholder={branding.tokens.labels.searchCandidatesPlaceholder}
-                size="small"
-                value={candidateSearchQuery}
-                onChange={(e) => setCandidateSearchQuery(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <RecentActorsIcon sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 20 }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{ ...textFieldStyles, flex: 1, minWidth: 180 }}
-              />
               <FormControl size="small" sx={{ minWidth: 130 }}>
                 <Select
                   value={candidateStatusFilter}
@@ -2250,7 +2620,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto' }}>
                 <IconButton
                   size="small"
-                  onClick={() => setCandidateViewMode('list')}
+                  onClick={() => {
+                    startTransition(() => setCandidateViewMode('list'));
+                  }}
                   aria-label={branding.tokens.labels.listViewLabel}
                   sx={{ color: candidateViewMode === 'list' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
@@ -2258,7 +2630,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 </IconButton>
                 <IconButton
                   size="small"
-                  onClick={() => setCandidateViewMode('kanban')}
+                  onClick={() => {
+                    startTransition(() => setCandidateViewMode('kanban'));
+                  }}
                   aria-label={branding.tokens.labels.kanbanViewLabel}
                   sx={{ color: candidateViewMode === 'kanban' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
@@ -2275,10 +2649,10 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   onCandidatesChange={loadProjects}
                   onEditCandidate={(candidate: Candidate) => {
                     setSelectedCandidate(candidate);
-                    setCandidateDialogOpen(true);
+                    openCandidateDialog();
                   }}
                   onCreateCandidate={handleCreateCandidate}
-                  onNavigateToTab={setActiveTab}
+                  onNavigateToTab={navigateToTab}
                 />
               </Suspense>
             ) : (
@@ -2298,41 +2672,129 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   </Button>
                 </Box>
               )}
-              {/* Quick contact actions for selected candidates */}
-              {candidates.filter(c => c.status === 'selected' || c.status === 'shortlist').length > 0 && (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mr: 0.5, fontSize: '0.75rem' }}>
-                    {branding.tokens.labels.quickContactLabel}
-                  </Typography>
-                  {candidates
-                    .filter(c => c.status === 'selected' || c.status === 'shortlist')
-                    .slice(0, 5)
-                    .map(c => (
-                      <Box key={c.id} sx={{ display: 'inline-flex', gap: 0.25 }}>
-                        {c.contactInfo?.email && (
-                          <Tooltip title={`${branding.tokens.labels.emailTooltipPrefix}${c.contactInfo.email}`}>
-                            <IconButton
-                              size="small"
-                              onClick={() => window.open(`mailto:${c.contactInfo.email}`, '_blank')}
-                              sx={{ color: 'rgba(255,255,255,0.5)', p: 0.5 }}
-                            >
-                              <EmailIcon sx={{ fontSize: 14 }} />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {c.contactInfo?.phone && (
-                          <Tooltip title={`${branding.tokens.labels.callTooltipPrefix}${c.contactInfo.phone}`}>
-                            <IconButton
-                              size="small"
-                              onClick={() => window.open(`tel:${c.contactInfo.phone}`, '_blank')}
-                              sx={{ color: 'rgba(255,255,255,0.5)', p: 0.5 }}
-                            >
-                              <PhoneIcon sx={{ fontSize: 14 }} />
-                            </IconButton>
-                          </Tooltip>
-                        )}
+              {/* Quick contact actions */}
+              {quickContactCandidates.length > 0 && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    gap: { xs: 1, sm: 1.1, md: 1.2, lg: 1.25, xl: 1.4 },
+                    p: { xs: 1, sm: 1.2, md: 1.3, lg: 1.4, xl: 1.6 },
+                    borderRadius: { xs: 1.25, sm: 1.5, md: 1.75, lg: 2, xl: 2.2 },
+                    border: '1px solid rgba(0,212,255,0.3)',
+                    bgcolor: 'rgba(0,212,255,0.08)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: '#a8ecff',
+                        fontWeight: 700,
+                        fontSize: { xs: '0.74rem', sm: '0.76rem', md: '0.78rem', lg: '0.8rem', xl: '0.84rem' },
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {branding.tokens.labels.quickContactLabel}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={`${quickContactCandidates.length}`}
+                      sx={{
+                        height: { xs: 21, sm: 22, md: 23, lg: 24, xl: 25 },
+                        color: '#a8ecff',
+                        bgcolor: 'rgba(0,212,255,0.14)',
+                        border: '1px solid rgba(0,212,255,0.28)',
+                        fontWeight: 700,
+                      }}
+                    />
+                  </Box>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: quickContactGridColumns,
+                      gap: { xs: 0.65, sm: 0.7, md: 0.8, lg: 0.9, xl: 1 },
+                    }}
+                  >
+                    {quickContactCandidates.slice(0, quickContactVisibleCount).map((candidate) => (
+                      <Box
+                        key={candidate.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: { xs: 0.45, sm: 0.5, md: 0.6, lg: 0.65, xl: 0.75 },
+                          px: { xs: 0.72, sm: 0.8, md: 0.9, lg: 1, xl: 1.1 },
+                          py: { xs: 0.5, sm: 0.55, md: 0.62, lg: 0.68, xl: 0.72 },
+                          borderRadius: 999,
+                          bgcolor: 'rgba(4,21,33,0.62)',
+                          border: '1px solid rgba(0,212,255,0.26)',
+                          minWidth: 0,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            color: 'rgba(255,255,255,0.92)',
+                            fontSize: { xs: '0.69rem', sm: '0.72rem', md: '0.74rem', lg: '0.76rem', xl: '0.8rem' },
+                            fontWeight: 600,
+                            minWidth: 0,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                          }}
+                        >
+                          {candidate.name}
+                        </Typography>
+                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.15 }}>
+                          {candidate.contactInfo?.email && (
+                            <Tooltip title={`${branding.tokens.labels.emailTooltipPrefix}${candidate.contactInfo.email}`}>
+                              <IconButton
+                                size="small"
+                                onClick={() => window.open(`mailto:${candidate.contactInfo.email}`, '_blank')}
+                                sx={{
+                                  color: '#8ce6ff',
+                                  p: { xs: 0.35, sm: 0.4, md: 0.45, lg: 0.5, xl: 0.55 },
+                                }}
+                              >
+                                <EmailIcon sx={{ fontSize: { xs: 13, sm: 14, md: 15, lg: 15, xl: 16 } }} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {candidate.contactInfo?.phone && (
+                            <Tooltip title={`${branding.tokens.labels.callTooltipPrefix}${candidate.contactInfo.phone}`}>
+                              <IconButton
+                                size="small"
+                                onClick={() => window.open(`tel:${candidate.contactInfo.phone}`, '_blank')}
+                                sx={{
+                                  color: '#8ce6ff',
+                                  p: { xs: 0.35, sm: 0.4, md: 0.45, lg: 0.5, xl: 0.55 },
+                                }}
+                              >
+                                <PhoneIcon sx={{ fontSize: { xs: 13, sm: 14, md: 15, lg: 15, xl: 16 } }} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Box>
                       </Box>
                     ))}
+                  </Box>
+                  {quickContactCandidates.length > quickContactVisibleCount && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Chip
+                        size="small"
+                        label={`+${quickContactCandidates.length - quickContactVisibleCount}`}
+                        sx={{
+                          bgcolor: 'rgba(255,255,255,0.08)',
+                          color: '#fff',
+                          fontWeight: 700,
+                          height: { xs: 21, sm: 22, md: 23, lg: 24, xl: 25 },
+                        }}
+                      />
+                    </Box>
+                  )}
                 </Box>
               )}
             <CandidateManagementPanel
@@ -2342,10 +2804,12 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               onCandidatesChange={loadProjects}
               onEditCandidate={(candidate) => {
                 setSelectedCandidate(candidate);
-                setCandidateDialogOpen(true);
+                openCandidateDialog();
               }}
               onCreateCandidate={handleCreateCandidate}
               profession={profession}
+              quickContactIds={quickContactIds}
+              onQuickContactsChange={handleQuickContactsChange}
             />
             </>
             )}
@@ -2425,11 +2889,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             onSchedulesChange={loadProjects}
             onEditSchedule={(schedule) => {
               setSelectedSchedule(schedule);
-              setScheduleDialogOpen(true);
+              openScheduleDialog();
             }}
             onCreateSchedule={handleCreateSchedule}
-            onNavigateToTab={setActiveTab}
+            onNavigateToTab={navigateToTab}
             profession={profession}
+            userId={adminUser ? String(adminUser.id) : undefined}
+            enableRoleRoomApi={!isGuestMode}
           />
         </TabPanel>
 
@@ -2571,7 +3037,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               }}>
                 <Button
                   variant={calendarViewMode === 'production' ? 'contained' : 'outlined'}
-                  onClick={() => setCalendarViewMode('production')}
+                  onClick={() => {
+                    startTransition(() => setCalendarViewMode('production'));
+                  }}
                   startIcon={<CalendarMonthIcon />}
                   size={isMobile ? 'small' : 'medium'}
                   sx={{
@@ -2587,7 +3055,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 </Button>
                 <Button
                   variant={calendarViewMode === 'crew' ? 'contained' : 'outlined'}
-                  onClick={() => setCalendarViewMode('crew')}
+                  onClick={() => {
+                    startTransition(() => setCalendarViewMode('crew'));
+                  }}
                   startIcon={<GroupsIcon />}
                   size={isMobile ? 'small' : 'medium'}
                   sx={{
@@ -2739,7 +3209,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                         borderColor: '#8b5cf6',
                       },
                     }}
-                    onClick={() => setStoryArcView('story-logic')}
+                    onClick={() => {
+                      startTransition(() => setStoryArcView('story-logic'));
+                    }}
                   >
                     <CardContent sx={{ p: 3, textAlign: 'center' }}>
                       <Box sx={{
@@ -2791,7 +3263,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                         borderColor: '#ec4899',
                       },
                     }}
-                    onClick={() => setStoryArcView('story-writer')}
+                    onClick={() => {
+                      startTransition(() => setStoryArcView('story-writer'));
+                    }}
                   >
                     <CardContent sx={{ p: 3, textAlign: 'center' }}>
                       <Box sx={{
@@ -2840,7 +3314,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               }}>
                 <Button
                   startIcon={<CloseIcon />}
-                  onClick={() => setStoryArcView('main')}
+                  onClick={() => {
+                    startTransition(() => setStoryArcView('main'));
+                  }}
                   size="small"
                   sx={{ color: 'rgba(255,255,255,0.87)' }}
                 >
@@ -2875,7 +3351,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               }}>
                 <Button
                   startIcon={<CloseIcon />}
-                  onClick={() => setStoryArcView('main')}
+                  onClick={() => {
+                    startTransition(() => setStoryArcView('main'));
+                  }}
                   size="small"
                   sx={{ color: 'rgba(255,255,255,0.87)' }}
                 >
@@ -2917,7 +3395,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           ) : (
             <SharingPanel
               project={currentProject}
-              onOpenSharingDialog={() => setSharingDialogOpen(true)}
+              onOpenSharingDialog={openSharingDialog}
             />
           )}
         </TabPanel>
@@ -2927,7 +3405,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             projectId={currentProject?.id ?? ''}
             projectName={currentProject?.title ?? undefined}
             shootingDay={new Date().toLocaleDateString('no-NO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            onExit={() => setActiveTab(0)}
+            onExit={() => navigateToTab(0)}
           />
         </TabPanel>
         </Suspense>
@@ -2942,73 +3420,120 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         onClose={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
         maxWidth="lg"
         fullWidth
+        fullScreen={isMobile}
         container={() => document.body}
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
+            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
             '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
             '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
             '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
-            bgcolor: '#1c2128',
-            color: '#fff',
-            borderRadius: 2,
+            '--dialog-surface': 'rgba(20,14,48,0.94)',
+            '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
+            '--dialog-border-color': 'rgba(184,107,255,0.34)',
+            '--dialog-text': '#ffffff',
+            '--dialog-text-muted': '#ffffff',
+            bgcolor: 'var(--dialog-surface)',
+            color: 'var(--dialog-text)',
+            border: '1px solid var(--dialog-border-color)',
+            borderRadius: { xs: 0, sm: 2.5 },
             width: '100%',
-            maxWidth: { xs: '96vw', sm: '92vw', md: '88vw', lg: 1120 },
+            maxWidth: { xs: '100vw', sm: '92vw', md: '90vw', lg: 1180 },
             zIndex: Z_INDEX.dialog,
+            backgroundImage: [
+              'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
+              'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
+              'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+              roleDialogBackdrop,
+            ].join(', '),
+            backgroundSize: 'auto, auto, auto, cover',
+            backgroundPosition: 'center, center, center, center',
+            backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat',
+            boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
+            overflow: 'hidden',
           },
         }}
         sx={{
           zIndex: Z_INDEX.dialog,
           '& .MuiBackdrop-root': {
-            bgcolor: 'rgba(0,0,0,0.8)',
+            bgcolor: 'rgba(8,5,20,0.86)',
+            backdropFilter: 'blur(3px)',
             zIndex: Z_INDEX.backdrop,
           },
         }}
       >
         <DialogTitle sx={{ 
-          color: '#fff', 
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          color: 'var(--dialog-text)', 
+          borderBottom: '1px solid var(--dialog-border-color)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          py: 2,
-          px: 3,
+          py: { xs: 2.25, sm: 2.5 },
+          px: { xs: 2.5, sm: 3.5 },
+          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <TheaterComedyIcon sx={{ color: roleDialogAccentColor, fontSize: 28 }} />
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 {selectedRole?.id && !selectedRole.name ? branding.tokens.labels.roleDialogNewTitle : branding.tokens.labels.roleDialogEditTitle}
               </Typography>
               {selectedRole?.name && (
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+                <Typography variant="body2" sx={{ color: 'var(--dialog-text)' }}>
                   {selectedRole.name}
                 </Typography>
               )}
             </Box>
           </Box>
-          <IconButton onClick={() => { setRoleDialogOpen(false); setSelectedRole(null); }} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton
+            onClick={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
+            sx={{
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
+          >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: { xs: 2.75, sm: 3.25 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3, sm: 3.5 } }}>
+        <DialogContent
+          sx={{
+            pt: { xs: 3, sm: 3.5 },
+            px: { xs: 2.5, sm: 3.5, md: 4 },
+            pb: { xs: 3.25, sm: 3.75 },
+            maxHeight: { xs: 'none', sm: '72vh' },
+            overflowY: 'auto',
+          }}
+        >
           {selectedRole && (
             <Grid
               container
               alignItems="flex-start"
               rowSpacing={{ xs: 3.5, md: 0 }}
-              columnSpacing={0}
+              columnSpacing={{ xs: 0, md: 0 }}
             >
               {/* Left Column - Basic Info */}
-              <Grid size={{ xs: 12, md: 5 }} sx={{ pr: { md: 2, lg: 2.25 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
+              <Grid size={{ xs: 12, md: 5 }} sx={{ pr: { md: 2.5 } }}>
+                <Box
+                  sx={{
+                    height: '100%',
+                    p: { xs: 2, sm: 2.25, md: 2.5 },
+                    borderRadius: 2.25,
+                    border: '1px solid var(--dialog-border-color)',
+                    bgcolor: 'transparent',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+                  }}
+                >
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mb: 2.5, px: 1, ml: -1, mt: -3.2, bgcolor: 'var(--dialog-surface)' }}>
                   <PersonNameIcon sx={{ color: roleDialogAccentColor, fontSize: 20 }} />
-                  <Typography variant="subtitle2" sx={{ color: roleDialogAccentColor, fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'var(--dialog-text)', fontWeight: 600 }}>
                     {branding.tokens.labels.roleBasicsSectionLabel}
                   </Typography>
                 </Box>
-                <Stack spacing={{ xs: 2.5, sm: 2.75, md: 3 }}>
+                <Stack spacing={{ xs: 2.75, sm: 3, md: 3.25 }}>
                   <TextField
                     label={branding.tokens.labels.roleNameLabel}
                     value={selectedRole.name}
@@ -3025,24 +3550,55 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     }}
                     sx={textFieldStyles}
                   />
-                  <TextField
-                    label={branding.tokens.labels.roleDescriptionLabel}
-                    value={selectedRole.description || ''}
-                    onChange={(e) => setSelectedRole({ ...selectedRole, description: e.target.value })}
-                    fullWidth
-                    multiline
-                    rows={2}
-                    size="small"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}>
-                          <NotesIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={textFieldStyles}
-                  />
-                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 3 }}>
+                  <Box>
+                    <Typography
+                      sx={{
+                        color: 'var(--dialog-text)',
+                        fontSize: { xs: '0.82rem', sm: '0.86rem', md: '0.84rem', lg: '0.9rem', xl: '0.96rem' },
+                        mb: 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 1,
+                      }}
+                    >
+                      <NotesIcon sx={{ color: 'rgba(255,255,255,0.92)', fontSize: 20 }} />
+                      {branding.tokens.labels.roleDescriptionLabel}
+                    </Typography>
+                    <Box
+                      sx={{
+                        '& > .MuiBox-root': {
+                          borderColor: 'var(--dialog-border-color)',
+                        },
+                        '& > .MuiBox-root:focus-within': {
+                          borderColor: 'var(--dialog-accent-color)',
+                        },
+                        '& .tiptap': {
+                          color: '#ffffff',
+                          minHeight: { xs: 220, sm: 250, md: 280 },
+                          fontSize: { xs: '0.92rem', sm: '0.95rem', md: '1rem' },
+                          lineHeight: 1.65,
+                        },
+                        '& .tiptap p, & .tiptap li, & .tiptap h2': {
+                          color: '#ffffff',
+                        },
+                        '& .tiptap p.is-editor-empty:first-of-type::before': {
+                          color: 'rgba(255,255,255,0.72)',
+                        },
+                        '& .MuiIconButton-root': {
+                          color: '#ffffff',
+                        },
+                      }}
+                    >
+                      <RichTextEditor
+                        value={toRichTextContent(selectedRole.description || '')}
+                        onChange={(value) => setSelectedRole({ ...selectedRole, description: value })}
+                        placeholder="Skriv rollebeskrivelse, bakgrunn, tone og viktig informasjon..."
+                        minHeight={{ xs: 220, sm: 250, md: 280 }}
+                        accentColor={roleDialogAccentColor}
+                      />
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2.25 }}>
                     <TextField
                       label={branding.tokens.labels.roleMinAgeLabel}
                       type="number"
@@ -3123,17 +3679,36 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     </Select>
                   </FormControl>
                 </Stack>
+                </Box>
               </Grid>
 
               {/* Right Column - Requirements */}
-              <Grid size={{ xs: 12, md: 7 }} sx={{ pl: { md: 2, lg: 2.25 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
+              <Grid
+                size={{ xs: 12, md: 7 }}
+                sx={{
+                  pl: { md: 2.5 },
+                  borderLeft: { md: '1px solid var(--dialog-border-color)' },
+                  minHeight: { md: '100%' },
+                  display: 'flex',
+                }}
+              >
+                <Box
+                  sx={{
+                    width: { xs: '100%', md: 360, lg: 390, xl: 420 },
+                    p: { xs: 2.25, sm: 2.5, md: 2.75 },
+                    borderRadius: 2.25,
+                    border: '1px solid var(--dialog-border-color)',
+                    bgcolor: 'transparent',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+                  }}
+                >
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mb: 2.5, px: 1, ml: -1, mt: -3.2, bgcolor: 'var(--dialog-surface)' }}>
                   <AssignmentIcon sx={{ color: roleDialogAccentColor, fontSize: 20 }} />
-                  <Typography variant="subtitle2" sx={{ color: roleDialogAccentColor, fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'var(--dialog-text)', fontWeight: 600 }}>
                     {branding.tokens.labels.roleRequirementsSectionLabel}
                   </Typography>
                 </Box>
-                <Stack spacing={{ xs: 2.75, sm: 3, md: 3.25 }}>
+                <Stack spacing={{ xs: 3, sm: 3.5, md: 3.75 }}>
                   <TextField
                     label={branding.tokens.labels.roleAppearanceLabel}
                     value={selectedRole.requirements.appearance?.join(', ') || ''}
@@ -3196,142 +3771,154 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                       display: 'flex',
                       alignItems: 'center',
                       gap: 1,
-                      pt: { xs: 0.5, sm: 0.75, md: 1 },
-                      pb: { xs: 0.25, sm: 0.5, md: 0.75 },
+                      pt: { xs: 1.5, sm: 1.75, md: 2.1 },
+                      pb: { xs: 0.75, sm: 1.1, md: 1.35 },
+                      borderTop: '1px solid var(--dialog-border-color)',
                     }}
                   >
                     <AssignmentIcon sx={{ color: roleDialogAccentColor, fontSize: 18 }} />
-                    <Typography variant="caption" sx={{ color: roleDialogAccentColor, letterSpacing: 0.3, fontWeight: 700, textTransform: 'uppercase' }}>
+                    <Typography variant="caption" sx={{ color: 'var(--dialog-text)', letterSpacing: 0.3, fontWeight: 700, textTransform: 'uppercase' }}>
                       Tilknytninger
                     </Typography>
                   </Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleScenesLabel}</InputLabel>
-                    <Select
-                      multiple
-                      value={selectedRole.sceneIds || []}
-                      MenuProps={selectMenuProps}
-                      onChange={(e) => setSelectedRole({ ...selectedRole, sceneIds: e.target.value as string[] })}
-                      startAdornment={
-                        <InputAdornment position="start">
-                          <ShotListIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                        </InputAdornment>
-                      }
-                      renderValue={(selected) => (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {(selected as string[]).map((sceneId) => (
-                            <Chip key={sceneId} label={availableScenes.find(s => s.id === sceneId)?.name || sceneId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
-                          ))}
+                  <Stack spacing={{ xs: 2.35, sm: 2.6, md: 2.9 }}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel shrink sx={attachmentInputLabelStyles}>{branding.tokens.labels.roleScenesLabel}</InputLabel>
+                      <Select
+                        multiple
+                        value={selectedRole.sceneIds || []}
+                        MenuProps={selectMenuProps}
+                        onChange={(e) => setSelectedRole({ ...selectedRole, sceneIds: e.target.value as string[] })}
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <ShotListIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                          </InputAdornment>
+                        }
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, py: 0.2 }}>
+                            {(selected as string[]).map((sceneId) => (
+                              <Chip key={sceneId} label={availableScenes.find(s => s.id === sceneId)?.name || sceneId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: '#ffffff', height: 22 }} />
+                            ))}
+                          </Box>
+                        )}
+                        sx={roleDialogSelectStyles}
+                      >
+                        {availableScenes.map((scene) => (
+                          <MenuItem key={scene.id} value={scene.id}>{scene.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    {currentProject && (
+                      <>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: { xs: 2.2, sm: 2.4, md: 2.7 } }}>
+                          <FormControl fullWidth size="small">
+                            <InputLabel shrink sx={attachmentInputLabelStyles}>{branding.tokens.labels.roleCrewLabel}</InputLabel>
+                            <Select
+                              multiple
+                              value={selectedRole.crewRequirements || []}
+                              MenuProps={selectMenuProps}
+                              onChange={(e) => setSelectedRole({ ...selectedRole, crewRequirements: e.target.value as string[] })}
+                              startAdornment={
+                                <InputAdornment position="start">
+                                  <GroupsIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                                </InputAdornment>
+                              }
+                              renderValue={(selected) => (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, py: 0.2 }}>
+                                  {(selected as string[]).map((crewId) => (
+                                    <Chip key={crewId} label={(currentProject?.crew || []).find(c => c.id === crewId)?.name || crewId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: '#ffffff', height: 22 }} />
+                                  ))}
+                                </Box>
+                              )}
+                              sx={roleDialogSelectStyles}
+                            >
+                              {(currentProject?.crew || []).map((crew) => (
+                                <MenuItem key={crew.id} value={crew.id}>{crew.name}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <FormControl fullWidth size="small">
+                            <InputLabel shrink sx={attachmentInputLabelStyles}>{branding.tokens.labels.roleLocationsLabel}</InputLabel>
+                            <Select
+                              multiple
+                              value={selectedRole.locationRequirements || []}
+                              MenuProps={selectMenuProps}
+                              onChange={(e) => setSelectedRole({ ...selectedRole, locationRequirements: e.target.value as string[] })}
+                              startAdornment={
+                                <InputAdornment position="start">
+                                  <LocationIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                                </InputAdornment>
+                              }
+                              renderValue={(selected) => (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, py: 0.2 }}>
+                                  {(selected as string[]).map((locId) => (
+                                    <Chip key={locId} label={(currentProject?.locations || []).find(l => l.id === locId)?.name || locId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: '#ffffff', height: 22 }} />
+                                  ))}
+                                </Box>
+                              )}
+                              sx={roleDialogSelectStyles}
+                            >
+                              {(currentProject?.locations || []).map((loc) => (
+                                <MenuItem key={loc.id} value={loc.id}>{loc.name}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <FormControl fullWidth size="small" sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
+                            <InputLabel shrink sx={attachmentInputLabelStyles}>{branding.tokens.labels.rolePropsLabel}</InputLabel>
+                            <Select
+                              multiple
+                              value={selectedRole.propRequirements || []}
+                              MenuProps={selectMenuProps}
+                              onChange={(e) => setSelectedRole({ ...selectedRole, propRequirements: e.target.value as string[] })}
+                              startAdornment={
+                                <InputAdornment position="start">
+                                  <EquipmentIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
+                                </InputAdornment>
+                              }
+                              renderValue={(selected) => (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, py: 0.2 }}>
+                                  {(selected as string[]).map((propId) => (
+                                    <Chip key={propId} label={(currentProject?.props || []).find(p => p.id === propId)?.name || propId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: '#ffffff', height: 22 }} />
+                                  ))}
+                                </Box>
+                              )}
+                              sx={roleDialogSelectStyles}
+                            >
+                              {(currentProject?.props || []).map((prop) => (
+                                <MenuItem key={prop.id} value={prop.id}>{prop.name}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
                         </Box>
-                      )}
-                      sx={roleDialogSelectStyles}
-                    >
-                      {availableScenes.map((scene) => (
-                        <MenuItem key={scene.id} value={scene.id}>{scene.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  {currentProject && (
-                    <>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5 }}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleCrewLabel}</InputLabel>
-                          <Select
-                            multiple
-                            value={selectedRole.crewRequirements || []}
-                            MenuProps={selectMenuProps}
-                            onChange={(e) => setSelectedRole({ ...selectedRole, crewRequirements: e.target.value as string[] })}
-                            startAdornment={
-                              <InputAdornment position="start">
-                                <GroupsIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                              </InputAdornment>
-                            }
-                            renderValue={(selected) => (
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                {(selected as string[]).map((crewId) => (
-                                  <Chip key={crewId} label={(currentProject?.crew || []).find(c => c.id === crewId)?.name || crewId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
-                                ))}
-                              </Box>
-                            )}
-                            sx={roleDialogSelectStyles}
-                          >
-                            {(currentProject?.crew || []).map((crew) => (
-                              <MenuItem key={crew.id} value={crew.id}>{crew.name}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        <FormControl fullWidth size="small">
-                          <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleLocationsLabel}</InputLabel>
-                          <Select
-                            multiple
-                            value={selectedRole.locationRequirements || []}
-                            MenuProps={selectMenuProps}
-                            onChange={(e) => setSelectedRole({ ...selectedRole, locationRequirements: e.target.value as string[] })}
-                            startAdornment={
-                              <InputAdornment position="start">
-                                <LocationIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                              </InputAdornment>
-                            }
-                            renderValue={(selected) => (
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                {(selected as string[]).map((locId) => (
-                                  <Chip key={locId} label={(currentProject?.locations || []).find(l => l.id === locId)?.name || locId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
-                                ))}
-                              </Box>
-                            )}
-                            sx={roleDialogSelectStyles}
-                          >
-                            {(currentProject?.locations || []).map((loc) => (
-                              <MenuItem key={loc.id} value={loc.id}>{loc.name}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        <FormControl fullWidth size="small" sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
-                          <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.rolePropsLabel}</InputLabel>
-                          <Select
-                            multiple
-                            value={selectedRole.propRequirements || []}
-                            MenuProps={selectMenuProps}
-                            onChange={(e) => setSelectedRole({ ...selectedRole, propRequirements: e.target.value as string[] })}
-                            startAdornment={
-                              <InputAdornment position="start">
-                                <EquipmentIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20, ml: 1 }} />
-                              </InputAdornment>
-                            }
-                            renderValue={(selected) => (
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                {(selected as string[]).map((propId) => (
-                                  <Chip key={propId} label={(currentProject?.props || []).find(p => p.id === propId)?.name || propId} size="small" sx={{ bgcolor: roleDialogAccentSoftColor, color: roleDialogAccentColor, height: 22 }} />
-                                ))}
-                              </Box>
-                            )}
-                            sx={roleDialogSelectStyles}
-                          >
-                            {(currentProject?.props || []).map((prop) => (
-                              <MenuItem key={prop.id} value={prop.id}>{prop.name}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Box>
-                    </>
-                  )}
+                      </>
+                    )}
+                  </Stack>
                 </Stack>
+                </Box>
               </Grid>
             </Grid>
           )}
         </DialogContent>
         <DialogActions
           sx={{
-            borderTop: '1px solid rgba(255,255,255,0.1)',
-            px: { xs: 2, sm: 3 },
-            py: { xs: 1.5, sm: 2 },
-            gap: 1.5,
-            flexWrap: 'wrap',
+            borderTop: '1px solid var(--dialog-border-color)',
+            px: { xs: 2.25, sm: 3, md: 3.25 },
+            py: { xs: 1.6, sm: 1.85, md: 1.95 },
+            gap: 1.2,
+            flexWrap: { xs: 'wrap', sm: 'nowrap' },
+            justifyContent: 'flex-end',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
           }}
         >
           <Button
             onClick={() => { setRoleDialogOpen(false); setSelectedRole(null); }}
-            sx={{ color: 'rgba(255,255,255,0.87)', minHeight: TOUCH_TARGET_SIZE }}
+            sx={{
+              color: 'var(--dialog-text)',
+              minHeight: TOUCH_TARGET_SIZE,
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
           >
             {branding.tokens.labels.cancelLabel}
           </Button>
@@ -3339,7 +3926,15 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             onClick={handleSaveRole}
             variant="contained"
             startIcon={<SaveIcon />}
-            sx={{ bgcolor: roleDialogAccentColor, color: '#000', fontWeight: 600, minHeight: TOUCH_TARGET_SIZE, '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)' } }}
+            sx={{
+              bgcolor: roleDialogAccentColor,
+              color: '#ffffff',
+              fontWeight: 700,
+              minHeight: TOUCH_TARGET_SIZE,
+              px: 2.25,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+              '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
+            }}
           >
             {branding.tokens.labels.saveRoleLabel}
           </Button>
@@ -3347,7 +3942,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             <Button
               onClick={() => { handleDeleteRole(selectedRole.id); setRoleDialogOpen(false); setSelectedRole(null); }}
               startIcon={<DeleteIcon />}
-              sx={{ color: '#ff4444', minHeight: TOUCH_TARGET_SIZE, '&:hover': { bgcolor: 'rgba(255,68,68,0.1)' } }}
+              sx={{
+                color: '#ffffff',
+                minHeight: TOUCH_TARGET_SIZE,
+                border: '1px solid rgba(239,68,68,0.36)',
+                bgcolor: 'rgba(239,68,68,0.08)',
+                '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' },
+              }}
             >
               {branding.tokens.labels.deleteLabel}
             </Button>
@@ -3373,37 +3974,58 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         }}
         PaperProps={{
           sx: {
-            bgcolor: '#1c2128',
-            color: '#fff',
+            '--dialog-accent-color': roleDialogAccentColor,
+            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
+            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
+            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
+            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-surface': 'rgba(20,14,48,0.94)',
+            '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
+            '--dialog-border-color': 'rgba(184,107,255,0.34)',
+            '--dialog-text': '#ffffff',
+            '--dialog-text-muted': '#ffffff',
+            bgcolor: 'var(--dialog-surface)',
+            color: 'var(--dialog-text)',
+            border: '1px solid var(--dialog-border-color)',
+            borderRadius: { xs: 0, sm: 2.5 },
             width: '100%',
-            maxWidth: { xs: '96vw', sm: '92vw', md: '90vw', lg: 1120 },
+            maxWidth: { xs: '100vw', sm: '92vw', md: '90vw', lg: 1180 },
             zIndex: Z_INDEX.dialog,
-            willChange: 'transform, opacity',
-            transformOrigin: 'center center',
+            backgroundImage: [
+              'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
+              'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
+              'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+              roleDialogBackdrop,
+            ].join(', '),
+            backgroundSize: 'auto, auto, auto, cover',
+            backgroundPosition: 'center, center, center, center',
+            backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat',
+            boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
+            overflow: 'hidden',
           },
         }}
         sx={{
           zIndex: Z_INDEX.dialog,
           '& .MuiBackdrop-root': {
             zIndex: Z_INDEX.backdrop,
-            bgcolor: 'rgba(0,0,0,0.8)',
-            willChange: 'opacity',
+            bgcolor: 'rgba(8,5,20,0.86)',
+            backdropFilter: 'blur(3px)',
           },
         }}
       >
         <DialogTitle sx={{ 
-          color: '#fff', 
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          color: 'var(--dialog-text)',
+          borderBottom: '1px solid var(--dialog-border-color)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 2,
-          py: 2,
-          px: 2.5,
+          py: { xs: 2.25, sm: 2.5 },
+          px: { xs: 2.5, sm: 3.5 },
+          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <RecentActorsIcon sx={{ fontSize: '1.5rem', color: '#00d4ff' }} />
-            <Typography variant="h6" sx={{ fontSize: '1.125rem', fontWeight: 600 }}>
+            <RecentActorsIcon sx={{ fontSize: '1.5rem', color: roleDialogAccentColor }} />
+            <Typography variant="h6" sx={{ fontSize: '1.125rem', fontWeight: 700 }}>
               {selectedCandidate?.id && !selectedCandidate.name ? branding.tokens.labels.candidateDialogNewTitle : branding.tokens.labels.candidateDialogEditTitle}
             </Typography>
           </Box>
@@ -3412,15 +4034,30 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               setCandidateDialogOpen(false);
               setSelectedCandidate(null);
             }}
-            size="small"
-            sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#fff' } }}
+            sx={{
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
           >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: { xs: 2.75, sm: 3.25 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3, sm: 3.5 }, overflow: 'visible' }}>
+        <DialogContent sx={{ pt: { xs: 3, sm: 3.5 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3.25, sm: 3.75 }, maxHeight: { xs: 'none', sm: '72vh' }, overflowY: 'auto', overflowX: 'hidden' }}>
           {selectedCandidate && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, sm: 2.75, md: 3 } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: { xs: 2.5, sm: 2.75, md: 3 },
+                p: { xs: 2, sm: 2.5, md: 2.75 },
+                borderRadius: 2.25,
+                border: '1px solid var(--dialog-border-color)',
+                bgcolor: 'var(--dialog-surface-muted)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+              }}
+            >
               <TextField
                 label={branding.tokens.labels.nameLabel}
                 value={selectedCandidate.name}
@@ -3436,6 +4073,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 }}
                 sx={{
                   ...textFieldStyles,
+                  mt: { xs: 0.5, sm: 0.75 },
                 }}
               />
               
@@ -3507,8 +4145,8 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               
               <Box sx={{ mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                  <ImageIcon sx={{ color: '#00d4ff', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.3125rem', lg: '1.4375rem', xl: '1.5rem' } }} />
-                  <Typography variant="subtitle2" sx={{ color: '#00d4ff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
+                  <ImageIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.3125rem', lg: '1.4375rem', xl: '1.5rem' } }} />
+                  <Typography variant="subtitle2" sx={{ color: 'var(--dialog-accent-color)', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
                     {branding.tokens.labels.mediaSectionLabel}
                   </Typography>
                 </Box>
@@ -3518,26 +4156,37 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   multiple
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
-                    const newPhotos: string[] = [...selectedCandidate.photos];
-                    const newVideos: string[] = [...selectedCandidate.videos];
+                    if (files.length === 0) return;
+                    const nextPhotos: string[] = [...(selectedCandidate.photos || [])];
+                    const nextVideos: string[] = [...(selectedCandidate.videos || [])];
+                    const nextPhotoFocalPoints: CandidatePhotoFocalPoint[] = [
+                      ...getCandidatePhotoFocalPoints(selectedCandidate),
+                    ];
                     
                     files.forEach((file) => {
                       const reader = new FileReader();
                       reader.onload = (event) => {
-                        const result = event.target?.result as string;
+                        const result = event.target?.result;
+                        if (typeof result !== 'string') return;
                         if (file.type.startsWith('image/')) {
-                          newPhotos.push(result);
+                          nextPhotos.push(result);
+                          nextPhotoFocalPoints.push({ ...DEFAULT_CANDIDATE_FOCAL_POINT });
                         } else if (file.type.startsWith('video/')) {
-                          newVideos.push(result);
+                          nextVideos.push(result);
                         }
-                        setSelectedCandidate({
-                          ...selectedCandidate,
-                          photos: [...newPhotos],
-                          videos: [...newVideos],
+                        setSelectedCandidate(prev => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            photos: [...nextPhotos],
+                            videos: [...nextVideos],
+                            photoFocalPoints: [...nextPhotoFocalPoints],
+                          };
                         });
                       };
                       reader.readAsDataURL(file);
                     });
+                    e.currentTarget.value = '';
                   }}
                   style={{ display: 'none' }}
                   id="candidate-media-upload"
@@ -3548,9 +4197,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     component="span"
                     startIcon={<CloudUploadIcon />}
                     sx={{
-                      borderColor: 'rgba(255,255,255,0.2)',
+                      borderColor: 'var(--dialog-border-color)',
                       color: '#fff',
-                      '&:hover': { borderColor: '#00d4ff' },
+                      '&:hover': { borderColor: 'var(--dialog-accent-color)', bgcolor: 'var(--dialog-accent-hover)' },
                       minHeight: TOUCH_TARGET_SIZE,
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
@@ -3561,22 +4210,121 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   </Button>
                 </label>
                 {(selectedCandidate.photos?.length ?? 0) > 0 && (
-                  <Box sx={{ mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, display: 'flex', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, flexWrap: 'wrap' }}>
-                    {(selectedCandidate.photos || []).map((photo, idx) => (
-                      <Box
-                        key={idx}
-                        component="img"
-                        src={photo}
-                        alt={branding.tokens.labels.candidatePhotoAltLabel.replace('{index}', String(idx + 1))}
-                        sx={{
-                          width: { xs: 60, sm: 70, md: 65, lg: 80, xl: 90 },
-                          height: { xs: 60, sm: 70, md: 65, lg: 80, xl: 90 },
-                          objectFit: 'cover',
-                          borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.2)',
-                        }}
-                      />
-                    ))}
+                  <Box sx={{ mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: 'block',
+                        mb: 1,
+                        color: 'rgba(255,255,255,0.8)',
+                      }}
+                    >
+                      Klikk på et bilde for å velge fokuspunkt. Første bilde brukes som profilbilde.
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, flexWrap: 'wrap' }}>
+                      {(selectedCandidate.photos || []).map((photo, idx) => {
+                        const focalPoint = candidatePhotoFocalPoints[idx] || DEFAULT_CANDIDATE_FOCAL_POINT;
+                        return (
+                          <Box key={idx} sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            <Box
+                              component="button"
+                              type="button"
+                              onClick={(event: MouseEvent<HTMLButtonElement>) => handleCandidatePhotoFocalPointClick(event, idx)}
+                              title="Velg fokuspunkt"
+                              sx={{
+                                position: 'relative',
+                                display: 'block',
+                                p: 0,
+                                m: 0,
+                                width: { xs: 60, sm: 70, md: 65, lg: 80, xl: 90 },
+                                height: { xs: 60, sm: 70, md: 65, lg: 80, xl: 90 },
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: 1,
+                                overflow: 'hidden',
+                                background: 'transparent',
+                                cursor: 'crosshair',
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={photo}
+                                alt={branding.tokens.labels.candidatePhotoAltLabel.replace('{index}', String(idx + 1))}
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  objectPosition: `${focalPoint.x}% ${focalPoint.y}%`,
+                                }}
+                              />
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  left: `${focalPoint.x}%`,
+                                  top: `${focalPoint.y}%`,
+                                  transform: 'translate(-50%, -50%)',
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--dialog-accent-color)',
+                                  border: '2px solid #ffffff',
+                                  boxShadow: '0 0 0 2px rgba(0,0,0,0.45)',
+                                  pointerEvents: 'none',
+                                }}
+                              />
+                            </Box>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.7rem' }}>
+                              Fokus: {Math.round(focalPoint.x)}% / {Math.round(focalPoint.y)}%
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                              {idx === 0 ? (
+                                <Chip
+                                  size="small"
+                                  label="Primær"
+                                  sx={{
+                                    height: 22,
+                                    bgcolor: 'rgba(184,107,255,0.25)',
+                                    color: '#fff',
+                                    border: '1px solid rgba(184,107,255,0.45)',
+                                  }}
+                                />
+                              ) : (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleSetPrimaryCandidatePhoto(idx)}
+                                  sx={{
+                                    minWidth: 0,
+                                    px: 1,
+                                    py: 0.25,
+                                    fontSize: '0.7rem',
+                                    borderColor: 'rgba(184,107,255,0.4)',
+                                    color: 'rgba(255,255,255,0.87)',
+                                  }}
+                                >
+                                  Sett som primær
+                                </Button>
+                              )}
+                              <Button
+                                size="small"
+                                variant="text"
+                                startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => handleDeleteCandidatePhoto(idx)}
+                                sx={{
+                                  minWidth: 0,
+                                  px: 0.75,
+                                  py: 0.25,
+                                  fontSize: '0.7rem',
+                                  color: 'rgba(255,130,130,0.95)',
+                                  '&:hover': { bgcolor: 'rgba(255,82,82,0.12)' },
+                                }}
+                              >
+                                Slett
+                              </Button>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
                   </Box>
                 )}
               </Box>
@@ -3622,7 +4370,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                             key={roleId}
                             label={role?.name || roleId}
                             size="small"
-                            sx={{ bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff' }}
+                            sx={{ bgcolor: roleDialogAccentSoftColor, color: '#ffffff' }}
                           />
                         );
                       })}
@@ -3692,9 +4440,9 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               </FormControl>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, mt: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 }, mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                <ContactEmergencyIcon sx={{ color: '#00d4ff', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.3125rem', lg: '1.4375rem', xl: '1.5rem' } }} />
+                <ContactEmergencyIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.3125rem', lg: '1.4375rem', xl: '1.5rem' } }} />
                 <Typography variant="subtitle2" sx={{ 
-                  color: '#00d4ff', 
+                  color: 'var(--dialog-accent-color)', 
                   fontSize: { xs: '1rem', sm: '1.0625rem', md: '1.03125rem', lg: '1.09375rem', xl: '1.125rem' },
                   fontWeight: 600,
                 }}>
@@ -3757,27 +4505,35 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 <Box sx={{ mt: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 } }}>
                   {/* Quick consent status check via consentService */}
                   <ConsentStatusSummary projectId={currentProject.id} candidateId={selectedCandidate.id} />
-                  <ConsentManagementPanel
-                    projectId={currentProject.id}
-                    candidateId={selectedCandidate.id}
-                    onUpdate={() => {
-                      loadProjects();
-                    }}
-                  />
+                  <Suspense
+                    fallback={
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                        <CircularProgress size={24} sx={{ color: 'var(--dialog-accent-color)' }} />
+                      </Box>
+                    }
+                  >
+                    <ConsentManagementPanel
+                      projectId={currentProject.id}
+                      candidateId={selectedCandidate.id}
+                      onUpdate={() => {
+                        loadProjects();
+                      }}
+                    />
+                  </Suspense>
                 </Box>
               ) : (
                 /* For new candidates - show option to send consent on save */
                 <Box sx={{ 
                   mt: { xs: 3, sm: 3.5, md: 3.25, lg: 3.5, xl: 4 },
                   p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-                  bgcolor: 'rgba(0,212,255,0.05)',
+                  bgcolor: 'var(--dialog-accent-hover)',
                   borderRadius: 2,
-                  border: '1px solid rgba(0,212,255,0.2)',
+                  border: '1px solid var(--dialog-border-color)',
                 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
-                    <ConsentsIcon sx={{ color: '#00d4ff', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.3125rem', lg: '1.4375rem', xl: '1.5rem' } }} />
+                    <ConsentsIcon sx={{ color: 'var(--dialog-accent-color)', fontSize: { xs: '1.25rem', sm: '1.375rem', md: '1.3125rem', lg: '1.4375rem', xl: '1.5rem' } }} />
                     <Typography variant="subtitle2" sx={{ 
-                      color: '#00d4ff', 
+                      color: 'var(--dialog-accent-color)', 
                       fontSize: { xs: '1rem', sm: '1.0625rem', md: '1.03125rem', lg: '1.09375rem', xl: '1.125rem' },
                       fontWeight: 600,
                     }}>
@@ -3790,8 +4546,8 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                         checked={sendConsentOnSave}
                         onChange={(e) => setSendConsentOnSave(e.target.checked)}
                         sx={{ 
-                          color: '#00d4ff', 
-                          '&.Mui-checked': { color: '#00d4ff' },
+                          color: 'var(--dialog-accent-color)', 
+                          '&.Mui-checked': { color: 'var(--dialog-accent-color)' },
                         }}
                       />
                     }
@@ -3819,11 +4575,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           )}
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          px: { xs: 2, sm: 3 },
-          py: { xs: 1.5, sm: 2 },
-          gap: { xs: 1.5, sm: 2 },
-          flexWrap: 'wrap',
+          borderTop: '1px solid var(--dialog-border-color)',
+          px: { xs: 2.25, sm: 3, md: 3.25 },
+          py: { xs: 1.6, sm: 1.85, md: 1.95 },
+          gap: 1.2,
+          flexWrap: { xs: 'wrap', sm: 'nowrap' },
+          justifyContent: 'flex-end',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
         }}>
           <Button
             onClick={() => {
@@ -3832,11 +4590,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             }}
             startIcon={<CancelIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
             sx={{ 
-              color: 'rgba(255,255,255,0.87)',
-              fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-              px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              px: 2.25,
+              py: 1.15,
               minHeight: TOUCH_TARGET_SIZE,
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
             }}
           >
             {branding.tokens.labels.cancelLabel}
@@ -3846,14 +4606,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             variant="contained"
             startIcon={<SaveIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
             sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-              px: { xs: 2, sm: 2.5, md: 2.25, lg: 3, xl: 4 },
-              py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
+              bgcolor: roleDialogAccentColor,
+              color: '#ffffff',
+              px: 2.25,
+              py: 1.15,
               minHeight: TOUCH_TARGET_SIZE,
-              fontWeight: 600,
-              '&:hover': { bgcolor: '#00b8e6' },
+              fontWeight: 700,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+              '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
             }}
           >
             {branding.tokens.labels.saveLabel}
@@ -3863,12 +4623,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               onClick={() => { handleDeleteCandidate(selectedCandidate.id); setCandidateDialogOpen(false); setSelectedCandidate(null); }}
               startIcon={<DeleteIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
-                color: '#ff4444',
-                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-                py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
+                color: '#ffffff',
+                border: '1px solid rgba(239,68,68,0.36)',
+                bgcolor: 'rgba(239,68,68,0.08)',
+                px: 2.25,
+                py: 1.15,
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { bgcolor: 'rgba(255,68,68,0.1)' },
+                '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' },
               }}
             >
               {branding.tokens.labels.deleteLabel}
@@ -3895,36 +4656,61 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
         }}
         PaperProps={{
           sx: {
-            bgcolor: '#1c2128',
-            color: '#fff',
+            '--dialog-accent-color': roleDialogAccentColor,
+            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
+            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
+            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
+            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-surface': 'rgba(20,14,48,0.94)',
+            '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
+            '--dialog-border-color': 'rgba(184,107,255,0.34)',
+            '--dialog-text': '#ffffff',
+            '--dialog-text-muted': '#ffffff',
+            bgcolor: 'var(--dialog-surface)',
+            color: 'var(--dialog-text)',
+            border: '1px solid var(--dialog-border-color)',
+            borderRadius: { xs: 0, sm: 2.5 },
             width: '100%',
-            maxWidth: { xs: '96vw', sm: '92vw', md: '90vw', lg: 1120 },
+            maxWidth: { xs: '100vw', sm: '92vw', md: '90vw', lg: 1120 },
             zIndex: Z_INDEX.dialog,
             willChange: 'transform, opacity',
             transformOrigin: 'center center',
+            backgroundImage: [
+              'linear-gradient(180deg, rgba(8,5,20,0.9) 0%, rgba(10,7,28,0.9) 100%)',
+              'radial-gradient(circle at 16% -24%, rgba(184,107,255,0.28), transparent 55%)',
+              'radial-gradient(circle at 82% -10%, rgba(106,76,207,0.24), transparent 48%)',
+              roleDialogBackdrop,
+            ].join(', '),
+            backgroundSize: 'auto, auto, auto, cover',
+            backgroundPosition: 'center, center, center, center',
+            backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat',
+            boxShadow: '0 28px 52px rgba(0,0,0,0.46)',
+            overflow: 'hidden',
           },
         }}
         sx={{
           zIndex: Z_INDEX.dialog,
           '& .MuiBackdrop-root': {
             zIndex: Z_INDEX.backdrop,
-            bgcolor: 'rgba(0,0,0,0.8)',
+            bgcolor: 'rgba(8,5,20,0.86)',
+            backdropFilter: 'blur(3px)',
             willChange: 'opacity',
           },
         }}
       >
         <DialogTitle sx={{ 
-          color: '#fff', 
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          color: 'var(--dialog-text)', 
+          borderBottom: '1px solid var(--dialog-border-color)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 2,
-          py: 2,
-          px: 2.5,
+          py: { xs: 2.25, sm: 2.5 },
+          px: { xs: 2.5, sm: 3.5 },
+          background: 'linear-gradient(180deg, rgba(184,107,255,0.14) 0%, rgba(184,107,255,0.04) 100%)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <CalendarIcon sx={{ fontSize: '1.5rem', color: '#00d4ff' }} />
+            <CalendarIcon sx={{ fontSize: '1.5rem', color: roleDialogAccentColor }} />
             <Typography variant="h6" sx={{ fontSize: '1.125rem', fontWeight: 600 }}>
               {selectedSchedule?.id && !selectedSchedule.date ? branding.tokens.labels.scheduleDialogNewTitle : branding.tokens.labels.scheduleDialogEditTitle}
             </Typography>
@@ -3935,14 +4721,30 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               setSelectedSchedule(null);
             }}
             size="small"
-            sx={{ color: 'rgba(255,255,255,0.87)', '&:hover': { color: '#fff' } }}
+            sx={{
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
+            }}
           >
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: { xs: 2.75, sm: 3.25 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3, sm: 3.5 }, overflow: 'visible' }}>
+        <DialogContent sx={{ pt: { xs: 3, sm: 3.5 }, px: { xs: 2.5, sm: 3.5, md: 4 }, pb: { xs: 3.25, sm: 3.75 }, maxHeight: { xs: 'none', sm: '72vh' }, overflowY: 'auto', overflowX: 'hidden' }}>
           {selectedSchedule && currentProject && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2.5, sm: 2.75, md: 3 } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: { xs: 2.5, sm: 2.75, md: 3 },
+                p: { xs: 2, sm: 2.5, md: 2.75 },
+                borderRadius: 2.25,
+                border: '1px solid var(--dialog-border-color)',
+                bgcolor: 'var(--dialog-surface-muted)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+              }}
+            >
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5 }}>
                 <FormControl fullWidth size="small">
                   <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.candidateLabel}</InputLabel>
@@ -4119,10 +4921,10 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                     alignItems: 'center',
                     gap: 1.5,
                     mb: 1,
-                    bgcolor: 'rgba(255,184,0,0.15)',
+                    bgcolor: 'var(--dialog-accent-hover)',
                     p: 1.5,
                     borderRadius: '8px',
-                    border: '2px solid rgba(255,184,0,0.3)',
+                    border: '2px solid var(--dialog-border-color)',
                     ...KEYFRAMES_STYLES,
                   }}
                 >
@@ -4131,8 +4933,8 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                       width: isDesktop ? 40 : 32,
                       height: isDesktop ? 40 : 32,
                       borderRadius: 2,
-                      bgcolor: 'rgba(255,184,0,0.2)',
-                      border: '2px solid rgba(255,184,0,0.4)',
+                      bgcolor: 'rgba(184,107,255,0.2)',
+                      border: '2px solid rgba(184,107,255,0.4)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -4140,14 +4942,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   >
                     <NoteIcon
                       sx={{
-                        color: '#ffb800',
+                        color: 'var(--dialog-accent-color)',
                         fontSize: isDesktop ? '1.5rem' : '1.125rem',
                         animation: 'writing 2.5s ease-in-out infinite',
-                        filter: 'drop-shadow(0 2px 4px rgba(255,184,0,0.3))',
+                        filter: 'drop-shadow(0 2px 4px rgba(184,107,255,0.3))',
                       }}
                     />
                   </Box>
-                  <Typography sx={{ color: '#ffb800', fontWeight: 700, fontSize: isDesktop ? '1rem' : '0.875rem' }}>
+                  <Typography sx={{ color: 'var(--dialog-accent-color)', fontWeight: 700, fontSize: isDesktop ? '1rem' : '0.875rem' }}>
                     {branding.tokens.labels.notesLabel}
                   </Typography>
                 </Box>
@@ -4156,7 +4958,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                   onChange={(value) => setSelectedSchedule({ ...selectedSchedule, notes: value })}
                   placeholder={branding.tokens.labels.notesPlaceholder}
                   minHeight={120}
-                  accentColor="#ffb800"
+                  accentColor={roleDialogAccentColor}
                 />
               </Box>
               
@@ -4195,11 +4997,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
           )}
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
-          px: { xs: 2, sm: 3 },
-          py: { xs: 1.5, sm: 2 },
-          gap: { xs: 1.5, sm: 2 },
-          flexWrap: 'wrap',
+          borderTop: '1px solid var(--dialog-border-color)',
+          px: { xs: 2.25, sm: 3, md: 3.25 },
+          py: { xs: 1.6, sm: 1.85, md: 1.95 },
+          gap: 1.2,
+          flexWrap: { xs: 'wrap', sm: 'nowrap' },
+          justifyContent: 'flex-end',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.03) 100%)',
         }}>
           <Button
             onClick={() => {
@@ -4208,10 +5012,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             }}
             startIcon={<CancelIcon />}
             sx={{ 
-              color: 'rgba(255,255,255,0.87)',
-              fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem',
-              px: isDesktop ? 3 : 2,
-              py: isDesktop ? 1.5 : 1,
+              color: 'var(--dialog-text)',
+              border: '1px solid var(--dialog-border-color)',
+              bgcolor: 'rgba(255,255,255,0.02)',
+              px: 2.25,
+              py: 1.15,
+              minHeight: TOUCH_TARGET_SIZE,
+              '&:hover': { bgcolor: 'var(--dialog-accent-hover)', color: 'var(--dialog-text)' },
             }}
           >
             {branding.tokens.labels.cancelLabel}
@@ -4221,13 +5028,14 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             variant="contained"
             startIcon={<SaveIcon />}
             sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem',
-              px: isDesktop ? 4 : 3,
-              py: isDesktop ? 1.5 : 1,
-              fontWeight: 600,
-              '&:hover': { bgcolor: '#00b8e6' },
+              bgcolor: roleDialogAccentColor,
+              color: '#ffffff',
+              px: 2.25,
+              py: 1.15,
+              minHeight: TOUCH_TARGET_SIZE,
+              fontWeight: 700,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.24)',
+              '&:hover': { bgcolor: roleDialogAccentColor, filter: 'brightness(0.92)', boxShadow: '0 10px 24px rgba(0,0,0,0.3)' },
             }}
           >
             {branding.tokens.labels.saveLabel}
@@ -4237,11 +5045,13 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
               onClick={() => { handleDeleteSchedule(selectedSchedule.id); setScheduleDialogOpen(false); setSelectedSchedule(null); }}
               startIcon={<DeleteIcon />}
               sx={{
-                color: '#ff4444',
-                fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem',
-                px: isDesktop ? 3 : 2,
-                py: isDesktop ? 1.5 : 1,
-                '&:hover': { bgcolor: 'rgba(255,68,68,0.1)' },
+                color: '#ffffff',
+                border: '1px solid rgba(239,68,68,0.36)',
+                bgcolor: 'rgba(239,68,68,0.08)',
+                px: 2.25,
+                py: 1.15,
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { bgcolor: 'rgba(239,68,68,0.15)' },
               }}
             >
               {branding.tokens.labels.deleteLabel}
@@ -4373,7 +5183,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                         onClick={(e: MouseEvent) => {
                           e.stopPropagation();
                           setProjectToEdit(project);
-                          setProjectCreationModalOpen(true);
+                          openProjectCreationModal();
                           setProjectSelectorOpen(false);
                         }}
                         sx={{
@@ -4407,7 +5217,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       </Dialog>
 
       {/* Sharing Dialog */}
-      {currentProject && (
+      {currentProject && sharingDialogOpen && (
         <Suspense fallback={null}>
           <CastingSharingDialog
             open={sharingDialogOpen}
@@ -4554,99 +5364,101 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
             flexDirection: 'column',
           }}
         >
-          <QueryClientProvider client={queryClient}>
-            <MemoryRouter>
-              <ProjectProvider>
-                <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
-                  <NewProjectCreationModal
-                    profession={profession || 'photographer'}
-                  userId={user?.id}
-                  isCastingPlanner={true}
-                  getTerm={getTerm}
-                  initialData={projectToEdit || undefined}
-                  onProjectIdChange={handleProjectIdChange}
-                  onClose={() => {
-                    setProjectCreationModalOpen(false);
-                    setProjectToEdit(null);
-                    setCurrentProjectId(null);
-                  }}
-                  onProjectCreated={async (projectData) => {
-                    setProjectCreationModalOpen(false);
-                    setProjectToEdit(null);
-                    
-                    // Use the project data returned from backend directly
-                    // The ID should always be set (generated when modal opens)
-                    if (projectData?.id) {
-                      // Ensure crew is initialized as an array if missing
-                      const projectWithCrew = {
-                        ...projectData,
-                        id: projectData.id, // Explicitly set ID to ensure it's used
-                        crew: projectData.crew || [],
-                      } as CastingProject;
-                      
-                      // Save to database
-                      try {
-                        await castingService.saveProject(projectWithCrew);
-                      } catch (error) {
-                        console.error('Failed to save project to database:', error);
-                      }
-                      
-                      // Invalidate query cache to force refresh
-                      queryClient.invalidateQueries({ queryKey: ['/api/casting/projects'] });
-                      
-                      // Set the newly created project as current immediately
-                      // This ensures all child components (roles, candidates, locations, shots, etc.) use the same project ID
-                      setCurrentProject(projectWithCrew);
-                      
-                      // Reload projects list in the background to update the list
-                      try {
-                        const loadedProjects = await castingService.getProjects();
-                        setProjects(loadedProjects);
-                        // Ensure the new project is still set as current (in case reload changed something)
-                        const foundProject = loadedProjects.find(p => p.id === projectData.id);
-                        if (foundProject) {
-                          // Ensure crew is initialized
-                          const projectWithCrewFromDb = {
-                            ...foundProject,
-                            crew: foundProject.crew || [],
+          {projectCreationModalOpen && (
+            <QueryClientProvider client={queryClient}>
+              <MemoryRouter>
+                <ProjectProvider>
+                  <Suspense fallback={<Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.87)' }}>{branding.tokens.labels.loadingLabel}</Box>}>
+                    <NewProjectCreationModal
+                      profession={profession || 'photographer'}
+                      userId={user?.id}
+                      isCastingPlanner={true}
+                      getTerm={getTerm}
+                      initialData={projectToEdit || undefined}
+                      onProjectIdChange={handleProjectIdChange}
+                      onClose={() => {
+                        setProjectCreationModalOpen(false);
+                        setProjectToEdit(null);
+                        setCurrentProjectId(null);
+                      }}
+                      onProjectCreated={async (projectData) => {
+                        setProjectCreationModalOpen(false);
+                        setProjectToEdit(null);
+                        
+                        // Use the project data returned from backend directly
+                        // The ID should always be set (generated when modal opens)
+                        if (projectData?.id) {
+                          // Ensure crew is initialized as an array if missing
+                          const projectWithCrew = {
+                            ...projectData,
+                            id: projectData.id, // Explicitly set ID to ensure it's used
+                            crew: projectData.crew || [],
                           } as CastingProject;
-                          setCurrentProject(projectWithCrewFromDb);
-                        }
-                      } catch (error) {
-                        // If reload fails, still use the returned project data
-                        // Also try to update projects list with the new project
-                        setProjects(prev => {
-                          const exists = prev.some(p => p.id === projectData.id);
-                          if (exists) {
-                            return prev.map(p => {
-                              if (p.id === projectData.id) {
-                                return projectWithCrew;
-                              }
-                              return p;
-                            });
-                          } else {
-                            return [projectWithCrew, ...prev];
+                          
+                          // Save to database
+                          try {
+                            await castingService.saveProject(projectWithCrew);
+                          } catch (error) {
+                            console.error('Failed to save project to database:', error);
                           }
-                        });
-                      }
-                    } else {
-                      // Fallback: reload projects if no project data
-                      try {
-                        const loadedProjects = await castingService.getProjects();
-                        setProjects(loadedProjects);
-                        if (loadedProjects.length > 0) {
-                          setCurrentProject(loadedProjects[0]);
+                          
+                          // Invalidate query cache to force refresh
+                          queryClient.invalidateQueries({ queryKey: ['/api/casting/projects'] });
+                          
+                          // Set the newly created project as current immediately
+                          // This ensures all child components (roles, candidates, locations, shots, etc.) use the same project ID
+                          setCurrentProject(projectWithCrew);
+                          
+                          // Reload projects list in the background to update the list
+                          try {
+                            const loadedProjects = await castingService.getProjects();
+                            setProjects(loadedProjects);
+                            // Ensure the new project is still set as current (in case reload changed something)
+                            const foundProject = loadedProjects.find(p => p.id === projectData.id);
+                            if (foundProject) {
+                              // Ensure crew is initialized
+                              const projectWithCrewFromDb = {
+                                ...foundProject,
+                                crew: foundProject.crew || [],
+                              } as CastingProject;
+                              setCurrentProject(projectWithCrewFromDb);
+                            }
+                          } catch (error) {
+                            // If reload fails, still use the returned project data
+                            // Also try to update projects list with the new project
+                            setProjects(prev => {
+                              const exists = prev.some(p => p.id === projectData.id);
+                              if (exists) {
+                                return prev.map(p => {
+                                  if (p.id === projectData.id) {
+                                    return projectWithCrew;
+                                  }
+                                  return p;
+                                });
+                              } else {
+                                return [projectWithCrew, ...prev];
+                              }
+                            });
+                          }
+                        } else {
+                          // Fallback: reload projects if no project data
+                          try {
+                            const loadedProjects = await castingService.getProjects();
+                            setProjects(loadedProjects);
+                            if (loadedProjects.length > 0) {
+                              setCurrentProject(loadedProjects[0]);
+                            }
+                          } catch (error) {
+                            console.error('Failed to reload projects:', error);
+                          }
                         }
-                      } catch (error) {
-                        console.error('Failed to reload projects:', error);
-                      }
-                    }
-                  }}
-                />
-                </Suspense>
-              </ProjectProvider>
-            </MemoryRouter>
-          </QueryClientProvider>
+                      }}
+                    />
+                  </Suspense>
+                </ProjectProvider>
+              </MemoryRouter>
+            </QueryClientProvider>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -4998,7 +5810,7 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
                 if (link.action) {
                   link.action();
                 } else if (link.tabIndex >= 0) {
-                  setActiveTab(link.tabIndex);
+                  navigateToTab(link.tabIndex);
                 }
                 setSpeedDialOpen(false);
               }}
@@ -5043,65 +5855,72 @@ export function CastingPlannerPanel({ onClose, isFullscreen = false, onToggleFul
       </SpeedDial>
     </Box>
 
-      <Suspense fallback={null}>
-        <AdminDashboard
-          open={adminDashboardOpen}
-          onClose={() => setAdminDashboardOpen(false)}
-          projectName={currentProject?.name}
-        />
-      </Suspense>
+      {adminDashboardOpen && (
+        <Suspense fallback={null}>
+          <AdminDashboard
+            open={adminDashboardOpen}
+            onClose={() => setAdminDashboardOpen(false)}
+            projectName={currentProject?.name}
+          />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <LoginDialog
-          open={loginDialogOpen}
-          onClose={() => setLoginDialogOpen(false)}
-          onLoginSuccess={(user) => setAdminUser(user)}
-        />
-      </Suspense>
+      {loginDialogOpen && (
+        <Suspense fallback={null}>
+          <LoginDialog
+            open={loginDialogOpen}
+            onClose={() => setLoginDialogOpen(false)}
+            onLoginSuccess={(user) => setAdminUser(user)}
+          />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <CastingPlannerTutorial
-          open={showTutorial || previewTutorial !== null}
-          onClose={() => {
-            setShowTutorial(false);
-            setPreviewTutorial(null);
-          }}
-          onNavigateToTab={(tabIndex) => setActiveTab(tabIndex)}
-          customTutorial={previewTutorial || undefined}
-        />
-      </Suspense>
+      {(showTutorial || previewTutorial !== null) && (
+        <Suspense fallback={null}>
+          <CastingPlannerTutorial
+            open={showTutorial || previewTutorial !== null}
+            onClose={() => {
+              setShowTutorial(false);
+              setPreviewTutorial(null);
+            }}
+            onNavigateToTab={navigateToTab}
+            customTutorial={previewTutorial || undefined}
+          />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <TutorialEditorPanel
-          open={showTutorialEditor}
-          onClose={() => setShowTutorialEditor(false)}
-          onPreviewTutorial={(tutorial) => {
-            setShowTutorialEditor(false);
-            setPreviewTutorial(tutorial);
-          }}
-        />
-      </Suspense>
+      {showTutorialEditor && (
+        <Suspense fallback={null}>
+          <TutorialEditorPanel
+            open={showTutorialEditor}
+            onClose={() => setShowTutorialEditor(false)}
+            onPreviewTutorial={openPreviewTutorial}
+          />
+        </Suspense>
+      )}
 
       {/* Consent Contract Dialog */}
-      <Suspense fallback={null}>
-        <ConsentContractDialog
-          open={consentContractDialogOpen}
-          onClose={() => {
-            setConsentContractDialogOpen(false);
-            setSelectedCandidate(null);
-          }}
-          candidate={selectedCandidate}
-          project={currentProject}
-          onConsentSent={() => {
-            loadProjects();
-          }}
-          onConsentUpdated={() => {
-            loadProjects();
-          }}
-        />
-      </Suspense>
+      {consentContractDialogOpen && (
+        <Suspense fallback={null}>
+          <ConsentContractDialog
+            open={consentContractDialogOpen}
+            onClose={() => {
+              setConsentContractDialogOpen(false);
+              setSelectedCandidate(null);
+            }}
+            candidate={selectedCandidate}
+            project={currentProject}
+            onConsentSent={() => {
+              loadProjects();
+            }}
+            onConsentUpdated={() => {
+              loadProjects();
+            }}
+          />
+        </Suspense>
+      )}
 
-      {onboardingProfession && (
+      {onboardingProfession && showOnboarding && (
         <Suspense fallback={null}>
           <ProfessionOnboardingDialog
             open={showOnboarding}

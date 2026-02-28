@@ -4,7 +4,7 @@
  * Like Premiere Pro's frame-accurate playback
  */
 
-import { cancelSync, onFrameUpdate, onFrameStart, onFrameRender } from 'framesync';
+import sync, { cancelSync } from 'framesync';
 
 export interface FrameCallback {
   id: string;
@@ -36,7 +36,7 @@ export class FrameAccurateTimer {
     this.isPlaying = true;
     
     // Register frame update callback
-    const cancel = onFrameUpdate((timestamp) => {
+    const process = sync.update(({ timestamp }) => {
       if (!this.isPlaying) return;
       
       // Calculate current frame based on elapsed time
@@ -48,7 +48,9 @@ export class FrameAccurateTimer {
       this.callbacks.forEach(cb => {
         cb.callback(timestamp, this.currentFrame);
       });
-    });
+    }, true);
+
+    const cancel = () => cancelSync.update(process);
     
     this.cancelFunctions.push(cancel);
     
@@ -195,5 +197,4 @@ export class FrameAccurateTimer {
 }
 
 export const frameTimer = new FrameAccurateTimer();
-
 

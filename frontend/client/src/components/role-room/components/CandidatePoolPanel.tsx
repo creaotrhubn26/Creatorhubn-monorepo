@@ -34,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import { candidatePoolService, PoolCandidate } from '../services/candidatePoolService';
 import { CastingProject } from '../models/casting';
+import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 
 interface CandidatePoolPanelProps {
   projects: CastingProject[];
@@ -222,6 +223,9 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
                       height: 56, 
                       bgcolor: 'rgba(0,212,255,0.2)',
                       color: '#00d4ff',
+                      '& .MuiAvatar-img': {
+                        objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
+                      },
                     }}
                   >
                     {candidate.name.charAt(0).toUpperCase()}
@@ -362,7 +366,15 @@ export const CandidatePoolPanel: FC<CandidatePoolPanelProps> = ({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Avatar
                   src={selectedCandidate.photos?.[0]}
-                  sx={{ width: 48, height: 48, bgcolor: 'rgba(0,212,255,0.2)', color: '#00d4ff' }}
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    bgcolor: 'rgba(0,212,255,0.2)',
+                    color: '#00d4ff',
+                    '& .MuiAvatar-img': {
+                      objectPosition: getCandidatePhotoObjectPosition(selectedCandidate, 0),
+                    },
+                  }}
                 >
                   {selectedCandidate.name.charAt(0).toUpperCase()}
                 </Avatar>

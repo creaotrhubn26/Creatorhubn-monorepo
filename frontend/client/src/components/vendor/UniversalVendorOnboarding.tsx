@@ -719,7 +719,7 @@ export default function UniversalVendorOnboarding({
   };
 
   const handleCompleteOnboarding = async () => {
-    let finalFormData: Record<string, unknown> = { ...formData };
+    const finalFormData: Record<string, unknown> = { ...formData };
     
     // Upload logo if present
     if (logoFile) {

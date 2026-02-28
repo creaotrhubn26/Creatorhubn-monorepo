@@ -94,7 +94,22 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
   const testFileSystem = async () => {
     try {
       const response = await fetch('/api/file-management/health');
-      const data = await response.json();
+      if (response.status === 404) {
+        updateStatus({
+          isConnected: false,
+          systemStatus: 'disconnected',
+          systemHealthy: false,
+          activeOperations: 0,
+          uploadStats: { active: 0, completed: 0, failed: 0 },
+          downloadStats: { active: 0, completed: 0, failed: 0 },
+          uploadService: 'unavailable',
+          downloadService: 'unavailable',
+          storageService: 'unavailable',
+        });
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
       
       updateStatus({
         isConnected: response.status === 200,
@@ -107,7 +122,16 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
 
       // Get stats
       const statsResponse = await fetch('/api/file-management/stats');
-      const statsData = await statsResponse.json();
+      if (statsResponse.status === 404) {
+        updateStatus({
+          activeOperations: 0,
+          uploadStats: { active: 0, completed: 0, failed: 0 },
+          downloadStats: { active: 0, completed: 0, failed: 0 },
+        });
+        return;
+      }
+
+      const statsData = await statsResponse.json().catch(() => ({}));
       
       updateStatus({
         activeOperations: statsData.activeOperations || 0,
@@ -115,7 +139,7 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
         downloadStats: statsData.download || { active: 0, completed: 0, failed: 0 }
     });
   } catch (error) {
-      console.error('File system health check failed: ', error);
+      console.warn('File system health check failed:', error);
       updateStatus({
         isConnected: false,
         systemStatus: 'disconnected',
@@ -127,7 +151,15 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
   const testGoogleDrive = async () => {
     try {
       const response = await fetch('/api/file-management/google-drive/status');
-      const data = await response.json();
+      if (response.status === 404) {
+        updateStatus({
+          googleDriveStatus: 'disconnected',
+          googleDriveResponse: 'API not available',
+          googleDriveLastCheck: new Date(),
+        });
+        return;
+      }
+
       const isConnected = response.status === 200;
       
       updateStatus({
@@ -148,7 +180,15 @@ export function FileManagementStatusProvider({ children }: FileManagementStatusP
   const testGooglePhotos = async () => {
     try {
       const response = await fetch('/api/file-management/google-photos/status');
-      const data = await response.json();
+      if (response.status === 404) {
+        updateStatus({
+          googlePhotosStatus: 'disconnected',
+          googlePhotosResponse: 'API not available',
+          googlePhotosLastCheck: new Date(),
+        });
+        return;
+      }
+
       const isConnected = response.status === 200;
       
       updateStatus({
@@ -203,6 +243,3 @@ export function useFileManagementStatus() {
 }
   return context;
 }
-
-
-

@@ -72,13 +72,23 @@ export default function StoryArcStudioPage() {
   
   // Theming system
   const theming = useTheming('photographer');
+  const professionTheme = getProfessionTheme('videographer');
+  const accentColor = professionTheme?.primaryColor || CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY;
   
+  // Feature flags + integration access (fallback allows local/dev route usage)
+  const storyArcFeatureFlag = useFeatureFlag('story-arc-studio');
+  const scriptManagerFeatureFlag = useFeatureFlag('script-manager');
+
   // Comprehensive Feature System
   const storyArcAccess = features.checkFeatureAccess('story-arc-studio');
   const scriptManagerAccess = features.checkFeatureAccess('script-manager');
-  const isStoryArcStudioEnabled = storyArcAccess.isEnabled;
-  const isScriptManagerEnabled = scriptManagerAccess.isEnabled;
-  const isFeatureLoading = false; // Comprehensive system doesn't have loading states
+  const isStoryArcStudioEnabled =
+    storyArcAccess.hasAccess || storyArcFeatureFlag.isEnabled || import.meta.env.DEV;
+  const isScriptManagerEnabled =
+    scriptManagerAccess.hasAccess || scriptManagerFeatureFlag.isEnabled || import.meta.env.DEV;
+  const canTrackStoryArcUsage = storyArcAccess.hasAccess;
+  const canTrackScriptManagerUsage = scriptManagerAccess.hasAccess;
+  const isFeatureLoading = storyArcFeatureFlag.isLoading || scriptManagerFeatureFlag.isLoading;
 
   // Toast notification helpers
   const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
@@ -90,7 +100,7 @@ export default function StoryArcStudioPage() {
 });
 };
 
-  const showSuccessToast = (message: string) => showToast(message , 'success,');
+  const showSuccessToast = (message: string) => showToast(message, 'success');
   const showErrorToast = (message: string) => showToast(message, 'error');
   const showWarningToast = (message: string) => showToast(message, 'warning');
   const showInfoToast = (message: string) => showToast(message, 'info');
@@ -116,7 +126,7 @@ export default function StoryArcStudioPage() {
   
   // ✅ Video AI Enhancement state
   const [showVideoAIDialog, setShowVideoAIDialog] = useState(false);
-  const [currentVideoUrl, setCurrentVideoUrl] = useState<string>(', ');
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string>('');
   
   // ✅ Script Manager state
   const [showScriptManager, setShowScriptManager] = useState(false);
@@ -131,10 +141,22 @@ export default function StoryArcStudioPage() {
 }>({});
 
   // Unified callback system for workflow integration
+  interface ResolveConnectionStatus {
+    connected?: boolean;
+  }
+
+  interface DriveInitResponse {
+    success?: boolean;
+    folderId?: string;
+    folderUrl?: string;
+    folderPath?: string;
+    message?: string;
+  }
+
   const unifiedCallbacks = {
     onProjectUpdate: (project: any) => {
       console.log('🎬 Story Arc Project Updated, :', project);
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
   },
     onWorklogCreate: (worklog: any) => {
       console.log('📝 Story Arc Worklog Created: ', worklog);
@@ -142,11 +164,11 @@ export default function StoryArcStudioPage() {
     },
     onShowcaseCreate: (showcase: any) => {
       console.log('🎨 Story Arc Showcase Created:', showcase);
-      queryClient.invalidateQueries({ queryKey: ['/api/showcases', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/showcases'] });
   },
     onFileUpload: (file: any) => {
       console.log('📁 Story Arc File Uploaded, :', file);
-      queryClient.invalidateQueries({ queryKey: ['/api/files', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/files'] });
   }
 };
 
@@ -175,6 +197,16 @@ export default function StoryArcStudioPage() {
   }
 }, [currentProject, getProjectSettings, getSetting]);
 
+  // Ensure Story Arc editing uses autosave defaults for note/script workflows.
+  useEffect(() => {
+    if (!settings.projectCreation.autoSave || settings.projectCreation.autoSaveInterval > 120) {
+      updateSetting('projectCreation', {
+        autoSave: true,
+        autoSaveInterval: 60,
+      });
+    }
+  }, [settings.projectCreation.autoSave, settings.projectCreation.autoSaveInterval, updateSetting]);
+
   // Real-time event handling
   useEffect(() => {
     if (!isConnected) return;
@@ -191,7 +223,7 @@ export default function StoryArcStudioPage() {
 
     const handleStoryArcPublish = (data: any) => {
       console.log('🎬 Real-time story arc publish received, :', data);
-      queryClient.invalidateQueries({ queryKey: ['/api/showcases', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/showcases'] });
   };
 
     onEvent('project_updated', handleStoryArcUpdate);
@@ -219,12 +251,14 @@ export default function StoryArcStudioPage() {
       dataKeys: ['story-arc-data','project-data','script-content']
   });
 
-    // Track feature usage
-    features.trackFeatureUsage('story-arc-studio','opened', {
-      timestamp: Date.now(),
-      projectId: projectd,
-      userAgent: navigator.userAgent
-    });
+    // Track feature usage only when the feature is available (or local dev mode).
+    if (canTrackStoryArcUsage) {
+      features.trackFeatureUsage('story-arc-studio','opened', {
+        timestamp: Date.now(),
+        projectId,
+        userAgent: navigator.userAgent
+      });
+    }
 
     // Set up data flow nodes
     dataFlow.registerNode({
@@ -266,26 +300,36 @@ export default function StoryArcStudioPage() {
       if (typeof storyArcUnsubscribe === 'function') storyArcUnsubscribe();
       if (typeof publishUnsubscribe === 'function') publishUnsubscribe();
   };
-}, [storyArcData, scriptContent, projectNotes, componentRegistry, dataFlow, communication]);
+}, [
+  storyArcData,
+  scriptContent,
+  projectNotes,
+  componentRegistry,
+  dataFlow,
+  communication,
+  features,
+  projectId,
+  canTrackStoryArcUsage,
+]);
 
   // Fetch project data
   const { data: projectData, isLoading: isLoadingProject } = useQuery({
     queryKey: ['/api/projects', projectId],
     queryFn: () => apiRequest(`/api/projects/${projectId}`),
-    enabled: !!projectd,
+    enabled: !!projectId,
 });
 
   // Fetch project notes and script
   const { data: projectContent } = useQuery({
     queryKey: ['/api/projects/notes', projectId],
     queryFn: () => apiRequest(`/api/projects/${projectId}/content`),
-    enabled: !!projectd,
+    enabled: !!projectId,
 });
 
   // ✅ DaVinci Resolve API integration queries
-  const { data: resolveConnectionStatus, refetch: checkResolveConnection } = useQuery({
-    queryKey: ['/api/davinci-resolve/status', ],
-    queryFn: () => apiRequest('/api/davinci-resolve/status', ),
+  const { data: resolveConnectionStatus, refetch: checkResolveConnection } = useQuery<ResolveConnectionStatus>({
+    queryKey: ['/api/davinci-resolve/status'],
+    queryFn: () => apiRequest('/api/davinci-resolve/status'),
     refetchInterval: 3000, // Check every 30 seconds
 });
 
@@ -299,18 +343,23 @@ export default function StoryArcStudioPage() {
   // Mutation for creating DaVinci Resolve projects
   const createResolveProject = useMutation({
     mutationFn: (projectConfig: any) => apiRequest('/api/davinci-resolve/projects', {
-      method: 'POS',
+      method: 'POST',
       body: JSON.stringify(projectConfig),
   }),
-    onSuccess: (data) => {
+    onSuccess: (data: Record<string, unknown>) => {
+      const createdProjectId =
+        typeof data.projectId === 'string' ? data.projectId : undefined;
       setResolveStatus(prev => ({ 
         ...prev, 
-        projectId: data.projectId, 
+        projectId: createdProjectId, 
         isCreating: false,
         error: undefined 
   }));
       showSuccessToast('DaVinci Resolve project created successfully!');
-      console.log('✅ DaVinci Resolve project created:', data.projectId);
+      console.log('✅ DaVinci Resolve project created:', createdProjectId);
+      if (createdProjectId) {
+        handleResolveProjectCreated({ projectId: createdProjectId });
+      }
   },
     onError: (error) => {
       setResolveStatus(prev => ({ 
@@ -325,19 +374,21 @@ export default function StoryArcStudioPage() {
 
   // Mutation for creating timelines
   const createResolveTimeline = useMutation({
-    mutationFn: ({ projectd, timelineConfig }: { projectId: string; timelineConfig: any }) => 
+    mutationFn: ({ projectId, timelineConfig }: { projectId: string; timelineConfig: any }) => 
       apiRequest(`/api/davinci-resolve/projects/${projectId}/timelines`, {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(timelineConfig),
     }),
-    onSuccess: (data) => {
+    onSuccess: (data: Record<string, unknown>) => {
+      const createdTimelineId =
+        typeof data.timelineId === 'string' ? data.timelineId : undefined;
       setResolveStatus(prev => ({ 
         ...prev, 
-        timelineId: data.timelined,
+        timelineId: createdTimelineId,
         error: undefined 
   }));
       showSuccessToast('DaVinci Resolve timeline created successfully!');
-      console.log('✅ DaVinci Resolve timeline created:', data.timelineId);
+      console.log('✅ DaVinci Resolve timeline created:', createdTimelineId);
   },
     onError: (error) => {
       setResolveStatus(prev => ({ 
@@ -352,10 +403,23 @@ export default function StoryArcStudioPage() {
   // Update content when project data loads
   useEffect(() => {
     if (projectContent) {
-      setScriptContent(projectContent.script || ', ');
-      setProjectNotes(projectContent.notes || ', ');
+      setScriptContent(projectContent.script || '');
+      setProjectNotes(projectContent.notes || '');
   }
 }, [projectContent]);
+
+  // Pull a default video URL into the AI dialog context when present.
+  useEffect(() => {
+    if (!projectData || typeof projectData !== 'object') return;
+    const record = projectData as Record<string, unknown>;
+    const candidate =
+      (typeof record.videoUrl === 'string' && record.videoUrl) ||
+      (typeof record.previewUrl === 'string' && record.previewUrl) ||
+      '';
+    if (candidate) {
+      setCurrentVideoUrl(candidate);
+    }
+  }, [projectData]);
 
   // Auto-create Google Drive folder when project loads
   useEffect(() => {
@@ -371,7 +435,7 @@ export default function StoryArcStudioPage() {
   const handlePublishToShowcase = async (storyArcData: any) => {
     try {
       const response = await apiRequest('/api/showcase/publish-story-arc', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(storyArcData),
     });
       
@@ -387,7 +451,7 @@ export default function StoryArcStudioPage() {
             id: response.showcaseId || `showcase_${Date.now()}`,
             title: storyArcData.title || 'Story Arc Showcase',
             description: storyArcData.description,
-            projectId: projectd,
+            projectId,
             type: 'story_arc',
             scenes: storyArcData.scenes?.length || 0,
             timestamp: new Date().toISOString(),
@@ -395,6 +459,16 @@ export default function StoryArcStudioPage() {
           };
           unifiedCallbacks.onShowcaseCreate(showcaseData);
         }
+
+        emitEvent('status_changed', {
+          source: 'story-arc-studio',
+          projectId,
+          status: 'published',
+        });
+        integration.emit('story-arc:published', {
+          projectId,
+          showcaseId: response.showcaseId,
+        });
 
         // Optionally redirect to showcase or show success message
         setLocation(`/showcase/${projectId}`);
@@ -412,13 +486,15 @@ export default function StoryArcStudioPage() {
     console.log('📝 Story arc data captured for DaVinci Resolve:', arcData);
 
     // Track feature usage
-    features.trackFeatureUsage('story-arc-studio','story_arc_generated', {
-      timestamp: Date.now(),
-      projectId: projectd,
-      sceneCount: arcData.scenes?.length || 0,
-      estimatedDuration: arcData.estimatedDuration,
-      eventType: arcData.eventType
-    });
+    if (canTrackStoryArcUsage) {
+      features.trackFeatureUsage('story-arc-studio','story_arc_generated', {
+        timestamp: Date.now(),
+        projectId,
+        sceneCount: arcData.scenes?.length || 0,
+        estimatedDuration: arcData.estimatedDuration,
+        eventType: arcData.eventType
+      });
+    }
 
     // Broadcast story arc generation event
     communication.sendBroadcast('story-arc:generated', {
@@ -426,11 +502,20 @@ export default function StoryArcStudioPage() {
       data: arcData,
       component: 'StoryArcStudioPage'
     });
+    emitEvent('item_updated', {
+      source: 'story-arc-studio',
+      projectId,
+      storyArc: arcData,
+    });
+    integration.emit('story-arc:generated', {
+      projectId,
+      sceneCount: arcData.scenes?.length || 0,
+    });
     
     // Trigger unified workflow events
     if (unifiedCallbacks.onProjectUpdate) {
       const projectUpdate = {
-        id: projectd,
+        id: projectId,
         type: 'story_arc_generated',
         title: arcData.title || 'Story Arc',
         description: arcData.description,
@@ -446,7 +531,7 @@ export default function StoryArcStudioPage() {
     if (unifiedCallbacks.onWorklogCreate) {
       const worklogEntry = {
         id: `worklog_${Date.now()}`,
-        projectId: projectd,
+        projectId,
         type: 'story_arc',
         title: `Story Arc Generated: ${arcData.title || 'Untitled'}`,
         description: `Created story arc with ${arcData.scenes?.length || 0} scenes`,
@@ -461,6 +546,17 @@ export default function StoryArcStudioPage() {
     if (resolveStatus.connected && !resolveStatus.projectId) {
       await createDaVinciResolveProject(arcData);
   }
+
+    // Persist short summary to project context so related modules can consume it.
+    if (projectId) {
+      try {
+        await updateProject(projectId, {
+          description: arcData.description || currentProject?.description || '',
+        });
+      } catch (error) {
+        console.warn('Unable to sync project summary after story arc generation:', error);
+      }
+    }
 };
 
   // ✅ Automatic DaVinci Resolve project creation
@@ -470,14 +566,16 @@ export default function StoryArcStudioPage() {
     setResolveStatus(prev => ({ ...prev, isCreating: true, error: undefined }));
 
     // Track feature usage
-    features.trackFeatureUsage('script-manager','davinci_project_created', {
-      timestamp: Date.now(),
-      projectId: projectd,
-      projectName: `${arcData.title || 'Story Arc'} - ${projectData?.name || 'Project'}`,
-      eventType: arcData.eventType || 'bryllup',
-      frameRate: arcData.frameRate || 25,
-      resolution: arcData.resolution || '1920x1080'
-    });
+    if (canTrackScriptManagerUsage) {
+      features.trackFeatureUsage('script-manager','davinci_project_created', {
+        timestamp: Date.now(),
+        projectId,
+        projectName: `${arcData.title || 'Story Arc'} - ${projectData?.name || 'Project'}`,
+        eventType: arcData.eventType || 'bryllup',
+        frameRate: arcData.frameRate || 25,
+        resolution: arcData.resolution || '1920x1080'
+      });
+    }
 
     try {
       const projectConfig = {
@@ -498,11 +596,13 @@ export default function StoryArcStudioPage() {
       console.error('❌ Failed to create DaVinci Resolve project:', error);
       // Track error
       const errorMessage = error instanceof Error ? error.message : String(error);
-      features.trackFeatureUsage('script-manager','davinci_project_error', {
-        timestamp: Date.now(),
-        projectId: projectd,
-        error: errorMessage
-      });
+      if (canTrackScriptManagerUsage) {
+        features.trackFeatureUsage('script-manager','davinci_project_error', {
+          timestamp: Date.now(),
+          projectId,
+          error: errorMessage
+        });
+      }
     }
   };
 
@@ -519,7 +619,7 @@ export default function StoryArcStudioPage() {
         clips: arcData.scenes.map((scene: any, index: number) => ({
           id: `scene_${index}`,
           name: scene.title || `Scene ${index + 1}`,
-          filePath: scene.mediaPath || ', ', // Placeholder for actual media
+          filePath: scene.mediaPath || '', // Placeholder for actual media
           startTime: index * 10, // 10 seconds per scene
           endTime: (index + 1) * 10,
           track: 1,
@@ -557,7 +657,7 @@ export default function StoryArcStudioPage() {
     
     try {
       await apiRequest(`/api/projects/${projectId}/content`, {
-        method: 'PU',
+        method: 'PUT',
         body: JSON.stringify({
           script: scriptContent,
           notes: projectNotes,
@@ -585,14 +685,126 @@ export default function StoryArcStudioPage() {
 };
 
   const handleAIEnhance = (type: 'improve' | 'summarize' | 'translate' | 'grammar') => {
-    console.log(`AI Enhancement: ${type}`, { scriptContent, projectNotes });
-    // Implement AI enhancement logic here
-};
+    const sourceContent = activeTab === 0 ? scriptContent : projectNotes;
+    const plainText = sourceContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const handleExport = (format: 'pdf' | 'docx' | 'html' | 'txt') => {
-    console.log(`Export as ${format}`, { scriptContent, projectNotes });
-    // Implement export logic here
-};
+    if (!plainText) {
+      showWarningToast('No content available to enhance.');
+      return;
+    }
+
+    const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
+    const toSentenceCase = (value: string) =>
+      value.replace(/(^\s*[a-zæøå])|([.!?]\s+[a-zæøå])/g, (m) => m.toUpperCase());
+
+    let transformed = plainText;
+
+    if (type === 'improve') {
+      transformed = toSentenceCase(normalizeWhitespace(plainText));
+      showInfoToast('Improved readability and sentence casing.');
+    }
+
+    if (type === 'summarize') {
+      const sentences = plainText
+        .split(/(?<=[.!?])\s+/)
+        .filter(Boolean)
+        .slice(0, 4);
+      transformed = sentences.join(' ');
+      showInfoToast('Created a short summary.');
+    }
+
+    if (type === 'translate') {
+      // Local fallback: language markers + normalized text for consistent output.
+      const startsNorwegian = /[æøå]/i.test(plainText) || /(?:\bog\b|\bikke\b|\bmed\b)/i.test(plainText);
+      transformed = startsNorwegian
+        ? `[EN draft]\n${plainText}`
+        : `[NO draft]\n${plainText}`;
+      showInfoToast('Prepared draft translation (local fallback).');
+    }
+
+    if (type === 'grammar') {
+      transformed = plainText
+        .replace(/\bteh\b/gi, 'the')
+        .replace(/\bi\b/g, 'I')
+        .replace(/\bdet var ikke noe\b/gi, 'det var ingen')
+        .replace(/\s+([,.!?;:])/g, '$1');
+      transformed = toSentenceCase(transformed);
+      showInfoToast('Applied grammar and punctuation corrections.');
+    }
+
+    const enhancedHtml = `<p>${transformed.replace(/\n/g, '<br/>')}</p>`;
+    if (activeTab === 0) {
+      setScriptContent(enhancedHtml);
+    } else {
+      setProjectNotes(enhancedHtml);
+    }
+    setIsDirty(true);
+  };
+
+  const handleExport = async (format: 'pdf' | 'docx' | 'html' | 'txt') => {
+    const sourceContent = activeTab === 0 ? scriptContent : projectNotes;
+    const plainText = sourceContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const section = activeTab === 0 ? 'script' : 'notes';
+    const baseFileName = `${projectData?.name || 'story-arc'}-${section}`;
+
+    if (!plainText && !sourceContent) {
+      showWarningToast('Nothing to export yet.');
+      return;
+    }
+
+    const downloadBlob = (blob: Blob, filename: string) => {
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    };
+
+    if (format === 'txt') {
+      downloadBlob(new Blob([plainText], { type: 'text/plain;charset=utf-8' }), `${baseFileName}.txt`);
+      showSuccessToast('TXT export ready.');
+      return;
+    }
+
+    if (format === 'html') {
+      const htmlDocument = `<!doctype html><html><head><meta charset="utf-8"/><title>${baseFileName}</title></head><body>${sourceContent}</body></html>`;
+      downloadBlob(new Blob([htmlDocument], { type: 'text/html;charset=utf-8' }), `${baseFileName}.html`);
+      showSuccessToast('HTML export ready.');
+      return;
+    }
+
+    if (format === 'pdf') {
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF();
+      const lines = pdf.splitTextToSize(plainText, 180);
+      pdf.text(lines, 14, 20);
+      pdf.save(`${baseFileName}.pdf`);
+      showSuccessToast('PDF export ready.');
+      return;
+    }
+
+    if (format === 'docx') {
+      const { Document, Paragraph, Packer } = await import('docx');
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ text: projectData?.name || 'Story Arc Project' }),
+            new Paragraph({ text: '' }),
+            new Paragraph({ text: plainText }),
+          ],
+        }],
+      });
+      const docBlob = await Packer.toBlob(doc);
+      downloadBlob(
+        new Blob([docBlob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+        `${baseFileName}.docx`
+      );
+      showSuccessToast('DOCX export ready.');
+    }
+  };
 
   // Google Drive folder creation
   const handleCreateGoogleDriveFolder = async () => {
@@ -606,14 +818,14 @@ export default function StoryArcStudioPage() {
       const response = await apiRequest(`/api/projects/${projectId}/google-drive/initialize`, {
         method: 'POST',
         body: JSON.stringify({
-          userId: projectData.userId || 'current-user', // Get from auth context
+          userId: user?.id || projectData.userId || 'current-user',
           projectName: projectData.name || 'Story Arc Project',
           projectType: 'video-story-arc',
           folderStructure: [
             'Raw Footage','Edited Files','Client Review','Final Delivery','Scripts & Notes','Moodboards & Inspiration','Contracts & Documents','Communication'
           ]
         }),
-      });
+      }) as DriveInitResponse;
 
       if (response.success) {
         setGoogleDriveFolder({
@@ -626,7 +838,10 @@ export default function StoryArcStudioPage() {
         showSuccessToast('Google Drive folder created successfully!');
         console.log('✅ Google Drive folder created successfully:', response.folderPath);
       } else {
-        const errorMessage = (response as any)?.message || 'Failed to create Google Drive folder';
+        const errorMessage =
+          response && typeof response === 'object' && 'message' in response
+            ? String(response.message)
+            : 'Failed to create Google Drive folder';
         const error = { message: errorMessage, name: 'Error' } as Error;
         throw error;
       }
@@ -655,7 +870,7 @@ export default function StoryArcStudioPage() {
         alignItems: 'center',
         flexDirection: 'column',
         gap: 2 }}>
-        <CircularProgress size={60} sx={{ color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPH, Y,}} />
+        <CircularProgress size={60} sx={{ color: accentColor }} />
         <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
           Loading Story Arc Studio...
         </Typography>
@@ -665,53 +880,11 @@ export default function StoryArcStudioPage() {
 
   // Show feature disabled message if not enabled
   if (!isStoryArcStudioEnabled) {
-    const getFeatureDisabledMessage = () => {
-      switch (storyArcAccess.reason) {
-        case 'plan_required':
-          return {
-            title: 'Upgrade Required',
-            message: `The Story Arc Studio feature requires a ${storyArcAccess.requiredPlan} plan or higher. Please upgrade your plan to access this professional video story creation tool.`,
-            action: 'Upgrade Plan'
-      };
-        case 'profession_required':
-          return {
-            title: 'Profession Restricted',
-            message: `The Story Arc Studio feature is only available for ${storyArcAccess.requiredProfession?.join(', ')} professionals. Please contact your administrator if you believe this is an error.`,
-            action: 'Contact Admin'
-      };
-        case 'beta_restricted':
-          return {
-            title: 'Beta Feature',
-            message: 'The Story Arc Studio feature is currently in beta and not available to all users. Please contact your administrator for access.',
-            action: 'Request Access'
-      };
-        case 'coming_soon':
-          return {
-            title: 'Coming Soon',
-            message: 'The Story Arc Studio feature is currently under development and will be available soon. Stay tuned for updates, !',
-            action: 'Get Notified'
-      };
-        case 'deprecated':
-          return {
-            title: 'Feature Deprecated',
-            message: 'The Story Arc Studio feature has been deprecated and is no longer available. Please use alternative tools.',
-            action: 'View Alternatives'
-      };
-        case 'api_only':
-          return {
-            title: 'API Only',
-            message: 'The Story Arc Studio feature is only available via API integration. Please contact your administrator for API access.',
-            action: 'API Documentation'
-      };
-        default: return {
-            title: 'Feature Unavailable',
-            message: 'The Story Arc Studio feature is currently not available. Please contact your administrator for assistance.',
-            action: 'Contact Support'
-      };
-    }
-  };
-
-    const disabledInfo = getFeatureDisabledMessage();
+    const disabledInfo = {
+      title: 'Feature Unavailable',
+      message: storyArcAccess.reason || 'Story Arc Studio is currently unavailable for this account.',
+      action: 'Contact Support',
+    };
 
     return (
       <Box sx={{ 
@@ -732,51 +905,15 @@ export default function StoryArcStudioPage() {
         <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ maxWidth: 600,}}>
           {disabledInfo.message}
         </Typography>
-        
-        {/* Feature Access Details */}
-        {storyArcAccess.metadata && (
-          <Box sx={{
-            p: 2,
-            border: 1,
-            borderColor: 'divider',
-            borderRadius: 1,
-            bgcolor: 'background.paper',
-            maxWidth: 500
-          }}>
-            <Typography variant="body2" color="text.secondary" textAlign="center">
-              <strong>Feature Details:</strong>
-            </Typography>
-            {storyArcAccess.metadata.betaFeature && (
-              <Typography variant="caption" color="warning.main" display="block">
-                • Beta Feature
-              </Typography>
-            )}
-            {storyArcAccess.metadata.comingSoon && (
-              <Typography variant="caption" color="info.main" display="block">
-                • Coming Soon
-              </Typography>
-            )}
-            {storyArcAccess.metadata.deprecated && (
-              <Typography variant="caption" color="error.main" display="block">
-                • Deprecated
-              </Typography>
-            )}
-            {storyArcAccess.metadata.apiOnly && (
-              <Typography variant="caption" color="primary.main" display="block">
-                • API Only
-              </Typography>
-            )}
-          </Box>
-        )}
-
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
           <Button
             variant="contained"
-            startIcon={theming.getThemedIcon('arrowBack')}
+            startIcon={<ArrowBack />}
             onClick={handleBackToDashboard}
             sx={{
               ...theming.getThemedButtonSx(),
-              bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY, '&:hover': { bgcolor: '#e67e00' },
+              bgcolor: accentColor,
+              '&:hover': { bgcolor: '#e67e00' },
             }}
           >
             Back to Dashboard
@@ -785,10 +922,12 @@ export default function StoryArcStudioPage() {
             variant="outlined"
             onClick={() => {
               // Track feature access attempt
-              features.trackFeatureUsage('story-arc-studio','access_denied', {
-                reason: storyArcAccess.reason,
-                timestamp: Date.now()
-              });
+              if (canTrackStoryArcUsage) {
+                features.trackFeatureUsage('story-arc-studio','access_denied', {
+                  reason: storyArcAccess.reason,
+                  timestamp: Date.now()
+                });
+              }
               // Handle action based on reason
               console.log('Feature access action:', disabledInfo.action);
             }}
@@ -804,7 +943,8 @@ export default function StoryArcStudioPage() {
     <Box sx={{
       height: '100vh',
       display: 'flex',
-      flexDirection: 'column','@keyframes spin': {
+      flexDirection: 'column',
+      '@keyframes spin': {
         '0%': { transform: 'rotate(0deg)' },
         '100%': { transform: 'rotate(360deg)' },
       }
@@ -823,7 +963,7 @@ export default function StoryArcStudioPage() {
         <Container maxWidth="xl">
           <Stack direction="row" alignItems="center" spacing={2}>
             <Button
-              startIcon={theming.getThemedIcon('arrowBack')}
+              startIcon={<ArrowBack />}
               onClick={handleBackToDashboard}
               variant="outlined"
               size="small"
@@ -844,7 +984,7 @@ export default function StoryArcStudioPage() {
                 <Box sx={{ 
                   width:  8, 
                   height:  8, 
-                  borderRadius: '50, %', 
+                  borderRadius: '50%', 
                   bgcolor: 'success.main',
                   animation: 'pulse 2s infinite'
             }} />
@@ -886,7 +1026,7 @@ export default function StoryArcStudioPage() {
                   Resolve project ready
                 </Typography>
                 <Chip 
-                  label={`Project: ${resolveStatus.projectId.slice, (8)}...`} 
+                  label={`Project: ${resolveStatus.projectId.slice(0, 8)}...`} 
                   size="small" 
                   variant="outlined"
                   sx={{ fontSize: '10px', height: 20,}}
@@ -911,7 +1051,7 @@ export default function StoryArcStudioPage() {
                 </Typography>
                 <Button
                   size="small"
-                  startIcon={theming.getThemedIcon('refresh')}
+                  startIcon={<Refresh />}
                   onClick={() => checkResolveConnection()}
                   sx={{ minWidth: 'auto', p: 0.5 }}
                 >
@@ -947,7 +1087,7 @@ export default function StoryArcStudioPage() {
                 </Typography>
                 <Button
                   size="small"
-                  startIcon={theming.getThemedIcon('refresh')}
+                  startIcon={<Refresh />}
                   onClick={handleCreateGoogleDriveFolder}
                   sx={{ minWidth: 'auto', p: 0.5 }}
                 >
@@ -963,7 +1103,7 @@ export default function StoryArcStudioPage() {
               variant="contained"
               size="small"
               sx={{
-                bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY,
+                bgcolor: accentColor,
                 '&:hover': { bgcolor: '#e67e00' },
                 mr: 1,
               }}
@@ -977,7 +1117,7 @@ export default function StoryArcStudioPage() {
               variant="contained"
               size="small"
               sx={{
-                bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY,
+                bgcolor: accentColor,
                 '&:hover': { bgcolor: '#e67e00' },
                 mr: 1,
               }}
@@ -990,11 +1130,13 @@ export default function StoryArcStudioPage() {
                 startIcon={<Code />}
                 onClick={() => {
                   // Track feature usage
-                  features.trackFeatureUsage('script-manager','opened', {
-                    timestamp: Date.now(),
-                    projectId: projectd,
-                    source: 'story-arc-studio'
-                  });
+                  if (canTrackScriptManagerUsage) {
+                    features.trackFeatureUsage('script-manager','opened', {
+                      timestamp: Date.now(),
+                      projectId,
+                      source: 'story-arc-studio'
+                    });
+                  }
                   setShowScriptManager(true);
                 }}
                 variant="contained"
@@ -1010,16 +1152,18 @@ export default function StoryArcStudioPage() {
             )}
 
             <Button
-              startIcon={resolveStatus.projectId ? theming.getThemedIcon('play') : <ColorLens />}
+              startIcon={resolveStatus.projectId ? <PlayArrow /> : <ColorLens />}
               onClick={() => {
                 // Track feature usage
-                features.trackFeatureUsage('script-manager', 'davinci_dialog_opened', {
-                  timestamp: Date.now(),
-                  projectId: projectd,
-                  hasProject: !!resolveStatus.projectId,
-                  isConnected: resolveStatus.connected,
-                  source: 'story-arc-studio'
-                });
+                if (canTrackScriptManagerUsage) {
+                  features.trackFeatureUsage('script-manager', 'davinci_dialog_opened', {
+                    timestamp: Date.now(),
+                    projectId,
+                    hasProject: !!resolveStatus.projectId,
+                    isConnected: resolveStatus.connected,
+                    source: 'story-arc-studio'
+                  });
+                }
                 setShowResolveDialog(true);
               }}
               variant="contained"
@@ -1090,7 +1234,24 @@ export default function StoryArcStudioPage() {
             <Typography>Loading project data...</Typography>
           </Box>
         ) : (
-          <StoryArcStudio />
+          <StoryArcStudio
+            storyArcId={projectId ?? undefined}
+            onProjectUpdate={unifiedCallbacks.onProjectUpdate}
+            onWorklogCreate={unifiedCallbacks.onWorklogCreate}
+            onShowcaseCreate={unifiedCallbacks.onShowcaseCreate}
+            onFileUpload={unifiedCallbacks.onFileUpload}
+            selectedProject={projectData}
+            onProjectSelect={(project) => {
+              if (!project || typeof project !== 'object') {
+                return;
+              }
+
+              const projectValue = project as { id?: string | number };
+              if (projectValue.id !== undefined) {
+                setProjectId(String(projectValue.id));
+              }
+            }}
+          />
         )}
       </Box>
 
@@ -1104,7 +1265,7 @@ export default function StoryArcStudioPage() {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <EditNote sx={{ color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPH, Y,}} />
+            <EditNote sx={{ color: accentColor }} />
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>Script & Project Notes</Typography>
             <Typography variant="body2" color="text.secondary">
               {projectData?.name || 'Unnamed Project'}
@@ -1117,7 +1278,7 @@ export default function StoryArcStudioPage() {
             <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
               <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
                 <Tab
-                  icon={theming.getThemedIcon('movieCreation')}
+                  icon={<MovieCreation />}
                   label="Video Script"
                   iconPosition="start"
                 />
@@ -1150,8 +1311,31 @@ export default function StoryArcStudioPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-          <Button onClick={() => setShowNotesDialog(false)}>
+          {lastSaved && (
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 'auto' }}>
+              Last saved: {lastSaved.toLocaleTimeString()}
+            </Typography>
+          )}
+          <Button startIcon={<Stop />} onClick={() => setShowNotesDialog(false)}>
             Close
+          </Button>
+          <Button onClick={() => handleAIEnhance('improve')}>
+            Improve
+          </Button>
+          <Button onClick={() => handleAIEnhance('summarize')}>
+            Summarize
+          </Button>
+          <Button onClick={() => handleAIEnhance('grammar')}>
+            Grammar
+          </Button>
+          <Button onClick={() => handleExport('txt')}>
+            Export TXT
+          </Button>
+          <Button onClick={() => handleExport('pdf')}>
+            Export PDF
+          </Button>
+          <Button onClick={() => handleExport('docx')}>
+            Export DOCX
           </Button>
           <Button
             variant="contained"
@@ -1159,7 +1343,7 @@ export default function StoryArcStudioPage() {
             disabled={!isDirty}
             sx={{
               ...theming.getThemedButtonSx(),
-              bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY,
+              bgcolor: accentColor,
               '&:hover': { bgcolor: '#e67e00' },
             }}
           >
@@ -1384,12 +1568,7 @@ export default function StoryArcStudioPage() {
         </DialogTitle>
         <DialogContent sx={{ p: 0, height: 'calc(100vh - 120px)',}}>
           <Box sx={{ height: '100%', overflow: 'auto',}}>
-            <ScriptManager 
-              projectType={(currentProject as any)?.type}
-              culture={(currentProject as any)?.culture}
-              currentPhase={(currentProject as any)?.currentPhase}
-              projectData={currentProject}
-            />
+            <ScriptManager />
           </Box>
         </DialogContent>
         <DialogActions sx={{ 

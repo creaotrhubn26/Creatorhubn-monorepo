@@ -101,6 +101,14 @@ import {
   Schedule as ScheduleIcon,
   LinkOff as UnassignIcon,
   HelpOutline as HelpIcon,
+  WorkOutline as ProductionDeptIcon,
+  Videocam as CameraDeptIcon,
+  Lightbulb as LightingDeptIcon,
+  GraphicEq as SoundDeptIcon,
+  PostAdd as PostDeptIcon,
+  Palette as ArtDeptIcon,
+  Checkroom as WardrobeDeptIcon,
+  Category as OtherDeptIcon,
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import { 
@@ -125,6 +133,7 @@ import { CrewManagementGuide } from './production/CrewManagementGuide';
 type SortField = 'name' | 'role' | 'rate' | 'availability';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
+type WorkspaceView = 'standard' | 'pro';
 
 // WCAG 2.2 minimum touch target size (44x44px)
 const TOUCH_TARGET_SIZE = 44;
@@ -132,7 +141,7 @@ const TOUCH_TARGET_SIZE = 44;
 // Shared focus styles for WCAG 2.4.7 Focus Visible
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #00d4ff',
+    outline: '3px solid #b86bff',
     outlineOffset: '2px',
   },
 };
@@ -162,6 +171,17 @@ const DEPT_COLORS: Record<DeptKey, string> = {
   art: '#ec4899',
   wardrobe: '#a78bfa',
   other: '#64748b',
+};
+
+const DEPT_ICONS: Record<DeptKey, React.ElementType> = {
+  production: ProductionDeptIcon,
+  camera: CameraDeptIcon,
+  lighting: LightingDeptIcon,
+  sound: SoundDeptIcon,
+  post: PostDeptIcon,
+  art: ArtDeptIcon,
+  wardrobe: WardrobeDeptIcon,
+  other: OtherDeptIcon,
 };
 
 const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
@@ -268,14 +288,14 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
 
   return (
     <Box sx={{
-      width: 220,
+      width: 280,
       flexShrink: 0,
       overflowY: 'auto',
       display: 'flex',
       flexDirection: 'column',
-      border: '1px solid rgba(0,212,255,0.18)',
+      border: '1px solid rgba(184,107,255,0.32)',
       borderRadius: 2,
-      bgcolor: 'rgba(7,14,24,0.72)',
+      bgcolor: 'rgba(20,14,48,0.84)',
       backdropFilter: 'blur(6px)',
       boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
     }}>
@@ -283,51 +303,57 @@ function DeptSidebarPanel({ crewMembers, filterDept, onDeptClick, favorites }: D
       <Box
         onClick={() => onDeptClick('all')}
         sx={{
-          px: 2, py: 1.25, cursor: 'pointer', display: 'flex', alignItems: 'center',
+          px: 2.5, py: 1.45, cursor: 'pointer', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between',
-          bgcolor: filterDept === 'all' ? 'rgba(0,212,255,0.14)' : 'transparent',
-          borderLeft: filterDept === 'all' ? '3px solid #00d4ff' : '3px solid transparent',
-          '&:hover': { bgcolor: 'rgba(0,212,255,0.08)' },
+          bgcolor: filterDept === 'all' ? 'rgba(184,107,255,0.18)' : 'transparent',
+          borderLeft: filterDept === 'all' ? '3px solid #b86bff' : '3px solid transparent',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <GroupsDetailIcon sx={{ fontSize: 15, color: filterDept === 'all' ? '#00d4ff' : 'rgba(255,255,255,0.5)' }} />
-          <Typography sx={{ color: filterDept === 'all' ? '#00d4ff' : 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: 600 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <GroupsDetailIcon sx={{ fontSize: 20, color: '#ffffff' }} />
+          <Typography sx={{ color: '#ffffff', fontSize: 17, fontWeight: 800, lineHeight: 1.1 }}>
             Alle
           </Typography>
         </Box>
-        <Chip label={crewMembers.length} size="small" sx={{ height: 18, fontSize: 11, color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.12)' }} />
+        <Chip label={crewMembers.length} size="small" sx={{ height: 28, fontSize: 14, fontWeight: 700, color: '#ffffff', bgcolor: 'rgba(184,107,255,0.36)', border: '1px solid rgba(255,255,255,0.26)' }} />
       </Box>
-      <Divider sx={{ borderColor: 'rgba(0,212,255,0.12)' }} />
+      <Divider sx={{ borderColor: 'rgba(184,107,255,0.2)' }} />
       {DEPT_ORDER.map(dept => {
         const members = grouped.get(dept) ?? [];
         if (members.length === 0) return null;
         const color = DEPT_COLORS[dept];
         const active = filterDept === dept;
+        const DeptIcon = DEPT_ICONS[dept];
         return (
           <Box
             key={dept}
             onClick={() => onDeptClick(active ? 'all' : dept)}
             sx={{
-              px: 2, py: 1, cursor: 'pointer', display: 'flex', alignItems: 'center',
+              px: 2.5, py: 1.25, cursor: 'pointer', display: 'flex', alignItems: 'center',
               justifyContent: 'space-between',
               bgcolor: active ? `${color}18` : 'transparent',
               borderLeft: active ? `3px solid ${color}` : '3px solid transparent',
-              '&:hover': { bgcolor: 'rgba(0,212,255,0.08)' },
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
             }}
           >
-            <Typography sx={{ color: active ? color : 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: active ? 700 : 400 }}>
-              {DEPT_LABELS[dept]}
-            </Typography>
-            <Chip label={members.length} size="small" sx={{ height: 16, fontSize: 10, color, bgcolor: `${color}1a` }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DeptIcon sx={{ fontSize: 18, color: '#ffffff' }} />
+              <Typography sx={{ color: '#ffffff', fontSize: 16, fontWeight: active ? 800 : 700, lineHeight: 1.1 }}>
+                {DEPT_LABELS[dept]}
+              </Typography>
+            </Box>
+            <Chip label={members.length} size="small" sx={{ height: 26, fontSize: 13, fontWeight: 700, color: '#ffffff', bgcolor: active ? `${color}66` : 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.22)' }} />
           </Box>
         );
       })}
-      <Divider sx={{ borderColor: 'rgba(0,212,255,0.12)', mt: 1 }} />
+      <Divider sx={{ borderColor: 'rgba(184,107,255,0.2)', mt: 1 }} />
       {/* Favorites */}
       {favorites.size > 0 && (
         <Box sx={{ px: 2, py: 1 }}>
-          <Typography sx={{ color: '#ffc107', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography sx={{ color: '#ffffff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <StarIcon sx={{ fontSize: 12 }} />
             Favoritter ({favorites.size})
           </Typography>
@@ -357,7 +383,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
     <Slide direction="up" in mountOnEnter unmountOnExit>
       <Box sx={{
         position: 'sticky', bottom: 0, left: 0, right: 0, zIndex: 50,
-        bgcolor: '#0d1117', borderTop: '1px solid rgba(0,212,255,0.25)',
+        bgcolor: '#140e30', borderTop: '1px solid rgba(184,107,255,0.32)',
         display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
         px: { xs: 1.5, sm: 3 }, py: 1.25,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.4)',
@@ -368,19 +394,19 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             checked={isAllSelected}
             indeterminate={selectedIds.size > 0 && !isAllSelected}
             onChange={onSelectAll}
-            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: '#00d4ff' }, p: 0.5 }}
+            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: '#b86bff' }, p: 0.5 }}
           />
-          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Select All</Typography>
+          <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Velg alle</Typography>
         </Box>
         {/* Assign to Day */}
         <Button
           size="small" variant="outlined"
           startIcon={<AssignIcon sx={{ fontSize: 15 }} />}
           onClick={onAssignDay}
-          sx={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
-            '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' } }}
+          sx={{ borderColor: 'rgba(184,107,255,0.45)', color: '#b86bff', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+            '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' } }}
         >
-          Assign to Day
+          Tilordne dag
         </Button>
         {/* Change Status */}
         <Button
@@ -390,7 +416,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           sx={{ borderColor: 'rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}
         >
-          Change Status
+          Endre status
         </Button>
         <Menu
           anchorEl={statusAnchor}
@@ -418,7 +444,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           sx={{ borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }}
         >
-          Remove {selectedIds.size}
+          Fjern {selectedIds.size}
         </Button>
         {/* Right side */}
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -426,7 +452,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             label={selectedIds.size}
             size="small"
             onDelete={onDeselect}
-            sx={{ bgcolor: 'rgba(0,212,255,0.15)', color: '#00d4ff', fontWeight: 700, height: 22, fontSize: 12 }}
+            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: '#b86bff', fontWeight: 700, height: 22, fontSize: 12 }}
           />
           <Tooltip title="Synkroniser">
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><SyncIcon sx={{ fontSize: 18 }} /></IconButton>
@@ -470,8 +496,8 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
-      PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(0,212,255,0.2)' } }}>
-      <DialogTitle sx={{ color: '#00d4ff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+      PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(184,107,255,0.32)' } }}>
+      <DialogTitle sx={{ color: '#b86bff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
         <PersonAddIcon /> Inviter crewmedlem
       </DialogTitle>
       <DialogContent>
@@ -494,7 +520,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Avbryt</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!name.trim()}
-          sx={{ bgcolor: '#00d4ff', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#00b8e6' } }}>
+          sx={{ bgcolor: '#b86bff', color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}>
           Send invitasjon
         </Button>
       </DialogActions>
@@ -932,6 +958,15 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
   // Toast notifications
   const { showSuccess, showError, showInfo } = useToast();
+  const roleTabAccent = '#b86bff';
+  const roleTabAccentHover = '#a855f7';
+  const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
+  const roleSurface = 'rgba(20,14,48,0.84)';
+  const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
+  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleText = '#ffffff';
+  const roleTextMuted = 'rgba(255,255,255,0.92)';
+  const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
 
   // Core state
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>([]);
@@ -1000,6 +1035,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
   const [showStats, setShowStats] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -1379,6 +1415,29 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     return map;
   }, [crewAssignments]);
 
+  const proInsights = useMemo(() => {
+    const confirmed = filteredAndSortedCrew.filter((member) => member.status === 'confirmed').length;
+    const pending = filteredAndSortedCrew.filter((member) => member.status === 'pending').length;
+    const invited = filteredAndSortedCrew.filter((member) => member.status === 'invited').length;
+    const unavailable = filteredAndSortedCrew.filter((member) => member.status === 'unavailable').length;
+    const averageRate = filteredAndSortedCrew.length > 0
+      ? Math.round(filteredAndSortedCrew.reduce((sum, member) => sum + (member.rate || 0), 0) / filteredAndSortedCrew.length)
+      : 0;
+    const topRoles = Object.entries(stats.roleCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([role, count]) => `${getRoleLabel(role as CrewRole)} (${count})`);
+
+    return {
+      confirmed,
+      pending,
+      invited,
+      unavailable,
+      averageRate,
+      topRoles,
+    };
+  }, [filteredAndSortedCrew, stats.roleCount]);
+
   // Bulk operations
   const handleSelectAll = () => {
     if (selectedIds.size === filteredAndSortedCrew.length) {
@@ -1433,7 +1492,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       await castingService.saveCrew(projectId, member);
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
-      showSuccess(`📨 Invitasjon sendt til ${data.name}`, 3000);
+      showSuccess(`Invitasjon sendt til ${data.name}`, 3000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error inviting crew member:', error);
@@ -1452,7 +1511,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       setCrewMembers(Array.isArray(crew) ? crew : []);
       const count = selectedIds.size;
       setSelectedIds(new Set());
-      showSuccess(`✅ Status oppdatert for ${count} crewmedlem(mer)`, 3000);
+      showSuccess(`Status oppdatert for ${count} crewmedlem(mer)`, 3000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating crew status:', error);
@@ -1495,7 +1554,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     try {
       await castingService.saveCrewAssignment(projectId, newAssignment);
       const code = getMemberDOODCode(crewMemberId, dayId, updated, productionDays) ?? status.toUpperCase();
-      showSuccess(`✅ ${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet Dag – ${date} (${code})`, 3000);
+      showSuccess(`${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet dag ${date} (${code})`, 3000);
     } catch {
       showInfo('Tilordning lagret lokalt (sync ved neste tilkobling)');
     }
@@ -1837,7 +1896,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
       setShowUndoSnackbar(true);
-      showInfo(`🗑️ ${member.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+      showInfo(`${member.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error deleting crew member:', error);
@@ -1852,7 +1911,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         await castingService.saveCrew(projectId, deletedCrew);
         const crew = await castingService.getCrew(projectId);
         setCrewMembers(Array.isArray(crew) ? crew : []);
-        showSuccess(`↩️ ${deletedCrew.name} gjenopprettet`, 3000);
+        showSuccess(`${deletedCrew.name} gjenopprettet`, 3000);
         setDeletedCrew(null);
         setShowUndoSnackbar(false);
         if (onUpdate) onUpdate();
@@ -1959,7 +2018,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
-      showError('⚠️ Navn er påkrevd');
+      showError('Navn er påkrevd');
       return;
     }
 
@@ -1989,9 +2048,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
       // Show success notification
       if (editingCrewMember) {
-        showSuccess(`✅ ${formData.name} oppdatert`, 3000);
+        showSuccess(`${formData.name} oppdatert`, 3000);
       } else {
-        showSuccess(`👤 ${formData.name} lagt til i teamet`, 3000);
+        showSuccess(`${formData.name} lagt til i teamet`, 3000);
       }
 
       handleCloseDialog();
@@ -2012,7 +2071,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         height: '100%',
         minHeight: 0,
         bgcolor: 'transparent',
-        background: 'radial-gradient(circle at 20% -20%, rgba(0,212,255,0.18), transparent 55%), radial-gradient(circle at 90% 0%, rgba(147,51,234,0.14), transparent 48%)',
+        backgroundImage: `linear-gradient(180deg, rgba(10, 6, 26, 0.9) 0%, rgba(10, 6, 26, 0.94) 100%), ${rolePanelBackdrop}`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
       }}
     >
       <OfflineBanner pending={offlinePending} />
@@ -2028,26 +2089,26 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           pb: 1,
           gap: 1,
           flexWrap: 'wrap',
-          border: '1px solid rgba(0,212,255,0.2)',
+          border: `1px solid ${roleBorder}`,
           borderRadius: 2,
           mx: 2,
           mb: 1,
-          bgcolor: 'rgba(7,14,24,0.72)',
+          bgcolor: roleSurface,
           backdropFilter: 'blur(8px)',
           boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
         }}
       >
         {/* Title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{ width: 44, height: 44, borderRadius: 2, background: 'linear-gradient(135deg,rgba(0,212,255,0.25),rgba(0,212,255,0.1))', border: '2px solid rgba(0,212,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <GroupsIcon sx={{ color: '#4dd0e1', fontSize: 26 }} />
+          <Box sx={{ width: 44, height: 44, borderRadius: 2, background: `linear-gradient(135deg,${roleTabAccentSoft},rgba(184,107,255,0.08))`, border: `2px solid ${roleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <GroupsIcon sx={{ color: roleTabAccent, fontSize: 26 }} />
           </Box>
           <Box>
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.4rem' }, background: 'linear-gradient(135deg,#fff,#4dd0e1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <Typography variant="h5" sx={{ color: roleText, fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.4rem' } }}>
               Produksjonsteam
             </Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
-              <BadgeIcon sx={{ fontSize: 13, verticalAlign: 'middle', mr: 0.5, color: 'rgba(255,255,255,0.4)' }} />
+            <Typography sx={{ color: roleTextMuted, fontSize: 12 }}>
+              <BadgeIcon sx={{ fontSize: 13, verticalAlign: 'middle', mr: 0.5, color: 'rgba(220,205,255,0.6)' }} />
               {crewMembers.length} totalt · {stats.availableNow} tilgjengelig
               {stats.assignedToday > 0 && ` · ${stats.assignedToday} tilordnet i dag`}
               {stats.totalConflicts > 0 && (
@@ -2063,13 +2124,41 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
         {/* Header actions */}
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setWorkspaceView('standard')}
+            sx={{
+              minHeight: 34,
+              bgcolor: workspaceView === 'standard' ? roleTabAccentSoft : 'transparent',
+              color: '#ffffff',
+              borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
+              '&:hover': { bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)' },
+            }}
+          >
+            Standard
+          </Button>
+          <Button
+            variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setWorkspaceView('pro')}
+            sx={{
+              minHeight: 34,
+              bgcolor: workspaceView === 'pro' ? roleTabAccentSoft : 'transparent',
+              color: '#ffffff',
+              borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
+              '&:hover': { bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)' },
+            }}
+          >
+            Pro view
+          </Button>
           <Tooltip title="Vis/skjul avdelinger">
-            <IconButton onClick={() => setShowDeptSidebar(p => !p)} sx={{ color: showDeptSidebar ? '#00d4ff' : 'rgba(255,255,255,0.5)', ...focusVisibleStyles }}>
+            <IconButton onClick={() => setShowDeptSidebar(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               {showDeptSidebar ? <ChevronLeftIcon /> : <ChevronRightIcon />}
             </IconButton>
           </Tooltip>
           <Tooltip title={showStats ? 'Skjul statistikk' : 'Vis statistikk'}>
-            <IconButton onClick={() => setShowStats(p => !p)} sx={{ color: showStats ? '#00d4ff' : 'rgba(255,255,255,0.5)', ...focusVisibleStyles }}>
+            <IconButton onClick={() => setShowStats(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               {showStats ? <ExpandLessIcon /> : <ExpandMoreIcon />}
             </IconButton>
           </Tooltip>
@@ -2081,7 +2170,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           <Tooltip title="Days Out Of Days (DOOD)">
             <Badge badgeContent={productionDays.length > 0 ? crewAssignments.length : 0} color="primary" max={99}
               sx={{ '& .MuiBadge-badge': { fontSize: 10, minWidth: 16, height: 16 } }}>
-              <IconButton onClick={() => setDoodOpen(true)} sx={{ color: productionDays.length > 0 ? '#00d4ff' : 'rgba(255,255,255,0.4)', ...focusVisibleStyles }}>
+              <IconButton onClick={() => setDoodOpen(true)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
                 <DoodIcon sx={{ fontSize: 20 }} />
               </IconButton>
             </Badge>
@@ -2089,42 +2178,42 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           <Tooltip title="Callsheet-generator">
             <IconButton
               onClick={() => { setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
-              sx={{ color: productionDays.length > 0 ? '#00d4ff' : 'rgba(255,255,255,0.4)', ...focusVisibleStyles }}
+              sx={{ color: '#ffffff', ...focusVisibleStyles }}
             >
               <CallsheetIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Tooltip>
           <Tooltip title="Hjelp — Crew Management guide">
-            <IconButton onClick={() => setGuideOpen(true)} sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#00d4ff' }, ...focusVisibleStyles }} aria-label="Open Crew Management guide">
+            <IconButton onClick={() => setGuideOpen(true)} sx={{ color: '#ffffff', '&:hover': { color: '#ffffff' }, ...focusVisibleStyles }} aria-label="Open Crew Management guide">
               <HelpIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Kostnadskalkulator">
-            <IconButton onClick={() => setShowCostCalculator(p => !p)} sx={{ color: showCostCalculator ? '#00d4ff' : 'rgba(255,255,255,0.7)', ...focusVisibleStyles }}>
+            <IconButton onClick={() => setShowCostCalculator(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               <CalculateIcon />
             </IconButton>
           </Tooltip>
           <ToggleButtonGroup value={viewMode} exclusive onChange={(_, v) => v && setViewMode(v)} size="small">
-            <ToggleButton value="grid" sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-selected': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' } }}>
+            <ToggleButton value="grid" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
               <ViewModuleIcon sx={{ fontSize: 18 }} />
             </ToggleButton>
-            <ToggleButton value="table" sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-selected': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.1)' } }}>
+            <ToggleButton value="table" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
               <ViewListIcon sx={{ fontSize: 18 }} />
             </ToggleButton>
           </ToggleButtonGroup>
           <Button variant="outlined" startIcon={<PersonAddIcon />} onClick={() => setInviteDialogOpen(true)}
-            sx={{ borderColor: 'rgba(0,212,255,0.4)', color: '#00d4ff', fontWeight: 700, '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' } }}>
+            sx={{ borderColor: roleBorder, color: '#ffffff', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentSoft, borderColor: roleTabAccent } }}>
             Inviter (F)
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}
-            sx={{ bgcolor: '#00d4ff', color: '#001018', fontWeight: 800, '&:hover': { bgcolor: '#00b8e6' } }}>
-            {isMobile ? 'Ny' : 'Legg til'}
+            sx={{ bgcolor: roleTabAccent, color: '#ffffff', fontWeight: 800, '&:hover': { bgcolor: roleTabAccentHover } }}>
+            {isMobile ? 'Ny' : 'Nytt crewmedlem'}
           </Button>
         </Box>
       </Box>
 
       {/* ── SEARCH + FILTER TOOLBAR ── */}
-      <Box sx={{ px: 2, pb: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', border: '1px solid rgba(0,212,255,0.14)', borderRadius: 2, mx: 2, py: 1, bgcolor: 'rgba(8,16,28,0.64)' }}>
+      <Box sx={{ px: 2, pb: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', border: `1px solid ${roleBorder}`, borderRadius: 2, mx: 2, py: 1, bgcolor: roleSurfaceMuted }}>
         <TextField
           inputRef={searchInputRef}
           size="small"
@@ -2132,7 +2221,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 18 }} /></InputAdornment> } }}
-          sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { color: '#fff', bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' }, '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' }, '&.Mui-focused fieldset': { borderColor: '#00d4ff' } } }}
+          sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { color: roleText, bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: roleBorder }, '&:hover fieldset': { borderColor: roleTabAccentSoft }, '&.Mui-focused fieldset': { borderColor: roleTabAccent } } }}
         />
         {/* Status filter chips */}
         {(['all', 'confirmed', 'pending', 'invited', 'unavailable'] as const).map(s => {
@@ -2144,7 +2233,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
               label={s === 'all' ? 'Alle' : meta!.label}
               size="small"
               onClick={() => setFilterStatus(s as CrewStatus | 'all')}
-              sx={{ fontWeight: active ? 700 : 400, bgcolor: active ? (meta?.bg ?? 'rgba(0,212,255,0.15)') : 'rgba(255,255,255,0.06)', color: active ? (meta?.color ?? '#00d4ff') : 'rgba(255,255,255,0.6)', border: `1px solid ${active ? (meta?.color ?? '#00d4ff') + '55' : 'rgba(255,255,255,0.1)'}`, cursor: 'pointer' }}
+              sx={{ fontWeight: active ? 700 : 500, bgcolor: active ? (meta?.bg ?? roleTabAccentSoft) : 'rgba(255,255,255,0.06)', color: '#ffffff', border: `1px solid ${active ? (meta?.color ?? roleTabAccent) + '55' : 'rgba(255,255,255,0.24)'}`, cursor: 'pointer' }}
             />
           );
         })}
@@ -2162,7 +2251,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
               label="Tilordnet i dag"
               size="small"
               onClick={() => setFilterAssignedToday(p => !p)}
-              sx={{ bgcolor: filterAssignedToday ? 'rgba(0,212,255,0.2)' : 'rgba(255,255,255,0.06)', color: filterAssignedToday ? '#00d4ff' : 'rgba(255,255,255,0.6)', border: `1px solid ${filterAssignedToday ? '#00d4ff55' : 'rgba(255,255,255,0.1)'}`, cursor: 'pointer', fontWeight: filterAssignedToday ? 700 : 400 }}
+              sx={{ bgcolor: filterAssignedToday ? roleTabAccentSoft : 'rgba(255,255,255,0.06)', color: '#ffffff', border: `1px solid ${filterAssignedToday ? `${roleTabAccent}55` : 'rgba(255,255,255,0.24)'}`, cursor: 'pointer', fontWeight: filterAssignedToday ? 700 : 500 }}
             />
           </Tooltip>
         )}
@@ -2182,7 +2271,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
               <Badge badgeContent={activeFilterCount} color="primary" overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 10, minWidth: 16, height: 16 } }}>
                 <IconButton
                   onClick={() => setShowFilters(p => !p)}
-                  sx={{ color: showFilters ? '#00d4ff' : 'rgba(255,255,255,0.5)', ...focusVisibleStyles }}
+                  sx={{ color: showFilters ? roleTabAccent : roleTextMuted, ...focusVisibleStyles }}
                   aria-label="Vis/skjul rollefilter"
                 >
                   <FilterListIcon sx={{ fontSize: 20 }} />
@@ -2198,7 +2287,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         <Box sx={{ px: 2, pb: 0.75, pt: 0.25, mx: 2, display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
           {filterAssignedToday && (
             <Chip
-              label={`${stats.assignedToday} Assigned Today`}
+              label={`${stats.assignedToday} tilordnet i dag`}
               size="small"
               onDelete={() => setFilterAssignedToday(false)}
               sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#ffb800', border: '1px solid rgba(147,51,234,0.4)', fontWeight: 700, fontSize: 12 }}
@@ -2225,7 +2314,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
               label={getRoleLabel(filterRole as CrewRole)}
               size="small"
               onDelete={() => setFilterRole('all')}
-              sx={{ bgcolor: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)', fontWeight: 600, fontSize: 12 }}
+              sx={{ bgcolor: roleTabAccentSoft, color: '#ffffff', border: `1px solid ${roleBorder}`, fontWeight: 700, fontSize: 12 }}
             />
           )}
         </Box>
@@ -2240,7 +2329,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           >
             <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(255,255,255,0.7)' }} />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <PeopleIcon sx={{ fontSize: 16, color: '#00d4ff' }} />
+                <PeopleIcon sx={{ fontSize: 16, color: '#ffffff' }} />
                 <Typography sx={{ fontSize: 13, color: 'rgba(255,255,255,0.8)' }}>Rollefilter</Typography>
               </Box>
             </AccordionSummary>
@@ -2255,7 +2344,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                 >
                   <MenuItem value="all">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <PeopleIcon sx={{ fontSize: 18, color: '#00d4ff' }} />
+                      <PeopleIcon sx={{ fontSize: 18, color: '#ffffff' }} />
                       Alle roller
                     </Box>
                   </MenuItem>
@@ -2271,8 +2360,8 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
       {/* ── COST CALCULATOR ── */}
       <Collapse in={showCostCalculator}>
-        <Box sx={{ mx: 2, mb: 1, p: 2, bgcolor: 'rgba(0,212,255,0.08)', borderRadius: 2, border: '1px solid rgba(0,212,255,0.25)' }}>
-          <Typography sx={{ color: '#00d4ff', fontWeight: 600, mb: 1.5, fontSize: 14 }}>
+        <Box sx={{ mx: 2, mb: 1, p: 2, bgcolor: roleTabAccentSoft, borderRadius: 2, border: `1px solid ${roleBorder}` }}>
+          <Typography sx={{ color: '#ffffff', fontWeight: 700, mb: 1.5, fontSize: 14 }}>
             Kostnadsberegner {selectedIds.size > 0 && `(${selectedIds.size} valgte)`}
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2295,24 +2384,88 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
       {/* ── LOADING INDICATOR ── */}
       {isLoading && (
-        <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(0,212,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#00d4ff' } }} />
+        <LinearProgress sx={{ mx: 0, height: 2, bgcolor: 'rgba(184,107,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }} />
       )}
 
       {/* ── STATS BAR ── */}
       <Collapse in={showStats && crewMembers.length > 0}>
-        <Box sx={{ mx: 2, mb: 1, p: 1.5, bgcolor: 'rgba(0,212,255,0.05)', borderRadius: 2, border: '1px solid rgba(0,212,255,0.15)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 1.5 }}>
+        <Box sx={{ mx: 2, mb: 1, p: 1.5, bgcolor: roleTabAccentSoft, borderRadius: 2, border: `1px solid ${roleBorder}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(90px,1fr))', gap: 1.5 }}>
           {[
-            { label: 'Totalt', value: stats.total, color: '#00d4ff' },
-            { label: 'Tilgjengelig', value: stats.availableNow, color: '#10b981' },
-            { label: 'Fast honorar', value: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, color: '#f59e0b' },
+            { label: 'Totalt', value: stats.total, color: '#ffffff' },
+            { label: 'Tilgjengelig', value: stats.availableNow, color: '#ffffff' },
+            { label: 'Fast honorar', value: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, color: '#ffffff' },
           ].map(s => (
             <Box key={s.label} sx={{ textAlign: 'center' }}>
               <Typography sx={{ color: s.color, fontWeight: 700, fontSize: { xs: '1.2rem', sm: '1.5rem' } }}>{s.value}</Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>{s.label}</Typography>
+              <Typography sx={{ color: '#ffffff', fontSize: 11 }}>{s.label}</Typography>
             </Box>
           ))}
         </Box>
       </Collapse>
+
+      {workspaceView === 'pro' && (
+        <Box
+          sx={{
+            mx: 2,
+            mb: 1,
+            p: 1.5,
+            borderRadius: 2,
+            bgcolor: roleSurface,
+            border: `1px solid ${roleBorder}`,
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0,1fr))' },
+            gap: 1.25,
+          }}
+        >
+          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Bekreftet</Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.confirmed}</Typography>
+          </Box>
+          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Venter / Invitert</Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.pending + proInsights.invited}</Typography>
+          </Box>
+          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Konflikter</Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{stats.totalConflicts}</Typography>
+          </Box>
+          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Snitt fast honorar</Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.averageRate.toLocaleString('nb-NO')} kr</Typography>
+          </Box>
+          {proInsights.topRoles.length > 0 && (
+            <Box sx={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 0.75, pt: 0.25 }}>
+              {proInsights.topRoles.map((roleLabel) => (
+                <Chip
+                  key={roleLabel}
+                  label={roleLabel}
+                  size="small"
+                  sx={{ bgcolor: roleTabAccentSoft, color: '#ffffff', border: `1px solid ${roleBorder}` }}
+                />
+              ))}
+              <Button
+                size="small"
+                onClick={() => {
+                  setFilterStatus('pending');
+                  setShowFilters(false);
+                }}
+                sx={{ color: '#ffffff', borderColor: roleBorder }}
+                variant="outlined"
+              >
+                Fokus: Venter
+              </Button>
+              <Button
+                size="small"
+                onClick={() => setShowCostCalculator(true)}
+                sx={{ color: '#ffffff', borderColor: roleBorder }}
+                variant="outlined"
+              >
+                Åpne budsjettpanel
+              </Button>
+            </Box>
+          )}
+        </Box>
+      )}
 
       {/* ── MAIN BODY: dept sidebar + crew list ── */}
       <Box sx={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', gap: 1.25, px: 2, pb: 1.25 }}>
@@ -2322,13 +2475,13 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         </Collapse>
 
         {/* CENTER: crew list */}
-        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', border: '1px solid rgba(0,212,255,0.14)', borderRadius: 2, bgcolor: 'rgba(7,14,24,0.58)', backdropFilter: 'blur(6px)', p: 1 }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', border: `1px solid ${roleBorder}`, borderRadius: 2, bgcolor: roleSurfaceMuted, backdropFilter: 'blur(6px)', p: 1 }}>
           {crewMembers.length === 0 ? (
             <RoleRoomEmptyState
               iconSrc={crewPng}
               title="Ingen teammedlemmer ennå"
               subtitle="Legg til teammedlemmer for å organisere produksjonsteamet"
-              color="#00d4ff"
+              color={roleTabAccent}
             />
           ) : filteredAndSortedCrew.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.5)' }}>
@@ -2435,10 +2588,10 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                           {DEPT_LABELS[deptKey]}
                         </Typography>
                         <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>({deptCount})</Typography>
-                        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => handleOpenDialog()}
-                          sx={{ ml: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.45)', textTransform: 'none', minHeight: 'auto', py: 0.2, px: 1,
-                            '&:hover': { color: '#00d4ff', bgcolor: 'rgba(0,212,255,0.08)' } }}>
-                          + Add Crew
+                            <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => handleOpenDialog()}
+                              sx={{ ml: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.45)', textTransform: 'none', minHeight: 'auto', py: 0.2, px: 1,
+                                '&:hover': { color: roleTabAccent, bgcolor: roleTabAccentSoft } }}>
+                          + Nytt crewmedlem
                         </Button>
                       </Box>
                     </TableCell>
@@ -2451,8 +2604,8 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                     hover
                     selected={selectedIds.has(member.id)}
                     sx={{
-                      '&:hover': { bgcolor: 'rgba(0,212,255,0.05)' },
-                      '&.Mui-selected': { bgcolor: 'rgba(0,212,255,0.1)' },
+                      '&:hover': { bgcolor: roleTabAccentSoft },
+                      '&.Mui-selected': { bgcolor: 'rgba(184,107,255,0.22)' },
                     }}
                   >
                   <TableCell padding="checkbox">
@@ -2462,7 +2615,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                       aria-label={`Velg ${member.name}`}
                       sx={{
                         color: 'rgba(255,255,255,0.87)',
-                        '&.Mui-checked': { color: '#00d4ff' },
+                        '&.Mui-checked': { color: roleTabAccent },
                       }}
                     />
                   </TableCell>
@@ -2495,8 +2648,8 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                       label={getRoleLabel(member.role)}
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(0,212,255,0.2)',
-                        color: '#00d4ff',
+                        bgcolor: roleTabAccentSoft,
+                        color: roleTabAccent,
                         fontWeight: 600,
                         fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
                         height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
@@ -2618,7 +2771,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                         <IconButton
                           onClick={() => handleOpenDialog(member)}
                           aria-label={`Rediger ${member.name}`}
-                          sx={{ color: '#00d4ff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
+                          sx={{ color: roleTabAccent, minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
@@ -2627,7 +2780,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                         <IconButton
                           onClick={() => handleAssignToScene(member)}
                           aria-label={`Tilordne ${member.name} til scene`}
-                          sx={{ color: 'rgba(0,212,255,0.7)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
+                          sx={{ color: roleTabAccent, minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
                         >
                           <AssignIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
@@ -3130,17 +3283,26 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
 
                   {/* Availability - compact */}
                   {member.availability?.startDate && member.availability?.endDate && (
-                    <Typography
-                      variant="caption"
+                    <Box
                       sx={{
-                        color: 'rgba(255,255,255,0.87)',
-                        display: 'block',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.75,
                         mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
-                        fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' },
                       }}
                     >
-                      📅 {member.availability.startDate} - {member.availability.endDate}
-                    </Typography>
+                      <CalendarTodayIcon sx={{ fontSize: 13, color: roleTextMuted }} />
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: roleText,
+                          display: 'block',
+                          fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' },
+                        }}
+                      >
+                        {member.availability.startDate} - {member.availability.endDate}
+                      </Typography>
+                    </Box>
                   )}
 
                   {/* Card Actions - Enhanced */}

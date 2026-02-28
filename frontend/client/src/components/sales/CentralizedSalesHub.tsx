@@ -119,8 +119,8 @@ interface CentralizedSalesHubProps {
 }
 
 export default function CentralizedSalesHub({ 
-  profession = 'photographer,', 
-  userId = 'current_user',
+  profession = 'photographer',
+  userId = 'current-user',
   onLeadConverted,
   onMeetingScheduled,
   selectedProject,
@@ -138,15 +138,26 @@ export default function CentralizedSalesHub({
   onNotificationCreate
 }: CentralizedSalesHubProps) {
   const [activeTab, setActiveTab] = useState(0);
-  const [selectedStatus, setSelectedStatus] = useState('all,');
+  const [selectedStatus, setSelectedStatus] = useState('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<SalesLead | null>(null);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showProjectDialog, setShowProjectDialog] = useState(false);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { formatCurrency: formatCurrencyFromService } = useClientServicePricing();
+  const { professionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
+
+  const activeProfession = professionAdapter.profession || profession;
+  const professionIcon = getProfessionIcon(activeProfession);
+  const professionLabel =
+    getProfessionDisplayName(activeProfession) ||
+    professionConfigs[activeProfession]?.name ||
+    activeProfession;
   
   // Notification state
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
@@ -170,6 +181,7 @@ export default function CentralizedSalesHub({
     queryKey: ['/api/sales/analytics', userId],
     queryFn: () => apiRequest(`/api/sales/analytics/${userId}`),
     retry: false,
+    enabled: !!userId && userId !== 'guest',
 });
 
   // Fetch sales leads
@@ -177,6 +189,7 @@ export default function CentralizedSalesHub({
     queryKey: ['/api/sales/leads', selectedStatus, userId],
     queryFn: () => apiRequest(`/api/sales/leads/${selectedStatus}?userId=${userId}`),
     retry: false,
+    enabled: !!userId && userId !== 'guest',
 });
   const leads = Array.isArray(leadsRaw) ? leadsRaw : [];
 
@@ -207,9 +220,9 @@ export default function CentralizedSalesHub({
         clientEmail: lead.email,
         projectType: lead.projectType || 'wedding',
         totalBudget: lead.estimatedValue || lead.value,
-        eventDate: lead.eventDate || ', ',
-        location: lead.location || ', ',
-        notes: lead.notes || ', ',
+        eventDate: lead.eventDate || '',
+        location: lead.location || '',
+        notes: lead.notes || '',
         source: 'sales_lead',
         leadId: lead.id,
         profession: profession
@@ -230,6 +243,27 @@ export default function CentralizedSalesHub({
       updateLeadMutation.mutate({
         leadId: data.lead.id,
         updates: { status: 'converted', projectId: data.project.id }
+      });
+      onProjectSelect?.(data.project);
+      onProjectUpdate?.({ ...data.project, source: 'sales-hub-conversion' });
+      onClientUpdate?.({
+        name: data.lead.name,
+        email: data.lead.email,
+        status: 'converted-from-lead',
+      });
+      onShowcaseCreate?.({
+        type: 'sales-conversion',
+        leadId: data.lead.id,
+        projectId: data.project.id,
+      });
+      onFileUpload?.({
+        type: 'sales-conversion-payload',
+        leadId: data.lead.id,
+        projectId: data.project.id,
+      });
+      onFileDownload?.({
+        type: 'sales-conversion-summary',
+        leadId: data.lead.id,
       });
       
       // Notify parent component
@@ -271,6 +305,15 @@ export default function CentralizedSalesHub({
         leadId: data.lead.id,
         updates: { status: 'meeting_scheduled', meetingId: data.meeting.id }
       });
+      onMeetingCreate?.({
+        ...data.meeting,
+        leadId: data.lead.id,
+        source: 'sales-hub',
+      });
+      onClientSelect?.({
+        name: data.lead.name,
+        email: data.lead.email,
+      });
       
       // Notify parent component
       if (onMeetingScheduled) {
@@ -287,8 +330,20 @@ export default function CentralizedSalesHub({
 };
 
   const formatCurrencyLocal = (amount: number) => {
+    if (typeof formatCurrencyFromService === 'function') {
+      return formatCurrencyFromService(amount);
+    }
     return new Intl.NumberFormat('no-NO', { style: 'currency', currency: 'NOK' }).format(amount);
   };
+
+  React.useEffect(() => {
+    onSettingsUpdate?.({
+      component: 'CentralizedSalesHub',
+      activeTab,
+      selectedStatus,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [activeTab, selectedStatus, onSettingsUpdate]);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -310,13 +365,55 @@ export default function CentralizedSalesHub({
 
       {/* Header */}
       <Box sx={{ mb:  4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary, mb: 1 }}>
-          Salgsmanagement
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          {professionIcon}
+          <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+            Salgsmanagement
+          </Typography>
+        </Box>
         <Typography variant="subtitle1" color="text.secondary">
-          Komplett CRM-system for {getProfessionDisplayName(profession).toLowerCase()}er
+          Komplett CRM-system for {professionLabel.toLowerCase()}er{user?.email ? ` • ${user.email}` : ''}
         </Typography>
       </Box>
+
+      {analyticsLoading && <LinearProgress sx={{ mb: 2 }} />}
+
+      <Grid container spacing={1} sx={{ mb: 2 }}>
+        {selectedProject?.name && (
+          <Grid item>
+            <Chip label={`Aktivt prosjekt: ${selectedProject.name}`} color="primary" size="small" />
+          </Grid>
+        )}
+        <Grid item>
+          <Button size="small" startIcon={<EventNote />} onClick={() => onMeetingCreate?.({ type: 'sales-followup', createdAt: new Date().toISOString() })}>
+            Opprett møte
+          </Button>
+        </Grid>
+        <Grid item>
+          <Button size="small" startIcon={<WorkOutline />} onClick={() => onWorklogCreate?.({ type: 'sales-worklog', createdAt: new Date().toISOString() })}>
+            Ny arbeidslogg
+          </Button>
+        </Grid>
+        <Grid item>
+          <Button size="small" startIcon={<Business />} onClick={() => onClientSelect?.(selectedClient || { source: 'sales-hub' })}>
+            Velg klient
+          </Button>
+        </Grid>
+        <Grid item>
+          <Button
+            size="small"
+            startIcon={<DescriptionIcon />}
+            onClick={() => onProjectSelect?.(selectedProject || { id: 'sales-draft', name: 'Sales Draft Project' })}
+          >
+            Åpne prosjekt
+          </Button>
+        </Grid>
+        <Grid item>
+          <Button size="small" startIcon={<Schedule />} onClick={() => onNotificationCreate?.({ type: 'sales-reminder', createdAt: new Date().toISOString() })}>
+            Lag påminnelse
+          </Button>
+        </Grid>
+      </Grid>
 
       {/* Analytics Overview */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -749,21 +846,21 @@ export default function CentralizedSalesHub({
               label="Dato"
               type="date"
               value={new Date().toISOString().split('T')[0]}
-              onChange={(e) => {/* Handle date change */}}
+              onChange={(_event) => {/* Date input kept for upcoming dynamic scheduling UI */}}
               fullWidth
             />
             <TextField
               label="Tid"
               type="time"
               value="10:00"
-              onChange={(e) => {/* Handle time change */}}
+              onChange={(_event) => {/* Time input kept for upcoming dynamic scheduling UI */}}
               fullWidth
             />
             <TextField
               label="Varighet (minutter)"
               type="number"
               value={60}
-              onChange={(e) => {/* Handle duration change */}}
+              onChange={(_event) => {/* Duration input kept for upcoming dynamic scheduling UI */}}
               fullWidth
             />
             <TextField
@@ -771,7 +868,7 @@ export default function CentralizedSalesHub({
               multiline
               rows={3}
               value={`Salgsmøte for ${selectedLead?.projectType || 'prosjekt'}`}
-              onChange={(e) => {/* Handle description change */}}
+              onChange={(_event) => {/* Description input kept for upcoming dynamic scheduling UI */}}
               fullWidth
             />
           </Box>

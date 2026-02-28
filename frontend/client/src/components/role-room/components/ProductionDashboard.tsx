@@ -27,6 +27,7 @@ import { CastingProject } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { useToast } from './ToastStack';
+import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 
 interface ProductionDashboardProps {
   projectId?: string;
@@ -364,6 +365,7 @@ export function ProductionDashboard({
                       bgcolor: candidate.photos[0] ? 'transparent' : 'rgba(139, 92, 246, 0.2)',
                       backgroundImage: candidate.photos[0] ? `url(${candidate.photos[0]})` : 'none',
                       backgroundSize: 'cover',
+                      backgroundPosition: getCandidatePhotoObjectPosition(candidate, 0),
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',

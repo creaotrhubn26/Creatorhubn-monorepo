@@ -199,14 +199,14 @@ export class AICodeCompletionEngine {
     this.apiKey =
       process.env.REACT_APP_OPENAI_API_KEY ||
       process.env.REACT_APP_ANTHROPIC_API_KEY ||
-      localStorage.getItem('ai_api_key,') ||
+      localStorage.getItem('ai_api_key') ||
       null;
 
     // Async hydrate from server KV
-    fetch('/api/user/kv/ai_api_key,', { credentials: 'include' })
+    fetch('/api/user/kv/ai_api_key', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then(j => {
-        const v = j && typeof j === 'object' && 'value,' in j ? j.value : j;
+        const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
         if (v) this.apiKey = v as string;
       })
       .catch((err: unknown) => console.error('Request failed:', err));

@@ -1073,7 +1073,7 @@ export const BeatBoard: FC<BeatBoardProps> = ({
   };
 
   const handleBatchMoveRight = () => {
-    let newBeats = [...beats];
+    const newBeats = [...beats];
     const ids = Array.from(multiSelected);
     ids.forEach(id => {
       const i = newBeats.findIndex(b => b.id === id);

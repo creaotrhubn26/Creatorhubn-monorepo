@@ -8,7 +8,7 @@ interface WSMessage {
   payload: unknown;
   timestamp: string;
 }
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { WebSocketError, handleError, logError } from '../utils/errorHandling';
 
 interface JobUpdate {
@@ -43,20 +43,38 @@ export const usePhotoEnhancementWebSocket = ({
 }: UsePhotoEnhancementWebSocketOptions) => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectAttemptsRef = useRef(0);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionState, setConnectionState] = useState<
     'connecting' | 'connected' | 'disconnected'
   >('disconnected');
   const queryClient = useQueryClient();
 
+  const normalizeIdentifier = useCallback((value: string | undefined) => {
+    const trimmed = String(value || '').trim();
+    const withoutTrailingComma = trimmed.replace(/,+$/, '');
+    return withoutTrailingComma.length > 0 ? withoutTrailingComma : '';
+  }, []);
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    const normalizedUserId = normalizeIdentifier(userId) || 'guest';
+    const normalizedProjectId = normalizeIdentifier(projectId);
+    const shouldConnect = normalizedUserId.length > 0;
+
+    if (!shouldConnect) {
+      setIsConnected(false);
+      setConnectionState('disconnected');
+      return;
+    }
 
     setConnectionState('connecting');
 
     // Use secure WebSocket in production, regular in development
-    const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/photo-enhancement?userId=${userId}${projectId ? `&projectId=${projectId}` : ', '}`;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/photo-enhancement?userId=${encodeURIComponent(
+      normalizedUserId
+    )}${normalizedProjectId ? `&projectId=${encodeURIComponent(normalizedProjectId)}` : ''}`;
 
     try {
       wsRef.current = new WebSocket(wsUrl);
@@ -65,6 +83,7 @@ export const usePhotoEnhancementWebSocket = ({
         console.log('📡 PhotoEnhancement WebSocket connected');
         setIsConnected(true);
         setConnectionState('connected');
+        reconnectAttemptsRef.current = 0;
 
         // Clear any existing reconnect timeout
         if (reconnectTimeoutRef.current) {
@@ -92,10 +111,16 @@ export const usePhotoEnhancementWebSocket = ({
               queryClient.setQueryData(['/api/photo-enhancement/telemetry'], message.payload);
               break;
 
-            case 'error':
+            case 'error': {
               const error = new WebSocketError(message.payload as string);
               onError?.({ message: error.message, code: error.code || 'WEBSOCKET_ERROR' });
               logError(error, 'WebSocket message error', 'websocket', 'high');
+              break;
+            }
+
+            case 'connection_established':
+            case 'presence_update':
+              // Handshake and presence events are expected from the shared websocket server.
               break;
 
             default: console.warn('📡 Unknown WebSocket message type:', rawMessage);
@@ -117,7 +142,7 @@ export const usePhotoEnhancementWebSocket = ({
       }
     };
 
-      wsRef.current.onerror = (error) => {
+      wsRef.current.onerror = () => {
         const wsError = new WebSocketError('WebSocket connection error');
         logError(wsError, 'WebSocket connection','websocket','high');
         setIsConnected(false);
@@ -129,16 +154,17 @@ export const usePhotoEnhancementWebSocket = ({
       setConnectionState('disconnected');
       scheduleReconnect();
   }
-}, [userId, projectId, onJobUpdate, onSystemUpdate, onError, queryClient]);
+}, [userId, projectId, onJobUpdate, onSystemUpdate, onError, queryClient, normalizeIdentifier]);
 
   const scheduleReconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
   }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
-    const attempts = wsRef.current ? 1 : 0;
+    // Exponential backoff: 1s, 2s, 4s, 8s ... capped at 30s.
+    const attempts = reconnectAttemptsRef.current;
     const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+    reconnectAttemptsRef.current += 1;
 
     reconnectTimeoutRef.current = setTimeout(() => {
       console.log('📡 Attempting WebSocket reconnection...');
@@ -156,6 +182,7 @@ export const usePhotoEnhancementWebSocket = ({
       wsRef.current = null;
   }
 
+    reconnectAttemptsRef.current = 0;
     setIsConnected(false);
     setConnectionState('disconnected');
 }, []);

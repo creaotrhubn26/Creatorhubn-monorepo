@@ -8,7 +8,7 @@
  * Based on 2024-2025 research papers from Google Scholar
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import EnhancementRatingDialog from '../ai-training/EnhancementRatingDialog';
@@ -41,6 +41,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -90,10 +91,22 @@ const BRAND_COLORS = {
 };
 
 // Web Audio API Context (singleton)
+type BrowserWindowWithWebkitAudio = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+type BrowserWindowWithRealtimeSocket = Window & typeof globalThis & {
+  socket?: {
+    on: (event: string, callback: (payload: unknown) => void) => void;
+    off: (event: string, callback: (payload: unknown) => void) => void;
+  };
+};
+
 let audioContext: AudioContext | null = null;
 const getAudioContext = () => {
   if (!audioContext) {
-    audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextConstructor = window.AudioContext || (window as BrowserWindowWithWebkitAudio).webkitAudioContext;
+    if (!AudioContextConstructor) {
+      throw new Error('Web Audio API is not available in this browser.');
+    }
+    audioContext = new AudioContextConstructor();
   }
   return audioContext;
 };
@@ -130,6 +143,46 @@ interface AudioEnhancementJob {
   errorMessage?: string;
 }
 
+const normalizeAudioEnhancementJob = (raw: unknown): AudioEnhancementJob | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const candidate = raw as Record<string, unknown>;
+  const id = typeof candidate.id === 'string' && candidate.id.trim().length > 0
+    ? candidate.id
+    : `audio-job-${Date.now()}-${Math.random()}`;
+  const filename = typeof candidate.filename === 'string' ? candidate.filename : 'Unnamed audio job';
+  const status = typeof candidate.status === 'string'
+    ? candidate.status
+    : 'pending';
+  const enhancementType = typeof candidate.enhancementType === 'string'
+    ? candidate.enhancementType
+    : 'batch';
+  const startedAt = typeof candidate.startedAt === 'string'
+    ? candidate.startedAt
+    : new Date().toISOString();
+
+  return {
+    id,
+    filename,
+    originalSize: typeof candidate.originalSize === 'number' ? candidate.originalSize : 0,
+    originalUrl: typeof candidate.originalUrl === 'string' ? candidate.originalUrl : '',
+    enhancedUrl: typeof candidate.enhancedUrl === 'string' ? candidate.enhancedUrl : undefined,
+    enhancementType: ['denoise', 'speech_enhance', 'source_separate', 'normalize', 'batch'].includes(enhancementType)
+      ? (enhancementType as AudioEnhancementJob['enhancementType'])
+      : 'batch',
+    status: ['pending', 'processing', 'completed', 'error'].includes(status)
+      ? (status as AudioEnhancementJob['status'])
+      : 'pending',
+    progress: typeof candidate.progress === 'number' ? candidate.progress : 0,
+    startedAt,
+    completedAt: typeof candidate.completedAt === 'string' ? candidate.completedAt : undefined,
+    processingTime: typeof candidate.processingTime === 'number' ? candidate.processingTime : undefined,
+    qualityMetrics: candidate.qualityMetrics && typeof candidate.qualityMetrics === 'object'
+      ? (candidate.qualityMetrics as AudioEnhancementJob['qualityMetrics'])
+      : undefined,
+    errorMessage: typeof candidate.errorMessage === 'string' ? candidate.errorMessage : undefined,
+  };
+};
+
 // Helper: dB to percentage for meters
 function dbToPct(db: number, min = -60, max = 0) {
   const clamped = Math.max(min, Math.min(max, db));
@@ -147,7 +200,7 @@ const VerticalMeter: React.FC<{ label: string; db: number; peak: number; accentC
         height: 224, 
         width: 24, 
         bgcolor: BRAND_COLORS.ink, 
-        border: `1px solid ${BRAND_COLORS.orange}40`,
+        border: `1px solid ${accentColor}40`,
         borderRadius: 1,
         position: 'relative',
         overflow: 'hidden'
@@ -159,7 +212,7 @@ const VerticalMeter: React.FC<{ label: string; db: number; peak: number; accentC
           left: 0,
           right: 0,
           height: `${levelPct}%`,
-          background: BRAND_COLORS.gradient
+          background: `linear-gradient(180deg, ${accentColor}, ${accentColor}CC)`
         }} />
         {/* Peak indicator */}
         <Box sx={{
@@ -168,13 +221,13 @@ const VerticalMeter: React.FC<{ label: string; db: number; peak: number; accentC
           right: 0,
           bottom: `${peakPct}%`,
           height: 2,
-          bgcolor: BRAND_COLORS.blue,
+          bgcolor: accentColor,
           opacity: 0.9,
-          boxShadow: `0 0 8px ${BRAND_COLORS.blue}`
+          boxShadow: `0 0 8px ${accentColor}`
         }} />
       </Box>
       <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '10px' }}>{label}</Typography>
-      <Typography variant="caption" sx={{ color: BRAND_COLORS.orange, fontSize: '9px', fontFamily: 'monospace', fontWeight: 600}}>
+      <Typography variant="caption" sx={{ color: accentColor, fontSize: '9px', fontFamily: 'monospace', fontWeight: 600}}>
         {db.toFixed(1)}dB
       </Typography>
     </Box>
@@ -382,6 +435,9 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
   // Animation frames
   const animationFrameRef = useRef<number>();
   const eqCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewObjectUrlRef = useRef<string | null>(null);
+  const lastSelectedProjectIdRef = useRef<string | null>(null);
+  const openedTrackingSentRef = useRef(false);
   
   // Dialog states
   const [waveformDialogOpen, setWaveformDialogOpen] = useState(false);
@@ -395,43 +451,127 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
   // Audio engine (singleton)
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
-  const [aiAnalysisData, setAIAnalysisData] = useState<any>(null);
+  const [aiAnalysisData, setAIAnalysisData] = useState<Record<string, unknown> | null>(null);
 
   // Mixer and AI Assistant states
   const [showAIAudioAssistant, setShowAIAudioAssistant] = useState(false);
   const [showMixer, setShowMixer] = useState(false);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+
+  // Dynamic profession context
+  const { professionConfigs, isLoading: professionConfigsLoading } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const { getCurrentUserProfession, getProfessionDisplayName } = useDynamicProfessions();
+  const currentProfession = String(
+    selectedProject?.profession || professionAdapter.profession || getCurrentUserProfession() || 'music_producer'
+  ).trim() || 'music_producer';
+  const professionConfig = professionConfigs[currentProfession] ?? professionConfigs.music_producer;
+  const professionDisplayName =
+    professionConfig?.displayName || getProfessionDisplayName(currentProfession) || 'Musikkprodusent';
+  const professionIcon = getProfessionIcon(currentProfession);
   
   // Master Integration Provider
   const { componentRegistry, features } = useEnhancedMasterIntegration();
-  const theming = useTheming('music_producer, ');
+  const theming = useTheming(currentProfession);
+  const audioEnhancementAccess = features.checkFeatureAccess('audio-enhancement-suite');
+  const hasAudioEnhancementAccess = audioEnhancementAccess.hasAccess || professionAdapter.hasFeature('audio_mixing');
   
   // Push notifications
   const { pushEnabled, isSupported } = usePushNotifications(userId);
 
+  const trackAudioFeatureUsage = useCallback((action: string, data?: Record<string, unknown>) => {
+    if (!hasAudioEnhancementAccess) {
+      return;
+    }
+    features.trackFeatureUsage('audio-enhancement-suite', action, {
+      profession: currentProfession,
+      projectId: selectedProject?.id ?? projectId ?? null,
+      userId,
+      ...data,
+    });
+  }, [features, hasAudioEnhancementAccess, currentProfession, selectedProject?.id, projectId, userId]);
+
+  useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'audio-enhancement-suite',
+      name: 'Audio Enhancement Suite',
+      type: 'widget',
+      category: 'audio',
+      profession: currentProfession,
+      capabilities: ['audio:upload', 'audio:enhance', 'audio:analyze', 'audio:download'],
+      dependencies: ['audio-processing-service', 'react-query', 'enhanced-master-integration-provider'],
+      props: ['userId', 'projectId', 'selectedProject'],
+      events: ['audio:enhancement:submitted', 'audio:enhancement:progress', 'audio:enhancement:completed'],
+      dataKeys: ['/api/audio-enhancement/jobs'],
+      features: ['audio-enhancement-suite', 'audio-enhancement'],
+      description: 'Studio-grade AI audio enhancement workflow for creator projects.',
+    });
+
+    return () => {
+      componentRegistry.unregisterComponent('audio-enhancement-suite');
+    };
+  }, [componentRegistry, currentProfession]);
+
+  useEffect(() => {
+    if (openedTrackingSentRef.current) {
+      return;
+    }
+    trackAudioFeatureUsage('opened', {
+      projectLinked: Boolean(selectedProject?.id || projectId),
+      pushNotificationsSupported: isSupported,
+    });
+    openedTrackingSentRef.current = true;
+  }, [trackAudioFeatureUsage, selectedProject?.id, projectId, isSupported]);
+
+  useEffect(() => {
+    if (!selectedProject?.id || !onProjectSelect) {
+      return;
+    }
+    if (lastSelectedProjectIdRef.current === selectedProject.id) {
+      return;
+    }
+    onProjectSelect(selectedProject);
+    lastSelectedProjectIdRef.current = selectedProject.id;
+  }, [selectedProject, onProjectSelect]);
+
   // Fetch audio enhancement jobs (initial load only - updates via WebSocket)
-  const { data: enhancementJobs = [], isLoading: jobsLoading } = useQuery({
-    queryKey: ['/api/audio-enhancement/jobs,', userId, projectId],
+  const canLoadEnhancementJobs =
+    Boolean(userId) && !['guest', 'current-user', 'current_user', 'anonymous'].includes(String(userId));
+  const { data: enhancementJobs = [], isLoading: jobsLoading } = useQuery<AudioEnhancementJob[]>({
+    queryKey: ['/api/audio-enhancement/jobs', userId, projectId],
     queryFn: async () => {
-      return await apiRequest(`/api/audio-enhancement/jobs?userId=${userId}${projectId ? `&projectId=${projectId}` : ', '}`) || [];
+      const response = await apiRequest(
+        `/api/audio-enhancement/jobs?userId=${userId}${projectId ? `&projectId=${projectId}` : ''}`
+      );
+      if (Array.isArray(response)) {
+        return response.map(normalizeAudioEnhancementJob).filter((job): job is AudioEnhancementJob => job !== null);
+      }
+      if (response && typeof response === 'object' && Array.isArray((response as { jobs?: unknown[] }).jobs)) {
+        return (response as { jobs: unknown[] }).jobs
+          .map(normalizeAudioEnhancementJob)
+          .filter((job): job is AudioEnhancementJob => job !== null);
+      }
+      return [];
     },
     // NO polling - WebSocket handles updates
+    enabled: canLoadEnhancementJobs,
     refetchInterval: false,
     staleTime: Infinity,
   });
   
   // WebSocket listener for real-time job updates
   useEffect(() => {
-    const handleJobUpdate = (update: any) => {
+    const handleJobUpdate = (update: unknown) => {
       console.log('📡 Job update received: ', update);
+      trackAudioFeatureUsage('job-update-received');
       
       // Invalidate query to refresh job list
       queryClient.invalidateQueries({ queryKey: ['/api/audio-enhancement/jobs', userId] });
     };
     
     // Subscribe to audio enhancement events via CentralEventBus
-    if (typeof window !== 'undefined' && (window as any).socket) {
-      const socket = (window as any).socket;
+    const socket = (window as BrowserWindowWithRealtimeSocket).socket;
+    if (socket) {
       socket.on('audio:enhancement:progress', handleJobUpdate);
       socket.on('audio:enhancement:submitted', handleJobUpdate);
       socket.on('audio:enhancement:completed', handleJobUpdate);
@@ -442,7 +582,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
         socket.off('audio:enhancement:completed', handleJobUpdate);
       };
     }
-  }, [userId, queryClient]);
+  }, [userId, queryClient, trackAudioFeatureUsage]);
 
   // Start audio enhancement mutation
   const startEnhancementMutation = useMutation({
@@ -473,6 +613,18 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
           });
         });
       }
+      if (onProjectUpdate && selectedProject?.id) {
+        onProjectUpdate({
+          ...selectedProject,
+          lastAudioEnhancementAt: new Date().toISOString(),
+          audioEnhancementPreset: activePreset || 'custom',
+          pendingAudioFiles: Math.max(0, selectedFiles.length),
+        });
+      }
+      trackAudioFeatureUsage('enhancement-started', {
+        fileCount: selectedFiles.length,
+        preset: activePreset || 'custom',
+      });
       setSelectedFiles([]);
       queryClient.invalidateQueries({ queryKey: ['/api/audio-enhancement/jobs'] });
   }
@@ -493,7 +645,17 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
           projectId: selectedProject?.id,
           type: 'enhanced_audio'
         });
-    }
+      }
+      if (onProjectUpdate && selectedProject?.id) {
+        onProjectUpdate({
+          ...selectedProject,
+          lastAudioDownloadAt: new Date().toISOString(),
+          lastDownloadedAudioName: typeof data.filename === 'string' ? data.filename : undefined,
+        });
+      }
+      trackAudioFeatureUsage('enhancement-downloaded', {
+        filename: typeof data.filename === 'string' ? data.filename : 'unknown',
+      });
   }
 });
 
@@ -526,6 +688,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
       });
 
       console.log('✅ Audio rating submitted successfully: ', rating, feedback);
+      trackAudioFeatureUsage('rating-submitted', { rating });
     } catch (error) {
       console.error('❌ Failed to submit audio rating:', error);
     }
@@ -538,6 +701,22 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
     // Load first audio file into engine for real-time playback
     if (files.length > 0 && files[0].type.startsWith('audio/')) {
       try {
+        const context = getAudioContext();
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
+
+        if (previewObjectUrlRef.current) {
+          URL.revokeObjectURL(previewObjectUrlRef.current);
+          previewObjectUrlRef.current = null;
+        }
+        const previewUrl = URL.createObjectURL(files[0]);
+        previewObjectUrlRef.current = previewUrl;
+        if (audioRef.current) {
+          audioRef.current.src = previewUrl;
+          audioRef.current.load();
+        }
+
         // Extract metadata (lazy-load music-metadata-browser)
         const parseMetadataFn = await getParseMetadata();
         const metadata = await parseMetadataFn(files[0]);
@@ -547,6 +726,11 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
         const audioBuffer = await audioEngine.loadAudioFile(files[0]);
         setDuration(audioBuffer.duration);
         setAudioLoaded(true);
+        trackAudioFeatureUsage('files-loaded', {
+          fileCount: files.length,
+          firstFileName: files[0].name,
+          durationSeconds: audioBuffer.duration,
+        });
         
         console.log('✅ Audio loaded into real-time engine');
       } catch (error) {
@@ -567,9 +751,19 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
       if (isPlaying) {
         audioEngine.pause();
         setIsPlaying(false);
+        trackAudioFeatureUsage('paused', { loopEnabled: loop });
   } else {
+        const context = getAudioContext();
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
         await audioEngine.play(loop);
+        if (audioRef.current) {
+          audioRef.current.loop = loop;
+          await audioRef.current.play().catch(() => null);
+        }
         setIsPlaying(true);
+        trackAudioFeatureUsage('played', { loopEnabled: loop });
       }
     } catch (error) {
       console.error('Playback error:', error);
@@ -578,8 +772,13 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
   
   const handleStop = () => {
     audioEngine.stop();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     setIsPlaying(false);
     setCurrentTime(0);
+    trackAudioFeatureUsage('stopped');
   };
   
   // Update audio parameters in real-time
@@ -598,12 +797,35 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
   useEffect(() => {
     audioEngine.setBypass(bypass);
   }, [bypass]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.loop = loop;
+    }
+  }, [loop]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
+    };
+  }, []);
   
   // Apply chain - offline render for export
   const handleApplyChain = async () => {
+    if (!hasAudioEnhancementAccess) {
+      trackAudioFeatureUsage('enhancement-blocked-no-access');
+      console.warn('Audio enhancement is not available for this profession/user.');
+      return;
+    }
     if (selectedFiles.length === 0 || !audioLoaded) return;
     
     try {
+      trackAudioFeatureUsage('enhancement-requested', {
+        fileCount: selectedFiles.length,
+        preset: activePreset || 'custom',
+      });
       // Send to backend for full AI processing (RNNoise, DCCRN, Demucs)
       startEnhancementMutation.mutate({
         files: selectedFiles,
@@ -639,7 +861,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
     const sizes = ['Bytes','KB','MB','GB'];
     if (bytes === 0) return '0 Bytes';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ', ' + sizes[i];
+    return `${Math.round((bytes / Math.pow(1024, i)) * 100) / 100} ${sizes[i]}`;
 };
 
   const formatTime = (seconds: number) => {
@@ -654,6 +876,28 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
   const presets = [
     "Podcast Polish","Dialogue DeNoise","Room Reverb Tamer","Music Master - Clean","Broadcast Leveler"
   ];
+
+  const aiAnalysisSummary = useMemo(() => {
+    if (!aiAnalysisData || typeof aiAnalysisData !== 'object') {
+      return null;
+    }
+
+    const analysis = aiAnalysisData as {
+      speakers?: number;
+      scene?: string;
+      transcript?: string;
+    };
+    const transcriptPreview =
+      typeof analysis.transcript === 'string' && analysis.transcript.trim().length > 0
+        ? `${analysis.transcript.trim().slice(0, 120)}${analysis.transcript.trim().length > 120 ? '...' : ''}`
+        : null;
+
+    return {
+      speakers: typeof analysis.speakers === 'number' ? analysis.speakers : null,
+      scene: typeof analysis.scene === 'string' ? analysis.scene : null,
+      transcriptPreview,
+    };
+  }, [aiAnalysisData]);
 
   // REAL audio meters & playback time update
   useEffect(() => {
@@ -763,6 +1007,34 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: BRAND_COLORS.ink, color: 'white', p: 3 }}>
+      {professionConfigsLoading && (
+        <LinearProgress
+          sx={{
+            mb: 2,
+            height: 6,
+            borderRadius: 999,
+            bgcolor: `${BRAND_COLORS.orange}20`,
+            '& .MuiLinearProgress-bar': {
+              background: BRAND_COLORS.gradient,
+            },
+          }}
+        />
+      )}
+
+      {!hasAudioEnhancementAccess && (
+        <Alert
+          severity="warning"
+          sx={{
+            mb: 2,
+            bgcolor: '#2a1c10',
+            border: `1px solid ${BRAND_COLORS.orange}`,
+            color: '#fff2cc',
+          }}
+        >
+          {audioEnhancementAccess.reason || 'Audio enhancement is currently limited for this account/profession.'}
+        </Alert>
+      )}
+
       {/* Header with Branding - STICKY */}
       <Paper sx={{ 
         position: 'sticky',
@@ -791,32 +1063,65 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             }}>
               <Mic sx={{ fontSize: 28, color: 'white' }} />
             </Box>
-            <Box>
-              <Typography variant="h5" sx={{ 
-                fontWeight: 700, 
+	            <Box>
+	              <Typography variant="h5" sx={{ 
+	                fontWeight: 700, 
                 color: 'white',
                 fontFamily: 'Poppins, sans-serif',
                 letterSpacing: '-0.5px'
               }}>
                 CreatorHub
               </Typography>
-              <Typography variant="h6" sx={{ 
-                background: BRAND_COLORS.gradient,
+	              <Typography variant="h6" sx={{ 
+	                background: BRAND_COLORS.gradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 fontFamily: 'Pacifico, cursive',
                 fontSize: '18px',
                 lineHeight: 1
               }}>
-                Audio Repair
-              </Typography>
-            </Box>
-          </Stack>
-          
-          {/* Load Files Button */}
-          <Stack direction="row" spacing={1} alignItems="center">
-            {isSupported && (
-              <Tooltip title="Push-varsler innstillinger">
+	                Audio Repair
+	              </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                  <Avatar sx={{ width: 24, height: 24, bgcolor: '#202938' }}>
+                    {professionIcon}
+                  </Avatar>
+                  <Typography variant="caption" sx={{ color: '#d1d5db', fontWeight: 600 }}>
+                    {professionDisplayName}
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label={hasAudioEnhancementAccess ? 'Feature Enabled' : 'Feature Limited'}
+                    sx={{
+                      bgcolor: hasAudioEnhancementAccess ? '#12301d' : '#3a2a12',
+                      color: hasAudioEnhancementAccess ? '#86e4a3' : '#ffd58a',
+                      border: `1px solid ${hasAudioEnhancementAccess ? '#1c5' : BRAND_COLORS.orange}`,
+                      fontWeight: 600,
+                      height: 20,
+                    }}
+                  />
+                </Stack>
+	            </Box>
+	          </Stack>
+	          
+	          {/* Load Files Button */}
+	          <Stack direction="row" spacing={1} alignItems="center">
+            <Tooltip title="Åpne mikser-innstillinger">
+              <IconButton
+                onClick={() => setShowMixer(true)}
+                sx={{
+                  color: 'rgba(255,255,255,0.8)',
+                  '&:hover': {
+                    color: BRAND_COLORS.purple,
+                    bgcolor: 'rgba(147, 51, 234, 0.12)',
+                  },
+                }}
+              >
+                <Settings />
+              </IconButton>
+            </Tooltip>
+	            {isSupported && (
+	              <Tooltip title="Push-varsler innstillinger">
                 <IconButton 
                   onClick={() => setPushSettingsOpen(true)}
                   sx={{ 
@@ -830,7 +1135,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                 </IconButton>
               </Tooltip>
             )}
-            <Button
+	            <Button
               variant="contained"
               startIcon={<CloudUpload />}
               onClick={() => fileInputRef.current?.click()}
@@ -986,9 +1291,10 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
               onClick={() => setShowMixer(true)}
             >
               Mixer
-            </Button>
-                      </Stack>
-                        </Stack>
+	            </Button>
+	                      </Stack>
+	                        </Stack>
+        <Divider sx={{ my: 2, borderColor: `${BRAND_COLORS.orange}40` }} />
         
         {/* Time Display */}
         <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1028,6 +1334,46 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
         </Alert>
       )}
 
+      {aiAnalysisSummary && (
+        <Paper
+          sx={{
+            mb: 3,
+            p: 2,
+            bgcolor: '#151a22',
+            border: `1px solid ${BRAND_COLORS.purple}50`,
+            borderRadius: 2,
+          }}
+        >
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ color: BRAND_COLORS.purple, fontWeight: 700 }}>
+              AI Analysis Summary
+            </Typography>
+            <Chip
+              size="small"
+              label="Live"
+              sx={{
+                bgcolor: `${BRAND_COLORS.purple}20`,
+                color: BRAND_COLORS.purple,
+                border: `1px solid ${BRAND_COLORS.purple}80`,
+              }}
+            />
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ mb: aiAnalysisSummary.transcriptPreview ? 1 : 0 }}>
+            {aiAnalysisSummary.speakers !== null && (
+              <Chip size="small" label={`Speakers: ${aiAnalysisSummary.speakers}`} sx={{ bgcolor: '#1e2737', color: '#9ec5ff' }} />
+            )}
+            {aiAnalysisSummary.scene && (
+              <Chip size="small" label={`Scene: ${aiAnalysisSummary.scene}`} sx={{ bgcolor: '#102316', color: '#86e4a3' }} />
+            )}
+          </Stack>
+          {aiAnalysisSummary.transcriptPreview && (
+            <Typography variant="caption" sx={{ color: '#d1d5db' }}>
+              Transcript: {aiAnalysisSummary.transcriptPreview}
+            </Typography>
+          )}
+        </Paper>
+      )}
+
       {/* Main Studio Grid */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '200px 1fr 180px', gap: 2 }}>
         {/* LEFT: Presets */}
@@ -1059,7 +1405,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                         color: activePreset === preset ? BRAND_COLORS.orange : '#d1d5db',
                         textTransform: 'none',
                         fontSize: '12px',
-                        fontWeight: ctivePreset === preset ? 600 : 400, '&:hover': { 
+                        fontWeight: activePreset === preset ? 600 : 400, '&:hover': { 
                           bgcolor: '#2a2a2a',
                           borderColor: BRAND_COLORS.orange
                         }
@@ -1099,15 +1445,17 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
           {/* Waveform */}
           <Card sx={{ bgcolor: '#1a1a1a', border: `2px solid ${BRAND_COLORS.blue}40`, borderRadius: 2 }}>
             <CardContent sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ 
-                mb: 2,
-                background: `linear-gradient(90deg, ${BRAND_COLORS.blue}, ${BRAND_COLORS.purple})`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                fontWeight: 70
-              }}>
-                📊 Waveform Preview
-                      </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                  <Audiotrack sx={{ color: BRAND_COLORS.blue }} />
+                  <Typography variant="subtitle2" sx={{ 
+                    background: `linear-gradient(90deg, ${BRAND_COLORS.blue}, ${BRAND_COLORS.purple})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    fontWeight: 700
+                  }}>
+                    Waveform Preview
+                  </Typography>
+                </Stack>
               <Box sx={{ 
                 height: 128, 
                 bgcolor: 'rgba(0,0,0,0.6)', 
@@ -1118,7 +1466,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                 cursor: enhancementJobs.length > 0 ? 'pointer' : 'default'
               }}
               onClick={() => {
-                const completed = enhancementJobs.find((j: any) => j.status === 'completed' && j.enhancedUrl);
+                const completed = enhancementJobs.find((j) => j.status === 'completed' && j.enhancedUrl);
                 if (completed) {
                   setSelectedTrack({
                     id: completed.id,
@@ -1229,7 +1577,29 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                   <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block', mb: 1 }}>
                     Reduction (dB)
                                   </Typography>
-                  <GRMeter gr={denoiseReduction} />
+                  <GRMeter gr={grDb} />
+                  <Typography variant="caption" sx={{ color: '#9ca3af', display: 'block', mt: 1, mb: 0.5 }}>
+                    Target reduction: {denoiseReduction.toFixed(1)} dB
+                  </Typography>
+                  <Slider
+                    value={denoiseReduction}
+                    onChange={(_, value) => setDenoiseReduction(value as number)}
+                    min={0}
+                    max={12}
+                    step={0.1}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        width: 12,
+                        height: 12,
+                        background: BRAND_COLORS.gradient,
+                      },
+                      '& .MuiSlider-track': {
+                        height: 4,
+                        background: BRAND_COLORS.gradient,
+                      },
+                      '& .MuiSlider-rail': { height: 4, bgcolor: '#2a2a2a' },
+                    }}
+                  />
                                 </Box>
                 </CardContent>
               </Card>
@@ -1364,14 +1734,17 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             <Card sx={{ bgcolor: '#1a1a1a', border: `2px solid ${BRAND_COLORS.orange}40`, borderRadius: 2 }}>
               <CardContent sx={{ p: 2 }}>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" sx={{ 
-                    background: BRAND_COLORS.gradient,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    fontWeight: 70
-                  }}>
-                    🔊 Limiter (Output)
-                        </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <VolumeUp sx={{ color: BRAND_COLORS.orange }} />
+                    <Typography variant="subtitle2" sx={{ 
+                      background: BRAND_COLORS.gradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      fontWeight: 700
+                    }}>
+                      Limiter (Output)
+                    </Typography>
+                  </Stack>
                   <Chip 
                     label="Safety" 
                     size="small" 
@@ -1447,13 +1820,15 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
           {/* Spectrum Analyzer */}
           <Card sx={{ bgcolor: '#1a1a1a', border: `2px solid ${BRAND_COLORS.blue}40`, borderRadius: 2 }}>
             <CardContent sx={{ p: 2 }}>
-              <Typography variant="subtitle2" sx={{ 
-                color: BRAND_COLORS.blue, 
-                fontWeight: 700,
-                mb: 2
-              }}>
-                📈 Spectrum Analyzer
-                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                  <GraphicEq sx={{ color: BRAND_COLORS.blue }} />
+                  <Typography variant="subtitle2" sx={{ 
+                    color: BRAND_COLORS.blue, 
+                    fontWeight: 700
+                  }}>
+                    Spectrum Analyzer
+                  </Typography>
+                </Stack>
               <SpectrumAnalyzer isPlaying={isPlaying} />
             </CardContent>
           </Card>
@@ -1489,7 +1864,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             ⚙️ Processing Queue ({enhancementJobs.length})
                 </Typography>
           <Stack spacing={1.5}>
-            {enhancementJobs.slice(0, 5).map((job: any) => (
+            {enhancementJobs.slice(0, 5).map((job) => (
               <Paper key={job.id} sx={{ 
                 bgcolor: '#0e141f', 
                 border: '1px solid #243049',
@@ -1577,21 +1952,19 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                 </Stack>
                 
                 {/* Progress bar */}
-                <Box sx={{ 
-                  height: 8, 
-                  bgcolor: '#0b0e14', 
-                  border: '1px solid #223047',
-                  borderRadius: 999,
-                  overflow: 'hidden',
-                  position: 'relative'
-                }}>
-                  <Box sx={{ 
-                    height: '100%',
-                    width: `${job.progress}%`,
-                    background: `linear-gradient(90deg, ${BRAND_COLORS.orange}, ${BRAND_COLORS.blue})`,
-                    transition: 'width 0.3s ease-out'
-                  }} />
-                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.max(0, Math.min(100, job.progress))}
+                  sx={{
+                    height: 8,
+                    borderRadius: 999,
+                    bgcolor: '#0b0e14',
+                    border: '1px solid #223047',
+                    '& .MuiLinearProgress-bar': {
+                      background: `linear-gradient(90deg, ${BRAND_COLORS.orange}, ${BRAND_COLORS.blue})`,
+                    },
+                  }}
+                />
               </Paper>
             ))}
           </Stack>
@@ -1659,7 +2032,9 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                   </Button>
                 </Stack>
           </Stack>
-        </Paper>
+	        </Paper>
+
+      <audio ref={audioRef} style={{ display: 'none' }} preload="metadata" />
 
       {/* Waveform Dialog */}
       <WaveformView
@@ -1710,15 +2085,15 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             } : null}
             onSpeakersDetected={(speakers) => {
               console.log(`Detected ${speakers} speakers`);
-              setAIAnalysisData((prev: any) => ({ ...prev, speakers }));
+              setAIAnalysisData((prev: Record<string, unknown> | null) => ({ ...(prev || {}), speakers }));
             }}
             onSceneClassified={(scene) => {
               console.log('Audio scene classified:', scene);
-              setAIAnalysisData((prev: any) => ({ ...prev, scene }));
+              setAIAnalysisData((prev: Record<string, unknown> | null) => ({ ...(prev || {}), scene }));
             }}
             onTranscriptGenerated={(transcript) => {
               console.log('Transcript generated:', transcript);
-              setAIAnalysisData((prev: any) => ({ ...prev, transcript }));
+              setAIAnalysisData((prev: Record<string, unknown> | null) => ({ ...(prev || {}), transcript }));
             }}
           />
         </DialogContent>

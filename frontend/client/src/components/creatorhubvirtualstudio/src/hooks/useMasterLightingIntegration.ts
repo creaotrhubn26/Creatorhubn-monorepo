@@ -411,7 +411,7 @@ export function useMasterLightingIntegration() {
       : Math.pow(2, -suggestedAdjustment.stops);
     
     const currentSettings = activeCamera.currentSettings;
-    let newSettings = { ...currentSettings };
+    const newSettings = { ...currentSettings };
     
     switch (suggestedAdjustment.method) {
       case 'aperture':

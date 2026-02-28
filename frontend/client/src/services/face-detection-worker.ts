@@ -206,7 +206,7 @@ export class FaceDetectionWorker {
       let bestResult: FaceAnalysisResult | null = null;
       let bestTimestamp = 0;
       let hasFace = false;
-      let faceDetections: Array<{ timestamp: number; hasFace: boolean; confidence: number }> = [];
+      const faceDetections: Array<{ timestamp: number; hasFace: boolean; confidence: number }> = [];
       
       // Analyze all frames
       for (let i = 0; i < timestamps.length; i++) {

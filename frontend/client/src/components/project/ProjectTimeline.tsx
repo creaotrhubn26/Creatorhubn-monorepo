@@ -148,12 +148,17 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   const { features, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   const theming = useTheming('photographer');
   const { handleProjectCompleted } = useProjectCompletionTrigger();
+  const normalizedProjectId = String(projectId || '').trim();
+  const hasRealProjectId =
+    Boolean(normalizedProjectId) &&
+    !['guest', 'current-user', 'current_user', 'anonymous'].includes(normalizedProjectId) &&
+    !normalizedProjectId.startsWith('dev-session-');
 
   // Query for timeline events - must be before useEffect to avoid hoisting issues
   const { data: timelineEvents = [], isLoading } = useQuery({
     queryKey: ['timeline-events', projectId],
     queryFn: () => getProjectTimeline?.(projectId),
-    enabled: !!projectId && !!getProjectTimeline,
+    enabled: hasRealProjectId && !!getProjectTimeline,
   });
 
   const events = timelineEvents;
@@ -201,8 +206,8 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
 
   const { data: _eventsQuery = [] } = useQuery({
     queryKey: [`project-timeline-${projectId}`],
-    enabled: !!projectId,
-    queryFn: async () => await getProjectTimeline(projectId),
+    enabled: hasRealProjectId && !!getProjectTimeline,
+    queryFn: async () => await getProjectTimeline?.(projectId),
   });
 
   // Detect profession from selectedProject or prop
@@ -211,12 +216,12 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
 
   // Fetch split sheets for music producer projects
   const { data: splitSheetsData } = useQuery({
-    queryKey: ['split-sheets-timeline,', projectId],
+    queryKey: ['split-sheets-timeline', projectId],
     queryFn: async () => {
       const response = await apiRequest(`/api/split-sheets?project_id=${projectId}`);
       return response;
     },
-    enabled: !!projectId && isMusicProducer,
+    enabled: hasRealProjectId && isMusicProducer,
   });
 
   const splitSheets = splitSheetsData?.data || [];
@@ -234,7 +239,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
           id: `split-sheet-created-${sheet.id}`,
           projectId: projectId,
           title: `Split Sheet Opprettet: ${sheet.title}`,
-          description: `Split sheet "${sheet.title}," ble opprettet`,
+          description: `Split sheet "${sheet.title}" ble opprettet`,
           eventDate: sheet.created_at,
           type: 'split_sheet_created',
           status: 'completed',
@@ -308,7 +313,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   // Contract status (read-only)
   const { data: contractSummary } = useQuery({
     queryKey: ['project-contract-summary', projectId],
-    enabled: !!projectId,
+    enabled: hasRealProjectId,
     retry: false,
     queryFn: async () => {
       try {
@@ -515,6 +520,20 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
 
   // Load project context data - useCallback and useEffect must be before any early returns
   const loadProjectContextData = useCallback(async () => {
+    if (!hasRealProjectId) {
+      setProjectHealth(null);
+      setProjectAnalytics(null);
+      setProjectCollaborators([]);
+      setProjectComments([]);
+      setProjectFiles([]);
+      setProjectIntegrations([]);
+      _setProjectPermissions(null);
+      setProjectCompliance(null);
+      setProjectAuditTrail([]);
+      setContextError(null);
+      return;
+    }
+
     try {
       setContextLoading(true);
       setContextError(null);
@@ -546,14 +565,14 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
     } finally {
       setContextLoading(false);
     }
-  }, [projectId, checkProjectHealth, getProjectAnalytics, getProjectCollaborators, getProjectComments, getProjectFiles, getProjectIntegrations, getProjectPermissions, validateProjectCompliance, getProjectAuditTrail]);
+  }, [projectId, hasRealProjectId, checkProjectHealth, getProjectAnalytics, getProjectCollaborators, getProjectComments, getProjectFiles, getProjectIntegrations, getProjectPermissions, validateProjectCompliance, getProjectAuditTrail]);
 
   // Load project context data when projectId changes
   useEffect(() => {
-    if (projectId) {
+    if (hasRealProjectId) {
       loadProjectContextData();
     }
-  }, [projectId, loadProjectContextData]);
+  }, [hasRealProjectId, loadProjectContextData]);
 
   // Combine regular events with split sheet events - must be before early returns
   const allEvents = useMemo(() => {

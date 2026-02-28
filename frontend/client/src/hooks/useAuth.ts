@@ -30,7 +30,7 @@ interface AuthState {
 }
 
 // Global cache for auth state to prevent duplicate API calls across component instances
-let globalAuthCache: { state: AuthState | null; fetching: boolean; fetched: boolean } = {
+const globalAuthCache: { state: AuthState | null; fetching: boolean; fetched: boolean } = {
   state: null,
   fetching: false,
   fetched: false

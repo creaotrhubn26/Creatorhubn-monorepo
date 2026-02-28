@@ -256,7 +256,7 @@ class DocumentArchiveConfigService {
 
     // Use custom folder pattern if provided
     if (policy.customFolderPattern) {
-      let path = policy.customFolderPattern
+      const path = policy.customFolderPattern
         .replace('{YEAR}', String(year))
         .replace('{MONTH}', monthNumber)
         .replace('{MONTH_NAME}', monthName)

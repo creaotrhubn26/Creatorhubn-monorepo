@@ -114,13 +114,13 @@ export default function AIUsageAnalytics({
       // Load from server KV first, fallback to localStorage
       let records: UsageRecord[] = [];
       try {
-        const r = await fetch('/api/user/kv/ai_usage_records,', { credentials: 'include' });
+        const r = await fetch('/api/user/kv/ai_usage_records', { credentials: 'include' });
         const j = r.ok ? await r.json().catch(() => null) : null;
         const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
         if (Array.isArray(v)) {
           records = v as UsageRecord[];
         } else {
-          const stored = localStorage.getItem('ai_usage_records,');
+          const stored = localStorage.getItem('ai_usage_records');
           records = stored ? JSON.parse(stored) : [];
         }
       } catch {

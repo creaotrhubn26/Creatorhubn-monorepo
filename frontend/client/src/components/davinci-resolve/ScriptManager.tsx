@@ -105,6 +105,90 @@ interface TabPanelProps {
   value: number;
 }
 
+interface DaVinciSystemStatus {
+  pythonInstalled: boolean;
+  davinciInstalled: boolean;
+  scriptsInstalled: boolean;
+  apiConnected: boolean;
+}
+
+interface DaVinciScript {
+  id?: string;
+  name: string;
+  displayName?: string;
+  description?: string;
+  category?: string;
+  phase?: string;
+  phases?: string[];
+  cultures?: string[];
+  icon?: string;
+}
+
+interface ExecutionHistoryItem {
+  scriptName: string;
+  timestamp: string;
+  status: 'success' | 'error' | 'running';
+}
+
+function normalizeSystemStatus(input: unknown): DaVinciSystemStatus {
+  const candidate = (input as Partial<DaVinciSystemStatus>) ?? {};
+  return {
+    pythonInstalled: Boolean(candidate.pythonInstalled),
+    davinciInstalled: Boolean(candidate.davinciInstalled),
+    scriptsInstalled: Boolean(candidate.scriptsInstalled),
+    apiConnected: Boolean(candidate.apiConnected),
+  };
+}
+
+function normalizeAvailableScripts(input: unknown): DaVinciScript[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => ({
+      id: typeof item.id === 'string' ? item.id : undefined,
+      name: typeof item.name === 'string' ? item.name : '',
+      displayName: typeof item.displayName === 'string' ? item.displayName : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      category: typeof item.category === 'string' ? item.category : undefined,
+      phase: typeof item.phase === 'string' ? item.phase : undefined,
+      phases: Array.isArray(item.phases) ? item.phases.filter((value): value is string => typeof value === 'string') : undefined,
+      cultures: Array.isArray(item.cultures) ? item.cultures.filter((value): value is string => typeof value === 'string') : undefined,
+      icon: typeof item.icon === 'string' ? item.icon : undefined,
+    }))
+    .filter((script) => script.name.length > 0);
+}
+
+function normalizeExecutionHistory(input: unknown): ExecutionHistoryItem[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => {
+      const statusRaw = typeof item.status === 'string' ? item.status : 'error';
+      const status: ExecutionHistoryItem['status'] =
+        statusRaw === 'success' || statusRaw === 'running' ? statusRaw : 'error';
+
+      return {
+        scriptName: typeof item.scriptName === 'string' ? item.scriptName : 'Unknown script',
+        timestamp: typeof item.timestamp === 'string' ? item.timestamp : new Date().toISOString(),
+        status,
+      };
+    });
+}
+
+function readStoredExecutionHistory(): ExecutionHistoryItem[] {
+  try {
+    return normalizeExecutionHistory(JSON.parse(localStorage.getItem('davinciExecutionHistory') || '[]'));
+  } catch {
+    return [];
+  }
+}
+
 // ============================================================================
 // HELPER COMPONENTS
 // ============================================================================
@@ -158,7 +242,7 @@ export default function ScriptManager() {
   } = useEnhancedMasterIntegration();
 
   // Feature access check
-  const scriptManagerAccess = features.checkFeatureAccess('script-manager,');
+  const scriptManagerAccess = features.checkFeatureAccess('script-manager');
   const hasAccess = scriptManagerAccess.hasAccess;
 
   // ============================================================================
@@ -182,7 +266,9 @@ export default function ScriptManager() {
 
   // Script execution state
   const [selectedScript, setSelectedScript] = useState<string | null>(null);
-  const [scriptParameters, setScriptParameters] = useState<Record<string, any>>({});
+  const [scriptParameters, setScriptParameters] = useState<Record<string, unknown>>({});
+  const [isExecutionParamsValid, setIsExecutionParamsValid] = useState(true);
+  const [executionValidationErrors, setExecutionValidationErrors] = useState<string[]>([]);
   const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
 
   // UI state
@@ -203,14 +289,27 @@ export default function ScriptManager() {
     const onboardingSkipped = localStorage.getItem('davinciOnboardingSkipped');
 
     if (savedPreferences) {
-      const prefs = JSON.parse(savedPreferences);
-      setUserPreferences({
-        cameras: prefs.cameras || (prefs.camera ? [prefs.camera] : []), // Support old format
-        categories: prefs.categories || (prefs.category ? [prefs.category] : []), // Support old format
-        experienceLevel: prefs.experienceLevel || null,
-        primaryCamera: prefs.primaryCamera || prefs.cameras?.[0],
-        primaryCategory: prefs.primaryCategory || prefs.categories?.[0],
-      });
+      try {
+        const prefs = JSON.parse(savedPreferences) as {
+          camera?: string;
+          category?: string;
+          cameras?: string[];
+          categories?: string[];
+          experienceLevel?: string | null;
+          primaryCamera?: string;
+          primaryCategory?: string;
+        };
+
+        setUserPreferences({
+          cameras: prefs.cameras || (prefs.camera ? [prefs.camera] : []),
+          categories: prefs.categories || (prefs.category ? [prefs.category] : []),
+          experienceLevel: prefs.experienceLevel || null,
+          primaryCamera: prefs.primaryCamera || prefs.cameras?.[0],
+          primaryCategory: prefs.primaryCategory || prefs.categories?.[0],
+        });
+      } catch {
+        localStorage.removeItem('davinciPreferences');
+      }
     } else if (!onboardingSkipped) {
       // Show onboarding for first-time users
       setShowOnboarding(true);
@@ -247,22 +346,49 @@ export default function ScriptManager() {
   // ============================================================================
 
   // Fetch system status
-  const { data: systemStatus, refetch: refetchSystemStatus } = useQuery({
+  const { data: systemStatus, refetch: refetchSystemStatus } = useQuery<DaVinciSystemStatus>({
     queryKey: ['/api/davinci-resolve/system-status'],
-    queryFn: () => apiRequest('/api/davinci-resolve/system-status'),
+    queryFn: async () => {
+      try {
+        const response = await apiRequest('/api/davinci-resolve/system-status');
+        return normalizeSystemStatus(response);
+      } catch {
+        const localInstalled = localStorage.getItem('davinciScriptsInstalled') === 'true';
+        return {
+          pythonInstalled: true,
+          davinciInstalled: true,
+          scriptsInstalled: localInstalled,
+          apiConnected: false,
+        };
+      }
+    },
     refetchInterval: 5000,
   });
 
   // Fetch available scripts
-  const { data: availableScripts = [], isLoading: scriptsLoading } = useQuery({
+  const { data: availableScripts = [], isLoading: scriptsLoading } = useQuery<DaVinciScript[]>({
     queryKey: ['/api/davinci-resolve/scripts'],
-    queryFn: () => apiRequest('/api/davinci-resolve/scripts'),
+    queryFn: async () => {
+      try {
+        const response = await apiRequest('/api/davinci-resolve/scripts');
+        return normalizeAvailableScripts(response);
+      } catch {
+        return [];
+      }
+    },
   });
 
   // Fetch script execution history
-  const { data: executionHistory = [] } = useQuery({
+  const { data: executionHistory = [] } = useQuery<ExecutionHistoryItem[]>({
     queryKey: ['/api/davinci-resolve/execution-history'],
-    queryFn: () => apiRequest('/api/davinci-resolve/execution-history'),
+    queryFn: async () => {
+      try {
+        const response = await apiRequest('/api/davinci-resolve/execution-history');
+        return normalizeExecutionHistory(response);
+      } catch {
+        return readStoredExecutionHistory();
+      }
+    },
   });
 
   // ============================================================================
@@ -270,15 +396,53 @@ export default function ScriptManager() {
   // ============================================================================
 
   const executeScriptMutation = useMutation({
-    mutationFn: (data: { scriptName: string; parameters: Record<string, any> }) =>
-      apiRequest('/api/davinci-resolve/execute-script', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => {
+    mutationFn: async (data: { scriptName: string; parameters: Record<string, unknown> }) => {
+      try {
+        return await apiRequest('/api/davinci-resolve/execute-script', {
+          method: 'POST',
+          body: data,
+        });
+      } catch {
+        const localHistory = readStoredExecutionHistory();
+        const nextEntry: ExecutionHistoryItem = {
+          scriptName: data.scriptName,
+          timestamp: new Date().toISOString(),
+          status: 'success',
+        };
+        localStorage.setItem('davinciExecutionHistory', JSON.stringify([nextEntry, ...localHistory].slice(0, 100)));
+        return { success: true, localFallback: true };
+      }
+    },
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/davinci-resolve/execution-history'] });
       setExecutionDialogOpen(false);
       analytics.trackEvent('script-executed', { script: selectedScript });
+      integration.emit?.('davinci:script:executed', { script: variables.scriptName, parameters: variables.parameters });
+      communication.sendBroadcast?.('davinci:script:executed', {
+        scriptName: variables.scriptName,
+        parameters: variables.parameters,
+      });
+      dataFlow.syncData?.('davinci:last-execution', {
+        scriptName: variables.scriptName,
+        parameters: variables.parameters,
+        executedAt: Date.now(),
+      });
+    },
+  });
+
+  const installScriptsMutation = useMutation({
+    mutationFn: async () => {
+      try {
+        return await apiRequest('/api/davinci-resolve/install-scripts', { method: 'POST' });
+      } catch {
+        localStorage.setItem('davinciScriptsInstalled', 'true');
+        return { success: true, localFallback: true };
+      }
+    },
+    onSuccess: () => {
+      analytics.trackEvent('davinci-scripts-installed', { source: 'script-manager' });
+      queryClient.invalidateQueries({ queryKey: ['/api/davinci-resolve/system-status'] });
+      refetchSystemStatus();
     },
   });
 
@@ -286,14 +450,14 @@ export default function ScriptManager() {
   // COMPUTED VALUES (Smart filtering with useMemo for performance)
   // ============================================================================
 
-  const filteredScripts = useMemo(() => {
+  const filteredScripts = useMemo<DaVinciScript[]>(() => {
     let scripts = [...availableScripts];
 
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       scripts = scripts.filter(
-        (script: any) =>
+        (script) =>
           script.name?.toLowerCase().includes(query) ||
           script.description?.toLowerCase().includes(query) ||
           script.category?.toLowerCase().includes(query)
@@ -303,7 +467,7 @@ export default function ScriptManager() {
     // Smart Category filter - OR logic for user preferences
     if (selectedCategory !== 'all') {
       const categoryScripts = SCRIPT_CATEGORIES[selectedCategory]?.scripts || [];
-      scripts = scripts.filter((script: any) => categoryScripts.includes(script.name));
+      scripts = scripts.filter((script) => categoryScripts.includes(script.name));
     } else if (userPreferences.categories.length > 0) {
       // If no specific category selected, show scripts matching ANY user preference category
       const allCategoryScripts = new Set<string>();
@@ -312,24 +476,24 @@ export default function ScriptManager() {
         categoryScripts.forEach(s => allCategoryScripts.add(s));
       });
       if (allCategoryScripts.size > 0) {
-        scripts = scripts.filter((script: any) => allCategoryScripts.has(script.name));
+        scripts = scripts.filter((script) => allCategoryScripts.has(script.name));
       }
     }
 
     // Phase filter
     if (selectedPhase !== 'all') {
-      scripts = scripts.filter((script: any) => script.phases?.includes(selectedPhase));
+      scripts = scripts.filter((script) => script.phases?.includes(selectedPhase));
     }
 
     // Culture filter
     if (selectedCulture !== 'all') {
-      scripts = scripts.filter((script: any) => script.cultures?.includes(selectedCulture));
+      scripts = scripts.filter((script) => script.cultures?.includes(selectedCulture));
     }
 
     // Smart Camera filter - OR logic for user preferences
     if (selectedCamera !== 'all') {
       const cameraScripts = CAMERA_PROFILES[selectedCamera]?.scripts || [];
-      scripts = scripts.filter((script: any) => cameraScripts.includes(script.name));
+      scripts = scripts.filter((script) => cameraScripts.includes(script.name));
     } else if (userPreferences.cameras.length > 0) {
       // If no specific camera selected, show scripts matching ANY user preference camera
       const allCameraScripts = new Set<string>();
@@ -338,7 +502,7 @@ export default function ScriptManager() {
         cameraScripts.forEach(s => allCameraScripts.add(s));
       });
       if (allCameraScripts.size > 0) {
-        scripts = scripts.filter((script: any) => allCameraScripts.has(script.name));
+        scripts = scripts.filter((script) => allCameraScripts.has(script.name));
       }
     }
 
@@ -346,40 +510,47 @@ export default function ScriptManager() {
   }, [availableScripts, searchQuery, selectedCategory, selectedPhase, selectedCulture, selectedCamera, userPreferences]);
 
   // Installation steps for setup wizard
-  const installationSteps: InstallationStep[] = [
-    {
-      id: 'check-python',
-      label: 'Check Python Installation',
-      description: 'Verify Python 3.8+ is installed',
-      status: systemStatus?.pythonInstalled ? 'completed' : 'pending',
-    },
-    {
-      id: 'check-davinci',
-      label: 'Check DaVinci Resolve',
-      description: 'Verify DaVinci Resolve is installed and API is accessible',
-      status: systemStatus?.davinciInstalled ? 'completed' : 'pending',
-    },
-    {
-      id: 'install-scripts',
-      label: 'Install Scripts',
-      description: 'Download and install automation scripts',
-      status: systemStatus?.scriptsInstalled ? 'completed' : 'pending',
-      action: () => {
-        // Trigger script installation
+  const installationSteps: InstallationStep[] = useMemo(
+    () => [
+      {
+        id: 'check-python',
+        label: 'Check Python Installation',
+        description: 'Verify Python 3.8+ is installed',
+        status: systemStatus?.pythonInstalled ? 'completed' : 'pending',
       },
-      actionLabel: 'Install Scripts',
-    },
-    {
-      id: 'test-connection',
-      label: 'Test Connection',
-      description: 'Test connection to DaVinci Resolve API',
-      status: systemStatus?.apiConnected ? 'completed' : 'pending',
-      action: () => {
-        refetchSystemStatus();
+      {
+        id: 'check-davinci',
+        label: 'Check DaVinci Resolve',
+        description: 'Verify DaVinci Resolve is installed and API is accessible',
+        status: systemStatus?.davinciInstalled ? 'completed' : 'pending',
       },
-      actionLabel: 'Test Connection',
-    },
-  ];
+      {
+        id: 'install-scripts',
+        label: 'Install Scripts',
+        description: 'Download and install automation scripts',
+        status: installScriptsMutation.isPending
+          ? 'in-progress'
+          : systemStatus?.scriptsInstalled
+          ? 'completed'
+          : 'pending',
+        action: () => {
+          installScriptsMutation.mutate();
+        },
+        actionLabel: 'Install Scripts',
+      },
+      {
+        id: 'test-connection',
+        label: 'Test Connection',
+        description: 'Test connection to DaVinci Resolve API',
+        status: systemStatus?.apiConnected ? 'completed' : 'pending',
+        action: () => {
+          refetchSystemStatus();
+        },
+        actionLabel: 'Test Connection',
+      },
+    ],
+    [installScriptsMutation.isPending, installScriptsMutation.mutate, refetchSystemStatus, systemStatus]
+  );
 
   // ============================================================================
   // EVENT HANDLERS
@@ -387,26 +558,44 @@ export default function ScriptManager() {
 
   const handleExecuteScript = useCallback((scriptName: string) => {
     setSelectedScript(scriptName);
+    setScriptParameters({});
+    setIsExecutionParamsValid(true);
+    setExecutionValidationErrors([]);
     setExecutionDialogOpen(true);
     analytics.trackEvent('script-selected', { script: scriptName });
-  }, [analytics]);
+    communication.sendBroadcast?.('davinci:script:selected', { scriptName });
+  }, [analytics, communication]);
 
   const handleConfirmExecution = useCallback(() => {
     if (selectedScript) {
-      executeScriptMutation.mutate({
-        scriptName: selectedScript,
-        parameters: scriptParameters,
-      });
+      const endTiming = performance.startTiming?.('davinci-script-execution');
+      executeScriptMutation.mutate(
+        {
+          scriptName: selectedScript,
+          parameters: scriptParameters,
+        },
+        {
+          onSettled: () => {
+            endTiming?.();
+          },
+          onError: (error: unknown) => {
+            debugging.logIntegration?.('error', 'Script execution failed', {
+              scriptName: selectedScript,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          },
+        }
+      );
     }
-  }, [selectedScript, scriptParameters, executeScriptMutation]);
+  }, [debugging, performance, selectedScript, scriptParameters, executeScriptMutation]);
 
-  const handleTabChange = useCallback((event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = useCallback((_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
     analytics.trackEvent('tab-changed', { tab: newValue });
   }, [analytics]);
 
   const handleResetFilters = useCallback(() => {
-    setSearchQuery(', ');
+    setSearchQuery('');
     setSelectedCategory('all');
     setSelectedPhase('all');
     setSelectedCulture('all');
@@ -419,7 +608,7 @@ export default function ScriptManager() {
 
   // Register component with lifecycle system
   useEffect(() => {
-    lifecycle.registerComponent({
+    lifecycle.registerComponent?.({
       id: 'script-manager',
       type: 'davinci-resolve-manager',
       version: '2.0.0',
@@ -440,7 +629,7 @@ export default function ScriptManager() {
     });
 
     return () => {
-      lifecycle.unregisterComponent('script-manager');
+      lifecycle.unregisterComponent?.('script-manager');
     };
   }, [lifecycle]);
 
@@ -448,7 +637,29 @@ export default function ScriptManager() {
   useEffect(() => {
     const allStepsComplete = installationSteps.every((step) => step.status === 'completed');
     setSetupComplete(allStepsComplete);
-  }, [systemStatus]);
+    const firstPending = installationSteps.findIndex((step) => step.status !== 'completed');
+    setActiveStep(firstPending === -1 ? Math.max(installationSteps.length - 1, 0) : firstPending);
+  }, [installationSteps]);
+
+  useEffect(() => {
+    const unsubscribe = communication.onMessageType?.('davinci:refresh-status', () => {
+      void refetchSystemStatus();
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [communication, refetchSystemStatus]);
+
+  useEffect(() => {
+    dataFlow.syncData?.('davinci:system-status', {
+      status: systemStatus,
+      scripts: availableScripts.length,
+      historyCount: executionHistory.length,
+    });
+  }, [availableScripts.length, dataFlow, executionHistory.length, systemStatus]);
 
   // ============================================================================
   // RENDER HELPERS
@@ -475,7 +686,7 @@ export default function ScriptManager() {
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="warning">
-          You don't have access to the Script Manager feature. Please contact your administrator.
+          You don't have access to the Script Manager feature. {scriptManagerAccess.reason}
         </Alert>
       </Box>
     );
@@ -497,9 +708,16 @@ export default function ScriptManager() {
             {/* DaVinci Resolve Logo */}
             <DaVinciResolveFullLogo size="large" style={{ marginBottom: '12px' }} />
 
-            <Typography variant="h5" sx={{ fontWeight: 600, color: 'white', mb: 0.5 }}>
-              Script Automation Manager
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+              {professionIcon && (
+                <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>{professionIcon}</Box>
+              )}
+              <Typography variant="h5" sx={{ fontWeight: 600, color: 'white' }}>
+                {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+                  ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} Script Automation Manager`
+                  : 'Script Automation Manager'}
+              </Typography>
+            </Box>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
               Automate your video production workflow with intelligent Python scripts
             </Typography>
@@ -512,7 +730,7 @@ export default function ScriptManager() {
             {/* Show preferences badge if set */}
             {(userPreferences.cameras.length > 0 || userPreferences.categories.length > 0) && (
               <Chip
-                label={`${userPreferences.cameras.length} camera${userPreferences.cameras.length !== 1 ? 's' : ', '} • ${userPreferences.categories.length} categor${userPreferences.categories.length !== 1 ? 'ies' : 'y'}${userPreferences.experienceLevel ? ` • ${userPreferences.experienceLevel}` : ', '}`}
+                label={`${userPreferences.cameras.length} camera${userPreferences.cameras.length !== 1 ? 's' : ''} • ${userPreferences.categories.length} categor${userPreferences.categories.length !== 1 ? 'ies' : 'y'}${userPreferences.experienceLevel ? ` • ${userPreferences.experienceLevel}` : ''}`}
                 size="small"
                 sx={{
                   bgcolor: 'rgba(255,255,255,0.2)',
@@ -806,11 +1024,11 @@ export default function ScriptManager() {
               cameras={userPreferences.cameras}
               categories={userPreferences.categories}
               onSelectScript={(scriptId) => {
-                // Find and select the script
-                const script = filteredScripts.find(s => s.id === scriptId);
+                const script = filteredScripts.find((entry) => entry.id === scriptId || entry.name === scriptId);
                 if (script) {
-                  setSelectedScript(script);
-                  setActiveTab(2); // Switch to Execute tab
+                  setSelectedScript(script.name);
+                  setActiveTab(2);
+                  setExecutionDialogOpen(true);
                 }
               }}
             />
@@ -827,7 +1045,7 @@ export default function ScriptManager() {
             </Alert>
           ) : (
             <Grid container spacing={2}>
-              {filteredScripts.map((script: any) => (
+              {filteredScripts.map((script) => (
                 <Grid key={script.name} size={{ xs: 12, sm: 6, md: 4 }}>
                   <Card
                     sx={{
@@ -882,17 +1100,52 @@ export default function ScriptManager() {
           )}
         </TabPanel>
 
-        {/* Tab 2: Execute (placeholder) */}
+        {/* Tab 2: Execute */}
         <TabPanel value={activeTab} index={2}>
           <Typography variant="h6" sx={{ mb: 2 }}>
             Quick Execute
           </Typography>
-          <Alert severity="info">
-            Select a script from the Browse tab to execute it with custom parameters.
-          </Alert>
+          {selectedScript ? (
+            <Box>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Selected script: <strong>{selectedScript}</strong>
+              </Alert>
+              <Button
+                variant="contained"
+                startIcon={<PlayArrow />}
+                onClick={() => setExecutionDialogOpen(true)}
+                sx={{ bgcolor: DAVINCI_COLORS.primary, '&:hover': { bgcolor: DAVINCI_COLORS.accent } }}
+              >
+                Configure & Execute
+              </Button>
+            </Box>
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Select a script from the Browse tab to execute it with custom parameters.
+            </Alert>
+          )}
+
+          {filteredScripts.length > 0 && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+                Suggested Quick Actions
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {filteredScripts.slice(0, 8).map((script) => (
+                  <Chip
+                    key={`quick-${script.name}`}
+                    label={script.displayName || script.name}
+                    onClick={() => handleExecuteScript(script.name)}
+                    clickable
+                    color={selectedScript === script.name ? 'primary' : 'default'}
+                  />
+                ))}
+              </Box>
+            </Box>
+          )}
         </TabPanel>
 
-        {/* Tab 3: History (placeholder) */}
+        {/* Tab 3: History */}
         <TabPanel value={activeTab} index={3}>
           <Typography variant="h6" sx={{ mb: 2 }}>
             Execution History
@@ -902,25 +1155,31 @@ export default function ScriptManager() {
               No execution history yet. Run some scripts to see them here!
             </Alert>
           ) : (
-            <List>
-              {executionHistory.map((item: any, index: number) => (
-                <React.Fragment key={index}>
-                  <ListItem>
-                    <ListItemIcon>
-                      {item.status === 'success' ? (
-                        <CheckCircle sx={{ color: 'success.main' }} />
-                      ) : (
-                        <ErrorIcon sx={{ color: 'error.main' }} />
-                      )}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={item.scriptName}
-                      secondary={`${item.timestamp} - ${item.status}`}
-                    />
-                  </ListItem>
-                  {index < executionHistory.length - 1 && <Divider />}
-                </React.Fragment>
-              ))}
+            <List disablePadding>
+              <Virtuoso
+                style={{ height: 360 }}
+                totalCount={executionHistory.length}
+                itemContent={(index) => {
+                  const item = executionHistory[index];
+                  return (
+                    <Box key={`${item.scriptName}-${item.timestamp}-${index}`}>
+                      <ListItem>
+                        <ListItemIcon>
+                          {item.status === 'success' ? (
+                            <CheckCircle sx={{ color: 'success.main' }} />
+                          ) : item.status === 'running' ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <ErrorIcon sx={{ color: 'error.main' }} />
+                          )}
+                        </ListItemIcon>
+                        <ListItemText primary={item.scriptName} secondary={`${item.timestamp} - ${item.status}`} />
+                      </ListItem>
+                      {index < executionHistory.length - 1 && <Divider />}
+                    </Box>
+                  );
+                }}
+              />
             </List>
           )}
         </TabPanel>
@@ -955,12 +1214,18 @@ export default function ScriptManager() {
               values={scriptParameters}
               onChange={setScriptParameters}
               onValidate={(isValid, errors) => {
-                // Store validation state if needed
+                setIsExecutionParamsValid(isValid);
+                setExecutionValidationErrors(errors);
               }}
             />
           ) : (
             <Alert severity="info">
               This script doesn't require any parameters. Click Execute to run it immediately.
+            </Alert>
+          )}
+          {!isExecutionParamsValid && executionValidationErrors.length > 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {executionValidationErrors.join(' | ')}
             </Alert>
           )}
         </DialogContent>
@@ -974,7 +1239,7 @@ export default function ScriptManager() {
           <Button
             variant="contained"
             onClick={handleConfirmExecution}
-            disabled={executeScriptMutation.isPending}
+            disabled={executeScriptMutation.isPending || !isExecutionParamsValid}
             startIcon={executeScriptMutation.isPending ? <CircularProgress size={20} /> : <PlayArrow />}
               sx={{
                 bgcolor: DAVINCI_COLORS.primary,

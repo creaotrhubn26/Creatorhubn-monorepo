@@ -1,4 +1,4 @@
-import { useState, useId, useMemo, useEffect, memo } from 'react';
+import { useState, useId, useMemo, useEffect, memo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -35,6 +35,9 @@ import {
   DialogActions,
   Divider,
   CircularProgress,
+  Tabs,
+  Tab,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -66,7 +69,17 @@ import {
   FileCopy as CopyToProjectIcon,
   Inventory as InventoryIcon,
   FileDownload as DownloadIcon,
+  ContactPhone as QuickContactIcon,
+  CompareArrows as CompareArrowsIcon,
+  Timeline as TimelineIcon,
+  Collections as CollectionsIcon,
+  Gavel as GavelIcon,
+  Tune as TuneIcon,
+  DoneAll as DoneAllIcon,
+  Rule as RuleIcon,
+  ViewCarousel as ViewCarouselIcon,
 } from '@mui/icons-material';
+import { Virtuoso } from 'react-virtuoso';
 import { CandidatesIcon as RecentActorsIcon, RolesIcon, StatsIcon } from './icons/CastingIcons';
 import { ConsentStatusBadge } from './ConsentStatusBadge';
 import { candidatePoolService } from '../services/candidatePoolService';
@@ -195,6 +208,7 @@ import { Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { castingAuthService } from '../services/castingAuthService';
 import { castingToSceneService } from '../services/castingToSceneService';
+import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import kandidaterPng from './icons/Keep/roleroom_kandidater.png';
@@ -205,7 +219,7 @@ const TOUCH_TARGET_SIZE = 44;
 // WCAG 2.2 - 2.4.7 Focus Visible: clear focus indicator
 const focusVisibleStyles = {
   '&:focus-visible': {
-    outline: '3px solid #10b981',
+    outline: '3px solid #b86bff',
     outlineOffset: 2,
   },
 };
@@ -213,7 +227,30 @@ const focusVisibleStyles = {
 type SortField = 'name' | 'status' | 'roles' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
+type WorkspaceView = 'standard' | 'pro';
 type StatusFilter = 'all' | 'pending' | 'requested' | 'shortlist' | 'selected' | 'confirmed' | 'rejected';
+type ProSortField = 'fitScore' | 'name' | 'status' | 'updatedAt' | 'createdAt';
+type ProGroupBy = 'none' | 'status';
+type ProPreset = 'casting' | 'compliance' | 'final' | 'custom';
+type ProDetailTab = 'overview' | 'media' | 'consent' | 'history' | 'actions' | 'compare';
+
+type CandidateConsent = {
+  id?: string;
+  type?: string;
+  title?: string;
+  status?: string;
+  required?: boolean;
+  signedAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+};
+
+type ProListItem =
+  | { type: 'header'; key: string; label: string; count: number }
+  | { type: 'candidate'; key: string; candidate: Candidate };
+
+const PRO_VIEW_NAMESPACE = 'virtualStudio_candidateProView';
+const PRO_STATUS_ORDER: StatusFilter[] = ['confirmed', 'selected', 'shortlist', 'requested', 'pending', 'rejected'];
 
 interface CandidateManagementPanelProps {
   projectId: string;
@@ -223,6 +260,8 @@ interface CandidateManagementPanelProps {
   onEditCandidate: (candidate: Candidate) => void;
   onCreateCandidate: () => void;
   profession?: 'photographer' | 'videographer' | null;
+  quickContactIds?: Set<string>;
+  onQuickContactsChange?: (ids: string[]) => void;
 }
 
 function CandidateManagementPanelInner({
@@ -233,6 +272,8 @@ function CandidateManagementPanelInner({
   onEditCandidate,
   onCreateCandidate,
   profession,
+  quickContactIds,
+  onQuickContactsChange,
 }: CandidateManagementPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -249,10 +290,12 @@ function CandidateManagementPanelInner({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (isDesktop ? 'table' : 'grid'));
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
   const [showStats, setShowStats] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [localQuickContacts, setLocalQuickContacts] = useState<Set<string>>(new Set());
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [undoSnackbarOpen, setUndoSnackbarOpen] = useState(false);
@@ -261,12 +304,95 @@ function CandidateManagementPanelInner({
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [candidatesToPreview, setCandidatesToPreview] = useState<Candidate[]>([]);
   const [poolMode, setPoolMode] = useState<'project' | 'pool'>('project');
+  const [poolSearchQuery, setPoolSearchQuery] = useState('');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [poolCandidates, setPoolCandidates] = useState<import('../services/candidatePoolService').PoolCandidate[]>([]);
   const [poolLoading, setPoolLoading] = useState(false);
+  const [proSortField, setProSortField] = useState<ProSortField>('fitScore');
+  const [proSortDirection, setProSortDirection] = useState<SortDirection>('desc');
+  const [proGroupBy, setProGroupBy] = useState<ProGroupBy>('status');
+  const [proPreset, setProPreset] = useState<ProPreset>('casting');
+  const [proDetailTab, setProDetailTab] = useState<ProDetailTab>('overview');
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [proMediaBusy, setProMediaBusy] = useState(false);
+  const [proCompareMode, setProCompareMode] = useState(false);
+  const focalPickerRef = useRef<HTMLDivElement | null>(null);
 
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
+  const roleTabAccent = '#b86bff';
+  const roleTabAccentHover = '#a855f7';
+  const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
+  const roleSurface = 'rgba(20,14,48,0.84)';
+  const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
+  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleText = '#f3eaff';
+  const roleTextMuted = 'rgba(220,205,255,0.82)';
+  const quickContactColor = '#46d9ff';
+  const quickContactColorMuted = 'rgba(70,217,255,0.46)';
+  const quickContactBackground = 'rgba(70,217,255,0.12)';
+  const quickContacts = quickContactIds ?? localQuickContacts;
 
   const FAVORITES_NAMESPACE = 'virtualStudio_candidateFavorites';
+  const proViewNamespace = `${PRO_VIEW_NAMESPACE}:${projectId}`;
+
+  const getCandidateDate = (candidate: Candidate, field: 'createdAt' | 'updatedAt') => {
+    const raw = (candidate as any)[field] || (candidate as any)[`${field}_at`];
+    const value = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  const getCandidateConsents = (candidate: Candidate): CandidateConsent[] => {
+    const raw = (candidate as any).consent;
+    return Array.isArray(raw) ? (raw as CandidateConsent[]) : [];
+  };
+
+  const getConsentCompletionScore = (candidate: Candidate) => {
+    const consents = getCandidateConsents(candidate);
+    if (consents.length === 0) return 0;
+    const signedCount = consents.filter((consent) => {
+      const status = String(consent.status || '').toLowerCase();
+      return status === 'signed' || status === 'approved' || status === 'accepted';
+    }).length;
+    return Math.round((signedCount / consents.length) * 100);
+  };
+
+  const getContactCoverageScore = (candidate: Candidate) => {
+    const contactInfo = ((candidate as any).contactInfo || {}) as { email?: string; phone?: string };
+    const email = contactInfo.email || (candidate as any).email;
+    const phone = contactInfo.phone || (candidate as any).phone;
+    if (email && phone) return 100;
+    if (email || phone) return 50;
+    return 0;
+  };
+
+  const getCandidateFitScore = (candidate: Candidate) => {
+    const status = String(candidate.status || 'pending');
+    const statusScoreMap: Record<string, number> = {
+      confirmed: 30,
+      selected: 26,
+      shortlist: 20,
+      requested: 15,
+      pending: 12,
+      rejected: 0,
+    };
+    const statusScore = statusScoreMap[status] ?? 10;
+    const roleCount = Array.isArray((candidate as any).assignedRoles) ? (candidate as any).assignedRoles.length : 0;
+    const roleScore = Math.min(20, roleCount * 7);
+    const mediaCount = Array.isArray(candidate.photos) ? candidate.photos.length : 0;
+    const mediaScore = Math.min(15, mediaCount * 5);
+    const consentScore = Math.round(getConsentCompletionScore(candidate) * 0.2);
+    const contactScore = Math.round(getContactCoverageScore(candidate) * 0.1);
+    const favoriteScore = favorites.has(candidate.id) ? 4 : 0;
+    const quickContactScore = quickContacts.has(candidate.id) ? 4 : 0;
+    const recencyDays = getCandidateDate(candidate, 'updatedAt')
+      ? (Date.now() - getCandidateDate(candidate, 'updatedAt')) / (1000 * 60 * 60 * 24)
+      : 999;
+    const recencyScore = recencyDays <= 3 ? 7 : recencyDays <= 14 ? 4 : 1;
+    return Math.max(
+      0,
+      Math.min(100, statusScore + roleScore + mediaScore + consentScore + contactScore + favoriteScore + quickContactScore + recencyScore),
+    );
+  };
 
   // Load favorites from database (with settings cache fallback)
   useEffect(() => {
@@ -316,6 +442,43 @@ function CandidateManagementPanelInner({
     saveFavorites();
   }, [favorites, projectId, favoritesLoaded]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      const raw = localStorage.getItem(proViewNamespace);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<{
+        sortField: ProSortField;
+        sortDirection: SortDirection;
+        groupBy: ProGroupBy;
+        preset: ProPreset;
+      }>;
+      if (parsed.sortField) setProSortField(parsed.sortField);
+      if (parsed.sortDirection) setProSortDirection(parsed.sortDirection);
+      if (parsed.groupBy) setProGroupBy(parsed.groupBy);
+      if (parsed.preset) setProPreset(parsed.preset);
+    } catch (error) {
+      console.warn('Unable to load Pro View settings:', error);
+    }
+  }, [projectId, proViewNamespace]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      localStorage.setItem(
+        proViewNamespace,
+        JSON.stringify({
+          sortField: proSortField,
+          sortDirection: proSortDirection,
+          groupBy: proGroupBy,
+          preset: proPreset,
+        }),
+      );
+    } catch (error) {
+      console.warn('Unable to save Pro View settings:', error);
+    }
+  }, [projectId, proGroupBy, proPreset, proSortDirection, proSortField, proViewNamespace]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -344,7 +507,7 @@ function CandidateManagementPanelInner({
     switch (status) {
       case 'confirmed': return 'Bekreftet';
       case 'selected': return 'Valgt';
-      case 'shortlist': return 'Shortlist';
+      case 'shortlist': return 'Kortliste';
       case 'rejected': return 'Avvist';
       case 'requested': return 'Forespurt';
       default: return 'Venter';
@@ -376,6 +539,10 @@ function CandidateManagementPanelInner({
       const aFav = favorites.has(a.id) ? 0 : 1;
       const bFav = favorites.has(b.id) ? 0 : 1;
       if (aFav !== bFav) return aFav - bFav;
+
+      const aQuickContact = quickContacts.has(a.id) ? 0 : 1;
+      const bQuickContact = quickContacts.has(b.id) ? 0 : 1;
+      if (aQuickContact !== bQuickContact) return aQuickContact - bQuickContact;
       
       let comparison = 0;
       switch (sortField) {
@@ -396,7 +563,7 @@ function CandidateManagementPanelInner({
     });
     
     return result;
-  }, [candidates, searchQuery, statusFilter, sortField, sortDirection, favorites]);
+  }, [candidates, searchQuery, statusFilter, sortField, sortDirection, favorites, quickContacts]);
 
   // Statistics
   const statistics = useMemo(() => ({
@@ -407,6 +574,236 @@ function CandidateManagementPanelInner({
     pending: candidates.filter(c => c.status === 'pending' || c.status === 'requested').length,
     favorites: favorites.size,
   }), [candidates, favorites]);
+
+  const filteredPoolCandidates = useMemo(() => {
+    const query = poolSearchQuery.trim().toLowerCase();
+    if (!query) return poolCandidates;
+    return poolCandidates.filter((poolCandidate) => {
+      const tags = poolCandidate.tags?.join(' ').toLowerCase() || '';
+      return (
+        poolCandidate.name.toLowerCase().includes(query)
+        || (poolCandidate.notes || '').toLowerCase().includes(query)
+        || (poolCandidate.contactInfo?.email || '').toLowerCase().includes(query)
+        || tags.includes(query)
+      );
+    });
+  }, [poolCandidates, poolSearchQuery]);
+
+  const candidateFitScores = useMemo(() => {
+    const scores = new Map<string, number>();
+    candidates.forEach((candidate) => {
+      scores.set(candidate.id, getCandidateFitScore(candidate));
+    });
+    return scores;
+  }, [candidates, favorites, quickContacts]);
+
+  const proCandidates = useMemo(() => {
+    let result = [...filteredAndSortedCandidates];
+    if (proPreset === 'casting') {
+      result = result.filter((candidate) => candidate.status !== 'rejected');
+    } else if (proPreset === 'compliance') {
+      result = result.filter((candidate) => getConsentCompletionScore(candidate) < 100 || getContactCoverageScore(candidate) < 100);
+    } else if (proPreset === 'final') {
+      result = result.filter((candidate) => ['selected', 'confirmed', 'shortlist'].includes(String(candidate.status || 'pending')));
+    }
+
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (proSortField === 'fitScore') {
+        comparison = (candidateFitScores.get(a.id) || 0) - (candidateFitScores.get(b.id) || 0);
+      } else if (proSortField === 'name') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (proSortField === 'status') {
+        const aRank = PRO_STATUS_ORDER.indexOf((a.status as StatusFilter) || 'pending');
+        const bRank = PRO_STATUS_ORDER.indexOf((b.status as StatusFilter) || 'pending');
+        comparison = (aRank === -1 ? PRO_STATUS_ORDER.length : aRank) - (bRank === -1 ? PRO_STATUS_ORDER.length : bRank);
+      } else if (proSortField === 'updatedAt') {
+        comparison = getCandidateDate(a, 'updatedAt') - getCandidateDate(b, 'updatedAt');
+      } else if (proSortField === 'createdAt') {
+        comparison = getCandidateDate(a, 'createdAt') - getCandidateDate(b, 'createdAt');
+      }
+      return proSortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [candidateFitScores, filteredAndSortedCandidates, proPreset, proSortDirection, proSortField]);
+
+  const proListItems = useMemo<ProListItem[]>(() => {
+    if (proGroupBy === 'none') {
+      return proCandidates.map((candidate) => ({ type: 'candidate', key: candidate.id, candidate }));
+    }
+    const grouped: ProListItem[] = [];
+    PRO_STATUS_ORDER.forEach((status) => {
+      const items = proCandidates.filter((candidate) => (candidate.status || 'pending') === status);
+      if (items.length === 0) return;
+      grouped.push({
+        type: 'header',
+        key: `status-${status}`,
+        label: getStatusLabel(status),
+        count: items.length,
+      });
+      items.forEach((candidate) => grouped.push({ type: 'candidate', key: candidate.id, candidate }));
+    });
+    const unknownItems = proCandidates.filter((candidate) => !PRO_STATUS_ORDER.includes((candidate.status as StatusFilter) || 'pending'));
+    if (unknownItems.length > 0) {
+      grouped.push({
+        type: 'header',
+        key: 'status-unknown',
+        label: 'Andre',
+        count: unknownItems.length,
+      });
+      unknownItems.forEach((candidate) => grouped.push({ type: 'candidate', key: candidate.id, candidate }));
+    }
+    return grouped;
+  }, [proCandidates, proGroupBy]);
+
+  const activeCandidates = workspaceView === 'pro' ? proCandidates : filteredAndSortedCandidates;
+
+  const selectedCandidate = useMemo(() => {
+    if (activeCandidates.length === 0) return null;
+    if (!selectedCandidateId) return activeCandidates[0];
+    return activeCandidates.find((candidate) => candidate.id === selectedCandidateId) || activeCandidates[0];
+  }, [activeCandidates, selectedCandidateId]);
+
+  const compareCandidates = useMemo(
+    () => proCandidates.filter((candidate) => selectedIds.has(candidate.id)).slice(0, 4),
+    [proCandidates, selectedIds],
+  );
+
+  useEffect(() => {
+    if (workspaceView !== 'pro') return;
+    const handleProKeyboard = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTextInput = !!target && (
+        target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.getAttribute('contenteditable') === 'true'
+      );
+      if (isTextInput) return;
+      const currentIndex = proCandidates.findIndex((candidate) => candidate.id === selectedCandidateId);
+      if (event.key.toLowerCase() === 'j') {
+        event.preventDefault();
+        const nextIndex = Math.min(proCandidates.length - 1, Math.max(0, currentIndex + 1));
+        if (proCandidates[nextIndex]) setSelectedCandidateId(proCandidates[nextIndex].id);
+        return;
+      }
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        const nextIndex = Math.max(0, currentIndex <= 0 ? 0 : currentIndex - 1);
+        if (proCandidates[nextIndex]) setSelectedCandidateId(proCandidates[nextIndex].id);
+        return;
+      }
+      if (!selectedCandidate) return;
+      if (event.key.toLowerCase() === 'e') {
+        event.preventDefault();
+        onEditCandidate(selectedCandidate);
+        return;
+      }
+      if (event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        toggleFavorite(selectedCandidate.id);
+        return;
+      }
+      if (event.key === ' ') {
+        event.preventDefault();
+        handleToggleSelect(selectedCandidate.id);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        void handleStatusUpdate(selectedCandidate, 'confirmed');
+      }
+    };
+
+    window.addEventListener('keydown', handleProKeyboard);
+    return () => window.removeEventListener('keydown', handleProKeyboard);
+  }, [onEditCandidate, proCandidates, selectedCandidate, selectedCandidateId, workspaceView]);
+
+  useEffect(() => {
+    if (activeCandidates.length === 0) {
+      if (selectedCandidateId !== null) setSelectedCandidateId(null);
+      return;
+    }
+    if (!selectedCandidateId || !activeCandidates.some((candidate) => candidate.id === selectedCandidateId)) {
+      setSelectedCandidateId(activeCandidates[0].id);
+    }
+  }, [activeCandidates, selectedCandidateId]);
+
+  useEffect(() => {
+    setActivePhotoIndex(0);
+  }, [selectedCandidateId]);
+
+  const selectedPhotoIndex = useMemo(() => {
+    if (!selectedCandidate || !Array.isArray(selectedCandidate.photos) || selectedCandidate.photos.length === 0) return 0;
+    return Math.min(activePhotoIndex, selectedCandidate.photos.length - 1);
+  }, [activePhotoIndex, selectedCandidate]);
+
+  const selectedPhotoFocalPoint = useMemo(() => {
+    if (!selectedCandidate || !Array.isArray(selectedCandidate.photoFocalPoints)) return { x: 50, y: 50 };
+    return selectedCandidate.photoFocalPoints[selectedPhotoIndex] || { x: 50, y: 50 };
+  }, [selectedCandidate, selectedPhotoIndex]);
+
+  const selectedCandidateHistory = useMemo(() => {
+    if (!selectedCandidate) return [] as Array<{ id: string; label: string; date: number; description: string }>;
+    const events: Array<{ id: string; label: string; date: number; description: string }> = [];
+    const createdAt = getCandidateDate(selectedCandidate, 'createdAt');
+    const updatedAt = getCandidateDate(selectedCandidate, 'updatedAt');
+    if (createdAt) {
+      events.push({
+        id: `${selectedCandidate.id}-created`,
+        label: 'Kandidat opprettet',
+        date: createdAt,
+        description: `${selectedCandidate.name} ble lagt til i prosjektet.`,
+      });
+    }
+    if (updatedAt) {
+      events.push({
+        id: `${selectedCandidate.id}-updated`,
+        label: 'Sist oppdatert',
+        date: updatedAt,
+        description: 'Kandidatdata ble sist endret.',
+      });
+    }
+    events.push({
+      id: `${selectedCandidate.id}-status`,
+      label: 'Nåværende status',
+      date: updatedAt || createdAt || Date.now(),
+      description: `Status er ${getStatusLabel(selectedCandidate.status || 'pending')}.`,
+    });
+
+    const statusHistory = Array.isArray((selectedCandidate as any).statusHistory)
+      ? ((selectedCandidate as any).statusHistory as Array<{ status?: string; changedAt?: string; changedBy?: string }>)
+      : [];
+    statusHistory.forEach((entry, index) => {
+      const timestamp = entry.changedAt ? new Date(entry.changedAt).getTime() : 0;
+      if (!timestamp) return;
+      events.push({
+        id: `${selectedCandidate.id}-status-history-${index}`,
+        label: 'Status endret',
+        date: timestamp,
+        description: `${getStatusLabel(entry.status || 'pending')}${entry.changedBy ? ` av ${entry.changedBy}` : ''}`,
+      });
+    });
+
+    return events.sort((a, b) => b.date - a.date);
+  }, [selectedCandidate]);
+
+  useEffect(() => {
+    if (!selectedCandidate || !Array.isArray(selectedCandidate.photos)) return;
+    if (selectedCandidate.photos.length === 0 && activePhotoIndex !== 0) {
+      setActivePhotoIndex(0);
+      return;
+    }
+    if (activePhotoIndex > selectedCandidate.photos.length - 1) {
+      setActivePhotoIndex(Math.max(0, selectedCandidate.photos.length - 1));
+    }
+  }, [activePhotoIndex, selectedCandidate]);
+
+  useEffect(() => {
+    if (selectedIds.size < 2) {
+      setProCompareMode(false);
+    }
+  }, [selectedIds.size]);
 
   // Handlers
   const handleSort = (field: SortField) => {
@@ -427,21 +824,189 @@ function CandidateManagementPanelInner({
     });
   };
 
+  const updateQuickContacts = (next: Set<string>) => {
+    if (onQuickContactsChange) {
+      onQuickContactsChange([...next]);
+      return;
+    }
+    setLocalQuickContacts(next);
+  };
+
+  const toggleQuickContact = (id: string) => {
+    const next = new Set(quickContacts);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    updateQuickContacts(next);
+  };
+
   const handleSelectAll = () => {
-    if (selectedIds.size === filteredAndSortedCandidates.length) {
+    const source = workspaceView === 'pro' ? proCandidates : filteredAndSortedCandidates;
+    if (selectedIds.size === source.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredAndSortedCandidates.map(c => c.id)));
+      setSelectedIds(new Set(source.map((candidate) => candidate.id)));
     }
   };
 
   const handleToggleSelect = (id: string) => {
+    setSelectedCandidateId(id);
     setSelectedIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) newSet.delete(id);
       else newSet.add(id);
       return newSet;
     });
+  };
+
+  const saveCandidatePatch = async (candidate: Candidate, patch: Partial<Candidate>, successMessage?: string) => {
+    try {
+      const updatedCandidate: Candidate = {
+        ...candidate,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+      await castingService.saveCandidate(projectId, updatedCandidate);
+      onCandidatesChange();
+      if (successMessage) showSuccess(successMessage, 2500);
+      return true;
+    } catch (error) {
+      console.error('Failed to save candidate patch:', error);
+      showError('Kunne ikke oppdatere kandidat', 3000);
+      return false;
+    }
+  };
+
+  const handleStatusUpdate = async (candidate: Candidate, status: StatusFilter) => {
+    await saveCandidatePatch(candidate, { status }, `${candidate.name} satt til ${getStatusLabel(status)}`);
+  };
+
+  const handleBulkStatusUpdate = async (status: StatusFilter) => {
+    const selectedCandidates = candidates.filter((candidate) => selectedIds.has(candidate.id));
+    if (selectedCandidates.length === 0) {
+      showInfo('Velg minst én kandidat først', 2500);
+      return;
+    }
+    try {
+      await Promise.all(selectedCandidates.map((candidate) => {
+        const updatedCandidate: Candidate = {
+          ...candidate,
+          status,
+          updatedAt: new Date().toISOString(),
+        };
+        return castingService.saveCandidate(projectId, updatedCandidate);
+      }));
+      onCandidatesChange();
+      showSuccess(`${selectedCandidates.length} kandidater satt til ${getStatusLabel(status)}`, 3000);
+    } catch (error) {
+      console.error('Failed bulk status update:', error);
+      showError('Kunne ikke oppdatere status for alle valgte kandidater', 3500);
+    }
+  };
+
+  const handleSaveProPreset = () => {
+    try {
+      localStorage.setItem(
+        proViewNamespace,
+        JSON.stringify({
+          sortField: proSortField,
+          sortDirection: proSortDirection,
+          groupBy: proGroupBy,
+          preset: 'custom',
+        }),
+      );
+      setProPreset('custom');
+      showSuccess('Egendefinert pro-visning lagret', 2200);
+    } catch (error) {
+      console.error('Failed saving custom Pro View:', error);
+      showError('Kunne ikke lagre egendefinert visning', 2600);
+    }
+  };
+
+  const handleApplyProPreset = (preset: ProPreset) => {
+    setProPreset(preset);
+    if (preset === 'casting') {
+      setProSortField('fitScore');
+      setProSortDirection('desc');
+      setProGroupBy('status');
+      setStatusFilter('all');
+    } else if (preset === 'compliance') {
+      setProSortField('updatedAt');
+      setProSortDirection('asc');
+      setProGroupBy('status');
+    } else if (preset === 'final') {
+      setProSortField('fitScore');
+      setProSortDirection('desc');
+      setProGroupBy('none');
+    }
+  };
+
+  const setSelectedCandidatePhotos = async (
+    updater: (photos: string[], focalPoints: Array<{ x: number; y: number }>) => {
+      photos: string[];
+      focalPoints: Array<{ x: number; y: number }>;
+    },
+    successMessage: string,
+  ) => {
+    if (!selectedCandidate) return;
+    const photos = Array.isArray(selectedCandidate.photos) ? [...selectedCandidate.photos] : [];
+    const focalPoints = Array.isArray(selectedCandidate.photoFocalPoints)
+      ? [...selectedCandidate.photoFocalPoints]
+      : photos.map(() => ({ x: 50, y: 50 }));
+    const next = updater(photos, focalPoints);
+    setProMediaBusy(true);
+    await saveCandidatePatch(
+      selectedCandidate,
+      {
+        photos: next.photos,
+        photoFocalPoints: next.focalPoints,
+      },
+      successMessage,
+    );
+    setProMediaBusy(false);
+  };
+
+  const handleSetPrimaryPhoto = async (photoIndex: number) => {
+    if (!selectedCandidate || !selectedCandidate.photos || photoIndex <= 0) return;
+    await setSelectedCandidatePhotos((photos, focalPoints) => {
+      const nextPhotos = [...photos];
+      const [primaryPhoto] = nextPhotos.splice(photoIndex, 1);
+      nextPhotos.unshift(primaryPhoto);
+      const nextFocalPoints = [...focalPoints];
+      const [primaryFocal] = nextFocalPoints.splice(photoIndex, 1);
+      nextFocalPoints.unshift(primaryFocal || { x: 50, y: 50 });
+      return { photos: nextPhotos, focalPoints: nextFocalPoints };
+    }, 'Primærbilde oppdatert');
+    setActivePhotoIndex(0);
+  };
+
+  const handleDeletePhoto = async (photoIndex: number) => {
+    if (!selectedCandidate || !selectedCandidate.photos || selectedCandidate.photos.length === 0) return;
+    await setSelectedCandidatePhotos((photos, focalPoints) => {
+      if (photoIndex < 0 || photoIndex >= photos.length) return { photos, focalPoints };
+      const nextPhotos = [...photos];
+      nextPhotos.splice(photoIndex, 1);
+      const nextFocalPoints = [...focalPoints];
+      nextFocalPoints.splice(photoIndex, 1);
+      return { photos: nextPhotos, focalPoints: nextFocalPoints };
+    }, 'Bilde slettet');
+    if (activePhotoIndex > 0 && photoIndex <= activePhotoIndex) {
+      setActivePhotoIndex((prev) => Math.max(0, prev - 1));
+    }
+  };
+
+  const handleSetFocalPoint = async (event: any) => {
+    if (!selectedCandidate || !selectedCandidate.photos || !selectedCandidate.photos[activePhotoIndex]) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
+    await setSelectedCandidatePhotos((photos, focalPoints) => {
+      const nextFocalPoints = [...focalPoints];
+      while (nextFocalPoints.length < photos.length) {
+        nextFocalPoints.push({ x: 50, y: 50 });
+      }
+      nextFocalPoints[activePhotoIndex] = { x: Math.round(x), y: Math.round(y) };
+      return { photos, focalPoints: nextFocalPoints };
+    }, 'Fokuspunkt oppdatert');
   };
 
   const handleDeleteWithUndo = async (candidate: Candidate) => {
@@ -1071,11 +1636,156 @@ function CandidateManagementPanelInner({
 
   const getRoleName = (roleId: string) => roles.find(r => r.id === roleId)?.name || 'Ukjent rolle';
 
+  const renderProCandidateCard = (candidate: Candidate) => {
+    const isSelectedCard = selectedCandidateId === candidate.id;
+    const fitScore = candidateFitScores.get(candidate.id) || 0;
+    return (
+      <Card
+        key={candidate.id}
+        onClick={() => setSelectedCandidateId(candidate.id)}
+        sx={{
+          cursor: 'pointer',
+          bgcolor: isSelectedCard ? 'rgba(184,107,255,0.16)' : roleSurfaceMuted,
+          border: isSelectedCard ? `1px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
+          borderRadius: 1.5,
+          transition: 'all 0.2s ease',
+          '&:hover': { borderColor: roleTabAccentSoft, transform: 'translateY(-1px)' },
+        }}
+      >
+        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Avatar
+              src={candidate.photos?.[0]}
+              sx={{
+                width: 40,
+                height: 40,
+                bgcolor: `${getStatusColor(candidate.status)}20`,
+                border: `1px solid ${roleBorder}`,
+                '& .MuiAvatar-img': {
+                  objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
+                },
+              }}
+            >
+              <PersonIcon sx={{ color: getStatusColor(candidate.status), fontSize: 20 }} />
+            </Avatar>
+            <Checkbox
+              checked={selectedIds.has(candidate.id)}
+              onChange={() => handleToggleSelect(candidate.id)}
+              onClick={(event) => event.stopPropagation()}
+              sx={{ p: 0.25, color: roleTextMuted, '&.Mui-checked': { color: roleTabAccent } }}
+            />
+            <IconButton
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleFavorite(candidate.id);
+              }}
+              sx={{ color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)', minWidth: 30, minHeight: 30 }}
+            >
+              {favorites.has(candidate.id) ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+            </IconButton>
+            <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
+              <IconButton
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleQuickContact(candidate.id);
+                }}
+                sx={{
+                  color: quickContacts.has(candidate.id) ? quickContactColor : quickContactColorMuted,
+                  bgcolor: quickContacts.has(candidate.id) ? quickContactBackground : 'transparent',
+                  border: quickContacts.has(candidate.id) ? `1px solid ${quickContactColorMuted}` : '1px solid transparent',
+                  minWidth: 30,
+                  minHeight: 30,
+                  '&:hover': { bgcolor: quickContactBackground },
+                }}
+              >
+                <QuickContactIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ color: roleText, fontWeight: 700 }} noWrap>
+                {candidate.name}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', mt: 0.5 }}>
+                <Chip
+                  label={getStatusLabel(candidate.status)}
+                  size="small"
+                  sx={{
+                    bgcolor: `${getStatusColor(candidate.status)}22`,
+                    color: getStatusColor(candidate.status),
+                    fontWeight: 700,
+                    height: 22,
+                  }}
+                />
+                <Chip label={`${candidate.assignedRoles?.length || 0} roller`} size="small" sx={{ height: 22 }} />
+                <Chip
+                  icon={<TuneIcon sx={{ color: `${roleTabAccent} !important`, fontSize: '0.9rem' }} />}
+                  label={`Treffscore ${fitScore}`}
+                  size="small"
+                  sx={{ height: 22, bgcolor: 'rgba(184,107,255,0.14)', color: roleTabAccent, border: `1px solid ${roleBorder}` }}
+                />
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={fitScore}
+                sx={{
+                  mt: 0.75,
+                  height: 6,
+                  borderRadius: 999,
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent },
+                }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.25 }}>
+              <Tooltip title="Rediger">
+                <IconButton
+                  size="small"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEditCandidate(candidate);
+                  }}
+                  sx={{ color: roleTabAccent, minWidth: 30, minHeight: 30 }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Dupliser">
+                <IconButton
+                  size="small"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleDuplicate(candidate);
+                  }}
+                  sx={{ color: roleTextMuted, minWidth: 30, minHeight: 30 }}
+                >
+                  <DuplicateIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <Box
       component="section"
       aria-labelledby={titleId}
-      sx={{ p: containerPadding, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+      sx={{
+        p: containerPadding,
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        borderRadius: 2,
+        border: `1px solid ${roleBorder}`,
+        backgroundColor: roleSurface,
+        backgroundImage: `
+          linear-gradient(160deg, rgba(39,24,77,0.84) 0%, rgba(16,10,36,0.92) 62%, rgba(15,8,30,0.95) 100%)
+        `,
+      }}
     >
       {/* Header with Icon and Title - Enhanced to match ProductionDayView */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flexWrap: 'wrap', gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
@@ -1092,22 +1802,22 @@ function CandidateManagementPanelInner({
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0.15) 100%)',
-              border: '2px solid rgba(16, 185, 129, 0.4)',
+              background: 'linear-gradient(135deg, rgba(184,107,255,0.28) 0%, rgba(94,58,184,0.2) 100%)',
+              border: '2px solid rgba(184,107,255,0.45)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
+              boxShadow: '0 4px 12px rgba(184,107,255,0.24)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(16, 185, 129, 0.3)',
+                boxShadow: '0 6px 16px rgba(184,107,255,0.34)',
               },
             }}
           >
             <RecentActorsIcon
               sx={{
-                color: '#6ee7b7',
+                color: roleTabAccent,
                 fontSize: { xs: 26, sm: 32, md: 30, lg: 36, xl: 42 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
               }}
@@ -1125,7 +1835,7 @@ function CandidateManagementPanelInner({
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #6ee7b7 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #d9c0ff 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -1156,12 +1866,13 @@ function CandidateManagementPanelInner({
               startIcon={<ExportIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               onClick={handleExportCSV}
               sx={{
-                borderColor: 'rgba(255,255,255,0.2)',
-                color: '#fff',
+                borderColor: roleBorder,
+                color: roleText,
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                '&:hover': { borderColor: roleTabAccent, bgcolor: roleTabAccentSoft },
                 ...focusVisibleStyles,
               }}
             >
@@ -1174,13 +1885,17 @@ function CandidateManagementPanelInner({
               startIcon={<StatsIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               onClick={() => setShowStats(!showStats)}
               sx={{
-                borderColor: 'rgba(255,255,255,0.2)',
-                color: showStats ? '#000' : '#fff',
-                bgcolor: showStats ? '#10b981' : 'transparent',
+                borderColor: roleBorder,
+                color: showStats ? '#160a24' : roleText,
+                bgcolor: showStats ? roleTabAccent : 'transparent',
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                '&:hover': {
+                  bgcolor: showStats ? roleTabAccentHover : roleTabAccentSoft,
+                  borderColor: roleTabAccent,
+                },
                 ...focusVisibleStyles,
               }}
             >
@@ -1194,15 +1909,15 @@ function CandidateManagementPanelInner({
               onClick={handleOpenPreviewDialog}
               disabled={addingToScene}
               sx={{
-                borderColor: 'rgba(139, 92, 246, 0.5)',
-                color: '#a78bfa',
+                borderColor: roleBorder,
+                color: roleTabAccent,
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                 '&:hover': {
-                  borderColor: '#8b5cf6',
-                  bgcolor: 'rgba(139, 92, 246, 0.1)',
+                  borderColor: roleTabAccent,
+                  bgcolor: roleTabAccentSoft,
                 },
                 ...focusVisibleStyles,
               }}
@@ -1216,14 +1931,14 @@ function CandidateManagementPanelInner({
               startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               onClick={onCreateCandidate}
               sx={{
-                bgcolor: '#10b981',
-                color: '#fff',
+                bgcolor: roleTabAccent,
+                color: '#160a24',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                '&:hover': { bgcolor: '#059669' },
+                '&:hover': { bgcolor: roleTabAccentHover },
                 ...focusVisibleStyles,
               }}
             >
@@ -1234,49 +1949,929 @@ function CandidateManagementPanelInner({
       </Box>
 
       {/* Project/Templates Toggle */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+          mb: 2,
+          p: 1,
+          bgcolor: roleSurfaceMuted,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+        }}
+      >
+        <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
+          Vis:
+        </Typography>
         <Button
           variant={poolMode === 'project' ? 'contained' : 'outlined'}
+          size="small"
           onClick={() => setPoolMode('project')}
-          startIcon={<RecentActorsIcon />}
           sx={{
-            bgcolor: poolMode === 'project' ? '#10b981' : 'transparent',
-            color: poolMode === 'project' ? '#fff' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'project' ? '#10b981' : 'rgba(255,255,255,0.2)',
-            minHeight: TOUCH_TARGET_SIZE,
-            '&:hover': { bgcolor: poolMode === 'project' ? '#059669' : 'rgba(255,255,255,0.05)' },
-            ...focusVisibleStyles,
+            minHeight: 36,
+            bgcolor: poolMode === 'project' ? roleTabAccentSoft : 'transparent',
+            color: poolMode === 'project' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: poolMode === 'project' ? roleTabAccent : roleBorder,
+            '&:hover': {
+              bgcolor: poolMode === 'project' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+            },
           }}
         >
-          Prosjekt
-          <Chip
-            label={candidates.length}
-            size="small"
-            sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'inherit', height: 20, fontSize: '0.7rem' }}
-          />
+          Prosjektkandidater ({candidates.length})
         </Button>
         <Button
           variant={poolMode === 'pool' ? 'contained' : 'outlined'}
+          size="small"
           onClick={() => { setPoolMode('pool'); loadPoolCandidates(); }}
-          startIcon={<InventoryIcon />}
           sx={{
-            bgcolor: poolMode === 'pool' ? '#9c27b0' : 'transparent',
-            color: poolMode === 'pool' ? '#fff' : 'rgba(255,255,255,0.7)',
-            borderColor: poolMode === 'pool' ? '#9c27b0' : 'rgba(255,255,255,0.2)',
-            minHeight: TOUCH_TARGET_SIZE,
-            '&:hover': { bgcolor: poolMode === 'pool' ? '#7b1fa2' : 'rgba(255,255,255,0.05)' },
-            ...focusVisibleStyles,
+            minHeight: 36,
+            bgcolor: poolMode === 'pool' ? roleTabAccentSoft : 'transparent',
+            color: poolMode === 'pool' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: poolMode === 'pool' ? roleTabAccent : roleBorder,
+            '&:hover': {
+              bgcolor: poolMode === 'pool' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+            },
           }}
         >
-          Maler
-          <Chip
-            label={poolCandidates.length}
-            size="small"
-            sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'inherit', height: 20, fontSize: '0.7rem' }}
-          />
+          Maler ({poolCandidates.length})
         </Button>
       </Box>
 
+      {/* Workspace View Toggle */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+          mb: 2,
+          p: 1,
+          bgcolor: roleSurfaceMuted,
+          borderRadius: 1.5,
+          border: `1px solid ${roleBorder}`,
+        }}
+      >
+        <Typography sx={{ color: roleTextMuted, fontSize: '0.875rem', mr: 1 }}>
+          Visning:
+        </Typography>
+        <Button
+          variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
+          size="small"
+          onClick={() => setWorkspaceView('standard')}
+          sx={{
+            minHeight: 36,
+            bgcolor: workspaceView === 'standard' ? roleTabAccentSoft : 'transparent',
+            color: workspaceView === 'standard' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: workspaceView === 'standard' ? roleTabAccent : roleBorder,
+            '&:hover': {
+              bgcolor: workspaceView === 'standard' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+            },
+          }}
+        >
+          Standard
+        </Button>
+        <Button
+          variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
+          size="small"
+          onClick={() => setWorkspaceView('pro')}
+          sx={{
+            minHeight: 36,
+            bgcolor: workspaceView === 'pro' ? roleTabAccentSoft : 'transparent',
+            color: workspaceView === 'pro' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+            borderColor: workspaceView === 'pro' ? roleTabAccent : roleBorder,
+            '&:hover': {
+              bgcolor: workspaceView === 'pro' ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)',
+            },
+          }}
+        >
+          Pro-visning
+        </Button>
+      </Box>
+
+      {workspaceView === 'pro' && (
+        <>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: '1.4fr auto auto auto' },
+              gap: 1,
+              mb: 1.5,
+              p: 1.25,
+              borderRadius: 1.5,
+              border: `1px solid ${roleBorder}`,
+              bgcolor: roleSurfaceMuted,
+              alignItems: 'center',
+            }}
+          >
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {([
+                  { id: 'casting', label: 'Casting' },
+                  { id: 'compliance', label: 'Etterlevelse' },
+                  { id: 'final', label: 'Endelig utvalg' },
+                  { id: 'custom', label: 'Egendefinert' },
+                ] as Array<{ id: ProPreset; label: string }>).map((preset) => (
+                <Button
+                  key={preset.id}
+                  size="small"
+                  variant={proPreset === preset.id ? 'contained' : 'outlined'}
+                  onClick={() => handleApplyProPreset(preset.id)}
+                  sx={{
+                    minHeight: 34,
+                    color: proPreset === preset.id ? '#160a24' : roleText,
+                    bgcolor: proPreset === preset.id ? roleTabAccent : 'transparent',
+                    borderColor: roleBorder,
+                    '&:hover': { bgcolor: proPreset === preset.id ? roleTabAccentHover : roleTabAccentSoft },
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </Stack>
+            <FormControl size="small">
+              <Select
+                value={proSortField}
+                onChange={(event) => setProSortField(event.target.value as ProSortField)}
+                sx={{
+                  color: roleText,
+                  bgcolor: roleSurface,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                }}
+              >
+                <MenuItem value="fitScore">Sorter: Treffscore</MenuItem>
+                <MenuItem value="name">Sorter: Navn</MenuItem>
+                <MenuItem value="status">Sorter: Status</MenuItem>
+                <MenuItem value="updatedAt">Sorter: Oppdatert</MenuItem>
+                <MenuItem value="createdAt">Sorter: Opprettet</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small">
+              <Select
+                value={proGroupBy}
+                onChange={(event) => setProGroupBy(event.target.value as ProGroupBy)}
+                sx={{
+                  color: roleText,
+                  bgcolor: roleSurface,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                }}
+              >
+                <MenuItem value="status">Grupper: Status</MenuItem>
+                <MenuItem value="none">Grupper: Ingen</MenuItem>
+              </Select>
+            </FormControl>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setProSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                sx={{ color: roleText, borderColor: roleBorder }}
+              >
+                {proSortDirection === 'asc' ? 'Stigende' : 'Synkende'}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleSaveProPreset}
+                sx={{ color: roleTabAccent, borderColor: roleBorder }}
+              >
+                Lagre egendefinert
+              </Button>
+            </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', xl: '320px minmax(0, 1fr) 380px' },
+              gap: 2,
+              mb: 2.5,
+              minHeight: {
+                xs: 'auto',
+                lg: 'clamp(620px, 70vh, 820px)',
+              },
+            }}
+          >
+            <Box
+              sx={{
+                border: `1px solid ${roleBorder}`,
+                borderRadius: 2,
+                bgcolor: roleSurface,
+                p: 1.5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25,
+                minHeight: { lg: 0 },
+              }}
+            >
+              <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.1rem' }}>
+                Kandidatpool
+              </Typography>
+              <TextField
+                size="small"
+                value={poolSearchQuery}
+                onChange={(event) => setPoolSearchQuery(event.target.value)}
+                placeholder="Søk kandidater..."
+                slotProps={{
+                  input: {
+                    startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
+                  },
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    color: roleText,
+                    bgcolor: roleSurfaceMuted,
+                    '& fieldset': { borderColor: roleBorder },
+                    '&:hover fieldset': { borderColor: roleTabAccentSoft },
+                    '&.Mui-focused fieldset': { borderColor: roleTabAccent },
+                  },
+                }}
+              />
+              <Box sx={{ p: 1, borderRadius: 1.25, bgcolor: 'rgba(184,107,255,0.1)', border: `1px solid ${roleBorder}` }}>
+                <Typography sx={{ color: roleText, fontSize: '0.8rem', fontWeight: 700, mb: 0.75 }}>Beste match nå</Typography>
+                <Stack spacing={0.5}>
+                  {proCandidates.slice(0, 3).map((candidate) => (
+                    <Box key={`best-match-${candidate.id}`} sx={{ display: 'flex', justifyContent: 'space-between', color: roleTextMuted, fontSize: '0.78rem' }}>
+                      <Typography sx={{ color: roleText, fontSize: '0.8rem' }} noWrap>{candidate.name}</Typography>
+                      <Chip
+                        size="small"
+                        label={candidateFitScores.get(candidate.id) || 0}
+                        sx={{ height: 20, bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }}
+                      />
+                    </Box>
+                  ))}
+                  {proCandidates.length === 0 && (
+                    <Typography sx={{ color: roleTextMuted, fontSize: '0.78rem' }}>Ingen kandidater ennå.</Typography>
+                  )}
+                </Stack>
+              </Box>
+              <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0, pr: 0.5 }}>
+                {poolLoading ? (
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Laster maler...</Typography>
+                ) : filteredPoolCandidates.length === 0 ? (
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Ingen treff i kandidatpool.</Typography>
+                ) : (
+                  <Stack spacing={1}>
+                    {filteredPoolCandidates.map((poolCandidate) => (
+                      <Card
+                        key={poolCandidate.id}
+                        sx={{
+                          bgcolor: roleSurfaceMuted,
+                          border: `1px solid ${roleBorder}`,
+                          borderRadius: 1.5,
+                        }}
+                      >
+                        <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar
+                              src={poolCandidate.photos?.[0]}
+                              sx={{
+                                width: 34,
+                                height: 34,
+                                bgcolor: 'rgba(184,107,255,0.16)',
+                                border: `1px solid ${roleBorder}`,
+                                '& .MuiAvatar-img': {
+                                  objectPosition: getCandidatePhotoObjectPosition(poolCandidate, 0),
+                                },
+                              }}
+                            >
+                              <PersonIcon sx={{ color: roleTabAccent, fontSize: 18 }} />
+                            </Avatar>
+                            <Typography sx={{ color: roleText, fontWeight: 600, fontSize: '0.9rem' }}>
+                              {poolCandidate.name}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                            <Button
+                              size="small"
+                              onClick={() => handleImportFromPool(poolCandidate)}
+                              sx={{ color: roleTabAccent, minHeight: 34 }}
+                            >
+                              Importer
+                            </Button>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeleteFromPool(poolCandidate.id)}
+                              sx={{ color: roleTextMuted, minWidth: 34, minHeight: 34 }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+              <Button
+                variant="outlined"
+                onClick={() => setPoolMode('pool')}
+                sx={{
+                  mt: 'auto',
+                  color: roleTabAccent,
+                  borderColor: roleBorder,
+                  '&:hover': { borderColor: roleTabAccent, bgcolor: roleTabAccentSoft },
+                }}
+              >
+                Åpne mal-visning
+              </Button>
+            </Box>
+
+            <Box
+              sx={{
+                border: `1px solid ${roleBorder}`,
+                borderRadius: 2,
+                bgcolor: roleSurface,
+                p: 1.5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25,
+                minHeight: { lg: 0 },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '1.35rem' }}>
+                  Prosjektkandidater
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={onCreateCandidate}
+                  sx={{
+                    bgcolor: roleTabAccent,
+                    color: '#160a24',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: roleTabAccentHover },
+                  }}
+                >
+                  Ny kandidat
+                </Button>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.25fr 0.9fr auto auto' }, gap: 1 }}>
+                <TextField
+                  size="small"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Søk kandidater..."
+                  slotProps={{
+                    input: {
+                      startAdornment: <SearchIcon sx={{ color: roleTextMuted, mr: 1, fontSize: 18 }} />,
+                    },
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: roleText,
+                      bgcolor: roleSurfaceMuted,
+                      '& fieldset': { borderColor: roleBorder },
+                      '&:hover fieldset': { borderColor: roleTabAccentSoft },
+                      '&.Mui-focused fieldset': { borderColor: roleTabAccent },
+                    },
+                  }}
+                />
+                <FormControl size="small">
+                  <Select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                    sx={{
+                      color: roleText,
+                      bgcolor: roleSurfaceMuted,
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccentSoft },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
+                    }}
+                  >
+                    <MenuItem value="all">Alle statuser</MenuItem>
+                    <MenuItem value="pending">Venter</MenuItem>
+                    <MenuItem value="requested">Forespurt</MenuItem>
+                    <MenuItem value="shortlist">Kortliste</MenuItem>
+                    <MenuItem value="selected">Valgt</MenuItem>
+                    <MenuItem value="confirmed">Bekreftet</MenuItem>
+                    <MenuItem value="rejected">Avvist</MenuItem>
+                  </Select>
+                </FormControl>
+                <Chip
+                  label={`${proCandidates.length} kandidater`}
+                  sx={{
+                    color: roleTabAccent,
+                    bgcolor: 'rgba(184,107,255,0.14)',
+                    border: `1px solid ${roleBorder}`,
+                    fontWeight: 600,
+                  }}
+                />
+                <Chip
+                  label="J/K naviger • E rediger • F favoritt • Space velg • Cmd+Enter bekreft"
+                  sx={{
+                    color: roleTextMuted,
+                    bgcolor: 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${roleBorder}`,
+                    fontWeight: 500,
+                    maxWidth: '100%',
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 1, minHeight: 0 }}>
+                {proListItems.length === 0 ? (
+                  <Typography sx={{ color: roleTextMuted, py: 2 }}>Ingen kandidater matcher filter.</Typography>
+                ) : (
+                  <Virtuoso
+                    style={{ height: '100%' }}
+                    data={proListItems}
+                    itemContent={(_, item) => {
+                      if (item.type === 'header') {
+                        return (
+                          <Box
+                            sx={{
+                              py: 0.75,
+                              px: 1,
+                              mt: 1,
+                              mb: 0.75,
+                              borderRadius: 1,
+                              bgcolor: 'rgba(184,107,255,0.12)',
+                              border: `1px solid ${roleBorder}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.85rem' }}>{item.label}</Typography>
+                            <Chip label={item.count} size="small" sx={{ height: 20, bgcolor: roleSurface, color: roleText }} />
+                          </Box>
+                        );
+                      }
+                      return <Box sx={{ pb: 1 }}>{renderProCandidateCard(item.candidate)}</Box>;
+                    }}
+                  />
+                )}
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                border: `1px solid ${roleBorder}`,
+                borderRadius: 2,
+                bgcolor: roleSurface,
+                p: 1.25,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1.25,
+                minHeight: { lg: 0 },
+              }}
+            >
+              {selectedCandidate ? (
+                <>
+                  <Tabs
+                    value={proDetailTab}
+                    onChange={(_, value) => setProDetailTab(value as ProDetailTab)}
+                    variant="scrollable"
+                    allowScrollButtonsMobile
+                    sx={{
+                      minHeight: 38,
+                      '& .MuiTab-root': { color: roleTextMuted, minHeight: 38, textTransform: 'none', fontWeight: 600, px: 1.25 },
+                      '& .Mui-selected': { color: roleTabAccent },
+                      '& .MuiTabs-indicator': { backgroundColor: roleTabAccent },
+                    }}
+                  >
+                    <Tab value="overview" icon={<ViewCarouselIcon fontSize="small" />} iconPosition="start" label="Oversikt" />
+                    <Tab value="media" icon={<CollectionsIcon fontSize="small" />} iconPosition="start" label="Bilder" />
+                    <Tab value="consent" icon={<GavelIcon fontSize="small" />} iconPosition="start" label="Samtykke" />
+                    <Tab value="history" icon={<TimelineIcon fontSize="small" />} iconPosition="start" label="Historikk" />
+                    <Tab value="actions" icon={<TuneIcon fontSize="small" />} iconPosition="start" label="Handlinger" />
+                    <Tab value="compare" icon={<CompareArrowsIcon fontSize="small" />} iconPosition="start" label={`Sammenlign (${compareCandidates.length})`} />
+                  </Tabs>
+
+                  {proDetailTab === 'overview' && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {selectedCandidate.photos?.[0] && (
+                        <Box
+                          component="img"
+                          src={selectedCandidate.photos[0]}
+                          alt={selectedCandidate.name}
+                          sx={{
+                            width: '100%',
+                            height: 170,
+                            objectFit: 'cover',
+                            objectPosition: getCandidatePhotoObjectPosition(selectedCandidate, 0),
+                            borderRadius: 1.5,
+                            border: `1px solid ${roleBorder}`,
+                          }}
+                        />
+                      )}
+                      <Typography sx={{ color: roleText, fontWeight: 800, fontSize: '1.2rem' }}>{selectedCandidate.name}</Typography>
+                      <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                        <Chip label={getStatusLabel(selectedCandidate.status)} sx={{ bgcolor: `${getStatusColor(selectedCandidate.status)}24`, color: getStatusColor(selectedCandidate.status), fontWeight: 700 }} />
+                        <Chip label={`${selectedCandidate.assignedRoles?.length || 0} roller`} sx={{ bgcolor: roleSurfaceMuted, color: roleText }} />
+                        <Chip label={`Treffscore ${candidateFitScores.get(selectedCandidate.id) || 0}`} sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }} />
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={candidateFitScores.get(selectedCandidate.id) || 0}
+                        sx={{ height: 8, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }}
+                      />
+                      <Typography sx={{ color: roleTextMuted, fontSize: '0.9rem' }}>
+                        {selectedCandidate.auditionNotes || 'Ingen audition-notater lagt inn.'}
+                      </Typography>
+                      <Box>
+                        <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Kontakt</Typography>
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
+                          E-post: {(((selectedCandidate as any).contactInfo || {}).email || (selectedCandidate as any).email || 'Ikke satt')}
+                        </Typography>
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>
+                          Telefon: {(((selectedCandidate as any).contactInfo || {}).phone || (selectedCandidate as any).phone || 'Ikke satt')}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography sx={{ color: roleText, fontWeight: 600, mb: 0.5 }}>Tilknyttede roller</Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {(selectedCandidate.assignedRoles || []).length > 0
+                            ? (selectedCandidate.assignedRoles || []).map((roleId) => (
+                                <Chip key={roleId} label={getRoleName(roleId)} size="small" sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent }} />
+                              ))
+                            : <Typography sx={{ color: roleTextMuted, fontSize: '0.85rem' }}>Ingen roller satt</Typography>}
+                        </Box>
+                      </Box>
+                    </Box>
+                  )}
+
+                  {proDetailTab === 'media' && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {selectedCandidate.photos && selectedCandidate.photos.length > 0 ? (
+                        <>
+                          <Box
+                            ref={focalPickerRef}
+                            onClick={(event) => { void handleSetFocalPoint(event); }}
+                            sx={{
+                              position: 'relative',
+                              borderRadius: 1.5,
+                              overflow: 'hidden',
+                              border: `1px solid ${roleBorder}`,
+                              cursor: proMediaBusy ? 'wait' : 'crosshair',
+                              opacity: proMediaBusy ? 0.7 : 1,
+                            }}
+                          >
+                            <Box
+                              component="img"
+                              src={selectedCandidate.photos[selectedPhotoIndex]}
+                              alt={`${selectedCandidate.name} ${selectedPhotoIndex + 1}`}
+                              sx={{
+                                width: '100%',
+                                height: 230,
+                                objectFit: 'cover',
+                                objectPosition: `${selectedPhotoFocalPoint.x}% ${selectedPhotoFocalPoint.y}%`,
+                              }}
+                            />
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: `calc(${selectedPhotoFocalPoint.x}% - 11px)`,
+                                top: `calc(${selectedPhotoFocalPoint.y}% - 11px)`,
+                                width: 22,
+                                height: 22,
+                                borderRadius: '50%',
+                                border: '2px solid #fff',
+                                boxShadow: '0 0 0 1px rgba(0,0,0,0.5)',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                            <Typography
+                              sx={{
+                                position: 'absolute',
+                                left: 8,
+                                bottom: 8,
+                                px: 1,
+                                py: 0.25,
+                                borderRadius: 1,
+                                bgcolor: 'rgba(0,0,0,0.6)',
+                                color: '#fff',
+                                fontSize: '0.75rem',
+                              }}
+                            >
+                              Klikk for å sette fokuspunkt
+                            </Typography>
+                          </Box>
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={proMediaBusy || selectedPhotoIndex === 0}
+                              onClick={() => { void handleSetPrimaryPhoto(selectedPhotoIndex); }}
+                              sx={{ color: roleText, borderColor: roleBorder }}
+                            >
+                              Sett som primær
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              disabled={proMediaBusy}
+                              onClick={() => { void handleDeletePhoto(selectedPhotoIndex); }}
+                            >
+                              Slett bilde
+                            </Button>
+                          </Stack>
+                          <Box sx={{ display: 'flex', gap: 0.75, overflowX: 'auto', pb: 0.5 }}>
+                            {selectedCandidate.photos.map((photo, index) => (
+                              <Box
+                                key={`${selectedCandidate.id}-media-thumb-${index}`}
+                                onClick={() => setActivePhotoIndex(index)}
+                                sx={{
+                                  minWidth: 64,
+                                  width: 64,
+                                  height: 64,
+                                  borderRadius: 1.25,
+                                  border: index === selectedPhotoIndex ? `2px solid ${roleTabAccent}` : `1px solid ${roleBorder}`,
+                                  overflow: 'hidden',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <Box
+                                  component="img"
+                                  src={photo}
+                                  alt={`${selectedCandidate.name} thumb ${index + 1}`}
+                                  sx={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    objectPosition: getCandidatePhotoObjectPosition(selectedCandidate, index),
+                                  }}
+                                />
+                              </Box>
+                            ))}
+                          </Box>
+                          <Typography sx={{ color: roleTextMuted, fontSize: '0.8rem' }}>
+                            Fokuspunkt: {selectedPhotoFocalPoint.x}% x {selectedPhotoFocalPoint.y}%
+                          </Typography>
+                        </>
+                      ) : (
+                        <Typography sx={{ color: roleTextMuted }}>Ingen bilder lastet opp for kandidaten.</Typography>
+                      )}
+                    </Box>
+                  )}
+
+                  {proDetailTab === 'consent' && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {(() => {
+                        const consents = getCandidateConsents(selectedCandidate);
+                        const completion = getConsentCompletionScore(selectedCandidate);
+                        return (
+                          <>
+                            <Chip
+                              icon={<RuleIcon />}
+                              label={`Fullført ${completion}%`}
+                              sx={{ alignSelf: 'flex-start', bgcolor: roleTabAccentSoft, color: roleTabAccent, fontWeight: 700 }}
+                            />
+                            <LinearProgress
+                              variant="determinate"
+                              value={completion}
+                              sx={{ height: 8, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: roleTabAccent } }}
+                            />
+                            {consents.length === 0 ? (
+                              <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>Ingen samtykker registrert ennå.</Typography>
+                            ) : (
+                              <Stack spacing={0.75}>
+                                {consents.map((consent, index) => (
+                                  <Box
+                                    key={`${selectedCandidate.id}-consent-${consent.id || index}`}
+                                    sx={{
+                                      p: 1,
+                                      borderRadius: 1.25,
+                                      bgcolor: roleSurfaceMuted,
+                                      border: `1px solid ${roleBorder}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      gap: 1,
+                                      alignItems: 'center',
+                                    }}
+                                  >
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography sx={{ color: roleText, fontWeight: 600, fontSize: '0.85rem' }} noWrap>
+                                        {consent.title || consent.type || `Samtykke ${index + 1}`}
+                                      </Typography>
+                                      <Typography sx={{ color: roleTextMuted, fontSize: '0.76rem' }}>
+                                        {consent.required ? 'Påkrevd' : 'Valgfri'} • {consent.signedAt ? `Signert ${new Date(consent.signedAt).toLocaleString('nb-NO')}` : 'Ikke signert'}
+                                      </Typography>
+                                    </Box>
+                                    <Chip
+                                      size="small"
+                                      label={String(consent.status || 'pending')}
+                                      sx={{ bgcolor: roleTabAccentSoft, color: roleTabAccent, textTransform: 'capitalize' }}
+                                    />
+                                  </Box>
+                                ))}
+                              </Stack>
+                            )}
+                            <Button
+                              variant="outlined"
+                              onClick={() => onEditCandidate(selectedCandidate)}
+                              sx={{ color: roleTabAccent, borderColor: roleBorder, alignSelf: 'flex-start' }}
+                            >
+                              Åpne samtykkemodal
+                            </Button>
+                          </>
+                        );
+                      })()}
+                    </Box>
+                  )}
+
+                  {proDetailTab === 'history' && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {selectedCandidateHistory.length === 0 ? (
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>Ingen aktivitet registrert.</Typography>
+                      ) : (
+                        <Stack spacing={1}>
+                          {selectedCandidateHistory.map((entry) => (
+                            <Box
+                              key={entry.id}
+                              sx={{
+                                p: 1,
+                                borderRadius: 1.25,
+                                bgcolor: roleSurfaceMuted,
+                                border: `1px solid ${roleBorder}`,
+                              }}
+                            >
+                              <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.84rem' }}>{entry.label}</Typography>
+                              <Typography sx={{ color: roleTextMuted, fontSize: '0.76rem' }}>{entry.description}</Typography>
+                              <Typography sx={{ color: roleTextMuted, fontSize: '0.72rem', mt: 0.25 }}>
+                                {new Date(entry.date).toLocaleString('nb-NO')}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
+
+                  {proDetailTab === 'actions' && (
+                    <Stack spacing={1}>
+                      <Button
+                        variant="contained"
+                        onClick={() => onEditCandidate(selectedCandidate)}
+                        sx={{ bgcolor: roleTabAccent, color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: roleTabAccentHover } }}
+                      >
+                        Rediger kandidat
+                      </Button>
+                      <Stack direction="row" spacing={1}>
+                        <Button size="small" variant="outlined" onClick={() => { void handleStatusUpdate(selectedCandidate, 'shortlist'); }} sx={{ color: roleText, borderColor: roleBorder }}>
+                          Kortliste
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => { void handleStatusUpdate(selectedCandidate, 'selected'); }} sx={{ color: roleText, borderColor: roleBorder }}>
+                          Valgt
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => { void handleStatusUpdate(selectedCandidate, 'confirmed'); }} sx={{ color: roleText, borderColor: roleBorder }}>
+                          Bekreft
+                        </Button>
+                      </Stack>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => void handleSaveToPool(selectedCandidate)}
+                          sx={{ color: roleTabAccent, borderColor: roleBorder }}
+                        >
+                          Lagre som mal
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => void handleDuplicate(selectedCandidate)}
+                          sx={{ color: roleText, borderColor: roleBorder }}
+                        >
+                          Dupliser
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => void handleDeleteWithUndo(selectedCandidate)}
+                          sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}
+                        >
+                          Slett
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  )}
+
+                  {proDetailTab === 'compare' && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {compareCandidates.length < 2 ? (
+                        <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem' }}>
+                          Velg minst to kandidater i listen for å sammenligne side ved side.
+                        </Typography>
+                      ) : (
+                        <Grid container spacing={1}>
+                          {compareCandidates.map((candidate) => {
+                            const fit = candidateFitScores.get(candidate.id) || 0;
+                            const isTop = fit === Math.max(...compareCandidates.map((item) => candidateFitScores.get(item.id) || 0));
+                            return (
+                              <Grid key={`compare-${candidate.id}`} item xs={12} sm={6}>
+                                <Card sx={{ bgcolor: roleSurfaceMuted, border: `1px solid ${isTop ? roleTabAccent : roleBorder}` }}>
+                                  <CardContent sx={{ p: 1 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                                      <Avatar src={candidate.photos?.[0]} sx={{ width: 34, height: 34 }}>
+                                        <PersonIcon />
+                                      </Avatar>
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography sx={{ color: roleText, fontWeight: 700, fontSize: '0.85rem' }} noWrap>
+                                          {candidate.name}
+                                        </Typography>
+                                        <Typography sx={{ color: roleTextMuted, fontSize: '0.72rem' }}>{getStatusLabel(candidate.status)}</Typography>
+                                      </Box>
+                                      {isTop && (
+                                        <Chip icon={<DoneAllIcon />} label="Beste" size="small" sx={{ ml: 'auto', bgcolor: roleTabAccentSoft, color: roleTabAccent }} />
+                                      )}
+                                    </Box>
+                                    <Typography sx={{ color: roleText, fontSize: '0.78rem' }}>Treffscore: {fit}</Typography>
+                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>Roller: {(candidate.assignedRoles || []).length}</Typography>
+                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
+                                      Samtykke: {getConsentCompletionScore(candidate)}%
+                                    </Typography>
+                                    <Typography sx={{ color: roleTextMuted, fontSize: '0.74rem' }}>
+                                      Kontakt: {getContactCoverageScore(candidate)}%
+                                    </Typography>
+                                  </CardContent>
+                                </Card>
+                              </Grid>
+                            );
+                          })}
+                        </Grid>
+                      )}
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <Typography sx={{ color: roleTextMuted }}>Velg en kandidat for detaljer.</Typography>
+              )}
+            </Box>
+          </Box>
+
+          {selectedIds.size > 0 && (
+            <Box
+              sx={{
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 12,
+                border: `1px solid ${roleBorder}`,
+                borderRadius: 1.5,
+                bgcolor: 'rgba(18,12,42,0.94)',
+                backdropFilter: 'blur(8px)',
+                p: 1.25,
+                mb: 2,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                <Typography sx={{ color: roleText, fontWeight: 700 }}>
+                  {selectedIds.size} kandidater valgt
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <Button
+                    size="small"
+                    variant={proCompareMode ? 'contained' : 'outlined'}
+                    startIcon={<CompareArrowsIcon />}
+                    onClick={() => {
+                      setProCompareMode(true);
+                      setProDetailTab('compare');
+                    }}
+                    sx={{
+                      color: proCompareMode ? '#160a24' : roleText,
+                      bgcolor: proCompareMode ? roleTabAccent : 'transparent',
+                      borderColor: roleBorder,
+                    }}
+                  >
+                    Sammenlign
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => { void handleBulkStatusUpdate('shortlist'); }} sx={{ color: roleText, borderColor: roleBorder }}>
+                    Kortliste
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => { void handleBulkStatusUpdate('requested'); }} sx={{ color: roleText, borderColor: roleBorder }}>
+                    Be om samtykke
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => { void handleBulkStatusUpdate('confirmed'); }} sx={{ color: roleText, borderColor: roleBorder }}>
+                    Bekreft
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<PreviewIcon />} onClick={handleOpenPreviewDialog} sx={{ color: roleTabAccent, borderColor: roleBorder }}>
+                    Til scene
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      setSelectedIds(new Set());
+                      setProCompareMode(false);
+                    }}
+                    sx={{ color: roleTextMuted, borderColor: roleBorder }}
+                  >
+                    Tøm valg
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          )}
+        </>
+      )}
+
+      {workspaceView !== 'pro' && (
+        <>
       {/* Statistics Panel */}
       <Collapse in={showStats}>
         <Box
@@ -1287,16 +2882,16 @@ function CandidateManagementPanelInner({
             gap: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
             mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
-            bgcolor: 'rgba(16, 185, 129, 0.05)',
+            bgcolor: 'rgba(184,107,255,0.08)',
             borderRadius: 2,
-            border: '1px solid rgba(16, 185, 129, 0.2)',
+            border: `1px solid ${roleBorder}`,
           }}
         >
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#10b981' }} />
+              <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: roleTabAccent }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.total}</Typography>
+            <Typography variant="h4" sx={{ color: roleTabAccent, fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.total}</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -1318,7 +2913,7 @@ function CandidateManagementPanelInner({
               <RecentActorsIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffb800' }} />
             </Box>
             <Typography variant="h4" sx={{ color: '#ffb800', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>{statistics.shortlist}</Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Shortlist</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Kortliste</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
@@ -1348,7 +2943,7 @@ function CandidateManagementPanelInner({
         }}
       >
         <TextField
-          placeholder={isMobile ? 'Søk...' : 'Søk på navn, e-post, telefon, notater...'}
+          placeholder={isMobile ? 'Søk...' : isTablet ? 'Søk kandidater...' : 'Søk på navn, e-post, telefon, notater...'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           size="small"
@@ -1365,9 +2960,9 @@ function CandidateManagementPanelInner({
               color: '#fff',
               fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
               height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-              '&.Mui-focused fieldset': { borderColor: '#10b981' },
+              '& fieldset': { borderColor: roleBorder },
+              '&:hover fieldset': { borderColor: roleTabAccentSoft },
+              '&.Mui-focused fieldset': { borderColor: roleTabAccent },
             },
           }}
         />
@@ -1382,14 +2977,14 @@ function CandidateManagementPanelInner({
               minHeight: TOUCH_TARGET_SIZE,
               fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
               height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#10b981' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: roleBorder },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: roleTabAccent },
             }}
           >
             <MenuItem value="all">Alle statuser</MenuItem>
             <MenuItem value="pending">Venter</MenuItem>
             <MenuItem value="requested">Forespurt</MenuItem>
-            <MenuItem value="shortlist">Shortlist</MenuItem>
+            <MenuItem value="shortlist">Kortliste</MenuItem>
             <MenuItem value="selected">Valgt</MenuItem>
             <MenuItem value="confirmed">Bekreftet</MenuItem>
             <MenuItem value="rejected">Avvist</MenuItem>
@@ -1405,9 +3000,9 @@ function CandidateManagementPanelInner({
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'grid' ? 'rgba(16,185,129,0.2)' : 'transparent',
-                color: viewMode === 'grid' ? '#10b981' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'grid' ? '#10b981' : 'rgba(255,255,255,0.2)',
+                bgcolor: viewMode === 'grid' ? roleTabAccentSoft : 'transparent',
+                color: viewMode === 'grid' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'grid' ? roleTabAccent : roleBorder,
                 ...focusVisibleStyles,
               }}
             >
@@ -1422,9 +3017,9 @@ function CandidateManagementPanelInner({
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'table' ? 'rgba(16,185,129,0.2)' : 'transparent',
-                color: viewMode === 'table' ? '#10b981' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'table' ? '#10b981' : 'rgba(255,255,255,0.2)',
+                bgcolor: viewMode === 'table' ? roleTabAccentSoft : 'transparent',
+                color: viewMode === 'table' ? roleTabAccent : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'table' ? roleTabAccent : roleBorder,
                 ...focusVisibleStyles,
               }}
             >
@@ -1460,9 +3055,9 @@ function CandidateManagementPanelInner({
           severity="info"
           sx={{
             mb: 2,
-            bgcolor: 'rgba(16,185,129,0.1)',
+            bgcolor: 'rgba(184,107,255,0.12)',
             color: '#fff',
-            '& .MuiAlert-icon': { color: '#10b981' },
+            '& .MuiAlert-icon': { color: roleTabAccent },
           }}
         >
           Viser {filteredAndSortedCandidates.length} av {candidates.length} kandidater
@@ -1477,7 +3072,7 @@ function CandidateManagementPanelInner({
           subtitle={roles.length > 0
             ? `Du har ${roles.length} rolle${roles.length > 1 ? 'r' : ''} som venter på kandidater.`
             : 'Start med å opprette roller, deretter legg til kandidater.'}
-          color="#10b981"
+          color="#b86bff"
           buttonLabel="Legg til kandidat"
           onAction={onCreateCandidate}
         />
@@ -1506,17 +3101,17 @@ function CandidateManagementPanelInner({
                     checked={selectedIds.size === filteredAndSortedCandidates.length && filteredAndSortedCandidates.length > 0}
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedCandidates.length}
                     onChange={handleSelectAll}
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#10b981' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
                   />
                 </TableCell>
-                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Fav</TableCell>
+                <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Favoritt</TableCell>
                 <TableCell sx={{ color: '#fff', py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>Bilde</TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                   <TableSortLabel
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#10b981' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -1526,7 +3121,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
                     onClick={() => handleSort('status')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#10b981' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
                   >
                     Status
                   </TableSortLabel>
@@ -1537,7 +3132,7 @@ function CandidateManagementPanelInner({
                     active={sortField === 'roles'}
                     direction={sortField === 'roles' ? sortDirection : 'asc'}
                     onClick={() => handleSort('roles')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#10b981' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#b86bff' } }}
                   >
                     Roller
                   </TableSortLabel>
@@ -1550,7 +3145,7 @@ function CandidateManagementPanelInner({
                 <TableRow
                   key={candidate.id}
                   sx={{
-                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(16,185,129,0.1)' : 'transparent',
+                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(184,107,255,0.1)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
@@ -1558,19 +3153,40 @@ function CandidateManagementPanelInner({
                     <Checkbox
                       checked={selectedIds.has(candidate.id)}
                       onChange={() => handleToggleSelect(candidate.id)}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#10b981' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#b86bff' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
-                    <IconButton onClick={() => toggleFavorite(candidate.id)} sx={{ color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}>
-                      {favorites.has(candidate.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
-                    </IconButton>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                      <IconButton onClick={() => toggleFavorite(candidate.id)} sx={{ color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)' }}>
+                        {favorites.has(candidate.id) ? <StarIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
+                      </IconButton>
+                      <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
+                        <IconButton
+                          onClick={() => toggleQuickContact(candidate.id)}
+                          sx={{
+                            color: quickContacts.has(candidate.id) ? quickContactColor : quickContactColorMuted,
+                            bgcolor: quickContacts.has(candidate.id) ? quickContactBackground : 'transparent',
+                            border: quickContacts.has(candidate.id) ? `1px solid ${quickContactColorMuted}` : '1px solid transparent',
+                          }}
+                        >
+                          <QuickContactIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
                     <Avatar
                       src={candidate.photos?.[0]}
                       alt={candidate.name}
-                      sx={{ width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 }, height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 }, bgcolor: `${getStatusColor(candidate.status)}20` }}
+                      sx={{
+                        width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
+                        height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 52 },
+                        bgcolor: `${getStatusColor(candidate.status)}20`,
+                        '& .MuiAvatar-img': {
+                          objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
+                        },
+                      }}
                     >
                       <PersonIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 }, color: getStatusColor(candidate.status) }} />
                     </Avatar>
@@ -1622,7 +3238,7 @@ function CandidateManagementPanelInner({
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => onEditCandidate(candidate)} sx={{ color: '#10b981', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton onClick={() => onEditCandidate(candidate)} sx={{ color: '#b86bff', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
@@ -1640,18 +3256,29 @@ function CandidateManagementPanelInner({
         </TableContainer>
       ) : (
         /* Grid View - Enhanced cards matching ProductionDayView */
-        <Grid container spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              xl: 'repeat(3, minmax(0, 1fr))',
+            },
+            gap: { xs: 2.5, sm: 3, md: 3.25, lg: 3.5, xl: 4 },
+            alignItems: 'stretch',
+          }}
+        >
           {filteredAndSortedCandidates.map((candidate) => {
             const statusColor = getStatusColor(candidate.status);
             const statusLabel = getStatusLabel(candidate.status);
 
             return (
-              <Grid key={candidate.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+              <Box key={candidate.id}>
                 <Card
                   component="article"
                   sx={{
-                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
-                    border: selectedIds.has(candidate.id) ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                    bgcolor: selectedIds.has(candidate.id) ? 'rgba(184,107,255,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: selectedIds.has(candidate.id) ? '2px solid #b86bff' : '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 2,
                     transition: 'all 0.2s ease',
                     height: '100%',
@@ -1660,8 +3287,8 @@ function CandidateManagementPanelInner({
                     overflow: 'hidden',
                     '&:hover': {
                       bgcolor: 'rgba(255,255,255,0.08)',
-                      borderColor: '#10b981',
-                      boxShadow: '0 8px 24px rgba(16,185,129,0.2)',
+                      borderColor: '#b86bff',
+                      boxShadow: '0 8px 24px rgba(184,107,255,0.24)',
                       transform: 'translateY(-2px)',
                     },
                     ...focusVisibleStyles,
@@ -1718,6 +3345,7 @@ function CandidateManagementPanelInner({
                           width: '100%',
                           height: { xs: 140, sm: 160, md: 150, lg: 180, xl: 220 },
                           objectFit: 'cover',
+                          objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
                         }}
                       />
                     ) : (
@@ -1725,7 +3353,7 @@ function CandidateManagementPanelInner({
                         sx={{
                           width: '100%',
                           height: { xs: 100, sm: 120, md: 110, lg: 140, xl: 180 },
-                          background: 'linear-gradient(135deg, rgba(16,185,129,0.25) 0%, rgba(5,150,105,0.15) 100%)',
+                          background: 'linear-gradient(135deg, rgba(184,107,255,0.25) 0%, rgba(93,67,191,0.16) 100%)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1736,12 +3364,12 @@ function CandidateManagementPanelInner({
                             width: { xs: 60, sm: 70, md: 65, lg: 80, xl: 100 },
                             height: { xs: 60, sm: 70, md: 65, lg: 80, xl: 100 },
                             borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            background: 'linear-gradient(135deg, #b86bff 0%, #5d43bf 100%)',
                             border: '3px solid rgba(255,255,255,0.3)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            boxShadow: '0 4px 12px rgba(16,185,129,0.4)',
+                            boxShadow: '0 4px 12px rgba(184,107,255,0.36)',
                           }}
                         >
                           <RecentActorsIcon sx={{ fontSize: { xs: 30, sm: 36, md: 33, lg: 40, xl: 50 }, color: '#fff' }} />
@@ -1797,7 +3425,7 @@ function CandidateManagementPanelInner({
                         <Checkbox
                           checked={selectedIds.has(candidate.id)}
                           onChange={() => handleToggleSelect(candidate.id)}
-                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#10b981' } }}
+                          sx={{ p: 0.5, color: 'rgba(255,255,255,0.6)', '&.Mui-checked': { color: '#b86bff' } }}
                         />
                         <Typography
                           variant="h6"
@@ -1812,18 +3440,36 @@ function CandidateManagementPanelInner({
                           {candidate.name}
                         </Typography>
                       </Box>
-                      <IconButton
-                        onClick={() => toggleFavorite(candidate.id)}
-                        aria-label={favorites.has(candidate.id) ? 'Fjern fra favoritter' : 'Legg til favoritter'}
-                        sx={{
-                          minWidth: TOUCH_TARGET_SIZE,
-                          minHeight: TOUCH_TARGET_SIZE,
-                          color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
-                          ...focusVisibleStyles,
-                        }}
-                      >
-                        {favorites.has(candidate.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
-                      </IconButton>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Tooltip title={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}>
+                          <IconButton
+                            onClick={() => toggleQuickContact(candidate.id)}
+                            aria-label={quickContacts.has(candidate.id) ? 'Fjern fra hurtigkontakt' : 'Legg til hurtigkontakt'}
+                            sx={{
+                              minWidth: TOUCH_TARGET_SIZE,
+                              minHeight: TOUCH_TARGET_SIZE,
+                              color: quickContacts.has(candidate.id) ? quickContactColor : quickContactColorMuted,
+                              bgcolor: quickContacts.has(candidate.id) ? quickContactBackground : 'transparent',
+                              border: quickContacts.has(candidate.id) ? `1px solid ${quickContactColorMuted}` : '1px solid transparent',
+                              ...focusVisibleStyles,
+                            }}
+                          >
+                            <QuickContactIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />
+                          </IconButton>
+                        </Tooltip>
+                        <IconButton
+                          onClick={() => toggleFavorite(candidate.id)}
+                          aria-label={favorites.has(candidate.id) ? 'Fjern fra favoritter' : 'Legg til favoritter'}
+                          sx={{
+                            minWidth: TOUCH_TARGET_SIZE,
+                            minHeight: TOUCH_TARGET_SIZE,
+                            color: favorites.has(candidate.id) ? '#ffc107' : 'rgba(255,255,255,0.3)',
+                            ...focusVisibleStyles,
+                          }}
+                        >
+                          {favorites.has(candidate.id) ? <StarIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} /> : <StarBorderIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 } }} />}
+                        </IconButton>
+                      </Box>
                     </Box>
 
                     {/* Contact Info Cards - Enhanced */}
@@ -1836,8 +3482,8 @@ function CandidateManagementPanelInner({
                             gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                             borderRadius: 2,
-                            bgcolor: 'rgba(16,185,129,0.1)',
-                            border: '1px solid rgba(16,185,129,0.25)',
+                            bgcolor: 'rgba(184,107,255,0.12)',
+                            border: '1px solid rgba(184,107,255,0.3)',
                           }}
                         >
                           <Box
@@ -1845,13 +3491,13 @@ function CandidateManagementPanelInner({
                               width: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                               height: { xs: 40, sm: 48, md: 44, lg: 52, xl: 60 },
                               borderRadius: 1.5,
-                              bgcolor: 'rgba(16,185,129,0.25)',
+                              bgcolor: 'rgba(184,107,255,0.25)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
                           >
-                            <EmailIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#6ee7b7' }} />
+                            <EmailIcon sx={{ fontSize: { xs: 22, sm: 26, md: 24, lg: 28, xl: 32 }, color: '#d6b5ff' }} />
                           </Box>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography
@@ -1940,14 +3586,14 @@ function CandidateManagementPanelInner({
                               mb: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                               p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                               borderRadius: 2,
-                              bgcolor: 'rgba(16,185,129,0.08)',
-                              border: '1px solid rgba(16,185,129,0.2)',
+                              bgcolor: 'rgba(184,107,255,0.1)',
+                              border: '1px solid rgba(184,107,255,0.24)',
                             }}
                           >
                             <Typography
                               variant="subtitle2"
                               sx={{
-                                color: '#10b981',
+                                color: '#b86bff',
                                 fontWeight: 700,
                                 mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                                 fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
@@ -2007,7 +3653,7 @@ function CandidateManagementPanelInner({
                         alignItems: 'center',
                         pt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                         mt: 'auto',
-                        borderTop: '2px solid rgba(16,185,129,0.2)',
+                        borderTop: '2px solid rgba(184,107,255,0.24)',
                       }}
                     >
                       <Button
@@ -2017,28 +3663,28 @@ function CandidateManagementPanelInner({
                         endIcon={expandedCards.has(candidate.id) ? <CollapseIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <ExpandIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         sx={{
                           bgcolor: expandedCards.has(candidate.id)
-                            ? 'rgba(16,185,129,0.25)'
-                            : 'rgba(16,185,129,0.15)',
-                          color: expandedCards.has(candidate.id) ? '#6ee7b7' : '#fff',
+                            ? 'rgba(184,107,255,0.3)'
+                            : 'rgba(184,107,255,0.18)',
+                          color: expandedCards.has(candidate.id) ? '#e3c8ff' : '#fff',
                           fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
                           fontWeight: 600,
                           minHeight: TOUCH_TARGET_SIZE,
                           px: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                           py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                           border: expandedCards.has(candidate.id)
-                            ? '2px solid rgba(16,185,129,0.5)'
-                            : '2px solid rgba(16,185,129,0.3)',
+                            ? '2px solid rgba(184,107,255,0.58)'
+                            : '2px solid rgba(184,107,255,0.38)',
                           borderRadius: 2,
                           textTransform: 'none',
                           boxShadow: expandedCards.has(candidate.id)
-                            ? '0 4px 12px rgba(16,185,129,0.3)'
-                            : '0 2px 8px rgba(16,185,129,0.2)',
+                            ? '0 4px 12px rgba(184,107,255,0.34)'
+                            : '0 2px 8px rgba(184,107,255,0.26)',
                           transition: 'all 0.2s ease',
                           '&:hover': {
-                            bgcolor: 'rgba(16,185,129,0.35)',
-                            borderColor: 'rgba(16,185,129,0.6)',
+                            bgcolor: 'rgba(184,107,255,0.35)',
+                            borderColor: 'rgba(184,107,255,0.65)',
                             transform: 'translateY(-1px)',
-                            boxShadow: '0 6px 16px rgba(16,185,129,0.4)',
+                            boxShadow: '0 6px 16px rgba(184,107,255,0.42)',
                           },
                           ...focusVisibleStyles,
                         }}
@@ -2053,7 +3699,7 @@ function CandidateManagementPanelInner({
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
                               color: '#8b5cf6',
-                              '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                              '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' },
                               ...focusVisibleStyles,
                             }}
                           >
@@ -2080,8 +3726,8 @@ function CandidateManagementPanelInner({
                             sx={{
                               minWidth: TOUCH_TARGET_SIZE,
                               minHeight: TOUCH_TARGET_SIZE,
-                              color: '#10b981',
-                              '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' },
+                              color: '#b86bff',
+                              '&:hover': { bgcolor: 'rgba(184,107,255,0.1)' },
                               ...focusVisibleStyles,
                             }}
                           >
@@ -2106,10 +3752,10 @@ function CandidateManagementPanelInner({
                     </Box>
                   </CardContent>
                 </Card>
-              </Grid>
+              </Box>
             );
           })}
-        </Grid>
+        </Box>
       )}
 
       {/* Templates View - shows saved candidate templates when in templates mode */}
@@ -2204,6 +3850,9 @@ function CandidateManagementPanelInner({
                               height: 48,
                               bgcolor: 'rgba(156, 39, 176, 0.2)',
                               border: '2px solid rgba(156, 39, 176, 0.4)',
+                              '& .MuiAvatar-img': {
+                                objectPosition: getCandidatePhotoObjectPosition(poolCandidate, 0),
+                              },
                             }}
                           >
                             <PersonIcon sx={{ color: '#ce93d8' }} />
@@ -2297,6 +3946,8 @@ function CandidateManagementPanelInner({
           )}
         </Box>
       )}
+        </>
+      )}
 
       {/* Undo Delete Snackbar */}
       <Snackbar
@@ -2305,7 +3956,7 @@ function CandidateManagementPanelInner({
         onClose={() => setUndoSnackbarOpen(false)}
         message="Kandidat slettet"
         action={
-          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#10b981' }}>
+          <Button color="secondary" size="small" onClick={handleUndoDelete} sx={{ color: '#b86bff' }}>
             Angre
           </Button>
         }
@@ -2419,8 +4070,8 @@ function CandidateManagementPanelInner({
                       label={preset.category}
                       size="small"
                       sx={{
-                        bgcolor: 'rgba(16,185,129,0.15)',
-                        color: '#10b981',
+                        bgcolor: 'rgba(184,107,255,0.15)',
+                        color: '#b86bff',
                         fontSize: '0.6rem',
                         height: 16,
                         '& .MuiChip-label': { px: 0.75 }
@@ -2498,6 +4149,9 @@ function CandidateManagementPanelInner({
                           height: 56,
                           bgcolor: '#8b5cf6',
                           border: '2px solid rgba(139, 92, 246, 0.5)',
+                          '& .MuiAvatar-img': {
+                            objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
+                          },
                         }}
                       >
                         {candidate.photos?.[0] ? null : <PersonIcon />}
@@ -2565,7 +4219,7 @@ function CandidateManagementPanelInner({
                         alignItems: 'center', 
                         gap: 0.5, 
                         mt: 1.5,
-                        color: '#10b981',
+                        color: '#b86bff',
                         fontSize: '0.75rem',
                       }}>
                         <CheckIcon sx={{ fontSize: 14 }} />

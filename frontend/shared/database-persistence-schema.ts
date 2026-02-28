@@ -8683,7 +8683,7 @@ export const emailTemplates = pgTable(
 
 // Commenting out duplicate export - use the one from virtual-studio-schema instead
 // export const googleDriveFiles = pgTable('google_drive_files', {
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 const _googleDriveFilesLegacy = pgTable(
   'google_drive_files_legacy',
   {

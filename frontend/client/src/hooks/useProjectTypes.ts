@@ -35,6 +35,47 @@ export interface UseProjectTypesReturn {
   refresh: () => Promise<void>;
 }
 
+const fallbackProjectTypes: ProjectType[] = [
+  {
+    id: 1,
+    userId: 0,
+    name: 'Wedding',
+    icon: '💍',
+    category: 'events',
+    description: 'Bryllupsprosjekt',
+    usageCount: 0,
+    isGlobal: true,
+    isTrending: true,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+  },
+  {
+    id: 2,
+    userId: 0,
+    name: 'Portrait',
+    icon: '📸',
+    category: 'photo',
+    description: 'Portrettprosjekt',
+    usageCount: 0,
+    isGlobal: true,
+    isTrending: false,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+  },
+  {
+    id: 3,
+    userId: 0,
+    name: 'Event',
+    icon: '🎉',
+    category: 'events',
+    description: 'Eventprosjekt',
+    usageCount: 0,
+    isGlobal: true,
+    isTrending: false,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+  },
+];
 export const useProjectTypes = (): UseProjectTypesReturn => {
   const [data, setData] = useState<ProjectTypesData>({
     userTypes: [],
@@ -60,12 +101,16 @@ export const useProjectTypes = (): UseProjectTypesReturn => {
       };
       setData(safeData);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch project types');
-      console.error('Error fetching project types: ', err);
-      // Set default empty arrays on error
+      const message = String(err?.message || '');
+      const isMissingEndpoint =
+        message.includes('404') || message.includes('Endpoint not implemented');
+
+      setError(isMissingEndpoint ? null : (err.message || 'Failed to fetch project types'));
+
+      // Use local defaults when backend endpoint is unavailable
       setData({
         userTypes: [],
-        defaultTypes: [],
+        defaultTypes: fallbackProjectTypes,
         trendingTypes: [],
       });
     } finally {
@@ -163,4 +208,3 @@ export const useProjectTypes = (): UseProjectTypesReturn => {
     refresh: fetchProjectTypes,
   };
 };
-

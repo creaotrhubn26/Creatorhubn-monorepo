@@ -33,7 +33,7 @@ export async function analyzeResume(resume: any, jobDescription?: string): Promi
   const suggestions: AISuggestion[] = [];
   let atsScore = 100;
   let contentScore = 100;
-  let grammarScore = 100;
+  const grammarScore = 100;
 
   // 1. Check Professional Summary
   if (!resume.personalInfo?.summary || resume.personalInfo.summary.length < 50) {
@@ -169,8 +169,8 @@ export async function analyzeResume(resume: any, jobDescription?: string): Promi
   }
 
   // 6. Keyword Analysis (if job description provided)
-  let matchedKeywords: string[] = [];
-  let missingKeywords: string[] = [];
+  const matchedKeywords: string[] = [];
+  const missingKeywords: string[] = [];
   let keywordScore = 100;
 
   if (jobDescription) {

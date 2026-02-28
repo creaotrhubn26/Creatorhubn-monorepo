@@ -6,6 +6,39 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { initSentry } from './utils/sentry';
+import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
+
+declare global {
+  interface Window {
+    __creatorhubFetchNormalized?: boolean;
+  }
+}
+
+function installFetchNormalization() {
+  if (window.__creatorhubFetchNormalized) return;
+
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === 'string') {
+      return nativeFetch(normalizeRequestUrl(input), init);
+    }
+
+    if (input instanceof URL) {
+      return nativeFetch(normalizeRequestUrl(input.toString()), init);
+    }
+
+    if (input instanceof Request) {
+      const normalizedUrl = normalizeRequestUrl(input.url);
+      if (normalizedUrl !== input.url) {
+        return nativeFetch(new Request(normalizedUrl, input), init);
+      }
+    }
+
+    return nativeFetch(input, init);
+  };
+
+  window.__creatorhubFetchNormalized = true;
+}
 
 // #region agent log
 console.log('[main.tsx] All imports loaded at', new Date().toISOString());
@@ -21,6 +54,8 @@ try {
 } catch (error) {
   console.error('[main.tsx] Sentry init error:', error);
 }
+
+installFetchNormalization();
 
 // #region agent log
 console.log('[main.tsx] Getting root element');
@@ -57,5 +92,4 @@ if (!rootElement) {
     </div>`;
   }
 }
-
 

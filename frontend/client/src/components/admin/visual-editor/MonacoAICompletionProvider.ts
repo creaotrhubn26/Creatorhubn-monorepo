@@ -70,7 +70,7 @@ export class MonacoAICompletionProvider implements monaco.languages.InlineComple
       // Convert AI completions to Monaco inline completions
       const items: monaco.languages.InlineCompletion[] = completions.map((completion) => {
         // Extract the completion text
-        let completionText = this.extractCompletionText(completion.code, lineContent, cursorColumn);
+        const completionText = this.extractCompletionText(completion.code, lineContent, cursorColumn);
 
         return {
           insertText: completionText,

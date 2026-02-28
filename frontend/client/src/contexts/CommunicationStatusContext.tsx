@@ -61,6 +61,15 @@ export function CommunicationStatusProvider({ children }: CommunicationStatusPro
       
       const responseStatus = response.status;
       const responseText = response.statusText;
+
+      if (responseStatus === 404) {
+        updateStatus({
+          googleChatStatus: 'disconnected',
+          googleChatResponse: 'API not available',
+          googleChatLastCheck: new Date(),
+        });
+        return;
+      }
       
       if (responseStatus === 200) {
         updateStatus({
@@ -120,6 +129,7 @@ export function CommunicationStatusProvider({ children }: CommunicationStatusPro
         serverStatus: 'online'
       });
     } catch (error) {
+      console.warn('Communication connection test failed:', error);
       updateStatus({
         isConnected: false,
         connectionStatus: 'disconnected',

@@ -1,7 +1,5 @@
-import { useQuery, useMutation, useQueryClient, QueryClient } from '@tanstack/react-query';
-
-// Token cache for auth header
-let cachedAuthToken = { token: "", exp: 0 };
+import { QueryClient } from '@tanstack/react-query';
+import { normalizeRequestUrl } from './normalizeRequestUrl';
 
 /**
  * Get authorization header for API requests
@@ -46,14 +44,15 @@ type ApiRequestOptions = Omit<RequestInit, 'body'> & {
 export async function apiRequest(url: string, options?: ApiRequestOptions) {
   // Get auth headers from EnhancedMasterIntegrationProvider
   const authHeaders = await getAuthHeader();
+  const normalizedUrl = normalizeRequestUrl(url);
 
   // In development, use relative URLs (Vite proxy). In production, use full Render backend URL.
   const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
-  const fullUrl = url.startsWith('http') 
-    ? url 
+  const fullUrl = normalizedUrl.startsWith('http')
+    ? normalizedUrl
     : isDevelopment 
-      ? url
-      : `${API_BASE_URL}${url}`;
+      ? normalizedUrl
+      : `${API_BASE_URL}${normalizedUrl}`;
 
   const isFormData = options?.body instanceof FormData;
   const requestOptions: RequestInit = {

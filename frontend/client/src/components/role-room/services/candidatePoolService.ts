@@ -8,6 +8,7 @@ export interface PoolCandidate {
   };
   photos: string[];
   videos: string[];
+  photoFocalPoints?: Array<{ x: number; y: number }>;
   modelUrl?: string;
   personality?: string;
   notes?: string;

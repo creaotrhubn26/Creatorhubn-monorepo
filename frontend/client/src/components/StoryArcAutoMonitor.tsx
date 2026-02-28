@@ -93,6 +93,24 @@ interface StoryArcAutoMonitorProps {
   onStatusChange?: (enabled: boolean) => void
 }
 
+const EMPTY_AUTO_MONITOR_STATUS: AutoMonitorStatus = {
+  activeMonitors: [],
+  processedFiles: {},
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isAutoMonitorStatus(value: unknown): value is AutoMonitorStatus {
+  if (!isRecord(value)) return false;
+  return Array.isArray(value.activeMonitors) && isRecord(value.processedFiles);
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith('404:');
+}
+
 const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onStatusChange }) => {
   const [monitorEnabled, setMonitorEnabled] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -108,6 +126,9 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
   
   // Theming system
   const theming = useTheming('photographer');
+  const resolvedUserId = typeof userId === 'string' && userId.trim().length > 0
+    ? userId.trim()
+    : 'guest';
 
   // Get monitoring status
   const { 
@@ -115,9 +136,34 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
     isLoading: isLoadingStatus,
     refetch: refetchStatus 
   } = useQuery<AutoMonitorStatus>({
-    queryKey: ['/api/story-arc/auto-monitor/status', userId],
-    queryFn: () => apiRequest(`/api/story-arc/auto-monitor/status/${userId}`),
+    queryKey: ['/api/story-arc/auto-monitor/status', resolvedUserId],
+    queryFn: async () => {
+      try {
+        const scopedResponse = await apiRequest(`/api/story-arc/auto-monitor/status/${resolvedUserId}`);
+        if (isAutoMonitorStatus(scopedResponse)) {
+          return scopedResponse;
+        }
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          throw error;
+        }
+      }
+
+      try {
+        const unscopedResponse = await apiRequest('/api/story-arc/auto-monitor/status');
+        if (isAutoMonitorStatus(unscopedResponse)) {
+          return unscopedResponse;
+        }
+      } catch (fallbackError) {
+        if (!isNotFoundError(fallbackError)) {
+          throw fallbackError;
+        }
+      }
+
+      return EMPTY_AUTO_MONITOR_STATUS;
+    },
     retry: false,
+    initialData: EMPTY_AUTO_MONITOR_STATUS,
   });
 
   // Get processing history
@@ -126,8 +172,17 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
     isLoading: isLoadingHistory,
     refetch: refetchHistory 
   } = useQuery({
-    queryKey: ['/api/story-arc/auto-monitor/history', userId],
-    queryFn: () => apiRequest(`/api/story-arc/auto-monitor/history/${userId}`),
+    queryKey: ['/api/story-arc/auto-monitor/history', resolvedUserId],
+    queryFn: async () => {
+      try {
+        return await apiRequest(`/api/story-arc/auto-monitor/history/${resolvedUserId}`);
+      } catch (error) {
+        if (isNotFoundError(error)) {
+          return { success: true, total: 0, history: [] };
+        }
+        throw error;
+      }
+    },
     enabled: historyOpen,
     retry: false,
   });
@@ -139,7 +194,7 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({
-          userId,
+          userId: resolvedUserId,
           monitorFolderName: 'studio_arc_create',
           checkIntervalMinutes: settings.checkIntervalMinutes,
           autoGenerateSettings: {
@@ -152,7 +207,7 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/auto-monitor/status', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/auto-monitor/status', resolvedUserId] });
       onStatusChange?.(true);
     },
     onError: (error) => {
@@ -166,11 +221,11 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
       return apiRequest('/api/story-arc/auto-monitor/disable', {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ userId, folderName: 'studio_arc_create' }),
+        body: JSON.stringify({ userId: resolvedUserId, folderName: 'studio_arc_create' }),
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/auto-monitor/status', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/auto-monitor/status', resolvedUserId] });
       onStatusChange?.(false);
     },
     onError: (error) => {
@@ -185,7 +240,7 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
         method: 'PUT',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({
-          userId,
+          userId: resolvedUserId,
           folderName: 'studio_arc_create',
           autoGenerateSettings: {
             enabled: true,
@@ -197,7 +252,7 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/auto-monitor/status', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/auto-monitor/status', resolvedUserId] });
       setSettingsOpen(false);
     },
     onError: (error) => {
@@ -211,7 +266,7 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
       return apiRequest('/api/story-arc/auto-monitor/check', {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId: resolvedUserId }),
       });
     },
     onSuccess: () => {
@@ -226,14 +281,14 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
   useEffect(() => {
     if (monitorStatus?.activeMonitors) {
       const isEnabled = monitorStatus.activeMonitors.some(
-        monitor => monitor.userId === userId && monitor.monitorFolderName === 'studio_arc_create'
+        monitor => monitor.userId === resolvedUserId && monitor.monitorFolderName === 'studio_arc_create'
       );
       setMonitorEnabled(isEnabled);
 
       // Update settings from current monitor config
       if (isEnabled) {
         const currentMonitor = monitorStatus.activeMonitors.find(
-          monitor => monitor.userId === userId && monitor.monitorFolderName === 'studio_arc_create'
+          monitor => monitor.userId === resolvedUserId && monitor.monitorFolderName === 'studio_arc_create'
         );
         if (currentMonitor) {
           setAutoSettings({
@@ -245,7 +300,7 @@ const StoryArcAutoMonitor: React.FC<StoryArcAutoMonitorProps> = ({ userId, onSta
       }
     }
   }
-}, [monitorStatus, userId]);
+}, [monitorStatus, resolvedUserId]);
 
   const handleToggleMonitoring = async () => {
     if (monitorEnabled) {

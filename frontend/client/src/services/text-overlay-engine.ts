@@ -140,6 +140,13 @@ export class TextOverlayEngine {
   /**
    * Text style presets (like Premiere Pro)
    */
+  getTextPresets(): Array<{ name: string; style: Partial<TextOverlay> }> {
+    return TextOverlayEngine.getTextPresets();
+  }
+
+  /**
+   * Text style presets (like Premiere Pro)
+   */
   static getTextPresets(): Array<{ name: string; style: Partial<TextOverlay> }> {
     return [
       {
@@ -202,5 +209,4 @@ export class TextOverlayEngine {
 }
 
 export const textOverlayEngine = new TextOverlayEngine();
-
 

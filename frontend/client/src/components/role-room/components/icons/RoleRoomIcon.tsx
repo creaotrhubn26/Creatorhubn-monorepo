@@ -7,7 +7,6 @@
  */
 
 import React from 'react';
-import { useTheme, useMediaQuery } from '@mui/material';
 
 export interface RoleRoomIconProps {
   /** PNG image source (imported via Vite) */
@@ -24,29 +23,47 @@ export interface RoleRoomIconProps {
   [key: string]: any;
 }
 
-/**
- * Resolves a responsive breakpoint value { xs, sm, md, lg, xl } to
- * the active pixel string based on current viewport width.
- */
-const useResponsiveValue = (value: any): string | number | undefined => {
-  const theme = useTheme();
-  const isXs = useMediaQuery(theme.breakpoints.only('xs'));
-  const isSm = useMediaQuery(theme.breakpoints.only('sm'));
-  const isMd = useMediaQuery(theme.breakpoints.only('md'));
-  const isLg = useMediaQuery(theme.breakpoints.only('lg'));
+type BreakpointKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
+const DEFAULT_BREAKPOINTS: Record<BreakpointKey, number> = {
+  xs: 0,
+  sm: 600,
+  md: 900,
+  lg: 1200,
+  xl: 1536,
+};
+
+const resolveResponsiveValue = (
+  value: any,
+  viewportWidth: number
+): string | number | undefined => {
   if (value === undefined || value === null) return undefined;
   if (typeof value === 'string' || typeof value === 'number') return value;
-  if (typeof value === 'object') {
-    if (isXs && value.xs != null) return value.xs;
-    if (isSm && value.sm != null) return value.sm;
-    if (isMd && value.md != null) return value.md;
-    if (isLg && value.lg != null) return value.lg;
-    if (value.xl != null) return value.xl;
-    // fallback to first available
-    return value.xs ?? value.sm ?? value.md ?? value.lg ?? value.xl;
+  if (typeof value !== 'object') return undefined;
+
+  const currentKey: BreakpointKey =
+    viewportWidth >= DEFAULT_BREAKPOINTS.xl ? 'xl' :
+    viewportWidth >= DEFAULT_BREAKPOINTS.lg ? 'lg' :
+    viewportWidth >= DEFAULT_BREAKPOINTS.md ? 'md' :
+    viewportWidth >= DEFAULT_BREAKPOINTS.sm ? 'sm' :
+    'xs';
+
+  const orderedKeys: BreakpointKey[] = ['xs', 'sm', 'md', 'lg', 'xl'];
+  const currentIndex = orderedKeys.indexOf(currentKey);
+
+  // First prefer the nearest defined value at or below the current breakpoint.
+  for (let i = currentIndex; i >= 0; i -= 1) {
+    const key = orderedKeys[i];
+    if (value[key] != null) return value[key];
   }
-  return undefined;
+
+  // Then look upward, and finally fallback to first defined.
+  for (let i = currentIndex + 1; i < orderedKeys.length; i += 1) {
+    const key = orderedKeys[i];
+    if (value[key] != null) return value[key];
+  }
+
+  return value.xs ?? value.sm ?? value.md ?? value.lg ?? value.xl;
 };
 
 const toPx = (v: string | number | undefined, fallback: string): string => {
@@ -72,12 +89,13 @@ export const RoleRoomIcon: React.FC<RoleRoomIconProps> = ({
   className,
   ...rest
 }) => {
-  const fontSize = useResponsiveValue(sx?.fontSize);
+  const viewportWidth =
+    typeof window === 'undefined' ? DEFAULT_BREAKPOINTS.xl : window.innerWidth;
+  const fontSize = resolveResponsiveValue(sx?.fontSize, viewportWidth);
   const size = toPx(fontSize, '24px');
-  const mb = spacingToPx(useResponsiveValue(sx?.mb));
-  const mt = spacingToPx(useResponsiveValue(sx?.mt));
+  const mb = spacingToPx(resolveResponsiveValue(sx?.mb, viewportWidth));
+  const mt = spacingToPx(resolveResponsiveValue(sx?.mt, viewportWidth));
   const opacity = sx?.opacity;
-  const _color = sx?.color;
 
   const imgStyle: React.CSSProperties = {
     width: size,

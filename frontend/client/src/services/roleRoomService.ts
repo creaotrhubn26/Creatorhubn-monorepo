@@ -54,9 +54,16 @@ async function roleRoomFetch<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const apiKey = getApiKey();
+  const authToken =
+    localStorage.getItem('creatorhub_auth_token')
+    || localStorage.getItem('authToken')
+    || localStorage.getItem('auth_token')
+    || localStorage.getItem('token')
+    || '';
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...(options.headers as Record<string, string> ?? {}),
   };
 

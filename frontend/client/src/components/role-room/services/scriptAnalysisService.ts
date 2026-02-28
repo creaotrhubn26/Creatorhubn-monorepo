@@ -244,7 +244,7 @@ function extractCharacters(content: string): Map<string, CharacterMention[]> {
     
     // Check for character cue
     let charName: string | null = null;
-    let context: 'character' | 'dialogue' | 'action' | 'parenthetical' = 'character';
+    const context: 'character' | 'dialogue' | 'action' | 'parenthetical' = 'character';
     
     const forcedMatch = line.match(FORCED_CHARACTER);
     if (forcedMatch) {

@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars */
+ 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { useTheming } from '../../utils/theming-helper';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';

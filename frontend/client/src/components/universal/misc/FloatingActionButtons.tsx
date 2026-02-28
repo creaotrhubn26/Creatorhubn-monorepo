@@ -2,6 +2,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
 import UniversalPrototypeFeedback from '../../prototype-testing/UniversalPrototypeFeedback';
 
 import {
@@ -36,6 +37,7 @@ import {
   Group,
   Work,
   PhotoLibrary,
+  VideoCall,
 } from '@mui/icons-material';
 
 interface FloatingActionButtonsProps {
@@ -104,6 +106,8 @@ export default function FloatingActionButtons({
   const [organizerDialogOpen, setOrganizerDialogOpen] = useState(false);
   
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const shouldUseServerPrefs = Boolean(user?.id || user?.email);
   
   // Theming system - use dynamic profession
   const theming = useTheming(profession || 'photographer');
@@ -114,12 +118,22 @@ export default function FloatingActionButtons({
   // Get user preferences from database
   const { data: preferences } = useQuery<UserPreferences>({
     queryKey: ['user-preferences', sessionId, profession],
-    queryFn: () => apiRequest(`/api/user-preferences/${sessionId}/${profession}`)
+    queryFn: async () => {
+      try {
+        return await apiRequest(`/api/user-preferences/${sessionId}/${profession}`);
+      } catch {
+        return undefined;
+      }
+    },
+    enabled: shouldUseServerPrefs,
   });
 
   // Save user preferences mutation
   const savePreferencesMutation = useMutation({
     mutationFn: async (data: Partial<UserPreferences>) => {
+      if (!shouldUseServerPrefs) {
+        return data;
+      }
       return apiRequest('/api/user-preferences', {
         headers: {
           "Content-Type" : "application/json"
@@ -137,8 +151,21 @@ export default function FloatingActionButtons({
     }
   });
 
-  const hiddenActions = preferences?.hiddenActions || [];
-  const actionOrder = preferences?.speedDialOrder || [];
+  const [localHiddenActions, setLocalHiddenActions] = useState<string[]>([]);
+  const [localActionOrder, setLocalActionOrder] = useState<string[]>([]);
+
+  useEffect(() => {
+    setLocalHiddenActions(preferences?.hiddenActions || []);
+    setLocalActionOrder(preferences?.speedDialOrder || []);
+  }, [preferences]);
+
+  const persistPreferences = (nextOrder: string[], nextHidden: string[]) => {
+    if (!shouldUseServerPrefs) return;
+    savePreferencesMutation.mutate({
+      speedDialOrder: nextOrder,
+      hiddenActions: nextHidden,
+    });
+  };
 
   // Info message logic (server-first, local fallback)
   useEffect(() => {
@@ -180,7 +207,50 @@ export default function FloatingActionButtons({
   const getAllAvailableActions = (): ActionItem[] => {
     const baseActions = [
       { name: 'møtenotater', icon: <EventNote />, action: () => onMeetingNotesOpen?.() },
-      { name: 'nytt-prosjekt', icon: <Work />, action: () => onProjectWizardOpen?.() },
+      {
+        name: 'hurtigmøte',
+        icon: <VideoCall />,
+        action: () => {
+          onMeetingCreate?.({
+            title: selectedProject?.name ? `Møte om ${selectedProject.name}` : 'Nytt møte',
+            projectId: selectedProject?.id,
+            timestamp: new Date().toISOString(),
+          });
+          onMeetingNotesOpen?.();
+        }
+      },
+      {
+        name: 'nytt-prosjekt',
+        icon: <Work />,
+        action: () => {
+          if (selectedProject && onProjectSelect) {
+            onProjectSelect(selectedProject);
+          }
+          onProjectWizardOpen?.();
+        }
+      },
+      {
+        name: 'prosjektoppdatering',
+        icon: <Settings />,
+        action: () => {
+          onProjectUpdate?.({
+            projectId: selectedProject?.id || null,
+            updatedAt: new Date().toISOString(),
+            source: 'floating-actions',
+          });
+        }
+      },
+      {
+        name: 'arbeidslogg',
+        icon: <Tune />,
+        action: () => {
+          onWorklogCreate?.({
+            projectId: selectedProject?.id || null,
+            createdAt: new Date().toISOString(),
+            source: 'floating-actions',
+          });
+        }
+      },
       { name: 'klient-chat', icon: <Chat />, action: () => onChatOpen?.() },
       { name: 'kalender', icon: <CalendarMonth />, action: () => onCalendarOpen?.() },
       { name: 'analytics', icon: <Analytics />, action: () => onAnalyticsOpen?.() },
@@ -225,7 +295,7 @@ export default function FloatingActionButtons({
     const allActions = getAllAvailableActions();
     
     // If we have no custom order or it's empty, return default order
-    if (!actionOrder || actionOrder.length === 0) {
+    if (!localActionOrder || localActionOrder.length === 0) {
       return allActions;
   }
 
@@ -233,7 +303,7 @@ export default function FloatingActionButtons({
     const orderedActions: ActionItem[] = [];
     
     // First, add actions in the specified order
-    for (const actionName of actionOrder) {
+    for (const actionName of localActionOrder) {
       const action = allActions.find(action => action.name === actionName);
       if (action) {
         orderedActions.push(action);
@@ -242,7 +312,7 @@ export default function FloatingActionButtons({
     
     // Then add any new actions that weren't in the saved order
     for (const action of allActions) {
-      if (!actionOrder.includes(action.name)) {
+      if (!localActionOrder.includes(action.name)) {
         orderedActions.push(action);
     }
   }
@@ -252,7 +322,7 @@ export default function FloatingActionButtons({
 
   const getVisibleActions = (): ActionItem[] => {
     const orderedActions = getOrderedActions();
-    return orderedActions.filter(action => !hiddenActions.includes(action.name));
+    return orderedActions.filter(action => !localHiddenActions.includes(action.name));
 };
 
 
@@ -271,6 +341,12 @@ export default function FloatingActionButtons({
     
     // Execute the action
     actionFunction();
+
+    // Move recently used action to the top and persist
+    const allNames = getAllAvailableActions().map((action) => action.name);
+    const reordered = [actionName, ...allNames.filter((name) => name !== actionName)];
+    setLocalActionOrder(reordered);
+    persistPreferences(reordered, localHiddenActions);
   };
 
   return (
@@ -355,7 +431,9 @@ export default function FloatingActionButtons({
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Tilgjengelige handlinger: </Typography>
           <List>
-            {getVisibleActions().map((action) => (
+            {getOrderedActions().map((action) => {
+              const isHidden = localHiddenActions.includes(action.name);
+              return (
               <ListItem key={action.name}>
                 <ListItemIcon>
                   {action.icon}
@@ -363,8 +441,22 @@ export default function FloatingActionButtons({
                 <ListItemText
                   primary={action.name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 />
+                <Button
+                  size="small"
+                  variant={isHidden ? 'outlined' : 'contained'}
+                  onClick={() => {
+                    const nextHidden = isHidden
+                      ? localHiddenActions.filter((name) => name !== action.name)
+                      : [...localHiddenActions, action.name];
+                    setLocalHiddenActions(nextHidden);
+                    persistPreferences(localActionOrder, nextHidden);
+                  }}
+                >
+                  {isHidden ? 'Vis' : 'Skjul'}
+                </Button>
               </ListItem>
-            ))}
+              );
+            })}
           </List>
         </DialogContent>
         <DialogActions>
@@ -474,7 +566,7 @@ export default function FloatingActionButtons({
                     sx={{
                       width: 48,
                       height: 48,
-                      bgcolor: isFocused ? '#FF6B00' : '#2563eb',
+                      bgcolor: isFocused ? theming.colors.primary : '#2563eb',
                       color: 'white',
                       transform: isClicked ? 'scale(1.15)' : isFocused ? 'scale(1.08)' : 'scale(1)',
                       transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -522,13 +614,13 @@ export default function FloatingActionButtons({
           sx={{
             width: 64,
             height: 64,
-            bgcolor: '#FF6B00',
+            bgcolor: theming.colors.primary,
             color: 'white',
             transform: open ? 'rotate(45deg)' : 'rotate(0deg)',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             boxShadow: '0 8px 24px rgba(255, 107, 0, 0.35)',
             '&:hover': {
-              bgcolor: '#FF8500',
+              bgcolor: theming.colors.accent || '#FF8500',
               transform: open ? 'rotate(45deg) scale(1.1)' : 'scale(1.1)',
               boxShadow: '0 12px 32px rgba(255, 107, 0, 0.45)'
             },

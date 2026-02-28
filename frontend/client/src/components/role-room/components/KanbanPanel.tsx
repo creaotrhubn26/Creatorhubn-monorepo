@@ -48,6 +48,7 @@ import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { useKanbanRealtime } from './useKanbanRealtime';
 import { useAuth } from '../../../hooks/useAuth';
+import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
 const TOUCH_TARGET_SIZE = 44;
@@ -1181,6 +1182,7 @@ function KanbanPanelInner({
                                   width: { xs: 44, sm: 48, md: 46, lg: 52, xl: 60 },
                                   height: { xs: 44, sm: 48, md: 46, lg: 52, xl: 60 },
                                   objectFit: 'cover',
+                                  objectPosition: getCandidatePhotoObjectPosition(candidate, 0),
                                   borderRadius: '50%',
                                   flexShrink: 0,
                                   border: `2px solid ${column.color}40`,

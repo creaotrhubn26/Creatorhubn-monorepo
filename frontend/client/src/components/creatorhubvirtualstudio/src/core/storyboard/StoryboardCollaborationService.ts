@@ -450,7 +450,7 @@ export class StoryboardCollaborationService {
   }
 
   private findComment(commentId: string): Comment | null {
-    let comment = this.state.comments.find(c => c.id === commentId);
+    const comment = this.state.comments.find(c => c.id === commentId);
     if (comment) return comment;
 
     // Check in replies
