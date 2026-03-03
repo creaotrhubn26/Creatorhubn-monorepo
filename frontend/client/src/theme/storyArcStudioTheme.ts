@@ -1,4 +1,4 @@
-import { createTheme } from '@mui/material';
+import { createTheme, type PaletteMode } from '@mui/material/styles';
 
 /**
  * Story Arc Studio by CreatorHub Norge Theme System

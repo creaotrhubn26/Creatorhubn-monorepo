@@ -24,6 +24,7 @@ export interface AudioSyncRunResult {
 }
 
 export interface AudioSyncOptions {
+  referenceClipId?: string;
   frameRate?: number;
   maxOffsetSeconds?: number;
   targetEnvelopeRate?: number;

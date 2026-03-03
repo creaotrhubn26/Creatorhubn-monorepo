@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from 'react';
 import {
   Box,
   Menu,
@@ -132,7 +132,7 @@ interface ProfessionalTimelineProps {
   onTrackAudioRoleChange?: (trackId: string, role: AudioTrackRole) => void;
   transitions?: TimelineTransition[];
   // Metadata & filtering
-  clipMetadata?: Record<string, { camera?: string; shotName?: string; scene?: string; take?: string; tags?: string[] }>;
+  clipMetadata?: Record<string, ClipMetadata>;
   filterTags?: string[];
   searchQuery?: string;
   // Context menu actions
@@ -224,6 +224,14 @@ interface TrackLayout {
   height: number;
 }
 
+interface ClipMetadata {
+  camera?: string;
+  shotName?: string;
+  scene?: string;
+  take?: string;
+  tags?: string[];
+}
+
 interface ClipVisualMetadata {
   isEnhanced: boolean;
   originalName?: string;
@@ -247,6 +255,17 @@ interface PanState {
   startScrollLeft: number;
   startScrollTop: number;
   isSpaceHand: boolean;
+}
+
+interface HoverState {
+  guideX: number | null;
+  time: number | null;
+}
+
+interface ExternalStore<T> {
+  getSnapshot: () => T;
+  subscribe: (listener: () => void) => () => void;
+  setSnapshot: (nextValue: T) => void;
 }
 
 interface ContextMenuPayload {
@@ -282,6 +301,13 @@ const SNAP_GUIDE_VISIBLE_THRESHOLD_PX = 0.5;
 const DRAG_COMMIT_EPSILON_SECONDS = 0.0005;
 const OBJECT_URL_REVOKE_DELAY_MS = 120000;
 const TIMELINE_TOOLBAR_PREFS_KEY = 'storyarc.timeline.toolbar.v2';
+const CLIP_METADATA_VISIBILITY_MIN_WIDTH_PX = 96;
+const CLIP_TAGS_VISIBILITY_MIN_WIDTH_PX = 140;
+const EMPTY_CLIP_METADATA: ClipMetadata = {};
+const EMPTY_TAG_CHIPS: string[] = [];
+const DEFAULT_CLIP_VISUAL_METADATA: ClipVisualMetadata = { isEnhanced: false };
+const EMPTY_TRACK_STATE: TrackState = {};
+const ENABLE_TIMELINE_DEBUG_DATA_ATTRS = import.meta.env.DEV;
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -394,6 +420,56 @@ function findLowerBound(sortedValues: number[], value: number): number {
   return left;
 }
 
+function createExternalStore<T>(initialValue: T): ExternalStore<T> {
+  let currentValue = initialValue;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => currentValue,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    setSnapshot: (nextValue) => {
+      if (Object.is(currentValue, nextValue)) {
+        return;
+      }
+      currentValue = nextValue;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+  };
+}
+
+function useExternalStoreSnapshot<T>(store: ExternalStore<T>): T {
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+function toClipVisualMetadata(clip: BeatClip): ClipVisualMetadata {
+  const metadata = clip.metadata;
+  const unknownClip = clip as unknown as Record<string, unknown>;
+  const isEnhanced = Boolean(unknownClip.enhanced);
+
+  const originalNameRaw = metadata?.originalName;
+  const originalName = typeof originalNameRaw === 'string' && originalNameRaw.trim().length > 0
+    ? originalNameRaw.trim()
+    : undefined;
+
+  const confidenceRaw = metadata?.syncConfidence;
+  const syncConfidence =
+    typeof confidenceRaw === 'number' && Number.isFinite(confidenceRaw)
+      ? clampNumber(confidenceRaw, 0, 1)
+      : undefined;
+
+  return {
+    isEnhanced,
+    originalName,
+    syncConfidence,
+  };
+}
+
 interface TimelineGridLine {
   time: number;
   position: number;
@@ -417,11 +493,9 @@ interface BaseSnapTarget {
 
 interface TimelineToolbarProps {
   zoom: number;
-  currentTime: number;
   inPoint: number | null;
   outPoint: number | null;
   timelineFps: number;
-  frameStepSeconds: number;
   workspaceMode: WorkspaceMode;
   toolMode: TimelineToolMode;
   safeTrimEnabled: boolean;
@@ -467,11 +541,9 @@ interface TimelineToolbarProps {
 
 const TimelineToolbar = React.memo(function TimelineToolbar({
   zoom,
-  currentTime,
   inPoint,
   outPoint,
   timelineFps,
-  frameStepSeconds,
   workspaceMode,
   toolMode,
   safeTrimEnabled,
@@ -529,12 +601,6 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
     { value: 'slide', label: 'Slide', shortcut: 'U', icon: <SwapHorizIcon fontSize="small" sx={{ transform: 'scaleX(-1)' }} /> },
     { value: 'razor', label: 'Razor', shortcut: 'C', icon: <ContentCutIcon fontSize="small" /> },
   ];
-  const displayLabel = formatTimelineDisplay(currentTime, timeDisplayMode, timelineFps);
-  const rangeLabel =
-    inPoint !== null || outPoint !== null
-      ? `Range ${inPoint !== null ? formatTimelineDisplay(inPoint, timeDisplayMode, timelineFps) : '--'} → ${outPoint !== null ? formatTimelineDisplay(outPoint, timeDisplayMode, timelineFps) : '--'}`
-      : 'Range --';
-
   return (
     <Stack
       direction="row"
@@ -885,10 +951,50 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
       </TextField>
 
       <Chip size="small" label={`Zoom ${Math.round(zoom * 100)}%`} variant="outlined" />
+      <Chip size="small" label={`${selectedClipCount} selected`} color={selectedClipCount > 0 ? 'primary' : 'default'} variant="outlined" />
+    </Stack>
+  );
+});
+
+interface TimelineToolbarLiveStatusProps {
+  currentTime: number;
+  inPoint: number | null;
+  outPoint: number | null;
+  timelineFps: number;
+  frameStepSeconds: number;
+  timeDisplayMode: TimeDisplayMode;
+}
+
+const TimelineToolbarLiveStatus = React.memo(function TimelineToolbarLiveStatus({
+  currentTime,
+  inPoint,
+  outPoint,
+  timelineFps,
+  frameStepSeconds,
+  timeDisplayMode,
+}: TimelineToolbarLiveStatusProps) {
+  const displayLabel = formatTimelineDisplay(currentTime, timeDisplayMode, timelineFps);
+  const rangeLabel =
+    inPoint !== null || outPoint !== null
+      ? `Range ${inPoint !== null ? formatTimelineDisplay(inPoint, timeDisplayMode, timelineFps) : '--'} → ${outPoint !== null ? formatTimelineDisplay(outPoint, timeDisplayMode, timelineFps) : '--'}`
+      : 'Range --';
+  return (
+    <Stack
+      direction="row"
+      spacing={1}
+      alignItems="center"
+      sx={{
+        px: 1,
+        py: 0.4,
+        borderBottom: 1,
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        minHeight: 30,
+      }}
+    >
       <Chip size="small" label={`Playhead ${displayLabel}`} variant="outlined" />
       <Chip size="small" label={rangeLabel} variant="outlined" />
       <Chip size="small" label={`Step ${formatTimelineDisplay(frameStepSeconds, timeDisplayMode, timelineFps)}`} variant="outlined" />
-      <Chip size="small" label={`${selectedClipCount} selected`} color={selectedClipCount > 0 ? 'primary' : 'default'} variant="outlined" />
     </Stack>
   );
 });
@@ -906,8 +1012,7 @@ interface TimelineRulerProps {
   outPoint: number | null;
   viewportStartPx: number;
   viewportEndPx: number;
-  hoverGuideX: number | null;
-  hoverTime: number | null;
+  hoverStore: ExternalStore<HoverState>;
   snapGuideVisible: boolean;
   snapGuideX: number | null;
   snapGuideLabel: string | null;
@@ -923,6 +1028,356 @@ interface TimelineRulerProps {
   onSetOutPointAtTime: (timeSeconds: number) => void;
 }
 
+interface MarkerCluster {
+  id: string;
+  lane: number;
+  position: number;
+  markers: EphemeralMarker[];
+}
+
+interface TimelineRulerStaticLayerProps {
+  visibleGridLines: TimelineGridLine[];
+  visibleTickLabels: TimelineGridLine[];
+  markerClusters: MarkerCluster[];
+  inPoint: number | null;
+  outPoint: number | null;
+  timeDisplayMode: TimeDisplayMode;
+  timelineFps: number;
+  timeToPixels: (timeSeconds: number) => number;
+  onJumpToMarker: (timeSeconds: number) => void;
+  onBeginPointerDrag: (event: React.PointerEvent<HTMLElement>, mode: 'scrub' | 'in' | 'out') => void;
+}
+
+const TimelineRulerStaticLayer = React.memo(function TimelineRulerStaticLayer({
+  visibleGridLines,
+  visibleTickLabels,
+  markerClusters,
+  inPoint,
+  outPoint,
+  timeDisplayMode,
+  timelineFps,
+  timeToPixels,
+  onJumpToMarker,
+  onBeginPointerDrag,
+}: TimelineRulerStaticLayerProps) {
+  return (
+    <>
+      {visibleGridLines.map((line) => (
+        <Box key={line.time} sx={{ position: 'absolute', left: HEADER_WIDTH + line.position, top: 0, bottom: 0, width: 1, bgcolor: line.isMain ? 'divider' : 'rgba(0,0,0,0.06)' }} />
+      ))}
+      {visibleTickLabels.map((line) => (
+        <Typography
+          key={`tick-${line.time}`}
+          variant="caption"
+          sx={{
+            position: 'absolute',
+            left: HEADER_WIDTH + line.position + 2,
+            top: 1,
+            fontSize: 9,
+            color: 'text.secondary',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          {formatTimelineDisplay(line.time, timeDisplayMode, timelineFps)}
+        </Typography>
+      ))}
+      {markerClusters.map((cluster) => {
+        const laneTop = 2 + cluster.lane * 7;
+        const firstMarker = cluster.markers[0];
+        const isFaceMarker = firstMarker.label?.includes('Face') || firstMarker.color === '#10b981';
+        const clusterColor = cluster.markers.length > 1
+          ? 'rgba(144, 202, 249, 0.95)'
+          : (firstMarker.color || 'warning.main');
+        const tooltipLabel = cluster.markers.length > 1
+          ? `${cluster.markers.length} markers: ${cluster.markers.slice(0, 4).map((marker) => marker.label || formatTimelineDisplay(marker.time, timeDisplayMode, timelineFps)).join(', ')}`
+          : (firstMarker.label || `Marker @ ${formatTimelineDisplay(firstMarker.time, timeDisplayMode, timelineFps)}`);
+        return (
+          <Tooltip key={cluster.id} title={tooltipLabel} arrow>
+            <Box
+              role="button"
+              tabIndex={0}
+              aria-label={
+                cluster.markers.length > 1
+                  ? `Jump to marker cluster at ${formatTimelineDisplay(firstMarker.time, timeDisplayMode, timelineFps)}`
+                  : (firstMarker.label || `Jump to marker at ${formatTimelineDisplay(firstMarker.time, timeDisplayMode, timelineFps)}`)
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                onJumpToMarker(firstMarker.time);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onJumpToMarker(firstMarker.time);
+                }
+              }}
+              sx={{
+                position: 'absolute',
+                left: HEADER_WIDTH + cluster.position - (cluster.markers.length > 1 ? 8 : (isFaceMarker ? 4 : 1)),
+                top: laneTop,
+                width: cluster.markers.length > 1 ? 16 : (isFaceMarker ? 8 : 2),
+                height: cluster.markers.length > 1 ? 6 : 7,
+                borderRadius: cluster.markers.length > 1 ? 1 : 0,
+                bgcolor: clusterColor,
+                cursor: 'pointer',
+                '&:hover': {
+                  opacity: 0.9,
+                  zIndex: 1,
+                },
+                ...(cluster.markers.length === 1 && isFaceMarker && {
+                  borderRadius: '2px',
+                  boxShadow: '0 0 4px rgba(16, 185, 129, 0.5)',
+                }),
+                ...(cluster.markers.length === 1 && firstMarker.ephemeral && {
+                  bgcolor: '#ffb300',
+                  opacity: 0.9,
+                }),
+                '&:focus-visible': {
+                  outline: '2px solid rgba(59, 130, 246, 0.95)',
+                  outlineOffset: 1,
+                },
+              }}
+            >
+              {cluster.markers.length > 1 ? (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    fontSize: 9,
+                    lineHeight: '6px',
+                    textAlign: 'center',
+                    color: '#001',
+                    fontWeight: 700,
+                    userSelect: 'none',
+                  }}
+                >
+                  {cluster.markers.length}
+                </Typography>
+              ) : isFaceMarker ? (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    bgcolor: '#10b981',
+                    border: '1px solid white',
+                    boxShadow: '0 0 2px rgba(0,0,0,0.3)',
+                  }}
+                />
+              ) : null}
+            </Box>
+          </Tooltip>
+        );
+      })}
+      {inPoint !== null && (
+        <>
+          <Box
+            sx={{
+              position: 'absolute',
+              left: HEADER_WIDTH + timeToPixels(inPoint),
+              top: 0,
+              bottom: 0,
+              width: 2,
+              bgcolor: 'success.main',
+              pointerEvents: 'none',
+            }}
+          />
+          <Box
+            role="button"
+            tabIndex={0}
+            aria-label="Drag in point handle"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              onBeginPointerDrag(event, 'in');
+            }}
+            sx={{
+              position: 'absolute',
+              left: HEADER_WIDTH + timeToPixels(inPoint) - 6,
+              top: 0,
+              width: 12,
+              height: 12,
+              borderRadius: '0 0 8px 8px',
+              bgcolor: 'success.main',
+              cursor: 'ew-resize',
+              zIndex: 3,
+            }}
+          />
+        </>
+      )}
+      {outPoint !== null && (
+        <>
+          <Box
+            sx={{
+              position: 'absolute',
+              left: HEADER_WIDTH + timeToPixels(outPoint),
+              top: 0,
+              bottom: 0,
+              width: 2,
+              bgcolor: 'warning.main',
+              pointerEvents: 'none',
+            }}
+          />
+          <Box
+            role="button"
+            tabIndex={0}
+            aria-label="Drag out point handle"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              onBeginPointerDrag(event, 'out');
+            }}
+            sx={{
+              position: 'absolute',
+              left: HEADER_WIDTH + timeToPixels(outPoint) - 6,
+              top: 0,
+              width: 12,
+              height: 12,
+              borderRadius: '0 0 8px 8px',
+              bgcolor: 'warning.main',
+              cursor: 'ew-resize',
+              zIndex: 3,
+            }}
+          />
+        </>
+      )}
+    </>
+  );
+});
+
+interface TimelineRulerLiveLayerProps {
+  currentTime: number;
+  isPlaying: boolean;
+  hoverGuideX: number | null;
+  hoverTime: number | null;
+  snapGuideVisible: boolean;
+  snapGuideX: number | null;
+  snapGuideLabel: string | null;
+  timeDisplayMode: TimeDisplayMode;
+  timelineFps: number;
+  timeToPixels: (timeSeconds: number) => number;
+}
+
+const TimelineRulerLiveLayer = React.memo(function TimelineRulerLiveLayer({
+  currentTime,
+  isPlaying,
+  hoverGuideX,
+  hoverTime,
+  snapGuideVisible,
+  snapGuideX,
+  snapGuideLabel,
+  timeDisplayMode,
+  timelineFps,
+  timeToPixels,
+}: TimelineRulerLiveLayerProps) {
+  return (
+    <>
+      {hoverGuideX !== null && (
+        <Box
+          sx={{
+            position: 'absolute',
+            left: HEADER_WIDTH + hoverGuideX,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            bgcolor: 'rgba(255,255,255,0.35)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      {hoverTime !== null && (
+        <Chip
+          size="small"
+          label={formatTimelineDisplay(hoverTime, timeDisplayMode, timelineFps)}
+          sx={{
+            position: 'absolute',
+            left: HEADER_WIDTH + (hoverGuideX ?? 0) + 6,
+            top: 2,
+            height: 18,
+            fontSize: 10,
+            pointerEvents: 'none',
+            zIndex: 3,
+          }}
+        />
+      )}
+      {snapGuideVisible && snapGuideX !== null && (
+        <>
+          <Box
+            sx={{
+              position: 'absolute',
+              left: HEADER_WIDTH + snapGuideX,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              bgcolor: 'info.main',
+              pointerEvents: 'none',
+              opacity: 0.95,
+            }}
+          />
+          <Chip
+            size="small"
+            label={snapGuideLabel ? `Snap: ${snapGuideLabel}` : 'Snap'}
+            sx={{
+              position: 'absolute',
+              left: HEADER_WIDTH + snapGuideX + 6,
+              top: RULER_HEIGHT - 18,
+              height: 16,
+              fontSize: 9,
+              pointerEvents: 'none',
+              zIndex: 3,
+            }}
+          />
+        </>
+      )}
+      <Box
+        sx={{
+          position: 'absolute',
+          left: HEADER_WIDTH + timeToPixels(currentTime),
+          top: 0,
+          bottom: 0,
+          width: 2,
+          bgcolor: 'error.main',
+          pointerEvents: 'none',
+          opacity: isPlaying ? 1 : 0.9,
+          boxShadow: isPlaying ? '0 0 10px rgba(244, 67, 54, 0.75)' : 'none',
+          transition: 'box-shadow 120ms ease, opacity 120ms ease',
+        }}
+      />
+    </>
+  );
+});
+
+interface TimelineHoverGuideOverlayProps {
+  hoverStore: ExternalStore<HoverState>;
+}
+
+const TimelineHoverGuideOverlay = React.memo(function TimelineHoverGuideOverlay({
+  hoverStore,
+}: TimelineHoverGuideOverlayProps) {
+  const hoverState = useExternalStoreSnapshot(hoverStore);
+  if (hoverState.guideX === null) {
+    return null;
+  }
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        left: HEADER_WIDTH + hoverState.guideX,
+        top: 0,
+        bottom: 0,
+        width: 1,
+        bgcolor: 'rgba(255,255,255,0.2)',
+        pointerEvents: 'none',
+        zIndex: 1,
+      }}
+    />
+  );
+});
+
 const TimelineRuler = React.memo(function TimelineRuler({
   rulerRef,
   totalDuration,
@@ -936,8 +1391,7 @@ const TimelineRuler = React.memo(function TimelineRuler({
   outPoint,
   viewportStartPx,
   viewportEndPx,
-  hoverGuideX,
-  hoverTime,
+  hoverStore,
   snapGuideVisible,
   snapGuideX,
   snapGuideLabel,
@@ -952,6 +1406,9 @@ const TimelineRuler = React.memo(function TimelineRuler({
   onSetInPointAtTime,
   onSetOutPointAtTime,
 }: TimelineRulerProps) {
+  const hoverState = useExternalStoreSnapshot(hoverStore);
+  const hoverGuideX = hoverState.guideX;
+  const hoverTime = hoverState.time;
   const pointerIdRef = useRef<number | null>(null);
   const dragModeRef = useRef<'scrub' | 'in' | 'out' | null>(null);
 
@@ -1003,12 +1460,7 @@ const TimelineRuler = React.memo(function TimelineRuler({
       laneBuckets[lane].push({ marker, position });
     }
 
-    const clusters: Array<{
-      id: string;
-      lane: number;
-      position: number;
-      markers: EphemeralMarker[];
-    }> = [];
+    const clusters: MarkerCluster[] = [];
 
     for (const lane of [0, 1, 2]) {
       const sorted = laneBuckets[lane].sort((left, right) => left.position - right.position);
@@ -1116,259 +1568,29 @@ const TimelineRuler = React.memo(function TimelineRuler({
       onMouseLeave={onRulerMouseLeave}
     >
       <Box sx={{ position: 'absolute', inset: 0 }}>
-        {visibleGridLines.map((line) => (
-          <Box key={line.time} sx={{ position: 'absolute', left: HEADER_WIDTH + line.position, top: 0, bottom: 0, width: 1, bgcolor: line.isMain ? 'divider' : 'rgba(0,0,0,0.06)' }} />
-        ))}
-        {visibleTickLabels.map((line) => (
-          <Typography
-            key={`tick-${line.time}`}
-            variant="caption"
-            sx={{
-              position: 'absolute',
-              left: HEADER_WIDTH + line.position + 2,
-              top: 1,
-              fontSize: 9,
-              color: 'text.secondary',
-              pointerEvents: 'none',
-              userSelect: 'none',
-            }}
-          >
-            {formatTimelineDisplay(line.time, timeDisplayMode, timelineFps)}
-          </Typography>
-        ))}
-        {markerClusters.map((cluster) => {
-          const laneTop = 2 + cluster.lane * 7;
-          const firstMarker = cluster.markers[0];
-          const isFaceMarker = firstMarker.label?.includes('Face') || firstMarker.color === '#10b981';
-          const clusterColor = cluster.markers.length > 1
-            ? 'rgba(144, 202, 249, 0.95)'
-            : (firstMarker.color || 'warning.main');
-          const tooltipLabel = cluster.markers.length > 1
-            ? `${cluster.markers.length} markers: ${cluster.markers.slice(0, 4).map((marker) => marker.label || formatTimelineDisplay(marker.time, timeDisplayMode, timelineFps)).join(', ')}`
-            : (firstMarker.label || `Marker @ ${formatTimelineDisplay(firstMarker.time, timeDisplayMode, timelineFps)}`);
-          return (
-            <Tooltip key={cluster.id} title={tooltipLabel} arrow>
-              <Box
-                role="button"
-                tabIndex={0}
-                aria-label={
-                  cluster.markers.length > 1
-                    ? `Jump to marker cluster at ${formatTimelineDisplay(firstMarker.time, timeDisplayMode, timelineFps)}`
-                    : (firstMarker.label || `Jump to marker at ${formatTimelineDisplay(firstMarker.time, timeDisplayMode, timelineFps)}`)
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onJumpToMarker(firstMarker.time);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onJumpToMarker(firstMarker.time);
-                  }
-                }}
-                sx={{
-                  position: 'absolute',
-                  left: HEADER_WIDTH + cluster.position - (cluster.markers.length > 1 ? 8 : (isFaceMarker ? 4 : 1)),
-                  top: laneTop,
-                  width: cluster.markers.length > 1 ? 16 : (isFaceMarker ? 8 : 2),
-                  height: cluster.markers.length > 1 ? 6 : 7,
-                  borderRadius: cluster.markers.length > 1 ? 1 : 0,
-                  bgcolor: clusterColor,
-                  cursor: 'pointer',
-                  '&:hover': {
-                    opacity: 0.9,
-                    zIndex: 1,
-                  },
-                  ...(cluster.markers.length === 1 && isFaceMarker && {
-                    borderRadius: '2px',
-                    boxShadow: '0 0 4px rgba(16, 185, 129, 0.5)',
-                  }),
-                  ...(cluster.markers.length === 1 && firstMarker.ephemeral && {
-                    bgcolor: '#ffb300',
-                    opacity: 0.9,
-                  }),
-                  '&:focus-visible': {
-                    outline: '2px solid rgba(59, 130, 246, 0.95)',
-                    outlineOffset: 1,
-                  },
-                }}
-              >
-                {cluster.markers.length > 1 ? (
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      fontSize: 9,
-                      lineHeight: '6px',
-                      textAlign: 'center',
-                      color: '#001',
-                      fontWeight: 700,
-                      userSelect: 'none',
-                    }}
-                  >
-                    {cluster.markers.length}
-                  </Typography>
-                ) : isFaceMarker ? (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: 0,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      bgcolor: '#10b981',
-                      border: '1px solid white',
-                      boxShadow: '0 0 2px rgba(0,0,0,0.3)',
-                    }}
-                  />
-                ) : null}
-              </Box>
-            </Tooltip>
-          );
-        })}
-        {inPoint !== null && (
-          <>
-            <Box
-              sx={{
-                position: 'absolute',
-                left: HEADER_WIDTH + timeToPixels(inPoint),
-                top: 0,
-                bottom: 0,
-                width: 2,
-                bgcolor: 'success.main',
-                pointerEvents: 'none',
-              }}
-            />
-            <Box
-              role="button"
-              tabIndex={0}
-              aria-label="Drag in point handle"
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                beginPointerDrag(event, 'in');
-              }}
-              sx={{
-                position: 'absolute',
-                left: HEADER_WIDTH + timeToPixels(inPoint) - 6,
-                top: 0,
-                width: 12,
-                height: 12,
-                borderRadius: '0 0 8px 8px',
-                bgcolor: 'success.main',
-                cursor: 'ew-resize',
-                zIndex: 3,
-              }}
-            />
-          </>
-        )}
-        {outPoint !== null && (
-          <>
-            <Box
-              sx={{
-                position: 'absolute',
-                left: HEADER_WIDTH + timeToPixels(outPoint),
-                top: 0,
-                bottom: 0,
-                width: 2,
-                bgcolor: 'warning.main',
-                pointerEvents: 'none',
-              }}
-            />
-            <Box
-              role="button"
-              tabIndex={0}
-              aria-label="Drag out point handle"
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                beginPointerDrag(event, 'out');
-              }}
-              sx={{
-                position: 'absolute',
-                left: HEADER_WIDTH + timeToPixels(outPoint) - 6,
-                top: 0,
-                width: 12,
-                height: 12,
-                borderRadius: '0 0 8px 8px',
-                bgcolor: 'warning.main',
-                cursor: 'ew-resize',
-                zIndex: 3,
-              }}
-            />
-          </>
-        )}
-        {hoverGuideX !== null && (
-          <Box
-            sx={{
-              position: 'absolute',
-              left: HEADER_WIDTH + hoverGuideX,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              bgcolor: 'rgba(255,255,255,0.35)',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
-        {hoverTime !== null && (
-          <Chip
-            size="small"
-            label={formatTimelineDisplay(hoverTime, timeDisplayMode, timelineFps)}
-            sx={{
-              position: 'absolute',
-              left: HEADER_WIDTH + (hoverGuideX ?? 0) + 6,
-              top: 2,
-              height: 18,
-              fontSize: 10,
-              pointerEvents: 'none',
-              zIndex: 3,
-            }}
-          />
-        )}
-        {snapGuideVisible && snapGuideX !== null && (
-          <>
-            <Box
-              sx={{
-                position: 'absolute',
-                left: HEADER_WIDTH + snapGuideX,
-                top: 0,
-                bottom: 0,
-                width: 1,
-                bgcolor: 'info.main',
-                pointerEvents: 'none',
-                opacity: 0.95,
-              }}
-            />
-            <Chip
-              size="small"
-              label={snapGuideLabel ? `Snap: ${snapGuideLabel}` : 'Snap'}
-              sx={{
-                position: 'absolute',
-                left: HEADER_WIDTH + snapGuideX + 6,
-                top: RULER_HEIGHT - 18,
-                height: 16,
-                fontSize: 9,
-                pointerEvents: 'none',
-                zIndex: 3,
-              }}
-            />
-          </>
-        )}
-        <Box
-          sx={{
-            position: 'absolute',
-            left: HEADER_WIDTH + timeToPixels(currentTime),
-            top: 0,
-            bottom: 0,
-            width: 2,
-            bgcolor: 'error.main',
-            pointerEvents: 'none',
-            opacity: isPlaying ? 1 : 0.9,
-            boxShadow: isPlaying ? '0 0 10px rgba(244, 67, 54, 0.75)' : 'none',
-            transition: 'box-shadow 120ms ease, opacity 120ms ease',
-          }}
+        <TimelineRulerStaticLayer
+          visibleGridLines={visibleGridLines}
+          visibleTickLabels={visibleTickLabels}
+          markerClusters={markerClusters}
+          inPoint={inPoint}
+          outPoint={outPoint}
+          timeDisplayMode={timeDisplayMode}
+          timelineFps={timelineFps}
+          timeToPixels={timeToPixels}
+          onJumpToMarker={onJumpToMarker}
+          onBeginPointerDrag={beginPointerDrag}
+        />
+        <TimelineRulerLiveLayer
+          currentTime={currentTime}
+          isPlaying={isPlaying}
+          hoverGuideX={hoverGuideX}
+          hoverTime={hoverTime}
+          snapGuideVisible={snapGuideVisible}
+          snapGuideX={snapGuideX}
+          snapGuideLabel={snapGuideLabel}
+          timeDisplayMode={timeDisplayMode}
+          timelineFps={timelineFps}
+          timeToPixels={timeToPixels}
         />
       </Box>
     </Box>
@@ -1379,6 +1601,9 @@ interface TrackHeadersProps {
   tracks: Track[];
   trackHeightScale: number;
   trackOffsetMap: Record<string, { top: number; height: number }>;
+  visibleTrackIdSet: Set<string>;
+  scrollTop: number;
+  totalTrackHeight: number;
   trackStates: Record<string, TrackState>;
   selectedTrackId: string | null;
   trackNameDrafts: Record<string, string>;
@@ -1455,7 +1680,7 @@ const TrackHeaderRow = React.memo(function TrackHeaderRow({
 
   return (
     <Box
-      ref={(node) => registerRowRef(track.id, node)}
+      ref={(node) => registerRowRef(track.id, node as HTMLDivElement | null)}
       tabIndex={0}
       role="row"
       aria-label={`Track ${track.name}`}
@@ -1813,6 +2038,9 @@ const TrackHeaders = React.memo(function TrackHeaders({
   tracks,
   trackHeightScale,
   trackOffsetMap,
+  visibleTrackIdSet,
+  scrollTop,
+  totalTrackHeight,
   trackStates,
   selectedTrackId,
   trackNameDrafts,
@@ -1893,7 +2121,7 @@ const TrackHeaders = React.memo(function TrackHeaders({
     () => tracks.find((track) => track.id === trackMenuState.trackId) || null,
     [trackMenuState.trackId, tracks]
   );
-  const menuState = menuTrack ? (trackStates[menuTrack.id] || {}) : null;
+  const menuState = menuTrack ? (trackStates[menuTrack.id] ?? EMPTY_TRACK_STATE) : null;
   const menuHeaderType: NonNullable<TrackState['type']> = menuTrack
     ? (menuState?.type ?? (menuTrack.type === 'audio' ? 'audio' : 'video'))
     : 'video';
@@ -1907,39 +2135,49 @@ const TrackHeaders = React.memo(function TrackHeaders({
     onTrackToggle(menuTrack.id, changes);
   }, [menuTrack, onTrackToggle]);
 
+  const visibleTracks = useMemo(
+    () => tracks.filter((track) => visibleTrackIdSet.has(track.id)),
+    [tracks, visibleTrackIdSet]
+  );
+
   return (
-    <Box sx={{ width: HEADER_WIDTH, borderRight: 1, borderColor: 'divider' }}>
-      {tracks.map((track) => {
-        const height = trackOffsetMap[track.id]?.height ?? Math.max(24, Math.round(track.height * trackHeightScale));
-        const state = trackStates[track.id] || {};
-        return (
-          <TrackHeaderRow
-            key={track.id}
-            track={track}
-            height={height}
-            state={state}
-            isTrackSelected={selectedTrackId === track.id}
-            trackNameValue={trackNameDrafts[track.id] ?? track.name}
-            reviewerMode={reviewerMode}
-            canRename={Boolean(onTrackRename)}
-            canTypeChange={Boolean(onTrackTypeChange)}
-            canAudioRoleChange={Boolean(onTrackAudioRoleChange)}
-            canToggle={Boolean(onTrackToggle)}
-            onSelectTrack={onSelectTrack}
-            onNavigateTrack={onNavigateTrack}
-            onTrackNameFocus={onTrackNameFocus}
-            onTrackNameChange={onTrackNameChange}
-            onTrackNameCommit={onTrackNameCommit}
-            onTrackTypeChange={onTrackTypeChange}
-            onTrackAudioRoleChange={onTrackAudioRoleChange}
-            onToggleTrackState={onTrackToggle}
-            onCycleTrackColor={onCycleTrackColor}
-            onCycleAutomationMode={onCycleAutomationMode}
-            onOpenTrackMenu={openTrackMenu}
-            registerRowRef={setRowRef}
-          />
-        );
-      })}
+    <Box sx={{ width: HEADER_WIDTH, borderRight: 1, borderColor: 'divider', overflow: 'hidden', position: 'relative' }}>
+      <Box sx={{ position: 'relative', height: totalTrackHeight, transform: `translateY(-${scrollTop}px)` }}>
+        {visibleTracks.map((track) => {
+          const off = trackOffsetMap[track.id];
+          const height = off?.height ?? Math.max(24, Math.round(track.height * trackHeightScale));
+          const top = off?.top ?? 0;
+          const state = trackStates[track.id] ?? EMPTY_TRACK_STATE;
+          return (
+            <Box key={track.id} sx={{ position: 'absolute', left: 0, right: 0, top, height }}>
+              <TrackHeaderRow
+                track={track}
+                height={height}
+                state={state}
+                isTrackSelected={selectedTrackId === track.id}
+                trackNameValue={trackNameDrafts[track.id] ?? track.name}
+                reviewerMode={reviewerMode}
+                canRename={Boolean(onTrackRename)}
+                canTypeChange={Boolean(onTrackTypeChange)}
+                canAudioRoleChange={Boolean(onTrackAudioRoleChange)}
+                canToggle={Boolean(onTrackToggle)}
+                onSelectTrack={onSelectTrack}
+                onNavigateTrack={onNavigateTrack}
+                onTrackNameFocus={onTrackNameFocus}
+                onTrackNameChange={onTrackNameChange}
+                onTrackNameCommit={onTrackNameCommit}
+                onTrackTypeChange={onTrackTypeChange}
+                onTrackAudioRoleChange={onTrackAudioRoleChange}
+                onToggleTrackState={onTrackToggle}
+                onCycleTrackColor={onCycleTrackColor}
+                onCycleAutomationMode={onCycleAutomationMode}
+                onOpenTrackMenu={openTrackMenu}
+                registerRowRef={setRowRef}
+              />
+            </Box>
+          );
+        })}
+      </Box>
 
       <Menu
         open={Boolean(trackMenuState.anchorEl && menuTrack)}
@@ -2176,12 +2414,14 @@ interface ClipItemProps {
   renderTrackId: string;
   renderStart: number;
   renderDuration: number;
+  leftPx: number;
+  widthPx: number;
   off: { top: number; height: number };
   selected: boolean;
   trackHidden: boolean;
   collabLock?: { user?: string };
   clipVisual: ClipVisualMetadata;
-  clipMeta: { camera?: string; shotName?: string; scene?: string; take?: string; tags?: string[] };
+  clipMeta: ClipMetadata;
   tagChips: string[];
   clipIsReadOnly: boolean;
   clipInActiveRange: boolean;
@@ -2191,7 +2431,30 @@ interface ClipItemProps {
   onSetSelectedTrackId: (trackId: string) => void;
   onSetPlayheadTime: (timeSeconds: number) => void;
   openContextMenu: (e: React.MouseEvent<HTMLElement>, clipId: string) => void;
-  timeToPixels: (timeSeconds: number) => number;
+}
+
+function areClipItemPropsEqual(previous: ClipItemProps, next: ClipItemProps): boolean {
+  return previous.clip === next.clip &&
+    previous.renderTrackId === next.renderTrackId &&
+    previous.renderStart === next.renderStart &&
+    previous.renderDuration === next.renderDuration &&
+    previous.leftPx === next.leftPx &&
+    previous.widthPx === next.widthPx &&
+    previous.off === next.off &&
+    previous.selected === next.selected &&
+    previous.trackHidden === next.trackHidden &&
+    previous.collabLock === next.collabLock &&
+    previous.clipVisual === next.clipVisual &&
+    previous.clipMeta === next.clipMeta &&
+    previous.tagChips === next.tagChips &&
+    previous.clipIsReadOnly === next.clipIsReadOnly &&
+    previous.clipInActiveRange === next.clipInActiveRange &&
+    previous.showResizeHandles === next.showResizeHandles &&
+    previous.beginDrag === next.beginDrag &&
+    previous.onClipSelect === next.onClipSelect &&
+    previous.onSetSelectedTrackId === next.onSetSelectedTrackId &&
+    previous.onSetPlayheadTime === next.onSetPlayheadTime &&
+    previous.openContextMenu === next.openContextMenu;
 }
 
 const ClipItem = React.memo(function ClipItem({
@@ -2199,6 +2462,8 @@ const ClipItem = React.memo(function ClipItem({
   renderTrackId,
   renderStart,
   renderDuration,
+  leftPx,
+  widthPx,
   off,
   selected,
   trackHidden,
@@ -2214,10 +2479,9 @@ const ClipItem = React.memo(function ClipItem({
   onSetSelectedTrackId,
   onSetPlayheadTime,
   openContextMenu,
-  timeToPixels,
 }: ClipItemProps) {
-  const leftPx = HEADER_WIDTH + timeToPixels(renderStart);
-  const widthPx = Math.max(4, timeToPixels(renderDuration));
+  const showMetadataChips = selected || widthPx >= CLIP_METADATA_VISIBILITY_MIN_WIDTH_PX;
+  const showTagChips = selected || widthPx >= CLIP_TAGS_VISIBILITY_MIN_WIDTH_PX;
   const clipAriaLabel = `${clip.name}. Start ${renderStart.toFixed(2)} seconds. Duration ${renderDuration.toFixed(2)} seconds.`;
   return (
     <Box
@@ -2227,10 +2491,10 @@ const ClipItem = React.memo(function ClipItem({
       data-testid={`timeline-clip-${clip.id}`}
       data-clip-id={clip.id}
       data-track-id={renderTrackId}
-      data-start={renderStart.toFixed(4)}
-      data-duration={renderDuration.toFixed(4)}
-      data-in-point={typeof clip.metadata?.inPoint === 'number' ? clip.metadata.inPoint.toFixed(4) : ''}
-      data-out-point={typeof clip.metadata?.outPoint === 'number' ? clip.metadata.outPoint.toFixed(4) : ''}
+      data-start={ENABLE_TIMELINE_DEBUG_DATA_ATTRS ? renderStart : undefined}
+      data-duration={ENABLE_TIMELINE_DEBUG_DATA_ATTRS ? renderDuration : undefined}
+      data-in-point={ENABLE_TIMELINE_DEBUG_DATA_ATTRS ? clip.metadata?.inPoint : undefined}
+      data-out-point={ENABLE_TIMELINE_DEBUG_DATA_ATTRS ? clip.metadata?.outPoint : undefined}
       onMouseDown={(e) => {
         const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
         const xWithin = e.clientX - rect.left;
@@ -2324,7 +2588,7 @@ const ClipItem = React.memo(function ClipItem({
         >
           {clip.name}
         </Typography>
-        {clipVisual.isEnhanced && clipVisual.originalName && (
+        {showMetadataChips && clipVisual.isEnhanced && clipVisual.originalName && (
           <Tooltip title={`Enhanced from: ${clipVisual.originalName}`}>
             <Chip
               size="small"
@@ -2339,7 +2603,7 @@ const ClipItem = React.memo(function ClipItem({
             />
           </Tooltip>
         )}
-        {clipMeta.camera && (
+        {showMetadataChips && clipMeta.camera && (
           <Chip
             size="small"
             label={clipMeta.camera}
@@ -2352,10 +2616,10 @@ const ClipItem = React.memo(function ClipItem({
             }}
           />
         )}
-        {!!clipMeta.shotName && (
+        {showMetadataChips && !!clipMeta.shotName && (
           <Chip size="small" label={clipMeta.shotName} sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(0,0,0,0.25)', color: '#fff' }} />
         )}
-        {typeof clipVisual.syncConfidence === 'number' && (
+        {showMetadataChips && typeof clipVisual.syncConfidence === 'number' && (
           <Tooltip title={`Sync confidence: ${(clipVisual.syncConfidence * 100).toFixed(0)}%`}>
             <Chip
               size="small"
@@ -2374,7 +2638,7 @@ const ClipItem = React.memo(function ClipItem({
             />
           </Tooltip>
         )}
-        {tagChips.map((tag) => (
+        {(showTagChips ? tagChips : EMPTY_TAG_CHIPS).map((tag) => (
           <Chip key={tag} size="small" label={tag} sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(0,0,0,0.2)', color: '#fff' }} />
         ))}
         {collabLock && (
@@ -2390,6 +2654,131 @@ const ClipItem = React.memo(function ClipItem({
         </>
       )}
     </Box>
+  );
+}, areClipItemPropsEqual);
+
+interface TimelineClipLayerProps {
+  visibleClips: BeatClip[];
+  selectedClips: Set<string>;
+  dragPreviewStore: ExternalStore<DragPreviewState | null>;
+  viewportBufferedStartTime: number;
+  viewportBufferedEndTime: number;
+  visibleTrackIdSet: Set<string>;
+  trackOffsetMap: Record<string, { top: number; height: number }>;
+  trackStates: Record<string, TrackState>;
+  collabLocks: Record<string, { user?: string }>;
+  clipPresentationById: Map<string, {
+    clipVisual: ClipVisualMetadata;
+    clipMeta: ClipMetadata;
+    tagChips: string[];
+  }>;
+  reviewerMode: boolean;
+  hasInOutRange: boolean;
+  activeRangeStart: number | null;
+  activeRangeEnd: number | null;
+  timeToPixels: (timeSeconds: number) => number;
+  beginDrag: (e: React.MouseEvent, clipId: string, mode?: DragMode) => void;
+  onClipSelect: (clipId: string, multiSelect?: boolean) => void;
+  onSetSelectedTrackId: (trackId: string) => void;
+  onSetPlayheadTime: (timeSeconds: number) => void;
+  openContextMenu: (e: React.MouseEvent<HTMLElement>, clipId: string) => void;
+}
+
+const TimelineClipLayer = React.memo(function TimelineClipLayer({
+  visibleClips,
+  selectedClips,
+  dragPreviewStore,
+  viewportBufferedStartTime,
+  viewportBufferedEndTime,
+  visibleTrackIdSet,
+  trackOffsetMap,
+  trackStates,
+  collabLocks,
+  clipPresentationById,
+  reviewerMode,
+  hasInOutRange,
+  activeRangeStart,
+  activeRangeEnd,
+  timeToPixels,
+  beginDrag,
+  onClipSelect,
+  onSetSelectedTrackId,
+  onSetPlayheadTime,
+  openContextMenu,
+}: TimelineClipLayerProps) {
+  const dragPreview = useExternalStoreSnapshot(dragPreviewStore);
+  const visibleClipsInViewport = useMemo(() => {
+    const selectedIds = selectedClips;
+    const dragClipId = dragPreview?.clipId ?? null;
+    return visibleClips.filter((clip) => {
+      if (!visibleTrackIdSet.has(clip.trackId) && clip.id !== dragClipId) {
+        return false;
+      }
+      if (selectedIds.has(clip.id) || clip.id === dragClipId) {
+        return true;
+      }
+      const clipStart = clip.start;
+      const clipEnd = clip.start + clip.duration;
+      return clipEnd >= viewportBufferedStartTime && clipStart <= viewportBufferedEndTime;
+    });
+  }, [dragPreview?.clipId, selectedClips, viewportBufferedEndTime, viewportBufferedStartTime, visibleClips, visibleTrackIdSet]);
+
+  return (
+    <>
+      {visibleClipsInViewport.map((clip) => {
+        const preview = dragPreview?.clipId === clip.id ? dragPreview : null;
+        const renderTrackId = preview?.trackId ?? clip.trackId;
+        if (!visibleTrackIdSet.has(renderTrackId)) {
+          return null;
+        }
+        const renderStart = preview?.start ?? clip.start;
+        const renderDuration = preview?.duration ?? clip.duration;
+        const off = trackOffsetMap[renderTrackId];
+        if (!off) return null;
+        const selected = selectedClips.has(clip.id);
+        const trackState = trackStates[renderTrackId];
+        const trackLocked = Boolean(trackState?.locked);
+        const trackHidden = trackState?.visible === false;
+        const collabLocked = Boolean(collabLocks[clip.id]);
+        const clipPresentation = clipPresentationById.get(clip.id);
+        const clipVisual = clipPresentation?.clipVisual ?? DEFAULT_CLIP_VISUAL_METADATA;
+        const clipMeta = clipPresentation?.clipMeta ?? EMPTY_CLIP_METADATA;
+        const tagChips = clipPresentation?.tagChips ?? EMPTY_TAG_CHIPS;
+        const clipIsReadOnly = reviewerMode || trackLocked || collabLocked || trackHidden;
+        const clipStart = renderStart;
+        const clipEnd = renderStart + renderDuration;
+        const clipInActiveRange = !hasInOutRange || (activeRangeStart !== null && activeRangeEnd !== null && clipEnd >= activeRangeStart && clipStart <= activeRangeEnd);
+        const leftPx = HEADER_WIDTH + timeToPixels(renderStart);
+        const widthPx = Math.max(4, timeToPixels(renderDuration));
+        const showResizeHandles = !clipIsReadOnly && widthPx >= RESIZE_HANDLE_WIDTH_PX * 1.8;
+        return (
+          <ClipItem
+            key={clip.id}
+            clip={clip}
+            renderTrackId={renderTrackId}
+            renderStart={renderStart}
+            renderDuration={renderDuration}
+            leftPx={leftPx}
+            widthPx={widthPx}
+            off={off}
+            selected={selected}
+            trackHidden={trackHidden}
+            collabLock={collabLocks[clip.id]}
+            clipVisual={clipVisual}
+            clipMeta={clipMeta}
+            tagChips={tagChips}
+            clipIsReadOnly={clipIsReadOnly}
+            clipInActiveRange={clipInActiveRange}
+            showResizeHandles={showResizeHandles}
+            beginDrag={beginDrag}
+            onClipSelect={onClipSelect}
+            onSetSelectedTrackId={onSetSelectedTrackId}
+            onSetPlayheadTime={onSetPlayheadTime}
+            openContextMenu={openContextMenu}
+          />
+        );
+      })}
+    </>
   );
 });
 
@@ -2426,10 +2815,7 @@ export default function ProfessionalTimeline({
 }: ProfessionalTimelineProps) {
   const initialToolbarPreferencesRef = useRef<Partial<TimelineToolbarPreferences>>(loadTimelineToolbarPreferences());
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [dragPreview, setDragPreview] = useState<DragPreviewState | null>(null);
   const [dropTrackId, setDropTrackId] = useState<string | null>(null);
-  const [hoverTime, setHoverTime] = useState<number | null>(null);
-  const [hoverGuideX, setHoverGuideX] = useState<number | null>(null);
   const [snapGuideX, setSnapGuideX] = useState<number | null>(null);
   const [snapGuideLabel, setSnapGuideLabel] = useState<string | null>(null);
   const [snapGuideVisible, setSnapGuideVisible] = useState(false);
@@ -2443,6 +2829,10 @@ export default function ProfessionalTimeline({
   const [timelineViewportPx, setTimelineViewportPx] = useState<{ start: number; end: number }>({
     start: 0,
     end: 1200,
+  });
+  const [timelineViewportY, setTimelineViewportY] = useState<{ start: number; end: number }>({
+    start: 0,
+    end: 900,
   });
   const [ephemeralMarkers, setEphemeralMarkers] = useState<EphemeralMarker[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -2480,6 +2870,11 @@ export default function ProfessionalTimeline({
   const objectUrlCleanupTimersRef = useRef<number[]>([]);
   const dragStateRef = useRef<DragState | null>(null);
   const dragPreviewRef = useRef<DragPreviewState | null>(null);
+  const dragPreviewStoreRef = useRef<ExternalStore<DragPreviewState | null>>(createExternalStore<DragPreviewState | null>(null));
+  const hoverStoreRef = useRef<ExternalStore<HoverState>>(createExternalStore<HoverState>({
+    guideX: null,
+    time: null,
+  }));
   const hoverRafRef = useRef<number | null>(null);
   const hoverPendingClientXRef = useRef<number | null>(null);
   const panInertiaRafRef = useRef<number | null>(null);
@@ -2524,6 +2919,8 @@ export default function ProfessionalTimeline({
       }
       const nextStart = clampNumber(element.scrollLeft - HEADER_WIDTH, 0, timelineWidth);
       const nextEnd = nextStart + Math.max(0, element.clientWidth);
+      const nextTop = clampNumber(element.scrollTop, 0, Math.max(0, element.scrollHeight - element.clientHeight));
+      const nextBottom = nextTop + Math.max(0, element.clientHeight);
       setTimelineViewportPx((previous) => {
         if (
           Math.abs(previous.start - nextStart) < 0.5 &&
@@ -2532,6 +2929,15 @@ export default function ProfessionalTimeline({
           return previous;
         }
         return { start: nextStart, end: nextEnd };
+      });
+      setTimelineViewportY((previous) => {
+        if (
+          Math.abs(previous.start - nextTop) < 0.5 &&
+          Math.abs(previous.end - nextBottom) < 0.5
+        ) {
+          return previous;
+        }
+        return { start: nextTop, end: nextBottom };
       });
     };
 
@@ -2668,18 +3074,27 @@ export default function ProfessionalTimeline({
     () => Math.min(totalDuration, viewportEndTime + Math.max(1.5, totalDuration * 0.02)),
     [totalDuration, viewportEndTime]
   );
-  const visibleClipsInViewport = useMemo(() => {
-    const selectedIds = selectedClips;
-    const dragClipId = dragPreview?.clipId ?? null;
-    return visibleClips.filter((clip) => {
-      if (selectedIds.has(clip.id) || clip.id === dragClipId) {
-        return true;
+  const viewportBufferedTop = useMemo(
+    () => Math.max(0, timelineViewportY.start - 120),
+    [timelineViewportY.start]
+  );
+  const viewportBufferedBottom = useMemo(
+    () => Math.min(totalTrackHeight, timelineViewportY.end + 120),
+    [timelineViewportY.end, totalTrackHeight]
+  );
+  const visibleTrackIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const layout of trackLayouts) {
+      if (layout.bottom >= viewportBufferedTop && layout.top <= viewportBufferedBottom) {
+        ids.add(layout.id);
       }
-      const clipStart = clip.start;
-      const clipEnd = clip.start + clip.duration;
-      return clipEnd >= viewportBufferedStartTime && clipStart <= viewportBufferedEndTime;
-    });
-  }, [dragPreview?.clipId, selectedClips, viewportBufferedEndTime, viewportBufferedStartTime, visibleClips]);
+    }
+    return ids;
+  }, [trackLayouts, viewportBufferedBottom, viewportBufferedTop]);
+  const visibleTracksInViewport = useMemo(
+    () => tracks.filter((track) => visibleTrackIdSet.has(track.id)),
+    [tracks, visibleTrackIdSet]
+  );
   const allMarkers = useMemo<EphemeralMarker[]>(() => {
     const persistedMarkers: EphemeralMarker[] = markers.map((marker) => ({
       ...marker,
@@ -3221,7 +3636,7 @@ export default function ProfessionalTimeline({
       return;
     }
     dragPreviewRef.current = nextPreview;
-    setDragPreview(nextPreview);
+    dragPreviewStoreRef.current.setSnapshot(nextPreview);
   }, []);
 
   const commitDragPreview = useCallback((activeDrag: DragState | null, preview: DragPreviewState | null) => {
@@ -3393,7 +3808,7 @@ export default function ProfessionalTimeline({
     dragStateRef.current = null;
     dragPreviewRef.current = null;
     setDragState(null);
-    setDragPreview(null);
+    dragPreviewStoreRef.current.setSnapshot(null);
     setSnapGuideVisible(false);
     setSnapGuideX(null);
     setSnapGuideLabel(null);
@@ -3408,6 +3823,7 @@ export default function ProfessionalTimeline({
       detachDragListeners();
       dragStateRef.current = null;
       dragPreviewRef.current = null;
+      dragPreviewStoreRef.current.setSnapshot(null);
       if (hoverRafRef.current !== null) {
         window.cancelAnimationFrame(hoverRafRef.current);
         hoverRafRef.current = null;
@@ -3435,7 +3851,7 @@ export default function ProfessionalTimeline({
     e.stopPropagation();
     if (reviewerMode) return;
     if (!timelineRef.current) return;
-    const clip = clips.find((candidate) => candidate.id === clipId);
+    const clip = clipMapById.get(clipId);
     if (!clip) return;
     if (collabLocks[clip.id]) return;
     if (trackStates[clip.trackId]?.locked) return;
@@ -3458,7 +3874,7 @@ export default function ProfessionalTimeline({
       mode,
     };
     dragPreviewRef.current = nextPreview;
-    setDragPreview(nextPreview);
+    dragPreviewStoreRef.current.setSnapshot(nextPreview);
     setDragState(nextDragState);
     setSnapGuideVisible(false);
     setSnapGuideX(null);
@@ -3472,7 +3888,7 @@ export default function ProfessionalTimeline({
     dragListenersRef.current = { move: onMove, up: onUp };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [clips, collabLocks, detachDragListeners, getTimelineXFromClientX, handleMouseMove, handleMouseUp, reviewerMode, trackStates]);
+  }, [clipMapById, collabLocks, detachDragListeners, getTimelineXFromClientX, handleMouseMove, handleMouseUp, reviewerMode, trackStates]);
 
   const stopPanInertia = useCallback(() => {
     if (panInertiaRafRef.current !== null) {
@@ -3688,6 +4104,33 @@ export default function ProfessionalTimeline({
     onCurrentTimeChange?.(boundedTime);
   }, [normalizeTimelineTime, onCurrentTimeChange, onTimelineClick]);
 
+  const clearHoverState = useCallback(() => {
+    const previous = hoverStoreRef.current.getSnapshot();
+    if (previous.guideX === null && previous.time === null) {
+      return;
+    }
+    hoverStoreRef.current.setSnapshot({
+      guideX: null,
+      time: null,
+    });
+  }, []);
+
+  const setHoverState = useCallback((guideX: number, time: number) => {
+    const previous = hoverStoreRef.current.getSnapshot();
+    if (
+      previous.guideX !== null &&
+      Math.abs(previous.guideX - guideX) < 0.5 &&
+      previous.time !== null &&
+      Math.abs(previous.time - time) < DRAG_COMMIT_EPSILON_SECONDS
+    ) {
+      return;
+    }
+    hoverStoreRef.current.setSnapshot({
+      guideX,
+      time,
+    });
+  }, []);
+
   const scheduleHoverFromClientX = useCallback((clientX: number) => {
     if (!timelineRef.current) {
       return;
@@ -3703,10 +4146,9 @@ export default function ProfessionalTimeline({
         return;
       }
       const timelineX = getTimelineXFromClientX(pendingClientX);
-      setHoverGuideX(timelineX);
-      setHoverTime(pixelsToTime(timelineX));
+      setHoverState(timelineX, pixelsToTime(timelineX));
     });
-  }, [getTimelineXFromClientX, pixelsToTime]);
+  }, [getTimelineXFromClientX, pixelsToTime, setHoverState]);
 
   const handleTimelineClickLocal = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -3763,9 +4205,8 @@ export default function ProfessionalTimeline({
       window.cancelAnimationFrame(hoverRafRef.current);
       hoverRafRef.current = null;
     }
-    setHoverGuideX(null);
-    setHoverTime(null);
-  }, []);
+    clearHoverState();
+  }, [clearHoverState]);
 
   const handleRulerScrubToClientX = useCallback((clientX: number) => {
     timelineRef.current?.focus();
@@ -3803,9 +4244,8 @@ export default function ProfessionalTimeline({
       window.cancelAnimationFrame(hoverRafRef.current);
       hoverRafRef.current = null;
     }
-    setHoverGuideX(null);
-    setHoverTime(null);
-  }, []);
+    clearHoverState();
+  }, [clearHoverState]);
 
   const handleRulerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const seekStep = e.shiftKey ? TIMELINE_SCROLL_STEP_SECONDS : frameStepSeconds;
@@ -4955,25 +5395,25 @@ export default function ProfessionalTimeline({
     }
     if ((e.key === 'l' || e.key === 'L') && selectedTrackId && onTrackToggle) {
       e.preventDefault();
-      const state = trackStates[selectedTrackId] || {};
+      const state = trackStates[selectedTrackId] ?? EMPTY_TRACK_STATE;
       onTrackToggle(selectedTrackId, { locked: !state.locked });
       return;
     }
     if ((e.key === 'm' || e.key === 'M') && selectedTrackId && onTrackToggle && e.altKey) {
       e.preventDefault();
-      const state = trackStates[selectedTrackId] || {};
+      const state = trackStates[selectedTrackId] ?? EMPTY_TRACK_STATE;
       onTrackToggle(selectedTrackId, { mute: !state.mute });
       return;
     }
     if ((e.key === 's' || e.key === 'S') && selectedTrackId && onTrackToggle && e.altKey) {
       e.preventDefault();
-      const state = trackStates[selectedTrackId] || {};
+      const state = trackStates[selectedTrackId] ?? EMPTY_TRACK_STATE;
       onTrackToggle(selectedTrackId, { solo: !state.solo });
       return;
     }
     if ((e.key === 'h' || e.key === 'H') && selectedTrackId && onTrackToggle) {
       e.preventDefault();
-      const state = trackStates[selectedTrackId] || {};
+      const state = trackStates[selectedTrackId] ?? EMPTY_TRACK_STATE;
       onTrackToggle(selectedTrackId, { visible: !(state.visible !== false) });
       return;
     }
@@ -5027,7 +5467,7 @@ export default function ProfessionalTimeline({
     zoom,
   ]);
 
-  const openContextMenu = (e: React.MouseEvent<HTMLElement>, clipId: string) => {
+  const openContextMenu = useCallback((e: React.MouseEvent<HTMLElement>, clipId: string) => {
     if (!onContextMenuAction) {
       return;
     }
@@ -5037,7 +5477,7 @@ export default function ProfessionalTimeline({
     setSelectedClipIdForMenu(clipId);
     setMenuClipId(clipId);
     setMenuAnchor(e.currentTarget);
-  };
+  }, [onContextMenuAction, selectSingleClip]);
   const closeContextMenu = () => {
     setSelectedClipIdForMenu(null);
     setMenuClipId(null);
@@ -5170,10 +5610,20 @@ export default function ProfessionalTimeline({
     const snappedTime = normalizeTimelineTime(
       pixelsToTime(snapPx(timeToPixels(rawTime)).value)
     );
-    setDropPreview({
-      trackId,
-      time: snappedTime,
-      mode: insertOverwriteMode,
+    setDropPreview((previous) => {
+      if (
+        previous &&
+        previous.trackId === trackId &&
+        previous.mode === insertOverwriteMode &&
+        Math.abs(previous.time - snappedTime) < DRAG_COMMIT_EPSILON_SECONDS
+      ) {
+        return previous;
+      }
+      return {
+        trackId,
+        time: snappedTime,
+        mode: insertOverwriteMode,
+      };
     });
   }, [getTimelineTimeFromClientX, insertOverwriteMode, normalizeTimelineTime, pixelsToTime, snapPx, timeToPixels]);
 
@@ -5250,28 +5700,25 @@ export default function ProfessionalTimeline({
     visibleClips,
   ]);
 
-  const getClipVisualMetadata = useCallback((clip: BeatClip): ClipVisualMetadata => {
-    const metadata = clip.metadata;
-    const unknownClip = clip as unknown as Record<string, unknown>;
-    const isEnhanced = Boolean(unknownClip.enhanced);
-
-    const originalNameRaw = metadata?.originalName;
-    const originalName = typeof originalNameRaw === 'string' && originalNameRaw.trim().length > 0
-      ? originalNameRaw.trim()
-      : undefined;
-
-    const confidenceRaw = metadata?.syncConfidence;
-    const syncConfidence =
-      typeof confidenceRaw === 'number' && Number.isFinite(confidenceRaw)
-        ? clampNumber(confidenceRaw, 0, 1)
-        : undefined;
-
-    return {
-      isEnhanced,
-      originalName,
-      syncConfidence,
-    };
-  }, []);
+  const clipPresentationById = useMemo(() => {
+    const presentation = new Map<string, {
+      clipVisual: ClipVisualMetadata;
+      clipMeta: ClipMetadata;
+      tagChips: string[];
+    }>();
+    for (const clip of visibleClips) {
+      const clipMeta = clipMetadata[clip.id] ?? EMPTY_CLIP_METADATA;
+      const metaTags = clipMeta.tags ?? EMPTY_TAG_CHIPS;
+      const sourceTags = clip.tags ?? EMPTY_TAG_CHIPS;
+      const tagChips = Array.from(new Set([...metaTags, ...sourceTags])).slice(0, 3);
+      presentation.set(clip.id, {
+        clipVisual: toClipVisualMetadata(clip),
+        clipMeta,
+        tagChips: tagChips.length > 0 ? tagChips : EMPTY_TAG_CHIPS,
+      });
+    }
+    return presentation;
+  }, [clipMetadata, visibleClips]);
 
   const jumpToPreviousMarker = useCallback(() => {
     if (allMarkers.length === 0) {
@@ -5343,6 +5790,17 @@ export default function ProfessionalTimeline({
       onTrackRename(trackId, normalizedName);
     }
   }, [onTrackRename, trackNameDrafts, tracks]);
+
+  const handleTrackNameFocus = useCallback((trackId: string) => {
+    setTrackNameEditingId(trackId);
+  }, []);
+
+  const handleTrackNameChange = useCallback((trackId: string, value: string) => {
+    setTrackNameDrafts((previous) => ({
+      ...previous,
+      [trackId]: value,
+    }));
+  }, []);
 
   const dispatchContextActionForSelection = useCallback((action: string): boolean => {
     if (!onContextMenuAction || selectedClipList.length === 0) {
@@ -5588,15 +6046,110 @@ export default function ProfessionalTimeline({
     visibleClips,
   ]);
 
+  const hasInOutRange = inPoint !== null && outPoint !== null;
+  const activeRangeStart = hasInOutRange ? Math.min(inPoint, outPoint) : null;
+  const activeRangeEnd = hasInOutRange ? Math.max(inPoint, outPoint) : null;
+  const currentTimeRef = useRef(currentTime);
+  const zoomRef = useRef(zoom);
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const handleToolbarFpsChange = useCallback((nextFps: number) => {
+    setTimelineFps(clampNumber(nextFps, 1, 120));
+  }, []);
+
+  const handleToolbarToggleSafeTrim = useCallback(() => {
+    setSafeTrimEnabled((previous) => !previous);
+  }, []);
+
+  const handleToolbarToggleMagnetic = useCallback(() => {
+    setMagneticEnabled((previous) => !previous);
+  }, []);
+
+  const handleToolbarToggleSnapping = useCallback(() => {
+    setSnappingEnabled((previous) => !previous);
+  }, []);
+
+  const handleToolbarToggleRipple = useCallback(() => {
+    setRippleEnabled((previous) => !previous);
+  }, []);
+
+  const handleToolbarZoomOut = useCallback(() => {
+    if (!onZoomChange) {
+      return;
+    }
+    onZoomChange(clampNumber(zoomRef.current / 1.1, MIN_TIMELINE_ZOOM, MAX_TIMELINE_ZOOM));
+  }, [onZoomChange]);
+
+  const handleToolbarZoomIn = useCallback(() => {
+    if (!onZoomChange) {
+      return;
+    }
+    onZoomChange(clampNumber(zoomRef.current * 1.1, MIN_TIMELINE_ZOOM, MAX_TIMELINE_ZOOM));
+  }, [onZoomChange]);
+
+  const handleToolbarAddMarkerAtPlayhead = useCallback(() => {
+    addEphemeralMarker(currentTimeRef.current, 'Marker');
+  }, [addEphemeralMarker]);
+
+  const handleToolbarSetInPointAtPlayhead = useCallback(() => {
+    setInPointAtTime(currentTimeRef.current);
+  }, [setInPointAtTime]);
+
+  const handleToolbarSetOutPointAtPlayhead = useCallback(() => {
+    setOutPointAtTime(currentTimeRef.current);
+  }, [setOutPointAtTime]);
+
+  const handleToolbarNudgeSelectionLeft = useCallback(() => {
+    nudgeSelectedClips(-frameStepSeconds);
+  }, [frameStepSeconds, nudgeSelectedClips]);
+
+  const handleToolbarNudgeSelectionRight = useCallback(() => {
+    nudgeSelectedClips(frameStepSeconds);
+  }, [frameStepSeconds, nudgeSelectedClips]);
+
+  const handleCanvasDragLeave = useCallback((event: React.DragEvent) => {
+    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+      setDropTrackId(null);
+      clearDropPreview();
+    }
+  }, [clearDropPreview]);
+
+  const handleCanvasDragOver = useCallback((event: React.DragEvent) => {
+    if (!onMediaDrop) {
+      return;
+    }
+    const selectedTrack = selectedTrackId ?? tracks[0]?.id;
+    if (!selectedTrack) {
+      return;
+    }
+    event.preventDefault();
+    setDropTrackId(selectedTrack);
+    updateDropPreviewForTrack(selectedTrack, event.clientX);
+    event.dataTransfer.dropEffect = insertOverwriteMode === 'insert' ? 'move' : 'copy';
+  }, [insertOverwriteMode, onMediaDrop, selectedTrackId, tracks, updateDropPreviewForTrack]);
+
+  const handleCanvasDrop = useCallback((event: React.DragEvent) => {
+    const selectedTrack = selectedTrackId ?? tracks[0]?.id;
+    if (!selectedTrack) {
+      return;
+    }
+    applyMediaDropToTrack(selectedTrack, event);
+  }, [applyMediaDropToTrack, selectedTrackId, tracks]);
+
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <TimelineToolbar
         zoom={zoom}
-        currentTime={currentTime}
         inPoint={inPoint}
         outPoint={outPoint}
         timelineFps={timelineFps}
-        frameStepSeconds={frameStepSeconds}
         workspaceMode={workspaceMode}
         toolMode={toolMode}
         safeTrimEnabled={safeTrimEnabled}
@@ -5609,16 +6162,16 @@ export default function ProfessionalTimeline({
         ephemeralMarkerCount={ephemeralMarkers.length}
         onWorkspaceModeChange={setWorkspaceMode}
         onToolModeChange={setToolMode}
-        onTimelineFpsChange={(nextFps) => setTimelineFps(clampNumber(nextFps, 1, 120))}
+        onTimelineFpsChange={handleToolbarFpsChange}
         onTimeDisplayModeChange={setTimeDisplayMode}
-        onToggleSafeTrim={() => setSafeTrimEnabled((previous) => !previous)}
-        onToggleMagnetic={() => setMagneticEnabled((previous) => !previous)}
-        onToggleSnapping={() => setSnappingEnabled((previous) => !previous)}
-        onToggleRipple={() => setRippleEnabled((previous) => !previous)}
+        onToggleSafeTrim={handleToolbarToggleSafeTrim}
+        onToggleMagnetic={handleToolbarToggleMagnetic}
+        onToggleSnapping={handleToolbarToggleSnapping}
+        onToggleRipple={handleToolbarToggleRipple}
         onZoomToProject={zoomToProject}
         onZoomToSelection={zoomToSelection}
-        onZoomOut={() => onZoomChange?.(clampNumber(zoom / 1.1, MIN_TIMELINE_ZOOM, MAX_TIMELINE_ZOOM))}
-        onZoomIn={() => onZoomChange?.(clampNumber(zoom * 1.1, MIN_TIMELINE_ZOOM, MAX_TIMELINE_ZOOM))}
+        onZoomOut={handleToolbarZoomOut}
+        onZoomIn={handleToolbarZoomIn}
         onInsertAtPlayhead={insertSelectionAtPlayhead}
         onOverwriteAtPlayhead={overwriteSelectionAtPlayhead}
         onLiftSelection={liftSelection}
@@ -5628,16 +6181,24 @@ export default function ProfessionalTimeline({
         onDeleteSelection={deleteSelection}
         onJumpPreviousMarker={jumpToPreviousMarker}
         onJumpNextMarker={jumpToNextMarker}
-        onAddMarkerAtPlayhead={() => addEphemeralMarker(currentTime, 'Marker')}
+        onAddMarkerAtPlayhead={handleToolbarAddMarkerAtPlayhead}
         onClearLocalMarkers={clearEphemeralMarkerSet}
-        onSetInPoint={() => setInPointAtTime(currentTime)}
-        onSetOutPoint={() => setOutPointAtTime(currentTime)}
+        onSetInPoint={handleToolbarSetInPointAtPlayhead}
+        onSetOutPoint={handleToolbarSetOutPointAtPlayhead}
         onJumpToInPoint={jumpToInPoint}
         onJumpToOutPoint={jumpToOutPoint}
         onClearInOutPoints={clearInOutPoints}
         onSelectClipAtPlayhead={selectClipUnderPlayhead}
-        onNudgeSelectionLeft={() => nudgeSelectedClips(-frameStepSeconds)}
-        onNudgeSelectionRight={() => nudgeSelectedClips(frameStepSeconds)}
+        onNudgeSelectionLeft={handleToolbarNudgeSelectionLeft}
+        onNudgeSelectionRight={handleToolbarNudgeSelectionRight}
+      />
+      <TimelineToolbarLiveStatus
+        currentTime={currentTime}
+        inPoint={inPoint}
+        outPoint={outPoint}
+        timelineFps={timelineFps}
+        frameStepSeconds={frameStepSeconds}
+        timeDisplayMode={timeDisplayMode}
       />
 
       {/* Ruler */}
@@ -5654,8 +6215,7 @@ export default function ProfessionalTimeline({
         outPoint={outPoint}
         viewportStartPx={timelineViewportPx.start}
         viewportEndPx={timelineViewportPx.end}
-        hoverGuideX={hoverGuideX}
-        hoverTime={hoverTime}
+        hoverStore={hoverStoreRef.current}
         snapGuideVisible={snapGuideVisible}
         snapGuideX={snapGuideX}
         snapGuideLabel={snapGuideLabel}
@@ -5678,6 +6238,9 @@ export default function ProfessionalTimeline({
           tracks={tracks}
           trackHeightScale={trackHeightScale}
           trackOffsetMap={trackOffsetMap}
+          visibleTrackIdSet={visibleTrackIdSet}
+          scrollTop={timelineViewportY.start}
+          totalTrackHeight={totalTrackHeight}
           trackStates={trackStates}
           selectedTrackId={selectedTrackId}
           trackNameDrafts={trackNameDrafts}
@@ -5687,13 +6250,8 @@ export default function ProfessionalTimeline({
           onTrackAudioRoleChange={onTrackAudioRoleChange}
           onTrackToggle={onTrackToggle}
           onSelectTrack={selectTrackById}
-          onTrackNameFocus={(trackId) => setTrackNameEditingId(trackId)}
-          onTrackNameChange={(trackId, value) => {
-            setTrackNameDrafts((previous) => ({
-              ...previous,
-              [trackId]: value,
-            }));
-          }}
+          onTrackNameFocus={handleTrackNameFocus}
+          onTrackNameChange={handleTrackNameChange}
           onTrackNameCommit={commitTrackRename}
         />
 
@@ -5712,32 +6270,9 @@ export default function ProfessionalTimeline({
           onPointerMove={handleTimelinePointerMoveLocal}
           onPointerLeave={handleTimelinePointerLeaveLocal}
           onClick={handleTimelineClickLocal}
-          onDragLeave={(event) => {
-            if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
-              setDropTrackId(null);
-              clearDropPreview();
-            }
-          }}
-          onDragOver={(event) => {
-            if (!onMediaDrop) {
-              return;
-            }
-            const selectedTrack = selectedTrackId ?? tracks[0]?.id;
-            if (!selectedTrack) {
-              return;
-            }
-            event.preventDefault();
-            setDropTrackId(selectedTrack);
-            updateDropPreviewForTrack(selectedTrack, event.clientX);
-            event.dataTransfer.dropEffect = insertOverwriteMode === 'insert' ? 'move' : 'copy';
-          }}
-          onDrop={(event) => {
-            const selectedTrack = selectedTrackId ?? tracks[0]?.id;
-            if (!selectedTrack) {
-              return;
-            }
-            applyMediaDropToTrack(selectedTrack, event);
-          }}
+          onDragLeave={handleCanvasDragLeave}
+          onDragOver={handleCanvasDragOver}
+          onDrop={handleCanvasDrop}
         >
           <Box sx={{ position: 'relative', width: timelineWidth + HEADER_WIDTH, height: totalTrackHeight }}>
             {/* Grid vertical lines duplicated in content for alignment */}
@@ -5761,20 +6296,7 @@ export default function ProfessionalTimeline({
               />
             )}
 
-            {hoverGuideX !== null && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  left: HEADER_WIDTH + hoverGuideX,
-                  top: 0,
-                  bottom: 0,
-                  width: 1,
-                  bgcolor: 'rgba(255,255,255,0.2)',
-                  pointerEvents: 'none',
-                  zIndex: 1,
-                }}
-              />
-            )}
+            <TimelineHoverGuideOverlay hoverStore={hoverStoreRef.current} />
 
             {snapGuideVisible && snapGuideX !== null && (
               <Box
@@ -5825,6 +6347,9 @@ export default function ProfessionalTimeline({
 
             {/* Compare overlay */}
             {visibleCompareClipsInViewport.map(c => {
+              if (!visibleTrackIdSet.has(c.trackId)) {
+                return null;
+              }
               const off = trackOffsetMap[c.trackId];
               if (!off) return null;
               return (
@@ -5833,7 +6358,7 @@ export default function ProfessionalTimeline({
             })}
 
             {/* Tracks rows backgrounds */}
-            {tracks.map((t) => {
+            {visibleTracksInViewport.map((t) => {
               const off = trackOffsetMap[t.id];
               if (!off) return null;
               const isDropTarget = dropTrackId === t.id;
@@ -5920,6 +6445,9 @@ export default function ProfessionalTimeline({
 
             {/* Transitions */}
             {visibleTransitionsInViewport.map(tr => {
+              if (!visibleTrackIdSet.has(tr.trackId)) {
+                return null;
+              }
               const off = trackOffsetMap[tr.trackId];
               if (!off) return null;
               return (
@@ -5934,56 +6462,28 @@ export default function ProfessionalTimeline({
             })}
 
             {/* Clips */}
-            {visibleClipsInViewport.map((clip) => {
-              const preview = dragPreview?.clipId === clip.id ? dragPreview : null;
-              const renderTrackId = preview?.trackId ?? clip.trackId;
-              const renderStart = preview?.start ?? clip.start;
-              const renderDuration = preview?.duration ?? clip.duration;
-              const off = trackOffsetMap[renderTrackId];
-              if (!off) return null;
-              const selected = selectedClips.has(clip.id);
-              const trackState = trackStates[renderTrackId];
-              const trackLocked = Boolean(trackState?.locked);
-              const trackHidden = trackState?.visible === false;
-              const collabLocked = Boolean(collabLocks[clip.id]);
-              const clipVisual = getClipVisualMetadata(clip);
-              const clipMeta = clipMetadata[clip.id] || {};
-              const tagChips = Array.from(new Set([...(clipMeta.tags || []), ...(clip.tags || [])])).slice(0, 3);
-              const clipIsReadOnly = reviewerMode || trackLocked || collabLocked || trackHidden;
-              const hasInOutRange = inPoint !== null && outPoint !== null;
-              const rangeStart = hasInOutRange ? Math.min(inPoint, outPoint) : null;
-              const rangeEnd = hasInOutRange ? Math.max(inPoint, outPoint) : null;
-              const clipStart = renderStart;
-              const clipEnd = renderStart + renderDuration;
-              const clipInActiveRange = !hasInOutRange || (rangeStart !== null && rangeEnd !== null && clipEnd >= rangeStart && clipStart <= rangeEnd);
-              const widthPx = Math.max(4, timeToPixels(renderDuration));
-              const showResizeHandles = !clipIsReadOnly && widthPx >= RESIZE_HANDLE_WIDTH_PX * 1.8;
-              return (
-                <ClipItem
-                  key={clip.id}
-                  clip={clip}
-                  renderTrackId={renderTrackId}
-                  renderStart={renderStart}
-                  renderDuration={renderDuration}
-                  off={off}
-                  selected={selected}
-                  trackHidden={trackHidden}
-                  collabLock={collabLocks[clip.id]}
-                  clipVisual={clipVisual}
-                  clipMeta={clipMeta}
-                  tagChips={tagChips}
-                  clipIsReadOnly={clipIsReadOnly}
-                  clipInActiveRange={clipInActiveRange}
-                  showResizeHandles={showResizeHandles}
-                  beginDrag={beginDrag}
-                  onClipSelect={onClipSelect}
-                  onSetSelectedTrackId={setSelectedTrackId}
-                  onSetPlayheadTime={setPlayheadTime}
-                  openContextMenu={openContextMenu}
-                  timeToPixels={timeToPixels}
-                />
-              );
-            })}
+            <TimelineClipLayer
+              visibleClips={visibleClips}
+              selectedClips={selectedClips}
+              dragPreviewStore={dragPreviewStoreRef.current}
+              viewportBufferedStartTime={viewportBufferedStartTime}
+              viewportBufferedEndTime={viewportBufferedEndTime}
+              visibleTrackIdSet={visibleTrackIdSet}
+              trackOffsetMap={trackOffsetMap}
+              trackStates={trackStates}
+              collabLocks={collabLocks}
+              clipPresentationById={clipPresentationById}
+              reviewerMode={reviewerMode}
+              hasInOutRange={hasInOutRange}
+              activeRangeStart={activeRangeStart}
+              activeRangeEnd={activeRangeEnd}
+              timeToPixels={timeToPixels}
+              beginDrag={beginDrag}
+              onClipSelect={onClipSelect}
+              onSetSelectedTrackId={setSelectedTrackId}
+              onSetPlayheadTime={setPlayheadTime}
+              openContextMenu={openContextMenu}
+            />
 
             {marqueeState && (
               <Box

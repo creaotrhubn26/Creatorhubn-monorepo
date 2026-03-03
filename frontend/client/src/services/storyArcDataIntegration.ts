@@ -283,13 +283,12 @@ export class StoryArcDataIntegration {
    * Get color for emotional value
    */
   private static getColorForEmotion(ev: number): string {
-    if (ev > 0.5) return storyArcStudioColors.climax;
-    if (ev > 0.2) return storyArcStudioColors.buildUp;
-    if (ev < -0.2) return storyArcStudioColors.tension;
-    return storyArcStudioColors.calm;
+    if (ev > 0.5) return storyArcStudioColors.emotionalValues['1.0'];
+    if (ev > 0.2) return storyArcStudioColors.emotionalValues['0.5'];
+    if (ev < -0.2) return storyArcStudioColors.emotions.tension;
+    return storyArcStudioColors.emotions.calm;
   }
 }
 
 export default StoryArcDataIntegration;
-
 

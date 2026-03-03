@@ -65,7 +65,9 @@ export default tseslint.config(
       'no-case-declarations': 'warn',
       '@typescript-eslint/no-require-imports': 'warn',
       'no-undef': 'off', // TypeScript handles this
-      'no-constant-binary-expression': 'warn'
+      'no-constant-binary-expression': 'warn',
+      'no-duplicate-imports': 'error',
+      '@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }]
     }
   }
 );

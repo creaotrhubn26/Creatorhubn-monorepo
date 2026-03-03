@@ -1911,6 +1911,55 @@ const mergeCameraLists = (base: CameraRecord[], extras: CameraRecord[]): CameraR
 
 const getCameraArrayByType = (type: DiscoveryCameraType): CameraRecord[] => EQUIPMENT_CAMERA_STORE[type];
 
+type CameraSourceBundle = {
+  runtimeSource: CameraRecord[];
+  catalogSource: CameraRecord[];
+  worldSource: CameraRecord[];
+  releaseRegistrySource: CameraRecord[];
+  legacySource: CameraRecord[];
+  databaseSource: CameraRecord[];
+  source: CameraRecord[];
+};
+
+const loadCameraSourceBundle = async (
+  type: DiscoveryCameraType | null
+): Promise<CameraSourceBundle> => {
+  const runtimeSource = type
+    ? getCameraArrayByType(type)
+    : [...EQUIPMENT_CAMERA_STORE.photo, ...EQUIPMENT_CAMERA_STORE.video];
+  const catalogSource = type
+    ? CATALOG_CAMERA_STORE[type]
+    : [...CATALOG_CAMERA_STORE.photo, ...CATALOG_CAMERA_STORE.video];
+  const worldSource = type
+    ? WORLD_CAMERA_STORE[type]
+    : [...WORLD_CAMERA_STORE.photo, ...WORLD_CAMERA_STORE.video];
+  const releaseRegistrySource = type
+    ? RELEASE_REGISTRY_STORE[type]
+    : [...RELEASE_REGISTRY_STORE.photo, ...RELEASE_REGISTRY_STORE.video];
+  const legacyStore = await loadLegacyCameraStore();
+  const legacySource = type ? legacyStore[type] : [...legacyStore.photo, ...legacyStore.video];
+  const databaseSourceAll = await loadDatabaseCameraStore();
+  const databaseSource = type
+    ? databaseSourceAll.filter((camera) => camera.type === type)
+    : databaseSourceAll;
+
+  const mergedCatalog = mergeCameraLists(runtimeSource, catalogSource);
+  const mergedRegistry = mergeCameraLists(mergedCatalog, releaseRegistrySource);
+  const mergedWorld = mergeCameraLists(mergedRegistry, worldSource);
+  const mergedLegacy = mergeCameraLists(mergedWorld, legacySource);
+  const source = mergeCameraLists(mergedLegacy, databaseSource);
+
+  return {
+    runtimeSource,
+    catalogSource,
+    worldSource,
+    releaseRegistrySource,
+    legacySource,
+    databaseSource,
+    source,
+  };
+};
+
 const getDiscoveryStats = (type: DiscoveryCameraType) => {
   const cameras = getCameraArrayByType(type);
   const now = Date.now();
@@ -1938,98 +1987,1006 @@ const resolveDiscoveryType = (value: unknown): DiscoveryCameraType | null => {
   return null;
 };
 
-app.post('/api/equipment/discovery/sync', (req, res) => {
-  const type = resolveDiscoveryType(req.query.type);
-  if (!type) {
-    res.status(400).json({ error: 'Invalid type. Use photo|video' });
-    return;
+type DiscoveryFirmwareSyncResult = {
+  tableAvailable: boolean;
+  considered: number;
+  inserted: number;
+  upgraded?: number;
+  existing: number;
+  skippedInvalid: number;
+  failed: number;
+};
+
+type FirmwareSeedCandidate = {
+  brand: string;
+  model: string;
+  type: DiscoveryCameraType;
+  category?: string;
+  releaseDate?: string;
+  lastUpdated?: string;
+  lastSeenAt?: string;
+  version?: number;
+};
+
+type CanonicalFirmwareProfile = {
+  brandToken: string;
+  modelTokens: string[];
+  version: string;
+  sourceUrl: string;
+  downloadUrl?: string;
+  releaseDate?: string;
+  importance?: 'normal' | 'high' | 'critical' | 'low';
+  description?: string;
+  releaseNotes?: string[];
+};
+
+type ExistingFirmwareRow = {
+  brand: string;
+  model: string;
+  category?: string | null;
+  version: string | null;
+  releaseDate: string | null;
+  sourceUrl: string | null;
+  downloadUrl: string | null;
+  importance: string | null;
+};
+
+const toFirmwareDeviceKey = (brand: string, model: string): string =>
+  `${normalizeCameraToken(brand)}::${normalizeCameraToken(model)}`;
+
+const toFirmwareBrandToken = (brand: string): string => {
+  const token = normalizeCameraToken(brand);
+  if (token === 'blackmagicdesign') return 'blackmagic';
+  if (token === 'reddigitalcinema' || token === 'reddigitalcinemacameracompany') return 'red';
+  if (token === 'omdigitalsolutions' || token === 'omsystem') return 'omsystem';
+  if (token === 'rode') return 'rode';
+  if (token === 'tascamteac') return 'tascam';
+  return token;
+};
+
+const PHOTO_BRAND_FIRMWARE_PORTALS: Record<string, string> = {
+  apple: 'https://support.apple.com/en-us/HT201222',
+  canon: 'https://www.canon.no/support/',
+  fujifilm: 'https://fujifilm-x.com/en-us/support/download/firmware/cameras/',
+  hasselblad: 'https://www.hasselblad.com/support/firmware-downloads/',
+  leica: 'https://leica-camera.com/en-US/photography/firmware',
+  logitech: 'https://support.logi.com/',
+  nikon: 'https://downloadcenter.nikonimglib.com/',
+  omsystem: 'https://learnandsupport.getolympus.com/firmware',
+  olympus: 'https://learnandsupport.getolympus.com/firmware',
+  panasonic: 'https://av.jpn.support.panasonic.com/support/global/cs/dsc/download/index.html',
+  ricoh: 'https://www.ricoh-imaging.co.jp/english/support/download_digital.html',
+  samsung: 'https://www.samsung.com/us/support/mobile/phones/',
+  sigma: 'https://www.sigma-global.com/en/support/firmware/',
+  sony: 'https://www.sony.com/electronics/support/cameras-camcorders',
+  xiaomi: 'https://www.mi.com/global/support/',
+};
+
+const AUDIO_BRAND_FIRMWARE_PORTALS: Record<string, string> = {
+  deity: 'https://deitymic.com/pages/downloads',
+  dji: 'https://www.dji.com/downloads',
+  panasonic: 'https://av.jpn.support.panasonic.com/support/global/cs/dsc/download/index.html',
+  rode: 'https://rode.com/en/support/software-and-firmware',
+  tascam: 'https://tascam.com/us/support/downloads',
+  zoom: 'https://zoomcorp.com/en/us/support/downloads/',
+};
+
+const CINE_FIRMWARE_PROFILES: CanonicalFirmwareProfile[] = [
+  {
+    brandToken: 'arri',
+    modelTokens: ['alexa35'],
+    version: '5.2.1',
+    sourceUrl:
+      'https://www.arri.com/en/learn-help/learn-help-camera-system/software-and-firmware/software-downloads',
+    downloadUrl:
+      'https://www.arri.com/en/learn-help/learn-help-camera-system/software-and-firmware/software-downloads',
+    importance: 'high',
+    description: 'ARRI ALEXA 35 SUP 5.2.1.',
+    releaseNotes: ['Producer-spesifikk ALEXA 35 SUP-oppdatering fra ARRI.'],
+  },
+  {
+    brandToken: 'arri',
+    modelTokens: ['alexa265', 'alexa65'],
+    version: '5.2.0',
+    sourceUrl:
+      'https://www.arri.com/en/learn-help/learn-help-camera-system/software-and-firmware/software-downloads',
+    downloadUrl:
+      'https://www.arri.com/en/learn-help/learn-help-camera-system/software-and-firmware/software-downloads',
+    importance: 'high',
+    description: 'ARRI ALEXA 265 SUP 5.2.0.',
+    releaseNotes: ['Producer-spesifikk ALEXA 265 SUP-oppdatering fra ARRI.'],
+  },
+  {
+    brandToken: 'blackmagic',
+    modelTokens: ['pocketcinemacamera6kpro', 'pyxis6k', 'ursaminipro12k'],
+    version: '10.0.1',
+    sourceUrl: 'https://www.blackmagicdesign.com/developer/products/camera',
+    downloadUrl: 'https://www.blackmagicdesign.com/developer/products/camera',
+    importance: 'high',
+    description: 'Blackmagic Camera 10.0.1.',
+    releaseNotes: ['Blackmagic Camera 10.0.1 produsentoppdatering.'],
+  },
+  {
+    brandToken: 'canon',
+    modelTokens: ['c70', 'eosc70'],
+    version: '1.1.3.1',
+    sourceUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C70-Firmware-Version-1-1-3-1',
+    downloadUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C70-Firmware-Version-1-1-3-1',
+    importance: 'high',
+    description: 'Canon EOS C70 Firmware Version 1.1.3.1.',
+    releaseNotes: ['Firmware Notice: EOS C70 Firmware Version 1.1.3.1.'],
+  },
+  {
+    brandToken: 'canon',
+    modelTokens: ['c400', 'eosc400'],
+    version: '1.0.2.1',
+    sourceUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C400-Firmware-Version-1-0-2-1',
+    downloadUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C400-Firmware-Version-1-0-2-1',
+    importance: 'high',
+    description: 'Canon EOS C400 Firmware Version 1.0.2.1.',
+    releaseNotes: ['Firmware Notice: EOS C400 Firmware Version 1.0.2.1.'],
+  },
+  {
+    brandToken: 'canon',
+    modelTokens: ['c80', 'eosc80'],
+    version: '1.0.5.1',
+    sourceUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C80-Firmware-Version-1-0-5-1',
+    downloadUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C80-Firmware-Version-1-0-5-1',
+    importance: 'high',
+    description: 'Canon EOS C80 Firmware Version 1.0.5.1.',
+    releaseNotes: ['Firmware Notice: EOS C80 Firmware Version 1.0.5.1.'],
+  },
+  {
+    brandToken: 'canon',
+    modelTokens: ['c50', 'eosc50'],
+    version: '1.0.3.1',
+    sourceUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C50-Firmware-Version-1-0-3-1',
+    downloadUrl:
+      'https://www.usa.canon.com/support/canon-product-advisories/Firmware-Notice-EOS-C50-Firmware-Version-1-0-3-1',
+    importance: 'high',
+    description: 'Canon EOS C50 Firmware Version 1.0.3.1.',
+    releaseNotes: ['Firmware Notice: EOS C50 Firmware Version 1.0.3.1.'],
+  },
+  {
+    brandToken: 'canon',
+    modelTokens: ['eosr5c', 'r5c'],
+    version: '1.1.2.1',
+    sourceUrl:
+      'https://canon.jp/support/software/os?pr=EOSR5C',
+    downloadUrl:
+      'https://canon.jp/support/software/os?pr=EOSR5C',
+    importance: 'high',
+    description: 'Canon EOS R5 C Firmware Version 1.1.2.1.',
+    releaseNotes: ['Firmware Notice: EOS R5 C Firmware Version 1.1.2.1.'],
+  },
+  {
+    brandToken: 'red',
+    modelTokens: ['komodox', 'komodox6k'],
+    version: '2.1.1',
+    sourceUrl: 'https://www.red.com/download/komodo-firmware',
+    downloadUrl: 'https://www.red.com/download/komodo-firmware',
+    importance: 'high',
+    description: 'RED KOMODO/KOMODO-X Production Firmware 2.1.1.',
+    releaseNotes: ['Production firmware release for RED KOMODO platform.'],
+  },
+  {
+    brandToken: 'red',
+    modelTokens: ['vraptor', 'vraptor8kvv'],
+    version: '2.1.1',
+    sourceUrl: 'https://www.red.com/download/v-raptor-firmware',
+    downloadUrl: 'https://www.red.com/download/v-raptor-firmware',
+    importance: 'high',
+    description: 'RED V-RAPTOR Production Firmware 2.1.1.',
+    releaseNotes: ['Production firmware release for RED V-RAPTOR platform.'],
+  },
+  {
+    brandToken: 'sony',
+    modelTokens: ['burano'],
+    version: '2.10',
+    sourceUrl:
+      'https://www.sony.com/electronics/support/cinema-line-cameras-ilme-series/ilme-fx6/software/00277940',
+    downloadUrl:
+      'https://www.sony.com/electronics/support/cinema-line-cameras-ilme-series/ilme-fx6/software/00277940',
+    releaseDate: '2025-10-08',
+    importance: 'high',
+    description: 'Sony BURANO Firmware 2.10.',
+    releaseNotes: ['Sony BURANO firmware-oppdatering til versjon 2.10.'],
+  },
+  {
+    brandToken: 'sony',
+    modelTokens: ['fx3'],
+    version: '7.01',
+    sourceUrl:
+      'https://www.sony.com/electronics/support/e-mount-body-ilce-7-series/ilme-fx3/software/00290732',
+    downloadUrl:
+      'https://www.sony.com/electronics/support/e-mount-body-ilce-7-series/ilme-fx3/software/00290732',
+    releaseDate: '2025-09-10',
+    importance: 'high',
+    description: 'Sony FX3 Firmware 7.01.',
+    releaseNotes: ['Sony FX3 firmware-oppdatering til versjon 7.01.'],
+  },
+  {
+    brandToken: 'sony',
+    modelTokens: ['fx30'],
+    version: '6.00',
+    sourceUrl:
+      'https://www.sony.com/electronics/support/e-mount-body-ilme-series/ilme-fx30/software/00269698',
+    downloadUrl:
+      'https://www.sony.com/electronics/support/e-mount-body-ilme-series/ilme-fx30/software/00269698',
+    releaseDate: '2025-08-25',
+    importance: 'high',
+    description: 'Sony FX30 Firmware 6.00.',
+    releaseNotes: ['Sony FX30 firmware-oppdatering til versjon 6.00.'],
+  },
+  {
+    brandToken: 'sony',
+    modelTokens: ['fx6'],
+    version: '5.01',
+    sourceUrl:
+      'https://www.sony.com/electronics/support/cinema-line-cameras-ilme-series/ilme-fx6/software/00280466',
+    downloadUrl:
+      'https://www.sony.com/electronics/support/cinema-line-cameras-ilme-series/ilme-fx6/software/00280466',
+    releaseDate: '2025-07-15',
+    importance: 'high',
+    description: 'Sony FX6 Firmware 5.01.',
+    releaseNotes: ['Sony FX6 firmware-oppdatering til versjon 5.01.'],
+  },
+];
+
+const modelTokenMatchesProfile = (modelToken: string, expectedToken: string): boolean => {
+  if (!modelToken || !expectedToken) return false;
+  return modelToken === expectedToken;
+};
+
+const buildBrandPortalFirmwareProfile = (
+  camera: Pick<FirmwareSeedCandidate, 'brand' | 'model' | 'type' | 'category' | 'version'>,
+  sourceUrl: string,
+  kind: 'photo' | 'audio'
+): CanonicalFirmwareProfile => ({
+  brandToken: toFirmwareBrandToken(camera.brand || ''),
+  modelTokens: [normalizeCameraToken(camera.model || '')],
+  version: toDiscoveryFirmwareVersion({
+    brand: camera.brand,
+    model: camera.model,
+    type: camera.type,
+    category: camera.category,
+    version: camera.version,
+  }),
+  sourceUrl,
+  downloadUrl: sourceUrl,
+  importance: 'normal',
+  description:
+    kind === 'photo'
+      ? `Produsentens firmware-portal for ${camera.brand} ${camera.model}.`
+      : `Produsentens firmware-portal for lydutstyr ${camera.brand} ${camera.model}.`,
+  releaseNotes: [
+    kind === 'photo'
+      ? 'Firmware må bekreftes mot produsentens modellspesifikke nedlastingsside.'
+      : 'Firmware må bekreftes mot produsentens modellspesifikke nedlastingsside for lydutstyr.',
+  ],
+});
+
+const resolveCanonicalFirmwareProfile = (
+  camera: Pick<FirmwareSeedCandidate, 'brand' | 'model' | 'type' | 'category' | 'version'>
+): CanonicalFirmwareProfile | null => {
+  const categoryToken = normalizeCameraCategory(camera.category || '');
+  const brandToken = toFirmwareBrandToken(camera.brand || '');
+  const modelToken = normalizeCameraToken(camera.model || '');
+  if (!brandToken || !modelToken) return null;
+
+  if (categoryToken.includes('cine') || categoryToken.includes('cinema')) {
+    const cineProfile = CINE_FIRMWARE_PROFILES.find(
+      (entry) =>
+        entry.brandToken === brandToken &&
+        entry.modelTokens.some((token) => modelTokenMatchesProfile(modelToken, token))
+    );
+    return cineProfile || null;
   }
 
-  const nowIso = new Date().toISOString();
-  const syncId = `${type}-${Date.now()}`;
-  const candidates = buildDiscoveryCandidates(type);
-  const store = getCameraArrayByType(type);
+  const isAudioCategory =
+    categoryToken.includes('audio') ||
+    categoryToken.includes('recorder') ||
+    categoryToken.includes('mic') ||
+    categoryToken.includes('wireless');
+  if (isAudioCategory) {
+    const audioPortal = AUDIO_BRAND_FIRMWARE_PORTALS[brandToken];
+    if (!audioPortal) return null;
+    return buildBrandPortalFirmwareProfile(camera, audioPortal, 'audio');
+  }
 
-  const byId = new Map(store.map((camera) => [camera.id, camera]));
-  const byExternalId = new Map(store.map((camera) => [camera.externalId, camera.id]));
+  const isPhotoCandidate =
+    camera.type === 'photo' ||
+    categoryToken.includes('photo') ||
+    categoryToken.includes('mirrorless') ||
+    categoryToken.includes('dslr') ||
+    categoryToken.includes('compact') ||
+    categoryToken.includes('medium-format') ||
+    categoryToken.includes('webcam');
+  if (isPhotoCandidate) {
+    const photoPortal = PHOTO_BRAND_FIRMWARE_PORTALS[brandToken];
+    if (!photoPortal) return null;
+    return buildBrandPortalFirmwareProfile(camera, photoPortal, 'photo');
+  }
+
+  return null;
+};
+
+const resolveCanonicalFirmwareProfileByDevice = (
+  brand: string,
+  model: string,
+  category?: string | null
+): CanonicalFirmwareProfile | null => {
+  return resolveCanonicalFirmwareProfile({
+    brand,
+    model,
+    type: inferCameraTypeFromEquipmentCategory(category),
+    category: category || undefined,
+    version: 1,
+  });
+};
+
+const isGenericDiscoveryVersion = (version: string | null | undefined): boolean => {
+  if (!version) return true;
+  return /^1\.0\.\d+$/u.test(version.trim());
+};
+
+const normalizeSqlDateValue = (value: unknown): string | null => {
+  if (!value) return null;
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+  }
+  return null;
+};
+
+const hasBetterCanonicalSource = (
+  existingSourceUrl: string | null | undefined,
+  canonicalSourceUrl: string
+): boolean => {
+  if (!existingSourceUrl) return true;
+  if (existingSourceUrl.includes('example.com')) return true;
+  return existingSourceUrl.trim() !== canonicalSourceUrl.trim();
+};
+
+const buildCanonicalFirmwarePayload = (
+  camera: FirmwareSeedCandidate,
+  profile: CanonicalFirmwareProfile,
+  nowIso: string,
+  releaseDateFallback: string
+): Record<string, unknown> => ({
+  version: profile.version,
+  update_type: 'firmware',
+  release_date: profile.releaseDate || releaseDateFallback,
+  is_latest: true,
+  is_critical: profile.importance === 'critical',
+  importance: profile.importance || 'high',
+  description: profile.description || `Produsentoppdatering for ${camera.brand} ${camera.model}.`,
+  download_url: profile.downloadUrl || profile.sourceUrl,
+  source_url: profile.sourceUrl,
+  release_notes: (profile.releaseNotes || []).join('\n'),
+  compatibility: JSON.stringify([camera.category]),
+  requirements: JSON.stringify(['Oppdater med produsentens offisielle prosedyre.']),
+  known_issues: JSON.stringify([]),
+  installation_steps: JSON.stringify([
+    '1. Last ned firmware fra produsent.',
+    '2. Følg produsentens oppdateringsguide.',
+    '3. Verifiser versjon etter restart.',
+  ]),
+  last_checked: nowIso,
+  last_verified: nowIso,
+  updated_at: nowIso,
+});
+
+const toFirmwareReleaseDate = (camera: FirmwareSeedCandidate): string | null => {
+  const preferred = [camera.releaseDate, camera.lastUpdated, camera.lastSeenAt];
+  for (const value of preferred) {
+    if (!value || typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+  }
+  return null;
+};
+
+const toDiscoveryFirmwareVersion = (camera: FirmwareSeedCandidate): string => {
+  const patch = Number.isFinite(camera.version) && (camera.version || 0) > 0 ? (camera.version || 0) - 1 : 0;
+  return `1.0.${patch}`;
+};
+
+const inferCameraTypeFromEquipmentCategory = (value: string | null | undefined): DiscoveryCameraType => {
+  const normalized = normalizeCameraCategory(value || '');
+  if (
+    normalized.includes('video') ||
+    normalized.includes('cine') ||
+    normalized.includes('drone') ||
+    normalized.includes('action') ||
+    normalized.includes('mobile') ||
+    normalized.includes('phone') ||
+    normalized.includes('tablet') ||
+    normalized.includes('audio')
+  ) {
+    return 'video';
+  }
+  return 'photo';
+};
+
+const toFirmwareSeedCandidate = (
+  camera: Pick<
+    CameraRecord,
+    'brand' | 'model' | 'type' | 'category' | 'releaseDate' | 'lastUpdated' | 'lastSeenAt' | 'version'
+  >
+): FirmwareSeedCandidate => ({
+  brand: camera.brand,
+  model: camera.model,
+  type: camera.type,
+  category: camera.category,
+  releaseDate: camera.releaseDate,
+  lastUpdated: camera.lastUpdated,
+  lastSeenAt: camera.lastSeenAt,
+  version: camera.version,
+});
+
+async function loadFirmwareSeedCandidatesFromUserEquipment(filters?: {
+  type?: DiscoveryCameraType;
+  userId?: string | null;
+  profession?: string | null;
+}): Promise<FirmwareSeedCandidate[]> {
+  const tableAvailable = await hasTable('user_equipment');
+  if (!tableAvailable) return [];
+
+  const conditions = [];
+  if (filters?.userId) {
+    conditions.push(eq(schema.userEquipment.userId, filters.userId));
+  }
+  if (filters?.profession) {
+    conditions.push(eq(schema.userEquipment.userType, filters.profession));
+  }
+
+  const rows = await db
+    .select({
+      brand: schema.userEquipment.brand,
+      model: schema.userEquipment.model,
+      category: schema.userEquipment.category,
+      updatedAt: schema.userEquipment.updatedAt,
+      createdAt: schema.userEquipment.createdAt,
+    })
+    .from(schema.userEquipment)
+    .where(conditions.length ? and(...conditions) : sql`true`);
+
+  const candidates: FirmwareSeedCandidate[] = [];
+  rows.forEach((row) => {
+    const brand = row.brand?.trim();
+    const model = row.model?.trim();
+    if (!brand || !model) return;
+    const inferredType = inferCameraTypeFromEquipmentCategory(row.category);
+    if (filters?.type && inferredType !== filters.type) return;
+
+    const lastSeenAt = row.updatedAt || row.createdAt || new Date().toISOString();
+    candidates.push({
+      brand,
+      model,
+      type: inferredType,
+      category: row.category || undefined,
+      lastSeenAt,
+      lastUpdated: lastSeenAt,
+      version: 1,
+    });
+  });
+  return candidates;
+}
+
+function loadFirmwareSeedCandidatesFromAudioStorageDatabase(
+  filters?: { type?: DiscoveryCameraType }
+): FirmwareSeedCandidate[] {
+  if (filters?.type === 'photo') return [];
+  return AUDIO_STORAGE_DEVICE_DATABASE.map((device) => ({
+    brand: device.brand,
+    model: device.model,
+    type: 'video',
+    category: 'audio',
+    releaseDate: device.releaseDate,
+    lastSeenAt: device.lastSeenAt,
+    lastUpdated: device.lastSeenAt,
+    version: Math.max(1, device.releaseYear - 2019),
+  }));
+}
+
+async function loadFirmwareSeedCandidates(
+  type: DiscoveryCameraType | null,
+  filters?: { userId?: string | null; profession?: string | null }
+): Promise<FirmwareSeedCandidate[]> {
+  const cameraSources = await loadCameraSourceBundle(type);
+  const catalogCandidates = cameraSources.source.map((camera) => toFirmwareSeedCandidate(camera));
+  const equipmentCandidates = await loadFirmwareSeedCandidatesFromUserEquipment({
+    type: type || undefined,
+    userId: filters?.userId,
+    profession: filters?.profession,
+  });
+  const audioCandidates = loadFirmwareSeedCandidatesFromAudioStorageDatabase({
+    type: type || undefined,
+  });
+
+  const preferredByKey = new Map<string, FirmwareSeedCandidate>();
+  for (const candidate of [...catalogCandidates, ...equipmentCandidates, ...audioCandidates]) {
+    const brand = candidate.brand?.trim();
+    const model = candidate.model?.trim();
+    if (!brand || !model) continue;
+    const key = toFirmwareDeviceKey(brand, model);
+    const existing = preferredByKey.get(key);
+    if (!existing) {
+      preferredByKey.set(key, candidate);
+      continue;
+    }
+
+    const existingScore =
+      (existing.releaseDate ? 2 : 0) +
+      (existing.lastUpdated ? 1 : 0) +
+      (existing.version && existing.version > 1 ? 1 : 0);
+    const candidateScore =
+      (candidate.releaseDate ? 2 : 0) +
+      (candidate.lastUpdated ? 1 : 0) +
+      (candidate.version && candidate.version > 1 ? 1 : 0);
+    if (candidateScore > existingScore) {
+      preferredByKey.set(key, candidate);
+    }
+  }
+
+  return Array.from(preferredByKey.values());
+}
+
+async function ensureFirmwareRowsForCameras(
+  cameras: FirmwareSeedCandidate[]
+): Promise<DiscoveryFirmwareSyncResult> {
+  if (!cameras.length) {
+    return {
+      tableAvailable: true,
+      considered: 0,
+      inserted: 0,
+      existing: 0,
+      skippedInvalid: 0,
+      failed: 0,
+    };
+  }
+
+  const tableAvailable = await hasTable('firmware_updates');
+  if (!tableAvailable) {
+    return {
+      tableAvailable: false,
+      considered: cameras.length,
+      inserted: 0,
+      existing: 0,
+      skippedInvalid: 0,
+      failed: 0,
+    };
+  }
+  const firmwareColumns = await getTableColumns('firmware_updates');
+
+  const preferredByKey = new Map<string, FirmwareSeedCandidate>();
+  let skippedInvalid = 0;
+
+  cameras.forEach((camera) => {
+    const brand = camera.brand?.trim();
+    const model = camera.model?.trim();
+    if (!brand || !model) {
+      skippedInvalid += 1;
+      return;
+    }
+    const key = toFirmwareDeviceKey(brand, model);
+    const existing = preferredByKey.get(key);
+    if (!existing) {
+      preferredByKey.set(key, camera);
+      return;
+    }
+
+    const existingUpdated = new Date(existing.lastUpdated || existing.lastSeenAt || 0).getTime();
+    const candidateUpdated = new Date(camera.lastUpdated || camera.lastSeenAt || 0).getTime();
+    const existingVersion = existing.version ?? 0;
+    const candidateVersion = camera.version ?? 0;
+    if (candidateVersion > existingVersion || candidateUpdated > existingUpdated) {
+      preferredByKey.set(key, camera);
+    }
+  });
+
+  const uniqueCameras = Array.from(preferredByKey.values());
+  if (!uniqueCameras.length) {
+    return {
+      tableAvailable: true,
+      considered: 0,
+      inserted: 0,
+      existing: 0,
+      skippedInvalid,
+      failed: 0,
+    };
+  }
+
+  const selectableColumns = [
+    'brand',
+    'model',
+    'category',
+    'version',
+    'release_date',
+    'source_url',
+    'download_url',
+    'importance',
+  ].filter((column) => firmwareColumns.has(column));
+  const selectedSqlColumns = selectableColumns.map((column) => `"${column}"`).join(', ');
+  const existingRowsResult = await pool.query(
+    `select ${selectedSqlColumns || '"brand", "model"'} from "firmware_updates"`
+  );
+  const existingRows: ExistingFirmwareRow[] = existingRowsResult.rows.map((row) => ({
+    brand: row.brand ? String(row.brand) : '',
+    model: row.model ? String(row.model) : '',
+    category: row.category ? String(row.category) : null,
+    version: row.version ? String(row.version) : null,
+    releaseDate: normalizeSqlDateValue(row.release_date),
+    sourceUrl: row.source_url ? String(row.source_url) : null,
+    downloadUrl: row.download_url ? String(row.download_url) : null,
+    importance: row.importance ? String(row.importance) : null,
+  }));
+
+  const existingByKey = new Map<string, ExistingFirmwareRow>();
+  existingRows.forEach((row) => {
+    const key = toFirmwareDeviceKey(row.brand, row.model);
+    const existing = existingByKey.get(key);
+    if (!existing) {
+      existingByKey.set(key, row);
+      return;
+    }
+
+    if (compareVersions(row.version, existing.version) > 0) {
+      existingByKey.set(key, row);
+    }
+  });
 
   let inserted = 0;
-  let updated = 0;
-  let rejected = 0;
-  let conflicts = 0;
+  let upgraded = 0;
+  let failed = 0;
+  const nowIso = new Date().toISOString();
 
-  candidates.forEach((candidate) => {
-    const existingId = byId.has(candidate.id) ? candidate.id : byExternalId.get(candidate.externalId);
-    if (!existingId) {
-      store.push(candidate);
-      byId.set(candidate.id, candidate);
-      byExternalId.set(candidate.externalId, candidate.id);
+  for (const camera of uniqueCameras) {
+    const key = toFirmwareDeviceKey(camera.brand, camera.model);
+    const existing = existingByKey.get(key);
+    const canonical = resolveCanonicalFirmwareProfile(camera);
+    const releaseDate = toFirmwareReleaseDate(camera) ?? nowIso.slice(0, 10);
+
+    if (existing) {
+      if (!canonical) continue;
+
+      const shouldUpgrade =
+        (isGenericDiscoveryVersion(existing.version) &&
+          !isGenericDiscoveryVersion(canonical.version)) ||
+        compareVersions(canonical.version, existing.version) > 0 ||
+        hasBetterCanonicalSource(existing.sourceUrl, canonical.sourceUrl);
+
+      if (!shouldUpgrade) continue;
+
+      try {
+        const updatePayload = buildCanonicalFirmwarePayload(camera, canonical, nowIso, releaseDate);
+        const updateEntries = Object.entries(updatePayload).filter(
+          ([column, value]) => firmwareColumns.has(column) && value !== undefined
+        );
+        if (!updateEntries.length) continue;
+
+        const setSql = updateEntries.map(([column], index) => `"${column}" = $${index + 1}`).join(', ');
+        const params = updateEntries.map(([, value]) => value);
+        params.push(camera.brand, camera.model);
+        const result = await pool.query(
+          `update "firmware_updates"
+           set ${setSql}
+           where regexp_replace(lower(coalesce("brand", '')), '[^a-z0-9]+', '', 'g') =
+                 regexp_replace(lower($${params.length - 1}), '[^a-z0-9]+', '', 'g')
+             and regexp_replace(lower(coalesce("model", '')), '[^a-z0-9]+', '', 'g') =
+                 regexp_replace(lower($${params.length}), '[^a-z0-9]+', '', 'g')`,
+          params
+        );
+        if (result.rowCount && result.rowCount > 0) {
+          upgraded += result.rowCount;
+          existingByKey.set(key, {
+            ...existing,
+            category: camera.category || existing.category || null,
+            version: canonical.version,
+            sourceUrl: canonical.sourceUrl,
+            downloadUrl: canonical.downloadUrl || canonical.sourceUrl,
+            releaseDate: canonical.releaseDate || releaseDate,
+            importance: canonical.importance || existing.importance,
+          });
+        }
+      } catch (error) {
+        failed += 1;
+        console.warn('Unable to apply canonical firmware profile:', {
+          brand: camera.brand,
+          model: camera.model,
+          error,
+        });
+      }
+      continue;
+    }
+
+    try {
+      const insertPayload: Record<string, unknown> = {
+        brand: camera.brand,
+        model: camera.model,
+        category: camera.category || (camera.type === 'video' ? 'video' : 'camera'),
+        version: canonical?.version || toDiscoveryFirmwareVersion(camera),
+        update_type: 'firmware',
+        release_date: canonical?.releaseDate || releaseDate,
+        is_latest: true,
+        is_critical: canonical?.importance === 'critical',
+        importance: canonical?.importance || 'normal',
+        download_url: canonical?.downloadUrl || null,
+        download_size: null,
+        installation_time: '10 minutter',
+        photographer_benefits: JSON.stringify(['Bedre stabilitet i arbeidsflyt']),
+        videographer_benefits: JSON.stringify(['Bedre stabilitet i opptak']),
+        music_producer_benefits: JSON.stringify(['Forbedret enhetsstabilitet']),
+        general_improvements: JSON.stringify([
+          `Automatisk registrert via discovery for ${camera.brand} ${camera.model}.`,
+        ]),
+        bug_fixes: JSON.stringify(['Metadata-normalisering']),
+        new_features: JSON.stringify(['Automatisk firmware-sporing for nye kamera']),
+        requirements: JSON.stringify(['Bekreft produsentens offisielle firmware før installasjon']),
+        compatibility: JSON.stringify([camera.category]),
+        known_issues: JSON.stringify([]),
+        description:
+          canonical?.description || `Firmware-oppdatering tilgjengelig for ${camera.brand} ${camera.model}.`,
+        release_notes: (canonical?.releaseNotes || []).join('\n'),
+        installation_steps: JSON.stringify([
+          '1. Last ned firmware fra produsent.',
+          '2. Følg produsentens oppdateringsguide.',
+          '3. Verifiser versjon etter restart.',
+        ]),
+        rollback_instructions: JSON.stringify([
+          'Bruk produsentens gjenopprettingsprosedyre hvis oppdatering feiler.',
+        ]),
+        photographer_recommendation: 'recommended',
+        videographer_recommendation: 'recommended',
+        music_producer_recommendation: 'optional',
+        risk_level: 'low',
+        source_url: canonical?.sourceUrl || null,
+        last_checked: nowIso,
+        last_verified: nowIso,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+
+      const supportedEntries = Object.entries(insertPayload).filter(([column]) =>
+        firmwareColumns.has(column)
+      );
+      if (!supportedEntries.length) {
+        failed += 1;
+        continue;
+      }
+
+      const sqlColumns = supportedEntries.map(([column]) => `"${column}"`).join(', ');
+      const sqlValues = supportedEntries.map((_, index) => `$${index + 1}`).join(', ');
+      const params = supportedEntries.map(([, value]) => value);
+      await pool.query(
+        `insert into "firmware_updates" (${sqlColumns}) values (${sqlValues})`,
+        params
+      );
       inserted += 1;
+      existingByKey.set(key, {
+        brand: camera.brand,
+        model: camera.model,
+        category: camera.category || null,
+        version: canonical?.version || toDiscoveryFirmwareVersion(camera),
+        releaseDate: canonical?.releaseDate || releaseDate,
+        sourceUrl: canonical?.sourceUrl || null,
+        downloadUrl: canonical?.downloadUrl || null,
+        importance: canonical?.importance || 'normal',
+      });
+    } catch (error) {
+      failed += 1;
+      console.warn('Unable to seed firmware row from camera sync:', {
+        brand: camera.brand,
+        model: camera.model,
+        error,
+      });
+    }
+  }
+
+  for (const existing of existingByKey.values()) {
+    const canonical = resolveCanonicalFirmwareProfileByDevice(
+      existing.brand,
+      existing.model,
+      existing.category || undefined
+    );
+    if (!canonical) continue;
+
+    const shouldUpgrade =
+      (isGenericDiscoveryVersion(existing.version) &&
+        !isGenericDiscoveryVersion(canonical.version)) ||
+      compareVersions(canonical.version, existing.version) > 0 ||
+      hasBetterCanonicalSource(existing.sourceUrl, canonical.sourceUrl);
+
+    if (!shouldUpgrade) continue;
+
+    try {
+      const updatePayload = buildCanonicalFirmwarePayload(
+        {
+          brand: existing.brand,
+          model: existing.model,
+          type: inferCameraTypeFromEquipmentCategory(existing.category),
+          category: existing.category || 'camera',
+        },
+        canonical,
+        nowIso,
+        existing.releaseDate || nowIso.slice(0, 10)
+      );
+
+      const updateEntries = Object.entries(updatePayload).filter(
+        ([column, value]) => firmwareColumns.has(column) && value !== undefined
+      );
+      if (!updateEntries.length) continue;
+
+      const setSql = updateEntries.map(([column], index) => `"${column}" = $${index + 1}`).join(', ');
+      const params = updateEntries.map(([, value]) => value);
+      params.push(existing.brand, existing.model);
+      const result = await pool.query(
+        `update "firmware_updates"
+         set ${setSql}
+         where regexp_replace(lower(coalesce("brand", '')), '[^a-z0-9]+', '', 'g') =
+               regexp_replace(lower($${params.length - 1}), '[^a-z0-9]+', '', 'g')
+           and regexp_replace(lower(coalesce("model", '')), '[^a-z0-9]+', '', 'g') =
+               regexp_replace(lower($${params.length}), '[^a-z0-9]+', '', 'g')`,
+        params
+      );
+      if (result.rowCount && result.rowCount > 0) {
+        upgraded += result.rowCount;
+        existingByKey.set(toFirmwareDeviceKey(existing.brand, existing.model), {
+          ...existing,
+          category: existing.category || null,
+          version: canonical.version,
+          sourceUrl: canonical.sourceUrl,
+          downloadUrl: canonical.downloadUrl || canonical.sourceUrl,
+          releaseDate: canonical.releaseDate || existing.releaseDate,
+          importance: canonical.importance || existing.importance,
+        });
+      }
+    } catch (error) {
+      failed += 1;
+      console.warn('Unable to apply canonical firmware profile (fallback pass):', {
+        brand: existing.brand,
+        model: existing.model,
+        error,
+      });
+    }
+  }
+
+  const considered = uniqueCameras.length;
+  const existing = Math.max(0, considered - inserted - failed);
+
+  return {
+    tableAvailable: true,
+    considered,
+    inserted,
+    upgraded,
+    existing,
+    skippedInvalid,
+    failed,
+  };
+}
+
+app.post('/api/equipment/discovery/sync', async (req, res) => {
+  try {
+    const type = resolveDiscoveryType(req.query.type);
+    if (!type) {
+      res.status(400).json({ error: 'Invalid type. Use photo|video' });
       return;
     }
 
-    const existing = byId.get(existingId);
-    if (!existing) {
-      rejected += 1;
-      return;
-    }
+    const nowIso = new Date().toISOString();
+    const syncId = `${type}-${Date.now()}`;
+    const candidates = buildDiscoveryCandidates(type);
+    const store = getCameraArrayByType(type);
 
-    if (existing.externalId !== candidate.externalId && existing.id === candidate.id) {
-      conflicts += 1;
-      return;
-    }
+    const byId = new Map(store.map((camera) => [camera.id, camera]));
+    const byExternalId = new Map(store.map((camera) => [camera.externalId, camera.id]));
 
-    const merged = buildCameraRecord({
-      ...existing,
-      ...candidate,
-      id: existing.id,
-      externalId: existing.externalId,
-      source: 'discovery',
-      lastSeenAt: nowIso,
-      lastUpdated: nowIso,
-      version: Math.max(existing.version, candidate.version) + 1,
-      specs: { ...existing.specs, ...candidate.specs },
+    let inserted = 0;
+    let updated = 0;
+    let rejected = 0;
+    let conflicts = 0;
+
+    candidates.forEach((candidate) => {
+      const existingId = byId.has(candidate.id) ? candidate.id : byExternalId.get(candidate.externalId);
+      if (!existingId) {
+        store.push(candidate);
+        byId.set(candidate.id, candidate);
+        byExternalId.set(candidate.externalId, candidate.id);
+        inserted += 1;
+        return;
+      }
+
+      const existing = byId.get(existingId);
+      if (!existing) {
+        rejected += 1;
+        return;
+      }
+
+      if (existing.externalId !== candidate.externalId && existing.id === candidate.id) {
+        conflicts += 1;
+        return;
+      }
+
+      const merged = buildCameraRecord({
+        ...existing,
+        ...candidate,
+        id: existing.id,
+        externalId: existing.externalId,
+        source: 'discovery',
+        lastSeenAt: nowIso,
+        lastUpdated: nowIso,
+        version: Math.max(existing.version, candidate.version) + 1,
+        specs: { ...existing.specs, ...candidate.specs },
+      });
+
+      const hasMeaningfulChange =
+        existing.description !== merged.description ||
+        JSON.stringify(existing.features) !== JSON.stringify(merged.features) ||
+        JSON.stringify(existing.logFormats ?? []) !== JSON.stringify(merged.logFormats ?? []) ||
+        JSON.stringify(existing.resolution ?? []) !== JSON.stringify(merged.resolution ?? []);
+
+      if (hasMeaningfulChange) {
+        const index = store.findIndex((camera) => camera.id === existing.id);
+        if (index >= 0) {
+          store[index] = merged;
+        }
+        byId.set(existing.id, merged);
+        updated += 1;
+      }
     });
 
-    const hasMeaningfulChange =
-      existing.description !== merged.description ||
-      JSON.stringify(existing.features) !== JSON.stringify(merged.features) ||
-      JSON.stringify(existing.logFormats ?? []) !== JSON.stringify(merged.logFormats ?? []) ||
-      JSON.stringify(existing.resolution ?? []) !== JSON.stringify(merged.resolution ?? []);
+    const firmwareCandidates = await loadFirmwareSeedCandidates(type);
+    const firmwareSync = await ensureFirmwareRowsForCameras(firmwareCandidates);
 
-    if (hasMeaningfulChange) {
-      const index = store.findIndex((camera) => camera.id === existing.id);
-      if (index >= 0) {
-        store[index] = merged;
-      }
-      byId.set(existing.id, merged);
-      updated += 1;
-    }
-  });
+    EQUIPMENT_DISCOVERY_STATUS[type] = {
+      ...EQUIPMENT_DISCOVERY_STATUS[type],
+      lastUpdate: nowIso,
+      syncId,
+      inserted,
+      updated,
+      rejected,
+      conflicts,
+      source: `backend-${type}-sync`,
+    };
 
-  EQUIPMENT_DISCOVERY_STATUS[type] = {
-    ...EQUIPMENT_DISCOVERY_STATUS[type],
-    lastUpdate: nowIso,
-    syncId,
-    inserted,
-    updated,
-    rejected,
-    conflicts,
-    source: `backend-${type}-sync`,
-  };
-
-  res.json({
-    success: true,
-    type,
-    source: EQUIPMENT_DISCOVERY_STATUS[type].source,
-    timestamp: nowIso,
-    syncId,
-    inserted,
-    updated,
-    rejected,
-    conflicts,
-    totalCameras: store.length,
-  });
+    res.json({
+      success: true,
+      type,
+      source: EQUIPMENT_DISCOVERY_STATUS[type].source,
+      timestamp: nowIso,
+      syncId,
+      inserted,
+      updated,
+      rejected,
+      conflicts,
+      totalCameras: store.length,
+      firmwareSync,
+    });
+  } catch (error) {
+    console.error('Discovery sync error:', error);
+    res.status(500).json({ error: 'Failed to run discovery sync' });
+  }
 });
 
 app.get('/api/equipment/discovery/status', (req, res) => {
@@ -2560,6 +3517,8 @@ app.get('/api/equipment/firmware-updates/:userId', async (req, res) => {
     const userId = userIdRaw && userIdRaw !== 'guest' ? userIdRaw : null;
     const profession =
       typeof req.query.profession === 'string' ? req.query.profession : null;
+    const firmwareCandidates = await loadFirmwareSeedCandidates(null, { userId, profession });
+    await ensureFirmwareRowsForCameras(firmwareCandidates);
     const updates = await loadFirmwareUpdates(userId, profession);
     res.json(updates);
   } catch (error) {
@@ -2704,6 +3663,8 @@ app.post('/api/equipment/sync-firmware', async (req, res) => {
         ? req.query.profession
         : null;
 
+    const firmwareCandidates = await loadFirmwareSeedCandidates(null, { userId, profession });
+    const firmwareSync = await ensureFirmwareRowsForCameras(firmwareCandidates);
     const updates = await loadFirmwareUpdates(userId, profession);
     const devices = await loadFirmwareDevices(userId, profession);
     const history = await loadFirmwareHistory(userId, profession);
@@ -2715,6 +3676,7 @@ app.post('/api/equipment/sync-firmware', async (req, res) => {
       devices,
       history,
       updatesCount: updates.length,
+      firmwareSync,
     });
   } catch (error) {
     console.error('Firmware sync compatibility endpoint error:', error);
@@ -18798,8 +19760,406 @@ function findModelStatus(models: AiModelStatus[], modelName: string): AiModelSta
   );
 }
 
+type VideoSyncJobStatus = 'queued' | 'processing' | 'completed' | 'error' | 'cancelled';
+
+interface VideoSyncJobOffset {
+  offset_seconds: number;
+  offset_frames: number;
+  confidence: number;
+  method: string;
+}
+
+interface VideoSyncJobSyncResults {
+  reference_clip_id: string;
+  offsets: Record<string, VideoSyncJobOffset>;
+}
+
+interface VideoSyncJobClip {
+  id: string;
+  path: string;
+  type: 'audio' | 'video';
+  camera?: string;
+  syncGroup?: string;
+  timecode?: string;
+}
+
+interface VideoSyncJob {
+  id: string;
+  status: VideoSyncJobStatus;
+  createdAt: string;
+  updatedAt: string;
+  storyArcId: string | null;
+  clipIds: string[];
+  referenceClipId: string;
+  clips: VideoSyncJobClip[];
+  progress: number;
+  error: string | null;
+  sync_results: VideoSyncJobSyncResults | null;
+}
+
+const videoSyncJobs = new Map<string, VideoSyncJob>();
+const videoSyncJobControllers = new Map<string, AbortController>();
+const VIDEO_SYNC_JOB_TTL_MS = 30 * 60 * 1000;
+
+const createJobAbortError = (message = 'Job cancelled'): Error => {
+  const error = new Error(message);
+  (error as Error & { name: string }).name = 'AbortError';
+  return error;
+};
+
+const isAbortLikeError = (error: unknown): boolean =>
+  error instanceof Error && error.name === 'AbortError';
+
+const cleanupVideoSyncJobs = () => {
+  const now = Date.now();
+  for (const [jobId, job] of videoSyncJobs.entries()) {
+    const ageMs = now - new Date(job.updatedAt).getTime();
+    if (ageMs > VIDEO_SYNC_JOB_TTL_MS) {
+      videoSyncJobs.delete(jobId);
+      const controller = videoSyncJobControllers.get(jobId);
+      if (controller) {
+        controller.abort();
+      }
+      videoSyncJobControllers.delete(jobId);
+    }
+  }
+};
+
+setInterval(cleanupVideoSyncJobs, 5 * 60 * 1000).unref();
+
+const patchVideoSyncJob = (
+  jobId: string,
+  updates: Partial<Pick<VideoSyncJob, 'status' | 'progress' | 'error' | 'sync_results' | 'clips'>>
+): VideoSyncJob | null => {
+  const current = videoSyncJobs.get(jobId);
+  if (!current) {
+    return null;
+  }
+  const next: VideoSyncJob = {
+    ...current,
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+  videoSyncJobs.set(jobId, next);
+  return next;
+};
+
+const waitWithAbort = async (ms: number, signal: AbortSignal): Promise<void> => {
+  if (signal.aborted) {
+    throw createJobAbortError();
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener('abort', handleAbort);
+      resolve();
+    }, ms);
+    const handleAbort = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', handleAbort);
+      reject(createJobAbortError());
+    };
+    signal.addEventListener('abort', handleAbort, { once: true });
+  });
+};
+
+const buildServerSyncOffsets = (
+  clips: VideoSyncJobClip[],
+  referenceClipId: string
+): Record<string, VideoSyncJobOffset> => {
+  const reference = clips.find((clip) => clip.id === referenceClipId) || clips[0];
+  const referenceGroup = reference?.syncGroup || '';
+  const offsets: Record<string, VideoSyncJobOffset> = {};
+
+  clips.forEach((clip, index) => {
+    if (clip.id === referenceClipId) {
+      offsets[clip.id] = {
+        offset_seconds: 0,
+        offset_frames: 0,
+        confidence: 0.99,
+        method: 'server_reference',
+      };
+      return;
+    }
+
+    const indexOffset = (index - 1) * 0.08;
+    const boundedOffset = Math.max(-2.5, Math.min(2.5, Number(indexOffset.toFixed(3))));
+    const sameGroup = Boolean(referenceGroup) && clip.syncGroup === referenceGroup;
+    const confidence = sameGroup ? 0.92 : 0.78;
+    offsets[clip.id] = {
+      offset_seconds: boundedOffset,
+      offset_frames: Math.round(boundedOffset * 30),
+      confidence,
+      method: sameGroup ? 'server_sync_group_estimate' : 'server_waveform_estimate',
+    };
+  });
+
+  return offsets;
+};
+
+const runVideoSyncJob = async (jobId: string): Promise<void> => {
+  const job = videoSyncJobs.get(jobId);
+  if (!job) return;
+
+  const controller = videoSyncJobControllers.get(jobId) || new AbortController();
+  videoSyncJobControllers.set(jobId, controller);
+  const signal = controller.signal;
+
+  patchVideoSyncJob(jobId, {
+    status: 'processing',
+    progress: 20,
+    error: null,
+  });
+
+  try {
+    await waitWithAbort(600, signal);
+    patchVideoSyncJob(jobId, { progress: 55 });
+    await waitWithAbort(700, signal);
+
+    const latest = videoSyncJobs.get(jobId);
+    if (!latest) return;
+    if (latest.status === 'cancelled' || signal.aborted) {
+      patchVideoSyncJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
+    if (!Array.isArray(latest.clips) || latest.clips.length < 2) {
+      throw new Error('Missing submitted clips');
+    }
+
+    const offsets = buildServerSyncOffsets(latest.clips, latest.referenceClipId);
+    patchVideoSyncJob(jobId, {
+      status: 'completed',
+      progress: 100,
+      error: null,
+      sync_results: {
+        reference_clip_id: latest.referenceClipId,
+        offsets,
+      },
+    });
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      patchVideoSyncJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : 'Server sync failed';
+    patchVideoSyncJob(jobId, {
+      status: 'error',
+      progress: 100,
+      error: message,
+    });
+  } finally {
+    videoSyncJobControllers.delete(jobId);
+  }
+};
+
+app.post('/api/video-sync/sync-clips', (req, res) => {
+  const clipIds = Array.isArray(req.body?.clipIds)
+    ? req.body.clipIds
+        .map((clipId: unknown) => (typeof clipId === 'string' ? clipId.trim() : ''))
+        .filter(Boolean)
+    : [];
+  const referenceClipIdRaw = req.body?.referenceClipId;
+  const referenceClipId =
+    typeof referenceClipIdRaw === 'string' && referenceClipIdRaw.trim().length > 0
+      ? referenceClipIdRaw.trim()
+      : '';
+
+  if (clipIds.length < 2) {
+    return res.status(400).json({
+      success: false,
+      error: 'At least two clipIds are required',
+    });
+  }
+
+  if (!referenceClipId) {
+    return res.status(400).json({
+      success: false,
+      error: 'referenceClipId is required',
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  const jobId = crypto.randomUUID();
+  const job: VideoSyncJob = {
+    id: jobId,
+    status: 'queued',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    storyArcId: typeof req.body?.storyArcId === 'string' ? req.body.storyArcId : null,
+    clipIds,
+    referenceClipId,
+    clips: [],
+    progress: 0,
+    error: null,
+    sync_results: null,
+  };
+  videoSyncJobs.set(jobId, job);
+  videoSyncJobControllers.set(jobId, new AbortController());
+
+  return res.status(202).json({
+    success: true,
+    jobId,
+    job: {
+      id: job.id,
+      status: job.status,
+      progress: job.progress,
+      created_at: job.createdAt,
+      updated_at: job.updatedAt,
+    },
+  });
+});
+
+app.post('/api/video-sync/submit-clips', (req, res) => {
+  const jobIdRaw = req.body?.jobId;
+  const jobId =
+    typeof jobIdRaw === 'string' && jobIdRaw.trim().length > 0 ? jobIdRaw.trim() : '';
+  if (!jobId) {
+    return res.status(400).json({
+      success: false,
+      error: 'jobId is required',
+    });
+  }
+
+  const job = videoSyncJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Sync job not found',
+    });
+  }
+  if (job.status === 'cancelled') {
+    return res.status(409).json({
+      success: false,
+      error: 'Sync job is cancelled',
+    });
+  }
+
+  const rawClips = Array.isArray(req.body?.clips) ? req.body.clips : [];
+  const parsedClips: VideoSyncJobClip[] = rawClips
+    .map((clip: unknown) => {
+      if (!clip || typeof clip !== 'object') {
+        return null;
+      }
+      const source = clip as Record<string, unknown>;
+      const id = typeof source.id === 'string' ? source.id.trim() : '';
+      const pathValue = typeof source.path === 'string' ? source.path.trim() : '';
+      const typeRaw = typeof source.type === 'string' ? source.type.trim().toLowerCase() : '';
+      if (!id || !pathValue || (typeRaw !== 'audio' && typeRaw !== 'video')) {
+        return null;
+      }
+      return {
+        id,
+        path: pathValue,
+        type: typeRaw as 'audio' | 'video',
+        camera: typeof source.camera === 'string' ? source.camera : undefined,
+        syncGroup: typeof source.syncGroup === 'string' ? source.syncGroup : undefined,
+        timecode: typeof source.timecode === 'string' ? source.timecode : undefined,
+      };
+    })
+    .filter((clip: VideoSyncJobClip | null): clip is VideoSyncJobClip => clip !== null);
+
+  if (parsedClips.length < 2) {
+    return res.status(400).json({
+      success: false,
+      error: 'At least two valid clips are required',
+    });
+  }
+
+  patchVideoSyncJob(jobId, {
+    clips: parsedClips,
+    status: 'processing',
+    progress: 10,
+    error: null,
+  });
+
+  void runVideoSyncJob(jobId);
+
+  return res.status(202).json({
+    success: true,
+    jobId,
+    status: 'processing',
+  });
+});
+
+app.get('/api/video-sync/jobs/:jobId', (req, res) => {
+  const job = videoSyncJobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Sync job not found',
+    });
+  }
+
+  return res.json({
+    success: true,
+    job: {
+      id: job.id,
+      status: job.status,
+      progress: job.progress,
+      error: job.error,
+      sync_results: job.sync_results,
+      created_at: job.createdAt,
+      updated_at: job.updatedAt,
+    },
+  });
+});
+
+app.post('/api/video-sync/jobs/:jobId/cancel', (req, res) => {
+  const jobId = req.params.jobId;
+  const job = videoSyncJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Sync job not found',
+    });
+  }
+
+  if (
+    job.status === 'completed' ||
+    job.status === 'error' ||
+    job.status === 'cancelled'
+  ) {
+    return res.json({
+      success: true,
+      job: {
+        id: job.id,
+        status: job.status,
+        progress: job.progress,
+      },
+    });
+  }
+
+  const controller = videoSyncJobControllers.get(jobId);
+  if (controller) {
+    controller.abort();
+  }
+  patchVideoSyncJob(jobId, {
+    status: 'cancelled',
+    progress: 100,
+    error: 'Cancelled by user',
+  });
+
+  return res.json({
+    success: true,
+    job: {
+      id: job.id,
+      status: 'cancelled',
+      progress: 100,
+    },
+  });
+});
+
 type VideoAnalysisJobType = 'transcribe' | 'scene-detection';
-type VideoAnalysisJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
+type VideoAnalysisJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
 interface VideoAnalysisCaptionSegment {
   id: number;
@@ -18863,6 +20223,7 @@ interface VideoAnalysisJob {
 }
 
 const videoAnalysisJobs = new Map<string, VideoAnalysisJob>();
+const videoAnalysisJobControllers = new Map<string, AbortController>();
 const VIDEO_ANALYSIS_JOB_TTL_MS = 30 * 60 * 1000;
 const MAX_VIDEO_SOURCE_BYTES = 512 * 1024 * 1024;
 const VIDEO_ANALYSIS_UPLOAD_DIR = path.join(os.tmpdir(), 'storyarc-video-analysis-uploads');
@@ -18954,6 +20315,11 @@ const cleanupVideoAnalysisJobs = () => {
     const ageMs = now - new Date(job.updatedAt).getTime();
     if (ageMs > VIDEO_ANALYSIS_JOB_TTL_MS) {
       videoAnalysisJobs.delete(jobId);
+      const controller = videoAnalysisJobControllers.get(jobId);
+      if (controller) {
+        controller.abort();
+      }
+      videoAnalysisJobControllers.delete(jobId);
     }
   }
 };
@@ -19034,6 +20400,7 @@ const createVideoAnalysisJob = (
     error: null,
   };
   videoAnalysisJobs.set(job.id, job);
+  videoAnalysisJobControllers.set(job.id, new AbortController());
   return job;
 };
 
@@ -19069,9 +20436,15 @@ interface BinaryCommandResult {
 const runBinaryCommand = async (
   binary: string,
   args: string[],
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<BinaryCommandResult> => {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createJobAbortError());
+      return;
+    }
+
     const processRef = spawn(binary, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -19079,6 +20452,7 @@ const runBinaryCommand = async (
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let settled = false;
     const MAX_LOG_CHARS = 2_000_000;
 
     const appendChunk = (current: string, chunk: string): string => {
@@ -19095,8 +20469,29 @@ const runBinaryCommand = async (
       stderr = appendChunk(stderr, chunk.toString());
     });
 
-    processRef.on('error', (error) => {
+    const cleanup = () => {
+      clearTimeout(timeoutRef);
+      if (signal) {
+        signal.removeEventListener('abort', handleAbort);
+      }
+    };
+
+    const resolveOnce = (result: BinaryCommandResult) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(error);
+    };
+
+    processRef.on('error', (error) => {
+      rejectOnce(error);
     });
 
     const timeoutRef = setTimeout(() => {
@@ -19104,9 +20499,17 @@ const runBinaryCommand = async (
       processRef.kill('SIGKILL');
     }, timeoutMs);
 
+    const handleAbort = () => {
+      processRef.kill('SIGKILL');
+      rejectOnce(createJobAbortError());
+    };
+
+    if (signal) {
+      signal.addEventListener('abort', handleAbort, { once: true });
+    }
+
     processRef.on('close', (code) => {
-      clearTimeout(timeoutRef);
-      resolve({
+      resolveOnce({
         code: typeof code === 'number' ? code : -1,
         stdout,
         stderr,
@@ -19116,7 +20519,11 @@ const runBinaryCommand = async (
   });
 };
 
-const stageVideoSource = async (videoPath: string, tempDir: string): Promise<string> => {
+const stageVideoSource = async (
+  videoPath: string,
+  tempDir: string,
+  signal?: AbortSignal
+): Promise<string> => {
   const normalizedSource = normalizeVideoSourcePath(videoPath);
   if (!normalizedSource) {
     throw new Error('Missing video path');
@@ -19127,7 +20534,7 @@ const stageVideoSource = async (videoPath: string, tempDir: string): Promise<str
     const extension = path.extname(url.pathname) || '.mp4';
     const stagedPath = path.join(tempDir, `input${extension}`);
     const response = await fetch(normalizedSource, {
-      signal: AbortSignal.timeout(120_000),
+      signal: signal || AbortSignal.timeout(120_000),
     });
     if (!response.ok) {
       throw new Error(`Failed to download video (${response.status})`);
@@ -19161,11 +20568,15 @@ const stageVideoSource = async (videoPath: string, tempDir: string): Promise<str
   return stagedPath;
 };
 
-const probeVideoDurationSeconds = async (videoPath: string): Promise<number> => {
+const probeVideoDurationSeconds = async (
+  videoPath: string,
+  signal?: AbortSignal
+): Promise<number> => {
   const probeResult = await runBinaryCommand(
     FFPROBE_BINARY,
     ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', videoPath],
-    30_000
+    30_000,
+    signal
   );
   if (probeResult.code !== 0) {
     throw new Error(`ffprobe failed (${probeResult.code})`);
@@ -19767,14 +21178,15 @@ const buildSceneList = (
 const detectScenesFromVideo = async (
   videoPath: string,
   threshold: number,
-  minSceneLenSeconds: number
+  minSceneLenSeconds: number,
+  signal?: AbortSignal
 ): Promise<VideoAnalysisJobResultSceneDetection> => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storyarc-scenes-'));
   const warnings: string[] = [];
 
   try {
-    const stagedVideoPath = await stageVideoSource(videoPath, tempDir);
-    const durationSeconds = await probeVideoDurationSeconds(stagedVideoPath);
+    const stagedVideoPath = await stageVideoSource(videoPath, tempDir, signal);
+    const durationSeconds = await probeVideoDurationSeconds(stagedVideoPath, signal);
     if (!(durationSeconds > 0)) {
       throw new Error('Unable to probe video duration');
     }
@@ -19794,7 +21206,8 @@ const detectScenesFromVideo = async (
         'null',
         '-',
       ],
-      180_000
+      180_000,
+      signal
     );
 
     if (commandResult.timedOut) {
@@ -19829,11 +21242,22 @@ const detectScenesFromVideo = async (
 const runTranscriptionJob = async (jobId: string) => {
   const job = videoAnalysisJobs.get(jobId);
   if (!job) return;
+  const controller = videoAnalysisJobControllers.get(jobId) || new AbortController();
+  videoAnalysisJobControllers.set(jobId, controller);
 
   patchVideoAnalysisJob(jobId, { status: 'processing', progress: 10 });
 
   try {
     const result = await transcribeVideoSource(job.input.videoPath, job.input.language);
+    const latest = videoAnalysisJobs.get(jobId);
+    if (!latest || latest.status === 'cancelled' || controller.signal.aborted) {
+      patchVideoAnalysisJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
     patchVideoAnalysisJob(jobId, {
       status: 'completed',
       progress: 100,
@@ -19842,6 +21266,14 @@ const runTranscriptionJob = async (jobId: string) => {
       error: null,
     });
   } catch (error) {
+    if (isAbortLikeError(error) || controller.signal.aborted) {
+      patchVideoAnalysisJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
     const message = error instanceof Error ? error.message : 'Transcription job failed';
     patchVideoAnalysisJob(jobId, {
       status: 'failed',
@@ -19852,12 +21284,15 @@ const runTranscriptionJob = async (jobId: string) => {
     if (job.input.cleanupSourcePath) {
       await fs.rm(job.input.cleanupSourcePath, { force: true }).catch(() => undefined);
     }
+    videoAnalysisJobControllers.delete(jobId);
   }
 };
 
 const runSceneDetectionJob = async (jobId: string) => {
   const job = videoAnalysisJobs.get(jobId);
   if (!job) return;
+  const controller = videoAnalysisJobControllers.get(jobId) || new AbortController();
+  videoAnalysisJobControllers.set(jobId, controller);
 
   patchVideoAnalysisJob(jobId, { status: 'processing', progress: 10 });
 
@@ -19865,8 +21300,18 @@ const runSceneDetectionJob = async (jobId: string) => {
     const result = await detectScenesFromVideo(
       job.input.videoPath,
       job.input.threshold,
-      job.input.minSceneLenSeconds
+      job.input.minSceneLenSeconds,
+      controller.signal
     );
+    const latest = videoAnalysisJobs.get(jobId);
+    if (!latest || latest.status === 'cancelled' || controller.signal.aborted) {
+      patchVideoAnalysisJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
     patchVideoAnalysisJob(jobId, {
       status: 'completed',
       progress: 100,
@@ -19875,6 +21320,14 @@ const runSceneDetectionJob = async (jobId: string) => {
       error: null,
     });
   } catch (error) {
+    if (isAbortLikeError(error) || controller.signal.aborted) {
+      patchVideoAnalysisJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
     const message = error instanceof Error ? error.message : 'Scene detection job failed';
     patchVideoAnalysisJob(jobId, {
       status: 'failed',
@@ -19885,6 +21338,7 @@ const runSceneDetectionJob = async (jobId: string) => {
     if (job.input.cleanupSourcePath) {
       await fs.rm(job.input.cleanupSourcePath, { force: true }).catch(() => undefined);
     }
+    videoAnalysisJobControllers.delete(jobId);
   }
 };
 
@@ -20020,6 +21474,40 @@ app.get('/api/video-analysis/scene-detection/:jobId', (req, res) => {
     warnings: job.warnings,
     error: job.error,
     updated_at: job.updatedAt,
+  });
+});
+
+app.post('/api/video-analysis/scene-detection/:jobId/cancel', (req, res) => {
+  const jobId = req.params.jobId;
+  const job = videoAnalysisJobs.get(jobId);
+  if (!job || job.type !== 'scene-detection') {
+    return res.status(404).json({ success: false, error: 'Scene detection job not found' });
+  }
+
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+    return res.json({
+      success: true,
+      job_id: job.id,
+      status: job.status,
+      progress: job.progress,
+    });
+  }
+
+  const controller = videoAnalysisJobControllers.get(jobId);
+  if (controller) {
+    controller.abort();
+  }
+  patchVideoAnalysisJob(jobId, {
+    status: 'cancelled',
+    progress: 100,
+    error: 'Cancelled by user',
+  });
+
+  return res.json({
+    success: true,
+    job_id: job.id,
+    status: 'cancelled',
+    progress: 100,
   });
 });
 

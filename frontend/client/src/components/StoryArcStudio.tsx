@@ -1,12 +1,10 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useLocation as useWouterLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { PushNotificationSettings } from './shared/PushNotificationSettings';
 import {
   Box,
-  AppBar,
-  Toolbar,
   Typography,
   IconButton,
   Divider,
@@ -21,6 +19,23 @@ import {
   Alert,
   TextField,
   Card,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Snackbar,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  LinearProgress,
+  CircularProgress,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -53,72 +68,44 @@ import {
   GpsFixed,
   Notifications,
   NotificationsActive,
+  CheckCircle,
+  FilterVintage,
+  Palette,
+  TextFields,
+  Subtitles,
+  MusicNote,
+  RemoveCircle,
 } from '@mui/icons-material';
 import { ThemeProvider } from '@mui/material/styles';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Snackbar,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  LinearProgress,
-  Checkbox,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  ListItemSecondaryAction,
-  CircularProgress,
-  ListItemText as ListItemTextType,
-} from '@mui/material';
-import { CheckCircle } from '@mui/icons-material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import { storyArcStudioTheme } from '../theme/storyArcStudioTheme';
 import EnhancementRatingDialog from './ai-training/EnhancementRatingDialog';
 import AudioEnhancementDialog from './audio/AudioEnhancementDialog';
 import BatchAudioEnhancementDialog from './audio/BatchAudioEnhancementDialog';
 import AIAudioAssistantDialog from './audio/AIAudioAssistantDialog';
-import StoryArcDataIntegration, { BeatClip, Track, StoryArc } from '../services/storyArcDataIntegration';
+import StoryArcDataIntegration, { type BeatClip, type Track, type StoryArc } from '../services/storyArcDataIntegration';
 import ProfessionalTimeline, {
   AUDIO_TRACK_ROLE_OPTIONS,
   type AudioTrackRole,
-  TimelineMarker,
-  TrackState,
-  TimelineTransition,
+  type TimelineMarker,
+  type TrackState,
+  type TimelineTransition,
 } from './ProfessionalTimeline';
 import AssetBrowser from './AssetBrowser';
 import StoryArcAutoMonitor from './StoryArcAutoMonitor';
 import InspectorPanel from './InspectorPanel';
-import ExportDialog from './ExportDialog';
 import StoryArcStudioLogo from './ui/StoryArcStudioLogo';
 import { videoEngine } from '../services/video-playback-engine';
 import { timelineEngine } from '../services/timeline-engine';
-import DaVinciResolveExportDialog from './timeline/DaVinciResolveExportDialog';
-import AIStoryGeneratorDialog from './timeline/AIStoryGeneratorDialog';
-import type { ProjectToEditorData, EditorToProjectResult } from '../utils/story-arc-project-integration';
-import { getCulturalHighlights, formatShotListForAI, generateAIPrompt, generateWorklogDescription } from '../utils/story-arc-project-integration';
-import TransitionLibrary from './timeline/TransitionLibrary';
-import SpeedRampPanel from './timeline/SpeedRampPanel';
+import {
+  getCulturalHighlights,
+  formatShotListForAI,
+  generateAIPrompt,
+  generateWorklogDescription,
+  type ProjectToEditorData,
+  type EditorToProjectResult,
+} from '../utils/story-arc-project-integration';
 import ProfessionalWaveform from './timeline/ProfessionalWaveform';
-import TextOverlayPanel from './timeline/TextOverlayPanel';
-import GPUFiltersPanel from './timeline/GPUFiltersPanel';
-import ColorGradingPanel from './timeline/ColorGradingPanel';
-import AutoCaptionsPanel from './timeline/AutoCaptionsPanel';
-import BeatSyncPanel from './timeline/BeatSyncPanel';
-import BackgroundRemovalPanel from './timeline/BackgroundRemovalPanel';
-import MotionTrackingPanel from './timeline/MotionTrackingPanel';
-import ObjectSegmentationPanel from './timeline/ObjectSegmentationPanel';
-import HLSImportDialog from './timeline/HLSImportDialog';
-import LUTLibrary from './timeline/LUTLibrary';
 import CinematographyCompositionOverlay, {
   CINEMATOGRAPHY_ASPECT_MASKS,
   CINEMATOGRAPHY_SPIRAL_ORIENTATIONS,
@@ -135,46 +122,120 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './universal/hooks/useDynamicProfessions';
-import { pixiFilterEngine } from '../services/pixi-filter-engine';
-import { textOverlayEngine } from '../services/text-overlay-engine';
+import { pixiFilterEngine, type FilterConfig } from '../services/pixi-filter-engine';
+import { textOverlayEngine, type TextOverlay } from '../services/text-overlay-engine';
 import { TextAnimationEngine } from '../services/text-animation-engine';
-import { ColorGradingEngine } from '../services/color-grading-engine';
+import { ColorGradingEngine, type ColorGrade } from '../services/color-grading-engine';
 import { HLSStreamingService } from '../services/hls-streaming-service';
 import { webWorkerEngine } from '../services/web-worker-engine';
 import { ThumbnailCacheService } from '../services/thumbnail-cache-service';
 import { audioAnalysisEngine } from '../services/audio-analysis-engine';
+import type { SpeedKeyframe } from '../services/speed-ramp-engine';
+import type { CaptionSegment } from './timeline/AutoCaptionsPanel';
 import {
   audioSyncEngine,
   type AudioSyncClipInput,
   type AudioSyncResult as EngineAudioSyncResult,
 } from '../services/audio-sync-engine';
-import { faceDetectionWorker, type FaceDetectionProgress, type FaceDetectionResult } from '../services/face-detection-worker';
+import { type FaceDetectionProgress } from '../services/face-detection-worker';
+import { useStoryArcOnboardingFlow, type RecentStoryArcProject } from './story-arc-studio/hooks/useStoryArcOnboardingFlow';
+import { useStoryArcSyncUiActions } from './story-arc-studio/hooks/useStoryArcSyncUiActions';
+import { useStoryArcFaceDetectionFlow } from './story-arc-studio/hooks/useStoryArcFaceDetectionFlow';
+import { useStoryArcLongJobManager } from './story-arc-studio/hooks/useStoryArcLongJobManager';
+import { useStoryArcPanelStateReducer } from './story-arc-studio/hooks/useStoryArcPanelStateReducer';
+import { useStoryArcTimelineHandlers } from './story-arc-studio/hooks/useStoryArcTimelineHandlers';
+import { useStoryArcMonitorHandlers } from './story-arc-studio/hooks/useStoryArcMonitorHandlers';
+import { useStoryArcAudioFlows } from './story-arc-studio/hooks/useStoryArcAudioFlows';
+import { useStoryArcPanelFlows } from './story-arc-studio/hooks/useStoryArcPanelFlows';
 import {
-  FilterVintage,
-  Palette,
-  TextFields,
-  Subtitles,
-  MusicNote,
-  RemoveCircle,
-} from '@mui/icons-material';
+  StoryArcMonitorSection,
+  StoryArcSidePanel,
+  StoryArcTimelineSection,
+  StoryArcTopBar,
+} from './story-arc-studio/sections/StoryArcLayoutSections';
+import { StoryArcSyncDialog } from './story-arc-studio/sections/StoryArcSyncDialog';
+import { StoryArcFaceDetectionDialog } from './story-arc-studio/sections/StoryArcFaceDetectionDialog';
+import {
+  StoryArcSceneDetectionDialog,
+  type StoryArcSceneDetectionProgress,
+} from './story-arc-studio/sections/StoryArcSceneDetectionDialog';
+import {
+  isRecord,
+  normalizeAIGeneratedPayload,
+  normalizeSceneDetectionProgress,
+  toErrorMessage,
+} from './story-arc-studio/storyArcStudioNormalizers';
+import { enforceTimelineInvariants } from './story-arc-studio/timelineInvariants';
+const loadExportDialog = () => import('./ExportDialog');
+const loadAIStoryGeneratorDialog = () => import('./timeline/AIStoryGeneratorDialog');
+const loadDaVinciResolveExportDialog = () => import('./timeline/DaVinciResolveExportDialog');
+const loadTransitionLibrary = () => import('./timeline/TransitionLibrary');
+const loadSpeedRampPanel = () => import('./timeline/SpeedRampPanel');
+const loadTextOverlayPanel = () => import('./timeline/TextOverlayPanel');
+const loadGPUFiltersPanel = () => import('./timeline/GPUFiltersPanel');
+const loadColorGradingPanel = () => import('./timeline/ColorGradingPanel');
+const loadAutoCaptionsPanel = () => import('./timeline/AutoCaptionsPanel');
+const loadBeatSyncPanel = () => import('./timeline/BeatSyncPanel');
+const loadBackgroundRemovalPanel = () => import('./timeline/BackgroundRemovalPanel');
+const loadMotionTrackingPanel = () => import('./timeline/MotionTrackingPanel');
+const loadObjectSegmentationPanel = () => import('./timeline/ObjectSegmentationPanel');
+const loadHLSImportDialog = () => import('./timeline/HLSImportDialog');
+const loadLUTLibrary = () => import('./timeline/LUTLibrary');
+
+const ExportDialog = lazy(loadExportDialog);
+const AIStoryGeneratorDialog = lazy(loadAIStoryGeneratorDialog);
+const DaVinciResolveExportDialog = lazy(loadDaVinciResolveExportDialog);
+const TransitionLibrary = lazy(loadTransitionLibrary);
+const SpeedRampPanel = lazy(loadSpeedRampPanel);
+const TextOverlayPanel = lazy(loadTextOverlayPanel);
+const GPUFiltersPanel = lazy(loadGPUFiltersPanel);
+const ColorGradingPanel = lazy(loadColorGradingPanel);
+const AutoCaptionsPanel = lazy(loadAutoCaptionsPanel);
+const BeatSyncPanel = lazy(loadBeatSyncPanel);
+const BackgroundRemovalPanel = lazy(loadBackgroundRemovalPanel);
+const MotionTrackingPanel = lazy(loadMotionTrackingPanel);
+const ObjectSegmentationPanel = lazy(loadObjectSegmentationPanel);
+const HLSImportDialog = lazy(loadHLSImportDialog);
+const LUTLibrary = lazy(loadLUTLibrary);
+
+const preloadExportDialog = () => { void loadExportDialog(); };
+const preloadAIStoryGeneratorDialog = () => { void loadAIStoryGeneratorDialog(); };
+const preloadDaVinciResolveExportDialog = () => { void loadDaVinciResolveExportDialog(); };
+const preloadTransitionLibrary = () => { void loadTransitionLibrary(); };
+const preloadSpeedRampPanel = () => { void loadSpeedRampPanel(); };
+const preloadTextOverlayPanel = () => { void loadTextOverlayPanel(); };
+const preloadGPUFiltersPanel = () => { void loadGPUFiltersPanel(); };
+const preloadColorGradingPanel = () => { void loadColorGradingPanel(); };
+const preloadAutoCaptionsPanel = () => { void loadAutoCaptionsPanel(); };
+const preloadBeatSyncPanel = () => { void loadBeatSyncPanel(); };
+const preloadBackgroundRemovalPanel = () => { void loadBackgroundRemovalPanel(); };
+const preloadMotionTrackingPanel = () => { void loadMotionTrackingPanel(); };
+const preloadObjectSegmentationPanel = () => { void loadObjectSegmentationPanel(); };
+const preloadHLSImportDialog = () => { void loadHLSImportDialog(); };
+const preloadLUTLibrary = () => { void loadLUTLibrary(); };
 
 interface StoryArcStudioProps {
   storyArcId?: string;
   onClose?: () => void;
   // Integration props for unified workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  onMeetingCreate?: (meeting: Record<string, unknown>) => void;
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onWorklogCreate?: (worklog: Record<string, unknown>) => void;
+  onClientSelect?: (client: Record<string, unknown>) => void;
+  onClientUpdate?: (client: Record<string, unknown>) => void;
+  onShowcaseCreate?: (showcase: Record<string, unknown>) => void;
+  onFileUpload?: (file: Record<string, unknown>) => void;
+  onFileDownload?: (file: Record<string, unknown>) => void;
+  selectedProject?: {
+    id?: string | number;
+    name?: string;
+    projectName?: string;
+    [key: string]: unknown;
+  } | null;
+  onProjectSelect?: (project: Record<string, unknown>) => void;
+  selectedClient?: Record<string, unknown> | null;
+  onSettingsUpdate?: (settings: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 interface PanelSizes {
@@ -274,6 +335,17 @@ interface MulticamAngleCandidate {
   isLive: boolean;
 }
 
+function LazyPanelFallback() {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 2, py: 1.5 }}>
+      <CircularProgress size={16} />
+      <Typography variant="caption" color="text.secondary">
+        Loading panel...
+      </Typography>
+    </Box>
+  );
+}
+
 interface ClipClipboardItem {
   clip: BeatClip;
   relativeStart: number;
@@ -307,6 +379,47 @@ interface ExportedVideoResult {
   codec?: string;
   format?: string;
 }
+
+interface StoryArcSessionUser {
+  id?: string;
+  email?: string;
+  isAuthenticated?: boolean;
+  [key: string]: unknown;
+}
+
+interface AudioLoudnessMetrics {
+  standard?: string;
+  original_lufs?: number;
+  final_lufs?: number;
+  [key: string]: unknown;
+}
+
+interface AudioEnhancementMetrics {
+  loudness?: AudioLoudnessMetrics;
+  enhancement?: {
+    method?: string;
+    snr_improvement?: number;
+    quality?: string;
+    [key: string]: unknown;
+  };
+  duration_seconds?: number;
+  tracks_processed?: number;
+  final_lufs?: number;
+  [key: string]: unknown;
+}
+
+interface BatchAudioEnhancementResult {
+  file: File;
+  status: 'pending' | 'processing' | 'success' | 'error';
+  enhancedUrl?: string;
+  metrics?: AudioEnhancementMetrics;
+  error?: string;
+}
+
+type ColorGradeSelection = Partial<ColorGrade> & {
+  name?: string;
+  [key: string]: unknown;
+};
 
 interface StoryArcEditorTestHook {
   selectClipById: (clipId: string) => boolean;
@@ -369,6 +482,10 @@ const RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY = 'storyArcStudio.resolve.workspa
 const RESOLVE_WORKSPACE_PROFILES_STORAGE_KEY = 'storyArcStudio.resolve.workspace-profiles.v1';
 const TIMELINE_ZOOM_STORAGE_KEY = 'storyArcStudio.timeline.zoom.v1';
 const COMPOSITION_SETTINGS_STORAGE_KEY = 'storyArcStudio.composition.settings.v1';
+const ONBOARDING_COMPLETED_STORAGE_KEY = 'storyArcStudio_onboardingCompleted';
+const PROJECT_CONTEXT_SESSION_STORAGE_KEY = 'storyArcStudio_projectContext';
+const ENABLE_EDITOR_TEST_HOOKS = import.meta.env.DEV;
+const ENABLE_EXPERIMENTAL_TIMELINE_PANELS = import.meta.env.VITE_ENABLE_STORYARC_EXPERIMENTAL_PANELS !== 'false';
 const RESOLVE_WORKSPACE_PRESETS: ResolveWorkspacePreset[] = [
   'edit',
   'cut',
@@ -428,6 +545,50 @@ const STORY_ARC_SHORTCUT_PARITY_MATRIX: StoryArcShortcutBinding[] = [
   { id: 'history-undo', label: 'Undo', keys: 'Cmd/Ctrl + Z', category: 'history', note: 'Undo last timeline operation' },
   { id: 'history-redo', label: 'Redo', keys: 'Cmd/Ctrl + Shift + Z', category: 'history', note: 'Redo timeline operation' },
 ];
+
+function getSafeLocalStorageItem(key: string): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setSafeLocalStorageItem(key: string, value: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (e.g. quota/private mode).
+  }
+}
+
+function getSafeSessionStorageItem(key: string): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setSafeSessionStorageItem(key: string, value: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (e.g. quota/private mode).
+  }
+}
 
 const DEFAULT_COMPOSITION_SETTINGS: StoryArcCompositionSettings = {
   enabled: false,
@@ -775,6 +936,12 @@ function buildFallbackStoryArc(
   };
 }
 
+function withDataInputProps<T extends Record<`data-${string}`, string>>(
+  attrs: T
+): React.InputHTMLAttributes<HTMLInputElement> {
+  return attrs as unknown as React.InputHTMLAttributes<HTMLInputElement>;
+}
+
 function buildProjectContextFromWindowState(
   value: unknown
 ): ProjectToEditorData | null {
@@ -833,7 +1000,7 @@ function getInitialProjectContextFromEnvironment(): ProjectToEditorData | null {
   }
 
   try {
-    const persisted = sessionStorage.getItem('storyArcStudio_projectContext');
+    const persisted = getSafeSessionStorageItem(PROJECT_CONTEXT_SESSION_STORAGE_KEY);
     if (persisted) {
       const parsed = JSON.parse(persisted) as unknown;
       const fromSession = buildProjectContextFromWindowState(parsed);
@@ -887,8 +1054,78 @@ export default function StoryArcStudio({
   const userAdjustedTimelineZoomRef = useRef(false);
   const timelineZoomLoadedFromStorageRef = useRef(false);
   const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
-  const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showAutoMonitor, setShowAutoMonitor] = useState(false);
+  const clipMap = useMemo(() => new Map(clips.map((clip) => [clip.id, clip])), [clips]);
+  const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
+  const {
+    showExportDialog,
+    showAutoMonitor,
+    showFaceDetectionDialog,
+    showSceneDetectionDialog,
+    showFaceDetectionOptionsDialog,
+    showSubclipsConfirmDialog,
+    showProgramMonitor,
+    showCompositionGuides,
+    showCompositionGuideDialog,
+    showAssetPanel,
+    showInspectorPanel,
+    showEffectsPanel,
+    showMixerPanel,
+    showLUTLibraryDialog,
+    showHLSImportDialog,
+    showResolveExportDialog,
+    settingsOpen,
+    pushSettingsOpen,
+    onboardingOpen,
+    showAIGeneratorDialog,
+    showRatingDialog,
+    showTransitionLibrary,
+    showSpeedRampPanel,
+    showTextOverlayPanel,
+    showGPUFiltersPanel,
+    showColorGradingPanel,
+    showAutoCaptionsPanel,
+    showBeatSyncPanel,
+    showMotionTrackingPanel,
+    showObjectSegmentationPanel,
+    showSyncDialog,
+    showAudioEnhancementDialog,
+    showBatchAudioDialog,
+    showAIAudioAssistant,
+    setShowExportDialog,
+    setShowAutoMonitor,
+    setShowFaceDetectionDialog,
+    setShowSceneDetectionDialog,
+    setShowFaceDetectionOptionsDialog,
+    setShowSubclipsConfirmDialog,
+    setShowProgramMonitor,
+    setShowCompositionGuides,
+    setShowCompositionGuideDialog,
+    setShowAssetPanel,
+    setShowInspectorPanel,
+    setShowEffectsPanel,
+    setShowMixerPanel,
+    setShowLUTLibraryDialog,
+    setShowHLSImportDialog,
+    setShowResolveExportDialog,
+    setSettingsOpen,
+    setPushSettingsOpen,
+    setOnboardingOpen,
+    setShowAIGeneratorDialog,
+    setShowRatingDialog,
+    setShowTransitionLibrary,
+    setShowSpeedRampPanel,
+    setShowTextOverlayPanel,
+    setShowGPUFiltersPanel,
+    setShowColorGradingPanel,
+    setShowAutoCaptionsPanel,
+    setShowBeatSyncPanel,
+    setShowMotionTrackingPanel,
+    setShowObjectSegmentationPanel,
+    setShowSyncDialog,
+    setShowAudioEnhancementDialog,
+    setShowBatchAudioDialog,
+    setShowAIAudioAssistant,
+  } = useStoryArcPanelStateReducer(DEFAULT_COMPOSITION_SETTINGS.enabled);
 
   // Pro timeline states
   const [trackStates, setTrackStates] = useState<Record<string, TrackState>>({});
@@ -944,27 +1181,20 @@ export default function StoryArcStudio({
         timestamps: Array<{ timestamp: number; hasFace: boolean }>;
       };
     };
+    [key: string]: unknown;
   }
   const [clipMeta, setClipMeta] = useState<Record<string, ClipMeta>>({});
   
   // Face detection worker state
   const [faceDetectionProgress, setFaceDetectionProgress] = useState<FaceDetectionProgress | null>(null);
   const [faceDetectionRunning, setFaceDetectionRunning] = useState(false);
-  const [showFaceDetectionDialog, setShowFaceDetectionDialog] = useState(false);
   
   // Scene detection worker state
-  const [sceneDetectionProgress, setSceneDetectionProgress] = useState<{ 
-    status: string; 
-    progress: number; 
-    message?: string;
-    scenes?: Array<{ scene_number: number; start_time: number; end_time: number; duration: number }>;
-    error?: string;
-  } | null>(null);
-  const [showSceneDetectionDialog, setShowSceneDetectionDialog] = useState(false);
+  const [sceneDetectionProgress, setSceneDetectionProgress] =
+    useState<StoryArcSceneDetectionProgress | null>(null);
   const [sceneDetectionJobId, setSceneDetectionJobId] = useState<string | null>(null);
   
   // Face detection options dialog state (replaces window.confirm/prompt)
-  const [showFaceDetectionOptionsDialog, setShowFaceDetectionOptionsDialog] = useState(false);
   const [faceDetectionOptions, setFaceDetectionOptions] = useState<{
     scanEntire: boolean;
     fps: number;
@@ -973,7 +1203,6 @@ export default function StoryArcStudio({
   const [pendingFaceDetectionResolve, setPendingFaceDetectionResolve] = useState<((options: { scanEntire: boolean; fps: number; taskChoice: string } | null) => void) | null>(null);
   
   // Subclips confirm dialog state (replaces window.confirm for subclips)
-  const [showSubclipsConfirmDialog, setShowSubclipsConfirmDialog] = useState(false);
   const [subclipsConfirmData, setSubclipsConfirmData] = useState<{ facesFound: number; totalClips: number } | null>(null);
   const [pendingSubclipsResolve, setPendingSubclipsResolve] = useState<((createSubclips: boolean) => void) | null>(null);
   
@@ -990,11 +1219,6 @@ export default function StoryArcStudio({
   const [playbackDirection, setPlaybackDirection] = useState<'forward' | 'reverse'>('forward');
   const [monitorFitMode, setMonitorFitMode] = useState<'fit' | 'fill'>('fit');
   const [activeMonitor, setActiveMonitor] = useState<ResolveMonitorFocus>('program');
-  const [showProgramMonitor, setShowProgramMonitor] = useState(true);
-  const [showCompositionGuides, setShowCompositionGuides] = useState(
-    DEFAULT_COMPOSITION_SETTINGS.enabled
-  );
-  const [showCompositionGuideDialog, setShowCompositionGuideDialog] = useState(false);
   const [compositionGuideTarget, setCompositionGuideTarget] = useState<CinematographyGuideTarget>(
     DEFAULT_COMPOSITION_SETTINGS.target
   );
@@ -1025,10 +1249,6 @@ export default function StoryArcStudio({
   const [workspaceProfiles, setWorkspaceProfiles] = useState<ResolveWorkspaceProfiles>(
     () => createEmptyWorkspaceProfiles()
   );
-  const [showAssetPanel, setShowAssetPanel] = useState(true);
-  const [showInspectorPanel, setShowInspectorPanel] = useState(true);
-  const [showEffectsPanel, setShowEffectsPanel] = useState(false);
-  const [showMixerPanel, setShowMixerPanel] = useState(false);
   const [savedDockSlotsByWorkspace, setSavedDockSlotsByWorkspace] =
     useState<ResolveWorkspaceDockSlots>(() => createEmptyWorkspaceDockSlots());
   const [layoutStateReady, setLayoutStateReady] = useState(false);
@@ -1042,8 +1262,6 @@ export default function StoryArcStudio({
   const [sourcePatchAudioTrackId, setSourcePatchAudioTrackId] = useState<string | null>(null);
   const [sourcePatchIncludeAudio, setSourcePatchIncludeAudio] = useState(true);
   const [selectedLUTName, setSelectedLUTName] = useState<string | null>(null);
-  const [showLUTLibraryDialog, setShowLUTLibraryDialog] = useState(false);
-  const [showHLSImportDialog, setShowHLSImportDialog] = useState(false);
   const [captionsExport, setCaptionsExport] = useState<CaptionExportPayload | null>(null);
   const [timelineWarnings, setTimelineWarnings] = useState<string[]>([]);
   const [timelineErrors, setTimelineErrors] = useState<string[]>([]);
@@ -1094,9 +1312,27 @@ export default function StoryArcStudio({
   const hlsServiceRef = useRef<HLSStreamingService | null>(null);
   const fixtureTimelineLockRef = useRef(false);
   const safeTrimWarningAtRef = useRef(0);
-  
-  // DaVinci Resolve Export Dialog
-  const [showResolveExportDialog, setShowResolveExportDialog] = useState(false);
+  const onboardingAutoOpenTimerRef = useRef<number | null>(null);
+  const sceneDetectionPollIntervalRef = useRef<number | null>(null);
+  const aiRatingRevealTimeoutRef = useRef<number | null>(null);
+  const workerInitTimeoutsRef = useRef<Set<number>>(new Set());
+  const resumedPersistedJobsRef = useRef(false);
+
+  const clearWorkerInitTimeouts = useCallback(() => {
+    for (const timeoutId of workerInitTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    workerInitTimeoutsRef.current.clear();
+  }, []);
+
+  const scheduleWorkerInitTimeout = useCallback((fn: () => void, delayMs: number) => {
+    const timeoutId = window.setTimeout(() => {
+      workerInitTimeoutsRef.current.delete(timeoutId);
+      fn();
+    }, delayMs);
+    workerInitTimeoutsRef.current.add(timeoutId);
+    return timeoutId;
+  }, []);
   
   // Save status
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -1105,7 +1341,6 @@ export default function StoryArcStudio({
   const [savedVia, setSavedVia] = useState<'db' | 'drive' | null>(null);
 
   // Settings
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [drivePrimaryIntervalMs, setDrivePrimaryIntervalMs] = useState<number>(30000); // default 30s
   const [driveBackupIntervalMs, setDriveBackupIntervalMs] = useState<number>(300000); // default 5m
   const [driveUploadsEnabled, setDriveUploadsEnabled] = useState<boolean>(true);
@@ -1115,7 +1350,6 @@ export default function StoryArcStudio({
   const [driveBackupFolderName, setDriveBackupFolderName] = useState<string>('Timeline & Notes Backups');
   const [drivePrimaryFilenameTemplate, setDrivePrimaryFilenameTemplate] = useState<string>('story-arc-editor-state-{id}.json');
   const [driveBackupFilenameTemplate, setDriveBackupFilenameTemplate] = useState<string>('story-arc-editor-state-{id}-backup-{ts}.json');
-  const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   
   // Push notifications
   const { user } = useAuth();
@@ -1133,19 +1367,12 @@ export default function StoryArcStudio({
   const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
   
   // Onboarding state
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [ensuringMapping, setEnsuringMapping] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
   
   // Recent projects state
-  const [recentProjects, setRecentProjects] = useState<Array<{
-    id: string;
-    storyArcName: string;
-    status: string;
-    templateType: string;
-    createdAt: string;
-  }>>([]);
+  const [recentProjects, setRecentProjects] = useState<RecentStoryArcProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
   // Fetch recent projects
@@ -1180,24 +1407,25 @@ export default function StoryArcStudio({
       
       if (!response.ok) {
         // Fallback to localStorage if API fails
-        localStorage.setItem('storyArcStudio_onboardingCompleted','true');
+        setSafeLocalStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY, 'true');
       } else {
         // Also save to localStorage for quick access
-        localStorage.setItem('storyArcStudio_onboardingCompleted','true');
+        setSafeLocalStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY, 'true');
       }
     } catch (error) {
       // Fallback to localStorage
-      localStorage.setItem('storyArcStudio_onboardingCompleted','true');
+      setSafeLocalStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY, 'true');
       console.warn('Failed to save onboarding completion to database: ', error);
     }
 
     setOnboardingOpen(false);
+    clearWorkerInitTimeouts();
     setSnackbar({
       open: true,
       message: 'Welcome to Story Arc Studio! You\'re all set to start editing.',
       severity: 'success',
     });
-  }, []);
+  }, [clearWorkerInitTimeouts]);
   
   // Worker initialization state
   const [workerInitStatus, setWorkerInitStatus] = useState<{
@@ -1205,7 +1433,7 @@ export default function StoryArcStudio({
     completed: boolean;
     error: string | null;
     progress: number;
-    workers: Record<string, { ready: boolean; message: string; friendlyName?: string; description?: string }>;
+    workers: Record<string, { ready: boolean; message: string; status?: string; friendlyName?: string; description?: string }>;
   }>({
     inProgress: false,
     completed: false,
@@ -1241,8 +1469,8 @@ export default function StoryArcStudio({
     };
 
     try {
-      sessionStorage.setItem(
-        'storyArcStudio_projectContext',
+      setSafeSessionStorageItem(
+        PROJECT_CONTEXT_SESSION_STORAGE_KEY,
         JSON.stringify(serializableContext)
       );
     } catch {
@@ -1429,7 +1657,7 @@ export default function StoryArcStudio({
   }, [
     projectContext,
     editingStartTime,
-    tracks,
+    clips,
     culturalMomentsDetected,
     navigate,
     onWorklogCreate,
@@ -1448,23 +1676,11 @@ export default function StoryArcStudio({
   });
   
   // AI Story Generator Dialog
-  const [showAIGeneratorDialog, setShowAIGeneratorDialog] = useState(false);
-  const [showRatingDialog, setShowRatingDialog] = useState(false);
-  const [aiGeneratedTimelineData, setAIGeneratedTimelineData] = useState<any>(null);
+  const [aiGeneratedTimelineData, setAIGeneratedTimelineData] = useState<unknown>(null);
 
   // ==========================================
   // ALL PROFESSIONAL FEATURES - PANELS
   // ==========================================
-  const [showTransitionLibrary, setShowTransitionLibrary] = useState(false);
-  const [showSpeedRampPanel, setShowSpeedRampPanel] = useState(false);
-  const [showTextOverlayPanel, setShowTextOverlayPanel] = useState(false);
-  const [showGPUFiltersPanel, setShowGPUFiltersPanel] = useState(false);
-  const [showColorGradingPanel, setShowColorGradingPanel] = useState(false);
-  const [showAutoCaptionsPanel, setShowAutoCaptionsPanel] = useState(false);
-  const [showBeatSyncPanel, setShowBeatSyncPanel] = useState(false);
-  const [showMotionTrackingPanel, setShowMotionTrackingPanel] = useState(false);
-  const [showObjectSegmentationPanel, setShowObjectSegmentationPanel] = useState(false);
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [selectedSyncClips, setSelectedSyncClips] = useState<Set<string>>(new Set());
   const [syncInProgress, setSyncInProgress] = useState(false);
   const [syncJobId, setSyncJobId] = useState<string | null>(null);
@@ -1477,32 +1693,287 @@ export default function StoryArcStudio({
   const [syncAllowClipReorder, setSyncAllowClipReorder] = useState(false);
   const [syncUseServerFirst, setSyncUseServerFirst] = useState(false);
   const [syncMaxOffsetSeconds, setSyncMaxOffsetSeconds] = useState(30);
+  const {
+    resetSyncPreview,
+    updateSyncMaxOffsetWindow,
+    toggleSyncClipSelection,
+    updateManualOffset,
+    resetManualOffsetToDetected,
+    clearManualOffsetForClip,
+  } = useStoryArcSyncUiActions({
+    setSyncPreviewMode,
+    setSyncResults,
+    setManualOffsets,
+    setSyncMaxOffsetSeconds,
+    setSelectedSyncClips,
+  });
+  const {
+    runManagedJob,
+    startPollingJob,
+    cancelJob: cancelManagedJob,
+    getPersistedServerJob,
+    clearPersistedServerJob,
+  } = useStoryArcLongJobManager();
+
+  const clearSceneDetectionPollInterval = useCallback(() => {
+    if (sceneDetectionPollIntervalRef.current === null) {
+      return;
+    }
+    window.clearInterval(sceneDetectionPollIntervalRef.current);
+    sceneDetectionPollIntervalRef.current = null;
+  }, []);
+
+  const clearAiRatingRevealTimeout = useCallback(() => {
+    if (aiRatingRevealTimeoutRef.current === null) {
+      return;
+    }
+    window.clearTimeout(aiRatingRevealTimeoutRef.current);
+    aiRatingRevealTimeoutRef.current = null;
+  }, []);
+
+  const scheduleAiRatingReveal = useCallback((delayMs = 2000) => {
+    clearAiRatingRevealTimeout();
+    aiRatingRevealTimeoutRef.current = window.setTimeout(() => {
+      aiRatingRevealTimeoutRef.current = null;
+      setShowRatingDialog(true);
+    }, delayMs);
+  }, [clearAiRatingRevealTimeout]);
+
+  const {
+    createProjectDialogOpen,
+    newProjectName,
+    isCreatingProject,
+    connectRecentProject,
+    connectCurrentProject,
+    openCreateProjectDialog,
+    closeCreateProjectDialog,
+    updateNewProjectName,
+    submitCreateProjectFromDialog,
+    prepareWorkerFeatures,
+  } = useStoryArcOnboardingFlow({
+    projectContext,
+    setProjectContext,
+    setOnboardingStep,
+    setEnsuringMapping,
+    setWorkerInitStatus,
+    setSnackbar,
+    fetchRecentProjects,
+    scheduleWorkerInitTimeout,
+    handleOnboardingComplete,
+  });
+
+  useEffect(() => {
+    return () => {
+      cancelManagedJob('scene');
+      cancelManagedJob('sync');
+      cancelManagedJob('face');
+      clearSceneDetectionPollInterval();
+      clearAiRatingRevealTimeout();
+      clearWorkerInitTimeouts();
+    };
+  }, [
+    cancelManagedJob,
+    clearAiRatingRevealTimeout,
+    clearSceneDetectionPollInterval,
+    clearWorkerInitTimeouts,
+  ]);
+
+  const openAIGeneratorDialog = useCallback(() => {
+    preloadAIStoryGeneratorDialog();
+    setShowAIGeneratorDialog(true);
+  }, []);
+
+  const closeAIGeneratorDialog = useCallback(() => {
+    setShowAIGeneratorDialog(false);
+  }, []);
+
+  const openTransitionLibrary = useCallback(() => {
+    preloadTransitionLibrary();
+    setShowTransitionLibrary(true);
+  }, []);
+
+  const closeTransitionLibrary = useCallback(() => {
+    setShowTransitionLibrary(false);
+  }, []);
+
+  const openTextOverlayPanel = useCallback(() => {
+    preloadTextOverlayPanel();
+    setShowTextOverlayPanel(true);
+  }, []);
+
+  const closeTextOverlayPanel = useCallback(() => {
+    setShowTextOverlayPanel(false);
+  }, []);
+
+  const openGPUFiltersPanel = useCallback(() => {
+    preloadGPUFiltersPanel();
+    preloadBackgroundRemovalPanel();
+    setShowGPUFiltersPanel(true);
+  }, []);
+
+  const closeGPUFiltersPanel = useCallback(() => {
+    setShowGPUFiltersPanel(false);
+  }, []);
+
+  const openColorGradingPanel = useCallback(() => {
+    preloadColorGradingPanel();
+    setShowColorGradingPanel(true);
+  }, []);
+
+  const closeColorGradingPanel = useCallback(() => {
+    setShowColorGradingPanel(false);
+  }, []);
+
+  const openAutoCaptionsPanel = useCallback(() => {
+    preloadAutoCaptionsPanel();
+    setShowAutoCaptionsPanel(true);
+  }, []);
+
+  const closeAutoCaptionsPanel = useCallback(() => {
+    setShowAutoCaptionsPanel(false);
+  }, []);
+
+  const openBeatSyncPanel = useCallback(() => {
+    preloadBeatSyncPanel();
+    setShowBeatSyncPanel(true);
+  }, []);
+
+  const closeBeatSyncPanel = useCallback(() => {
+    setShowBeatSyncPanel(false);
+  }, []);
+
+  const openMotionTrackingPanel = useCallback(() => {
+    preloadMotionTrackingPanel();
+    preloadObjectSegmentationPanel();
+    setShowMotionTrackingPanel(true);
+  }, []);
+
+  const closeMotionTrackingPanel = useCallback(() => {
+    setShowMotionTrackingPanel(false);
+  }, []);
+
+  const openExportDialog = useCallback(() => {
+    preloadExportDialog();
+    setShowExportDialog(true);
+  }, []);
+
+  const closeExportDialog = useCallback(() => {
+    setShowExportDialog(false);
+  }, []);
+
+  const openResolveExportDialog = useCallback(() => {
+    preloadDaVinciResolveExportDialog();
+    setShowResolveExportDialog(true);
+  }, []);
+
+  const closeResolveExportDialog = useCallback(() => {
+    setShowResolveExportDialog(false);
+  }, []);
+
+  const openHLSImportDialog = useCallback(() => {
+    preloadHLSImportDialog();
+    setShowHLSImportDialog(true);
+  }, []);
+
+  const closeHLSImportDialog = useCallback(() => {
+    setShowHLSImportDialog(false);
+  }, []);
+
+  const openLUTLibraryDialog = useCallback(() => {
+    preloadLUTLibrary();
+    setShowLUTLibraryDialog(true);
+  }, []);
+
+  const closeLUTLibraryDialog = useCallback(() => {
+    setShowLUTLibraryDialog(false);
+  }, []);
+
+  const closeObjectSegmentationPanel = useCallback(() => {
+    setShowObjectSegmentationPanel(false);
+  }, []);
+
+  const openSettingsDialog = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
+  const closeSettingsDialog = useCallback(() => {
+    setSettingsOpen(false);
+  }, []);
+
+  const openPushSettingsDialog = useCallback(() => {
+    setPushSettingsOpen(true);
+  }, []);
+
+  const closePushSettingsDialog = useCallback(() => {
+    setPushSettingsOpen(false);
+  }, []);
+
+  const openOnboardingDialog = useCallback(() => {
+    setOnboardingOpen(true);
+  }, []);
+
+  const preloadGPUAndBackgroundPanels = useCallback(() => {
+    preloadGPUFiltersPanel();
+    preloadBackgroundRemovalPanel();
+  }, []);
+
+  const preloadMotionAndObjectPanels = useCallback(() => {
+    preloadMotionTrackingPanel();
+    preloadObjectSegmentationPanel();
+  }, []);
 
   // Audio enhancement dialog state
-  const [showAudioEnhancementDialog, setShowAudioEnhancementDialog] = useState(false);
   const [pendingAudioFile, setPendingAudioFile] = useState<File | null>(null);
 
   // Batch audio enhancement dialog state
-  const [showBatchAudioDialog, setShowBatchAudioDialog] = useState(false);
   const [batchAudioFiles, setBatchAudioFiles] = useState<File[]>([]);
 
   // AI Audio Assistant dialog state
-  const [showAIAudioAssistant, setShowAIAudioAssistant] = useState(false);
   const [selectedAudioTrackId, setSelectedAudioTrackId] = useState<string | null>(null);
   const [openMixerDirectly, setOpenMixerDirectly] = useState(false);
 
+  const closeAudioEnhancementDialog = useCallback(() => {
+    setShowAudioEnhancementDialog(false);
+    setPendingAudioFile(null);
+  }, []);
+
+  const closeBatchAudioDialog = useCallback(() => {
+    setShowBatchAudioDialog(false);
+    setBatchAudioFiles([]);
+  }, []);
+
+  const closeAIAudioAssistantDialog = useCallback(() => {
+    setShowAIAudioAssistant(false);
+    setSelectedAudioTrackId(null);
+    setOpenMixerDirectly(false);
+  }, []);
+
+  const closeFaceDetectionProgressDialog = useCallback(() => {
+    if (!faceDetectionRunning) {
+      setShowFaceDetectionDialog(false);
+    }
+  }, [faceDetectionRunning]);
+
+  const handleFaceDetectionDialogAction = useCallback(() => {
+    if (faceDetectionRunning) {
+      cancelManagedJob('face');
+      setFaceDetectionRunning(false);
+      return;
+    }
+    setShowFaceDetectionDialog(false);
+  }, [faceDetectionRunning, cancelManagedJob]);
+
   // Feature states
-  const [currentSpeedKeyframes, setCurrentSpeedKeyframes] = useState<any[]>([]);
-  const [clipMap, setClipMap] = useState<Map<string, BeatClip>>(new Map());
-  const [currentColorGrade, setCurrentColorGrade] = useState<any>({});
-  const [textOverlays, setTextOverlays] = useState<any[]>([]);
-  const [appliedFilters, setAppliedFilters] = useState<Map<string, any>>(new Map());
+  const [currentSpeedKeyframes, setCurrentSpeedKeyframes] = useState<SpeedKeyframe[]>([]);
+  const [currentColorGrade, setCurrentColorGrade] = useState<Partial<ColorGrade>>({});
+  const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
+  const [appliedFilters, setAppliedFilters] = useState<Map<string, FilterConfig>>(new Map());
   const [availableVideoSources, setAvailableVideoSources] = useState<string[]>([]);
   const [activeSourcePreview, setActiveSourcePreview] = useState<SourcePreviewAsset | null>(null);
   const [sourceFileRegistry, setSourceFileRegistry] = useState<Record<string, File>>({});
   const [multicamEnabled, setMulticamEnabled] = useState(false);
   const [multicamApplyToTimeline, setMulticamApplyToTimeline] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<StoryArcSessionUser | null>(null);
   const [monitorFolderLink, setMonitorFolderLink] = useState<string | null>(null);
   const [driveInit, setDriveInit] = useState<{ status: 'idle' | 'initializing' | 'ready' | 'needs_auth' | 'needs_google_connect' | 'error'; message?: string; folderId?: string; }>({ status: 'idle' });
 
@@ -1657,14 +2128,41 @@ export default function StoryArcStudio({
     transitions,
     clipMetadata: clipMeta,
     comments,
-  }), [storyArc?.id, storyArcId, totalDuration, timelineZoom, reviewerMode, safeTrimMode, magneticEnabled, rippleEnabled, compareMode, currentTime, tracks, trackStates, clips, markers, transitions, clipMeta, comments]);
+  }), [
+    storyArc?.id,
+    storyArcId,
+    totalDuration,
+    timelineZoom,
+    reviewerMode,
+    safeTrimMode,
+    magneticEnabled,
+    rippleEnabled,
+    compareMode,
+    currentTime,
+    drivePrimaryIntervalMs,
+    driveBackupIntervalMs,
+    driveUploadsEnabled,
+    drivePrimaryEnabled,
+    driveBackupEnabled,
+    drivePrimaryFolderName,
+    driveBackupFolderName,
+    drivePrimaryFilenameTemplate,
+    driveBackupFilenameTemplate,
+    tracks,
+    trackStates,
+    clips,
+    markers,
+    transitions,
+    clipMeta,
+    comments,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
     try {
-      const storedZoom = Number(window.localStorage.getItem(TIMELINE_ZOOM_STORAGE_KEY));
+      const storedZoom = Number(getSafeLocalStorageItem(TIMELINE_ZOOM_STORAGE_KEY));
       if (Number.isFinite(storedZoom)) {
         const clampedZoom = clampTimelineZoomValue(storedZoom);
         timelineZoomLoadedFromStorageRef.current = true;
@@ -1681,7 +2179,7 @@ export default function StoryArcStudio({
       return;
     }
     try {
-      window.localStorage.setItem(TIMELINE_ZOOM_STORAGE_KEY, String(clampTimelineZoomValue(timelineZoom)));
+      setSafeLocalStorageItem(TIMELINE_ZOOM_STORAGE_KEY, String(clampTimelineZoomValue(timelineZoom)));
     } catch (error) {
       console.warn('Could not persist timeline zoom state:', error);
     }
@@ -1713,12 +2211,13 @@ export default function StoryArcStudio({
           const json = await res.json().catch(() => ({}));
           if (aborted) return;
           if (json?.success && typeof json.storyArcId === 'string' && json.storyArcId.length > 0) {
-            id = json.storyArcId;
+            const resolvedStoryArcId = json.storyArcId;
+            id = resolvedStoryArcId;
             setStoryArc((prev) =>
               prev
-                ? { ...prev, id }
+                ? { ...prev, id: resolvedStoryArcId }
                 : buildFallbackStoryArc(
-                    id,
+                    resolvedStoryArcId,
                     projectContext?.projectName || 'Untitled Project',
                     0
                   )
@@ -1736,7 +2235,7 @@ export default function StoryArcStudio({
         let restoredTracks: Track[] | null = null;
         if (Array.isArray(st.tracks)) {
           restoredTracks = st.tracks;
-          setTracks(restoredTracks);
+          setTracks(st.tracks);
         }
         if (restoredTracks) {
           setTrackStates(normalizeTrackStates(restoredTracks, st.trackStates));
@@ -2074,10 +2573,6 @@ export default function StoryArcStudio({
     });
   }, [activeSourcePreview, availableVideoSources, sourceFileRegistry]);
 
-  useEffect(() => {
-    setClipMap(new Map(clips.map((clip) => [clip.id, clip])));
-  }, [clips]);
-
   const cloneClipList = useCallback((clipList: BeatClip[]): BeatClip[] => {
     return clipList.map((clip) => ({
       ...clip,
@@ -2205,10 +2700,13 @@ export default function StoryArcStudio({
     try {
       setDriveInit({ status: 'initializing' });
       const sessionRes = await fetch('/api/auth/public-session', { credentials: 'include' });
-      const sessionUser = await sessionRes.json();
+      const sessionPayload = (await sessionRes.json()) as unknown;
+      const sessionUser: StoryArcSessionUser = isRecord(sessionPayload)
+        ? (sessionPayload as StoryArcSessionUser)
+        : {};
       setCurrentUser(sessionUser);
 
-      if (!sessionUser?.id || sessionUser.isAuthenticated === false) {
+      if (!sessionUser.id || sessionUser.isAuthenticated === false) {
         setDriveInit({ status: 'needs_auth', message: 'Sign in to initialize your Google Drive workspace.' });
         return;
       }
@@ -2235,8 +2733,8 @@ export default function StoryArcStudio({
       const link = json.folderId ? `https://drive.google.com/drive/folders/${json.folderId}` : null;
       if (link) setMonitorFolderLink(link);
       setDriveInit({ status: 'ready', folderId: json.folderId });
-    } catch (e: any) {
-      setDriveInit({ status: 'error', message: e?.message || 'Initialization failed' });
+    } catch (error: unknown) {
+      setDriveInit({ status: 'error', message: toErrorMessage(error, 'Initialization failed') });
     }
   }, [storyArcId]);
 
@@ -2251,10 +2749,12 @@ export default function StoryArcStudio({
 
   // Check for first-time user and auto-open onboarding
   useEffect(() => {
+    let disposed = false;
+
     const checkFirstTime = async () => {
       try {
         // Check localStorage first (quick check)
-        const onboardingCompleted = localStorage.getItem('storyArcStudio_onboardingCompleted');
+        const onboardingCompleted = getSafeLocalStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY);
         if (onboardingCompleted === 'true') {
           return; // Already completed
         }
@@ -2265,7 +2765,7 @@ export default function StoryArcStudio({
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.completed === true) {
-              localStorage.setItem('storyArcStudio_onboardingCompleted','true');
+              setSafeLocalStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY, 'true');
               return; // Already completed
             }
           }
@@ -2274,7 +2774,14 @@ export default function StoryArcStudio({
         }
 
         // First-time user - show onboarding after a short delay
-        setTimeout(() => {
+        if (onboardingAutoOpenTimerRef.current !== null) {
+          window.clearTimeout(onboardingAutoOpenTimerRef.current);
+          onboardingAutoOpenTimerRef.current = null;
+        }
+        onboardingAutoOpenTimerRef.current = window.setTimeout(() => {
+          if (disposed) {
+            return;
+          }
           setOnboardingOpen(true);
           // Fetch recent projects when onboarding opens
           fetchRecentProjects();
@@ -2284,7 +2791,14 @@ export default function StoryArcStudio({
       }
     };
 
-    checkFirstTime();
+    void checkFirstTime();
+    return () => {
+      disposed = true;
+      if (onboardingAutoOpenTimerRef.current !== null) {
+        window.clearTimeout(onboardingAutoOpenTimerRef.current);
+        onboardingAutoOpenTimerRef.current = null;
+      }
+    };
   }, [fetchRecentProjects]);
 
   // Panel resizing handlers - FIXED: Memory leak prevention
@@ -2444,7 +2958,7 @@ export default function StoryArcStudio({
       if (normalizedTrackId.startsWith('audio') || /^a\d+$/.test(normalizedTrackId)) {
         return true;
       }
-      const matchingTrack = tracks.find((track) => track.id === trackId);
+      const matchingTrack = trackMap.get(trackId);
       if (!matchingTrack) {
         return false;
       }
@@ -2455,7 +2969,7 @@ export default function StoryArcStudio({
       }
       return matchingTrack.name.toLowerCase().includes('audio');
     },
-    [tracks, trackStates]
+    [trackMap, trackStates]
   );
 
   const resolveAudioRoleForTrackId = useCallback(
@@ -2464,13 +2978,13 @@ export default function StoryArcStudio({
       if (roleFromState) {
         return roleFromState;
       }
-      const track = tracks.find((candidate) => candidate.id === trackId);
+      const track = trackMap.get(trackId);
       if (!track) {
         return 'dialogue';
       }
       return inferAudioRoleFromTrackName(track.name);
     },
-    [tracks, trackStates]
+    [trackMap, trackStates]
   );
 
   const audioTrackIds = useMemo(
@@ -2560,7 +3074,7 @@ export default function StoryArcStudio({
 
   const getPrimaryVideoTrackId = useCallback((): string => {
     const selectedTrack = Array.from(selectedClips)
-      .map((clipId) => clips.find((clip) => clip.id === clipId)?.trackId)
+      .map((clipId) => clipMap.get(clipId)?.trackId)
       .find((trackId): trackId is string => Boolean(trackId) && !isAudioTrackId(trackId));
     if (selectedTrack) {
       return selectedTrack;
@@ -2568,11 +3082,11 @@ export default function StoryArcStudio({
 
     const videoTrack = tracks.find((track) => !isAudioTrackId(track.id));
     return videoTrack?.id || 'video-1';
-  }, [selectedClips, clips, tracks, isAudioTrackId]);
+  }, [selectedClips, clipMap, tracks, isAudioTrackId]);
 
   const getPrimaryAudioTrackId = useCallback((): string | null => {
     const selectedTrack = Array.from(selectedClips)
-      .map((clipId) => clips.find((clip) => clip.id === clipId)?.trackId)
+      .map((clipId) => clipMap.get(clipId)?.trackId)
       .find((trackId): trackId is string => Boolean(trackId) && isAudioTrackId(trackId));
     if (selectedTrack) {
       return selectedTrack;
@@ -2580,7 +3094,7 @@ export default function StoryArcStudio({
 
     const audioTrack = tracks.find((track) => isAudioTrackId(track.id));
     return audioTrack?.id ?? null;
-  }, [selectedClips, clips, tracks, isAudioTrackId]);
+  }, [selectedClips, clipMap, tracks, isAudioTrackId]);
 
   const sourcePatchVideoTrackOptions = useMemo(() => {
     return tracks.filter((track) => !isAudioTrackId(track.id));
@@ -2623,16 +3137,47 @@ export default function StoryArcStudio({
         start: timelineEngine.snapToFrame(Math.max(0, clip.start)),
         duration: Math.max(frameTime, timelineEngine.snapToFrame(clip.duration)),
       }));
-      setClips(snapped);
-      setTotalDuration(timelineEngine.calculateDuration(snapped));
+      const invariantResult = enforceTimelineInvariants(snapped, {
+        frameTime,
+        tracks,
+        enforceNoOverlap: safeTrimMode,
+      });
+      const invariantWarnings: string[] = [];
+      const overlapCount = invariantResult.issues.filter(
+        (issue) => issue.code === 'clip_overlap'
+      ).length;
+      if (overlapCount > 0) {
+        invariantWarnings.push(`Invariant check: detected ${overlapCount} clip overlap(s).`);
+      }
+      const trackBoundsCount = invariantResult.issues.filter(
+        (issue) => issue.code === 'invalid_track'
+      ).length;
+      if (trackBoundsCount > 0) {
+        invariantWarnings.push(`Invariant check: corrected ${trackBoundsCount} out-of-bounds track reference(s).`);
+      }
+      const durationCount = invariantResult.issues.filter(
+        (issue) => issue.code === 'invalid_duration'
+      ).length;
+      if (durationCount > 0) {
+        invariantWarnings.push(`Invariant check: corrected ${durationCount} negative/invalid duration value(s).`);
+      }
+      const offsetCount = invariantResult.issues.filter(
+        (issue) => issue.code === 'invalid_offset'
+      ).length;
+      if (offsetCount > 0) {
+        invariantWarnings.push(`Invariant check: corrected ${offsetCount} invalid sync/source offset value(s).`);
+      }
+
+      setClips(invariantResult.clips);
+      setTotalDuration(timelineEngine.calculateDuration(invariantResult.clips));
       if (keepSelection) {
         setSelectedClips(keepSelection);
       }
-      const validation = timelineEngine.validateTimeline(snapped, tracks);
-      setTimelineWarnings(validation.warnings);
+      const validation = timelineEngine.validateTimeline(invariantResult.clips, tracks);
+      setTimelineWarnings([...validation.warnings, ...invariantWarnings]);
       setTimelineErrors(validation.errors);
     },
-    [frameTime, tracks]
+    [frameTime, tracks, safeTrimMode]
   );
 
   const performUndo = useCallback(() => {
@@ -2669,7 +3214,7 @@ export default function StoryArcStudio({
 
   const copySelectedClips = useCallback(() => {
     const selected = Array.from(selectedClips)
-      .map((clipId) => clips.find((clip) => clip.id === clipId))
+      .map((clipId) => clipMap.get(clipId))
       .filter((clip): clip is BeatClip => Boolean(clip));
 
     if (selected.length === 0) {
@@ -2692,7 +3237,7 @@ export default function StoryArcStudio({
       message: `Copied ${selected.length} clip${selected.length > 1 ? 's' : ''}`,
       severity: 'success',
     });
-  }, [clips, selectedClips]);
+  }, [clipMap, selectedClips]);
 
   const pasteClipboardClips = useCallback(() => {
     if (clipClipboard.length === 0) {
@@ -3053,6 +3598,7 @@ export default function StoryArcStudio({
       ev: 0,
       synopsis: label,
       trackId: 'video-source',
+      color: '#60a5fa',
       sourceFile,
       metadata: { syntheticSource: true },
     }),
@@ -3823,7 +4369,7 @@ export default function StoryArcStudio({
     }
 
     try {
-      const layoutPayload = window.localStorage.getItem(RESOLVE_LAYOUT_STORAGE_KEY);
+      const layoutPayload = getSafeLocalStorageItem(RESOLVE_LAYOUT_STORAGE_KEY);
       if (layoutPayload) {
         const parsedLayout = JSON.parse(layoutPayload) as Partial<ResolveLayoutState>;
         applyStoredLayoutState(parsedLayout);
@@ -3834,8 +4380,8 @@ export default function StoryArcStudio({
 
     try {
       const workspaceDockSlotsPayload =
-        window.localStorage.getItem(RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY) ||
-        window.localStorage.getItem(RESOLVE_DOCK_SLOTS_STORAGE_KEY);
+        getSafeLocalStorageItem(RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY) ||
+        getSafeLocalStorageItem(RESOLVE_DOCK_SLOTS_STORAGE_KEY);
       if (workspaceDockSlotsPayload) {
         const parsedDockSlots = JSON.parse(workspaceDockSlotsPayload) as unknown;
         setSavedDockSlotsByWorkspace(normalizeWorkspaceDockSlots(parsedDockSlots));
@@ -3845,7 +4391,7 @@ export default function StoryArcStudio({
     }
 
     try {
-      const workspaceProfilesPayload = window.localStorage.getItem(RESOLVE_WORKSPACE_PROFILES_STORAGE_KEY);
+      const workspaceProfilesPayload = getSafeLocalStorageItem(RESOLVE_WORKSPACE_PROFILES_STORAGE_KEY);
       if (workspaceProfilesPayload) {
         const parsedProfiles = JSON.parse(workspaceProfilesPayload) as Partial<
           Record<ResolveWorkspacePreset, ResolveLayoutState | null>
@@ -3872,7 +4418,7 @@ export default function StoryArcStudio({
       return;
     }
     try {
-      window.localStorage.setItem(
+      setSafeLocalStorageItem(
         RESOLVE_LAYOUT_STORAGE_KEY,
         JSON.stringify(buildLayoutStateSnapshot())
       );
@@ -3905,7 +4451,7 @@ export default function StoryArcStudio({
     }
 
     try {
-      window.localStorage.setItem(
+      setSafeLocalStorageItem(
         RESOLVE_WORKSPACE_PROFILES_STORAGE_KEY,
         JSON.stringify(workspaceProfiles)
       );
@@ -3919,7 +4465,7 @@ export default function StoryArcStudio({
       return;
     }
     try {
-      window.localStorage.setItem(
+      setSafeLocalStorageItem(
         RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY,
         JSON.stringify(savedDockSlotsByWorkspace)
       );
@@ -4017,7 +4563,7 @@ export default function StoryArcStudio({
     }
 
     try {
-      const stored = window.localStorage.getItem(COMPOSITION_SETTINGS_STORAGE_KEY);
+      const stored = getSafeLocalStorageItem(COMPOSITION_SETTINGS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         const normalized = sanitizeCompositionSettings(parsed);
@@ -4056,7 +4602,7 @@ export default function StoryArcStudio({
     };
 
     try {
-      window.localStorage.setItem(COMPOSITION_SETTINGS_STORAGE_KEY, JSON.stringify(payload));
+      setSafeLocalStorageItem(COMPOSITION_SETTINGS_STORAGE_KEY, JSON.stringify(payload));
     } catch (error) {
       console.warn('Could not persist composition guide settings:', error);
     }
@@ -4088,6 +4634,24 @@ export default function StoryArcStudio({
     [storyArc?.title]
   );
 
+  const downloadCaptionsSrt = useCallback(() => {
+    if (!captionsExport) {
+      return;
+    }
+    downloadCaptionFile(captionsExport.srt, 'srt');
+  }, [captionsExport, downloadCaptionFile]);
+
+  const downloadCaptionsVtt = useCallback(() => {
+    if (!captionsExport) {
+      return;
+    }
+    downloadCaptionFile(captionsExport.vtt, 'vtt');
+  }, [captionsExport, downloadCaptionFile]);
+
+  const clearCaptionsPackage = useCallback(() => {
+    setCaptionsExport(null);
+  }, []);
+
   const handleSelectLUT = useCallback(
     (lutPath: string, lutName: string) => {
       const selectedLUT = LUTEngine.getLUTLibrary()
@@ -4096,7 +4660,7 @@ export default function StoryArcStudio({
       const resolvedName = selectedLUT?.name || lutName;
       setSelectedLUTName(resolvedName);
       setShowLUTLibraryDialog(false);
-      setCurrentColorGrade((previous: Record<string, unknown>) => ({
+      setCurrentColorGrade((previous) => ({
         ...previous,
         lutPath,
         lutName: resolvedName,
@@ -4609,10 +5173,10 @@ export default function StoryArcStudio({
 
   const getSelectedPrimaryClip = useCallback((): BeatClip | null => {
     const selected = Array.from(selectedClips)
-      .map((clipId) => clips.find((clip) => clip.id === clipId))
+      .map((clipId) => clipMap.get(clipId))
       .find((clip): clip is BeatClip => Boolean(clip));
     return selected || null;
-  }, [selectedClips, clips]);
+  }, [selectedClips, clipMap]);
 
   const selectClipUnderPlayhead = useCallback((): boolean => {
     const videoClip = clips.find((clip) => {
@@ -4645,7 +5209,7 @@ export default function StoryArcStudio({
       return;
     }
     const selectedByTime = Array.from(selectedClips)
-      .map((clipId) => clips.find((clip) => clip.id === clipId))
+      .map((clipId) => clipMap.get(clipId))
       .filter((clip): clip is BeatClip => Boolean(clip))
       .sort((left, right) => left.start - right.start);
 
@@ -4658,7 +5222,7 @@ export default function StoryArcStudio({
       next = deleteClip(next, clip.id, true);
     });
     applyClipUpdates(next, new Set());
-  }, [selectedClips, clips, applyClipUpdates]);
+  }, [selectedClips, clipMap, clips, applyClipUpdates]);
 
   const razorSelectedAtPlayhead = useCallback(() => {
     const selection = selectedClips.size > 0 ? selectedClips : (() => {
@@ -4964,7 +5528,7 @@ export default function StoryArcStudio({
 
   const seedTimelineFixture = useCallback(() => {
     const sourceFromPreview =
-      sourcePreviewClip && sourcePreviewClip.sourceFile.trim().length > 0 ? sourcePreviewClip : null;
+      sourcePreviewClip && (sourcePreviewClip.sourceFile?.trim().length ?? 0) > 0 ? sourcePreviewClip : null;
     const sourceFromProgram =
       previewClip && previewClip.sourceFile && previewClip.sourceFile.trim().length > 0 ? previewClip : null;
     const fallbackSourceFile = availableVideoSources.find((candidate) => candidate.trim().length > 0) || '';
@@ -5000,6 +5564,7 @@ export default function StoryArcStudio({
       ev: 0,
       synopsis: `Fixture ${suffix}`,
       trackId,
+      color: '#60a5fa',
       sourceFile,
       tags: ['fixture'],
       metadata: {
@@ -5056,6 +5621,10 @@ export default function StoryArcStudio({
   ]);
 
   useEffect(() => {
+    if (!ENABLE_EDITOR_TEST_HOOKS) {
+      return;
+    }
+
     const hook: StoryArcEditorTestHook = {
       selectClipById: (clipId) => {
         const exists = clips.some((clip) => clip.id === clipId);
@@ -5083,7 +5652,7 @@ export default function StoryArcStudio({
         if (!targetId) {
           return null;
         }
-        const clip = clips.find((candidate) => candidate.id === targetId);
+        const clip = clipMap.get(targetId);
         if (!clip) {
           return null;
         }
@@ -5173,6 +5742,7 @@ export default function StoryArcStudio({
     };
   }, [
     clips,
+    clipMap,
     isAudioTrackId,
     selectedClips,
     programMarkIn,
@@ -5193,6 +5763,7 @@ export default function StoryArcStudio({
     applyClipUpdates,
     totalDuration,
     seedTimelineFixture,
+    ENABLE_EDITOR_TEST_HOOKS,
   ]);
 
   // Professional keyboard shortcuts with Source/Program monitor parity.
@@ -5639,6 +6210,14 @@ export default function StoryArcStudio({
         .map((clipId) => clipMap.get(clipId))
         .filter(Boolean) as BeatClip[],
     [selectedClips, clipMap]
+  );
+  const selectedPrimaryClipId = useMemo(
+    () => Array.from(selectedClips)[0] ?? null,
+    [selectedClips]
+  );
+  const selectedPrimaryClip = useMemo(
+    () => (selectedPrimaryClipId ? clipMap.get(selectedPrimaryClipId) ?? null : null),
+    [clipMap, selectedPrimaryClipId]
   );
 
   const resolveClipLocalTime = useCallback(
@@ -6105,7 +6684,599 @@ export default function StoryArcStudio({
     jumpToProgramMark('out');
   }, [activeMonitor, jumpToSourceMark, jumpToProgramMark]);
 
+  const markSourceInAtCurrentTime = useCallback(() => {
+    setSourceMark('in', sourcePreviewLocalTime);
+  }, [setSourceMark, sourcePreviewLocalTime]);
+
+  const markSourceOutAtCurrentTime = useCallback(() => {
+    setSourceMark('out', sourcePreviewLocalTime);
+  }, [setSourceMark, sourcePreviewLocalTime]);
+
+  const jumpToSourceMarkIn = useCallback(() => {
+    jumpToSourceMark('in');
+  }, [jumpToSourceMark]);
+
+  const jumpToSourceMarkOut = useCallback(() => {
+    jumpToSourceMark('out');
+  }, [jumpToSourceMark]);
+
+  const clearSourceMarks = useCallback(() => {
+    setSourceMarkIn(null);
+    setSourceMarkOut(null);
+  }, []);
+
+  const insertSourceClip = useCallback(() => {
+    insertOrOverwriteFromSource('insert', sourcePreviewClip);
+  }, [insertOrOverwriteFromSource, sourcePreviewClip]);
+
+  const overwriteSourceClip = useCallback(() => {
+    insertOrOverwriteFromSource('overwrite', sourcePreviewClip);
+  }, [insertOrOverwriteFromSource, sourcePreviewClip]);
+
+  const markProgramInAtCurrentTime = useCallback(() => {
+    setProgramMark('in');
+  }, [setProgramMark]);
+
+  const markProgramOutAtCurrentTime = useCallback(() => {
+    setProgramMark('out');
+  }, [setProgramMark]);
+
+  const jumpToProgramMarkIn = useCallback(() => {
+    jumpToProgramMark('in');
+  }, [jumpToProgramMark]);
+
+  const jumpToProgramMarkOut = useCallback(() => {
+    jumpToProgramMark('out');
+  }, [jumpToProgramMark]);
+
+  const clearProgramMarks = useCallback(() => {
+    setProgramMarkIn(null);
+    setProgramMarkOut(null);
+  }, []);
+
+  const advanceOnboardingStep = useCallback(() => {
+    setOnboardingStep((step) => step + 1);
+  }, []);
+
+  const toggleActiveMonitorFocus = useCallback(() => {
+    setActiveMonitor((previous) => (previous === 'source' ? 'program' : 'source'));
+  }, []);
+
+  const handleActiveJKLReverse = useCallback(() => {
+    handleActiveJKL('j');
+  }, [handleActiveJKL]);
+
+  const handleActiveJKLPause = useCallback(() => {
+    handleActiveJKL('k');
+  }, [handleActiveJKL]);
+
+  const handleActiveJKLForward = useCallback(() => {
+    handleActiveJKL('l');
+  }, [handleActiveJKL]);
+
+  const toggleLoopPlayback = useCallback(() => {
+    setIsLooping((previous) => !previous);
+  }, []);
+
+  const toggleFullscreenMonitor = useCallback(() => {
+    setIsFullscreenPreview((previous) => !previous);
+  }, []);
+
+  const triggerImportProject = useCallback(() => {
+    void handleImportFromProject();
+  }, [handleImportFromProject]);
+
+  const triggerExportProject = useCallback(() => {
+    void handleExportToProject({
+      url: programMonitorClip?.sourceFile || '',
+      duration: totalDuration,
+      format: 'mp4',
+      resolution: '1920x1080',
+      codec: 'H.264',
+    });
+  }, [handleExportToProject, programMonitorClip?.sourceFile, totalDuration]);
+
+  const toggleSpeedRampPanel = useCallback(() => {
+    setShowSpeedRampPanel((previous) => !previous);
+  }, []);
+
+  const toggleMagneticMode = useCallback(() => {
+    setMagneticEnabled((previous) => !previous);
+  }, []);
+
+  const toggleRippleMode = useCallback(() => {
+    setRippleEnabled((previous) => !previous);
+  }, []);
+
+  const toggleReviewerMode = useCallback(() => {
+    setReviewerMode((previous) => !previous);
+  }, []);
+
+  const activateSelectTool = useCallback(() => {
+    setEditTool('select');
+  }, []);
+
+  const activateTrimTool = useCallback(() => {
+    setEditTool('trim');
+  }, []);
+
+  const activateRollTool = useCallback(() => {
+    setEditTool('roll');
+  }, []);
+
+  const activateSlipTool = useCallback(() => {
+    setEditTool('slip');
+  }, []);
+
+  const activateSlideTool = useCallback(() => {
+    setEditTool('slide');
+  }, []);
+
+  const toggleSafeTrimMode = useCallback(() => {
+    setSafeTrimMode((previous) => !previous);
+  }, []);
+
+  const toggleCompareMode = useCallback(() => {
+    setCompareMode((previous) => {
+      if (!previous) {
+        setCompareSnapshot(clips);
+      }
+      return !previous;
+    });
+  }, [clips]);
+
+  const addMarkerAtPlayhead = useCallback(() => {
+    const markerId = `m${Date.now()}`;
+    setMarkers((previous) => [
+      ...previous,
+      {
+        id: markerId,
+        time: currentTime,
+        color: '#ff9800',
+        label: `Marker ${previous.length + 1}`,
+      },
+    ]);
+  }, [currentTime]);
+
+  const placePendingTransitionAtNearestCut = useCallback(() => {
+    if (!pendingTransitionType) {
+      return;
+    }
+    const preferredTrackId = selectedPrimaryClip?.trackId;
+    const { time: placeTime, trackId } = findNearestCut(clips, tracks, currentTime, preferredTrackId);
+    const transitionId = `tr${Date.now()}`;
+    setTransitions((previous) => [
+      ...previous,
+      {
+        id: transitionId,
+        time: placeTime,
+        trackId,
+        type: pendingTransitionType,
+        duration: pendingTransitionDuration,
+      },
+    ]);
+    setSnackbar({
+      open: true,
+      message: `Placed ${pendingTransitionType} (${pendingTransitionEngine.toUpperCase()}, ${pendingTransitionDuration.toFixed(2)}s)`,
+      severity: 'success',
+    });
+    setPendingTransitionType(null);
+  }, [
+    pendingTransitionType,
+    pendingTransitionDuration,
+    pendingTransitionEngine,
+    selectedPrimaryClip?.trackId,
+    clips,
+    tracks,
+    currentTime,
+  ]);
+
+  const toggleAssetPanel = useCallback(() => {
+    setShowAssetPanel((previous) => !previous);
+  }, []);
+
+  const toggleInspectorPanel = useCallback(() => {
+    setShowInspectorPanel((previous) => !previous);
+  }, []);
+
+  const toggleEffectsPanel = useCallback(() => {
+    setShowEffectsPanel((previous) => !previous);
+  }, []);
+
+  const toggleMixerPanel = useCallback(() => {
+    setShowMixerPanel((previous) => !previous);
+  }, []);
+
+  const toggleProgramMonitorPanel = useCallback(() => {
+    setShowProgramMonitor((previous) => !previous);
+  }, []);
+
+  const toggleAutoMonitorPanel = useCallback(() => {
+    setShowAutoMonitor((previous) => !previous);
+  }, []);
+
+  const setMonitorFitToFit = useCallback(() => {
+    setMonitorFitMode('fit');
+  }, []);
+
+  const setMonitorFitToFill = useCallback(() => {
+    setMonitorFitMode('fill');
+  }, []);
+
+  const toggleMulticamMode = useCallback(() => {
+    setMulticamEnabled((previous) => !previous);
+  }, []);
+
+  const toggleCompositionGuidesVisibility = useCallback(() => {
+    setShowCompositionGuides((previous) => !previous);
+  }, []);
+
+  const openCompositionGuideSettingsDialog = useCallback(() => {
+    setShowCompositionGuideDialog(true);
+  }, []);
+
+  const closeCompositionGuideSettingsDialog = useCallback(() => {
+    setShowCompositionGuideDialog(false);
+  }, []);
+
+  const closeSnackbar = useCallback(() => {
+    setSnackbar((previous) => ({ ...previous, open: false }));
+  }, []);
+
+  const openAIAudioMixAssistant = useCallback(() => {
+    const audioClips = clips.filter(
+      (clip) => clip.trackId?.startsWith('A') || clip.trackId?.startsWith('audio')
+    );
+    if (audioClips.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Ingen lydspor funnet i tidslinjen',
+        severity: 'warning',
+      });
+      return;
+    }
+    setSelectedAudioTrackId(null);
+    setOpenMixerDirectly(false);
+    setShowAIAudioAssistant(true);
+  }, [clips]);
+
+  const resolveSceneDetectionVideoPath = useCallback(() => {
+    const firstTimelineVideoClip = clips.find((clip) => isRenderableVideoClip(clip));
+    const sourceCandidates = [
+      firstTimelineVideoClip?.sourceFile,
+      sourcePreviewClip?.sourceFile,
+      programMonitorClip?.sourceFile,
+      activeSourcePreview?.sourceFile,
+      availableVideoSources[0],
+    ]
+      .map((candidate) => (typeof candidate === 'string' ? candidate.trim() : ''))
+      .filter(Boolean);
+
+    const directCandidate = sourceCandidates.find(
+      (candidate) =>
+        isLikelyDirectMediaSource(candidate) &&
+        !candidate.startsWith('blob:') &&
+        !candidate.startsWith('data:')
+    );
+    return directCandidate || '';
+  }, [
+    clips,
+    isRenderableVideoClip,
+    sourcePreviewClip?.sourceFile,
+    programMonitorClip?.sourceFile,
+    activeSourcePreview?.sourceFile,
+    availableVideoSources,
+    isLikelyDirectMediaSource,
+  ]);
+
+  const closeSceneDetectionDialog = useCallback(() => {
+    if (sceneDetectionJobId) {
+      void apiRequest(`/api/video-analysis/scene-detection/${sceneDetectionJobId}/cancel`, {
+        method: 'POST',
+      }).catch(() => undefined);
+    }
+    cancelManagedJob('scene');
+    clearPersistedServerJob('scene');
+    clearSceneDetectionPollInterval();
+    setSceneDetectionJobId(null);
+    setShowSceneDetectionDialog(false);
+  }, [
+    sceneDetectionJobId,
+    cancelManagedJob,
+    clearPersistedServerJob,
+    clearSceneDetectionPollInterval,
+  ]);
+
+  const jumpToSceneStart = useCallback((startTime: number) => {
+    setCurrentTime(Math.max(0, timelineEngine.snapToFrame(startTime)));
+  }, []);
+
+  const pollSceneDetectionJob = useCallback(
+    async (jobId: string) => {
+      setSceneDetectionJobId(jobId);
+      const completedStatus = await startPollingJob<
+        StoryArcSceneDetectionProgress,
+        StoryArcSceneDetectionProgress
+      >({
+        kind: 'scene',
+        serverJobId: jobId,
+        intervalMs: 2000,
+        maxConsecutivePollErrors: 4,
+        maxRetries: 1,
+        retryDelayMs: 2000,
+        onCancel: () => {
+          void apiRequest(`/api/video-analysis/scene-detection/${jobId}/cancel`, {
+            method: 'POST',
+          }).catch(() => undefined);
+        },
+        onProgress: (progress) => {
+          if (progress) {
+            setSceneDetectionProgress(progress);
+          }
+        },
+        poll: async (serverJobId) => {
+          const statusResponse = (await apiRequest(
+            `/api/video-analysis/scene-detection/${serverJobId}`
+          )) as unknown;
+          const normalizedStatus = normalizeSceneDetectionProgress(statusResponse);
+          if (normalizedStatus.status === 'completed') {
+            return {
+              state: 'completed',
+              result: normalizedStatus,
+            };
+          }
+          if (normalizedStatus.status === 'failed') {
+            return {
+              state: 'failed',
+              error: normalizedStatus.error || 'Unknown error',
+            };
+          }
+          if (normalizedStatus.status === 'cancelled') {
+            return {
+              state: 'failed',
+              error: normalizedStatus.error || 'Cancelled by user',
+            };
+          }
+          return {
+            state: 'running',
+            progress: normalizedStatus,
+          };
+        },
+      });
+
+      const scenes = completedStatus.scenes || [];
+      setSceneDetectionProgress(completedStatus);
+      const markerSeed = Date.now();
+      const newMarkers = scenes.map((scene, index) => ({
+        id: `scene-${jobId}-${markerSeed}-${index}`,
+        time: scene.start_time,
+        color: '#667eea',
+        label: `Scene ${scene.scene_number}`,
+      }));
+      if (newMarkers.length > 0) {
+        setMarkers((previous) => [...previous, ...newMarkers]);
+      }
+      setSnackbar({
+        open: true,
+        message: `Detected ${scenes.length} scenes and added markers to timeline`,
+        severity: 'success',
+      });
+    },
+    [startPollingJob]
+  );
+
+  const runSceneDetection = useCallback(async () => {
+    const videoPath = resolveSceneDetectionVideoPath();
+    if (!videoPath) {
+      setSnackbar({
+        open: true,
+        message: 'No direct video source found for scene detection',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    try {
+      clearSceneDetectionPollInterval();
+      setSceneDetectionJobId(null);
+      setSceneDetectionProgress({
+        status: 'processing',
+        progress: 0,
+        message: 'Starting scene detection...',
+      });
+      setShowSceneDetectionDialog(true);
+
+      let startedJobId: string | null = null;
+      const jobId = await runManagedJob<string>({
+        kind: 'scene',
+        maxRetries: 1,
+        retryDelayMs: 1200,
+        onCancel: () => {
+          if (!startedJobId) {
+            return;
+          }
+          void apiRequest(`/api/video-analysis/scene-detection/${startedJobId}/cancel`, {
+            method: 'POST',
+          }).catch(() => undefined);
+        },
+        task: async () => {
+          const response = await apiRequest('/api/video-analysis/scene-detection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              video_path: videoPath,
+              threshold: 30.0,
+              min_scene_len: 15,
+            }),
+          });
+
+          const startPayload = response as unknown;
+          if (!isRecord(startPayload)) {
+            throw new Error('Unable to start scene detection');
+          }
+          const jobIdRaw = startPayload.job_id;
+          if (
+            startPayload.success !== true ||
+            (typeof jobIdRaw !== 'string' && typeof jobIdRaw !== 'number')
+          ) {
+            throw new Error(
+              typeof startPayload.error === 'string'
+                ? startPayload.error
+                : 'Unable to start scene detection'
+            );
+          }
+
+          startedJobId = String(jobIdRaw);
+          return startedJobId;
+        },
+      });
+
+      await pollSceneDetectionJob(jobId);
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setSnackbar({
+          open: true,
+          message: 'Scene detection cancelled',
+          severity: 'info',
+        });
+        return;
+      }
+      const message = toErrorMessage(error, 'Unknown error');
+      clearSceneDetectionPollInterval();
+      setSceneDetectionProgress({
+        status: 'failed',
+        progress: 0,
+        error: message,
+      });
+      setSnackbar({
+        open: true,
+        message: `Scene detection error: ${message}`,
+        severity: 'error',
+      });
+    }
+  }, [
+    resolveSceneDetectionVideoPath,
+    clearSceneDetectionPollInterval,
+    runManagedJob,
+    pollSceneDetectionJob,
+  ]);
+
+  const { handleFaceDetectionToggle } = useStoryArcFaceDetectionFlow({
+    faceDetectionRunning,
+    clips,
+    tracks,
+    totalDuration,
+    hydrateClipSources,
+    extractRenderableVideoSources,
+    groupFaceDetectionsIntoSegments,
+    setFaceDetectionRunning,
+    setShowFaceDetectionDialog,
+    setFaceDetectionProgress,
+    setFaceDetectionOptions,
+    setShowFaceDetectionOptionsDialog,
+    setPendingFaceDetectionResolve,
+    setClipMeta,
+    setClips,
+    setMarkers,
+    setPendingSubclipsResolve,
+    setSubclipsConfirmData,
+    setShowSubclipsConfirmDialog,
+    setAvailableVideoSources,
+    setTotalDuration,
+    setSnackbar,
+    runManagedJob,
+    cancelManagedJob,
+  });
+
+  const closeRatingDialog = useCallback(() => {
+    clearAiRatingRevealTimeout();
+    setShowRatingDialog(false);
+    setAIGeneratedTimelineData(null);
+  }, [clearAiRatingRevealTimeout]);
+
+  const dismissOnboardingDialog = useCallback(() => {
+    clearWorkerInitTimeouts();
+    setOnboardingOpen(false);
+  }, [clearWorkerInitTimeouts]);
+
+  const closeOnboardingDialog = useCallback(() => {
+    setSafeLocalStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY, 'true');
+    clearWorkerInitTimeouts();
+    setOnboardingOpen(false);
+  }, [clearWorkerInitTimeouts]);
+
+  const cancelFaceDetectionOptionsDialog = useCallback(() => {
+    setShowFaceDetectionOptionsDialog(false);
+    if (pendingFaceDetectionResolve) {
+      pendingFaceDetectionResolve(null);
+      setPendingFaceDetectionResolve(null);
+    }
+  }, [pendingFaceDetectionResolve]);
+
+  const confirmFaceDetectionOptionsDialog = useCallback(() => {
+    setShowFaceDetectionOptionsDialog(false);
+    if (pendingFaceDetectionResolve) {
+      pendingFaceDetectionResolve(faceDetectionOptions);
+      setPendingFaceDetectionResolve(null);
+    }
+  }, [pendingFaceDetectionResolve, faceDetectionOptions]);
+
+  const rejectSubclipsCreation = useCallback(() => {
+    setShowSubclipsConfirmDialog(false);
+    if (pendingSubclipsResolve) {
+      pendingSubclipsResolve(false);
+      setPendingSubclipsResolve(null);
+    }
+  }, [pendingSubclipsResolve]);
+
+  const acceptSubclipsCreation = useCallback(() => {
+    setShowSubclipsConfirmDialog(false);
+    if (pendingSubclipsResolve) {
+      pendingSubclipsResolve(true);
+      setPendingSubclipsResolve(null);
+    }
+  }, [pendingSubclipsResolve]);
+
+  const zoomOutTimeline = useCallback(() => {
+    adjustTimelineZoom(-0.1);
+  }, [adjustTimelineZoom]);
+
+  const zoomInTimeline = useCallback(() => {
+    adjustTimelineZoom(0.1);
+  }, [adjustTimelineZoom]);
+
+  const loadDockSlot1 = useCallback(() => {
+    loadDockSlot('dock-1');
+  }, [loadDockSlot]);
+
+  const loadDockSlot2 = useCallback(() => {
+    loadDockSlot('dock-2');
+  }, [loadDockSlot]);
+
+  const loadDockSlot3 = useCallback(() => {
+    loadDockSlot('dock-3');
+  }, [loadDockSlot]);
+
+  const saveDockSlot1 = useCallback(() => {
+    saveDockSlot('dock-1');
+  }, [saveDockSlot]);
+
+  const saveDockSlot2 = useCallback(() => {
+    saveDockSlot('dock-2');
+  }, [saveDockSlot]);
+
+  const saveDockSlot3 = useCallback(() => {
+    saveDockSlot('dock-3');
+  }, [saveDockSlot]);
+
   const closeSyncDialog = useCallback(() => {
+    if (syncJobId) {
+      void apiRequest(`/api/video-sync/jobs/${syncJobId}/cancel`, {
+        method: 'POST',
+      }).catch(() => undefined);
+    }
+    cancelManagedJob('sync');
+    clearPersistedServerJob('sync');
     setShowSyncDialog(false);
     setSelectedSyncClips(new Set());
     setSyncInProgress(false);
@@ -6113,7 +7284,7 @@ export default function StoryArcStudio({
     setManualOffsets({});
     setSyncPreviewMode(false);
     setSyncJobId(null);
-  }, []);
+  }, [syncJobId, cancelManagedJob, clearPersistedServerJob]);
 
   const openSyncDialog = useCallback(() => {
     const syncableClips = clips.filter((clip) => {
@@ -6205,7 +7376,7 @@ export default function StoryArcStudio({
         manualOffsetsData[clipId] = manualOffset;
       }
 
-      const clip = clips.find((item) => item.id === clipId);
+      const clip = clipMap.get(clipId);
       if (clip) {
         const meta = clipMeta[clipId] || {};
         cameraSetup[clipId] = {
@@ -6335,6 +7506,7 @@ export default function StoryArcStudio({
   }, [
     syncResults,
     clips,
+    clipMap,
     selectedSyncClips,
     clipMeta,
     storyArcId,
@@ -6346,6 +7518,61 @@ export default function StoryArcStudio({
     selectedClips,
     closeSyncDialog,
   ]);
+
+  const pollSyncServerJob = useCallback(
+    async (jobId: string) => {
+      setSyncJobId(jobId);
+      const serverOffsets = await startPollingJob<undefined, Record<string, EngineAudioSyncResult>>({
+        kind: 'sync',
+        serverJobId: jobId,
+        intervalMs: 2000,
+        maxConsecutivePollErrors: 4,
+        maxRetries: 1,
+        retryDelayMs: 2000,
+        onCancel: () => {
+          void apiRequest(`/api/video-sync/jobs/${jobId}/cancel`, {
+            method: 'POST',
+          }).catch(() => undefined);
+        },
+        poll: async (serverJobId) => {
+          const jobStatus = await apiRequest(`/api/video-sync/jobs/${serverJobId}`);
+          if (jobStatus.job?.status === 'completed' && jobStatus.job.sync_results?.offsets) {
+            return {
+              state: 'completed',
+              result: jobStatus.job.sync_results.offsets as Record<string, EngineAudioSyncResult>,
+            };
+          }
+          if (jobStatus.job?.status === 'error') {
+            return {
+              state: 'failed',
+              error: jobStatus.job.error || 'Server sync failed',
+            };
+          }
+          if (jobStatus.job?.status === 'cancelled') {
+            return {
+              state: 'failed',
+              error: jobStatus.job.error || 'Cancelled by user',
+            };
+          }
+          return { state: 'running' };
+        },
+      });
+
+      const initialManualOffsets: Record<string, number> = {};
+      Object.entries(serverOffsets).forEach(([clipId, result]) => {
+        initialManualOffsets[clipId] = result.offset_seconds || 0;
+      });
+      setSyncResults(serverOffsets);
+      setManualOffsets(initialManualOffsets);
+      setSyncPreviewMode(true);
+      setSnackbar({
+        open: true,
+        message: 'Server sync completed',
+        severity: 'success',
+      });
+    },
+    [startPollingJob]
+  );
 
   const executeSyncClips = useCallback(async () => {
     if (selectedSyncClips.size < 2) {
@@ -6371,72 +7598,84 @@ export default function StoryArcStudio({
     setSyncInProgress(true);
     setSyncJobId(syncUseServerFirst ? `server-${Date.now()}` : `local-${Date.now()}`);
 
-    if (syncUseServerFirst) {
-      try {
-        const clipData = selected.map((clip) => ({
-          id: clip.id,
-          path: clip.sourceFile || '',
-          type: clip.trackId?.includes('audio') ? 'audio' : 'video',
-          camera: clipMeta[clip.id]?.camera || clip.metadata?.camera,
-          syncGroup: clipMeta[clip.id]?.syncGroup || clip.metadata?.syncGroup,
-        }));
+    try {
+      if (syncUseServerFirst) {
+        try {
+          const clipData = selected.map((clip) => ({
+            id: clip.id,
+            path: clip.sourceFile || '',
+            type: clip.trackId?.includes('audio') ? 'audio' : 'video',
+            camera: clipMeta[clip.id]?.camera || clip.metadata?.camera,
+            syncGroup: clipMeta[clip.id]?.syncGroup || clip.metadata?.syncGroup,
+          }));
 
-        const jobResponse = await apiRequest('/api/video-sync/sync-clips', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            storyArcId: storyArcId || storyArc?.id,
-            clipIds: Array.from(selectedSyncClips),
-            referenceClipId: referenceClip.id,
-          }),
-        });
+          let startedSyncJobId: string | null = null;
+          const jobId = await runManagedJob<string>({
+            kind: 'sync',
+            maxRetries: 1,
+            retryDelayMs: 1000,
+            onCancel: () => {
+              if (!startedSyncJobId) {
+                return;
+              }
+              void apiRequest(`/api/video-sync/jobs/${startedSyncJobId}/cancel`, {
+                method: 'POST',
+              }).catch(() => undefined);
+            },
+            task: async () => {
+              const jobResponse = await apiRequest('/api/video-sync/sync-clips', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  storyArcId: storyArcId || storyArc?.id,
+                  clipIds: Array.from(selectedSyncClips),
+                  referenceClipId: referenceClip.id,
+                }),
+              });
 
-        if (jobResponse.success) {
-          await apiRequest('/api/video-sync/submit-clips', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jobId: jobResponse.jobId,
-              clips: clipData,
-            }),
+              if (!jobResponse?.success || typeof jobResponse.jobId !== 'string') {
+                throw new Error(
+                  typeof jobResponse?.error === 'string'
+                    ? jobResponse.error
+                    : 'Unable to start server sync'
+                );
+              }
+
+              await apiRequest('/api/video-sync/submit-clips', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jobId: jobResponse.jobId,
+                  clips: clipData,
+                }),
+              });
+
+              startedSyncJobId = jobResponse.jobId;
+              return jobResponse.jobId;
+            },
           });
 
-          const startedAt = Date.now();
-          while (Date.now() - startedAt < 60_000) {
-            const jobStatus = await apiRequest(`/api/video-sync/jobs/${jobResponse.jobId}`);
-            if (jobStatus.job?.status === 'completed' && jobStatus.job.sync_results?.offsets) {
-              const serverOffsets = jobStatus.job.sync_results.offsets as Record<string, EngineAudioSyncResult>;
-              const initialManualOffsets: Record<string, number> = {};
-              Object.entries(serverOffsets).forEach(([clipId, result]) => {
-                initialManualOffsets[clipId] = result.offset_seconds || 0;
-              });
-              setSyncResults(serverOffsets);
-              setManualOffsets(initialManualOffsets);
-              setSyncPreviewMode(true);
-              setSyncInProgress(false);
-              setSnackbar({
-                open: true,
-                message: 'Server sync completed',
-                severity: 'success',
-              });
-              return;
-            }
-            if (jobStatus.job?.status === 'error') {
-              throw new Error(jobStatus.job.error || 'Server sync failed');
-            }
-            await new Promise<void>((resolve) => {
-              setTimeout(() => resolve(), 2000);
+          await pollSyncServerJob(jobId);
+          return;
+        } catch (serverError) {
+          if (serverError instanceof Error && serverError.name === 'AbortError') {
+            setSnackbar({
+              open: true,
+              message: 'Sync cancelled',
+              severity: 'info',
             });
+            return;
           }
-          throw new Error('Server sync timed out');
+          clearPersistedServerJob('sync');
+          console.warn('Server sync unavailable, using local sync:', serverError);
         }
-      } catch (error) {
-        console.warn('Server sync unavailable, using local sync:', error);
       }
-    }
 
-    try {
-      const localOffsets = await runLocalSync(selected, referenceClip);
+      const localOffsets = await runManagedJob<Record<string, EngineAudioSyncResult>>({
+        kind: 'sync',
+        maxRetries: 0,
+        task: async () => runLocalSync(selected, referenceClip),
+      });
       const initialManualOffsets: Record<string, number> = {};
       Object.entries(localOffsets).forEach(([clipId, result]) => {
         initialManualOffsets[clipId] = result.offset_seconds;
@@ -6467,7 +7706,1476 @@ export default function StoryArcStudio({
     storyArcId,
     storyArc?.id,
     runLocalSync,
+    runManagedJob,
+    pollSyncServerJob,
+    clearPersistedServerJob,
   ]);
+
+  useEffect(() => {
+    if (resumedPersistedJobsRef.current) {
+      return;
+    }
+    resumedPersistedJobsRef.current = true;
+
+    const persistedSceneJob = getPersistedServerJob('scene');
+    if (persistedSceneJob) {
+      setShowSceneDetectionDialog(true);
+      setSceneDetectionJobId(persistedSceneJob.serverJobId);
+      setSceneDetectionProgress({
+        status: 'processing',
+        progress: 0,
+        message: `Resuming scene detection job ${persistedSceneJob.serverJobId}`,
+      });
+      void pollSceneDetectionJob(persistedSceneJob.serverJobId).catch((error: unknown) => {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        const message = toErrorMessage(error, 'Unknown error');
+        clearPersistedServerJob('scene');
+        setSceneDetectionProgress({
+          status: 'failed',
+          progress: 0,
+          error: message,
+        });
+        setSnackbar({
+          open: true,
+          message: `Scene detection resume failed: ${message}`,
+          severity: 'error',
+        });
+      });
+    }
+
+    const persistedSyncJob = getPersistedServerJob('sync');
+    if (persistedSyncJob) {
+      setSyncInProgress(true);
+      setSyncJobId(persistedSyncJob.serverJobId);
+      void pollSyncServerJob(persistedSyncJob.serverJobId)
+        .catch((error: unknown) => {
+          if (error instanceof Error && error.name === 'AbortError') {
+            return;
+          }
+          const message = toErrorMessage(error, 'Unknown error');
+          clearPersistedServerJob('sync');
+          setSnackbar({
+            open: true,
+            message: `Sync resume failed: ${message}`,
+            severity: 'error',
+          });
+        })
+        .finally(() => {
+          setSyncInProgress(false);
+        });
+    }
+  }, [
+    getPersistedServerJob,
+    pollSceneDetectionJob,
+    pollSyncServerJob,
+    clearPersistedServerJob,
+  ]);
+
+  const runSync = useCallback(() => {
+    void executeSyncClips();
+  }, [executeSyncClips]);
+
+  const applySync = useCallback(() => {
+    void applySyncToTimeline();
+  }, [applySyncToTimeline]);
+
+  const handleSearchQueryChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(event.target.value);
+  }, []);
+
+  const handleFilterTagsBlur = useCallback((event: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const nextTags = event.target.value
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    setFilterTags(nextTags);
+  }, []);
+
+  const handleTrackHeightScaleChange = useCallback((_: Event, value: number | number[]) => {
+    const numericValue = Array.isArray(value) ? value[0] : value;
+    setTrackHeightScale(numericValue);
+  }, []);
+
+  const handleWorkflowStepButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const step = event.currentTarget.dataset.workflowStep as ResolveWorkflowStep | undefined;
+    if (!step) {
+      return;
+    }
+    applyWorkflowStep(step);
+  }, [applyWorkflowStep]);
+
+  const handleSourcePatchVideoTrackChange = useCallback((event: SelectChangeEvent<string>) => {
+    setSourcePatchVideoTrackId(event.target.value || null);
+  }, []);
+
+  const handleSourcePatchAudioTrackChange = useCallback((event: SelectChangeEvent<string>) => {
+    setSourcePatchAudioTrackId(event.target.value || null);
+  }, []);
+
+  const handleSourcePatchIncludeAudioChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSourcePatchIncludeAudio(event.target.checked);
+  }, []);
+
+  const handleMulticamApplyToTimelineChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setMulticamApplyToTimeline(event.target.checked);
+  }, []);
+
+  const handleApplyMulticamAngleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const clipId = event.currentTarget.dataset.candidateClipId;
+    if (!clipId) {
+      return;
+    }
+    const candidate = multicamAngleCandidates.find((item) => item.clip.id === clipId);
+    if (!candidate) {
+      return;
+    }
+    applyMulticamAngle(candidate);
+  }, [multicamAngleCandidates, applyMulticamAngle]);
+
+  const handleAudioRoleFocusChange = useCallback((event: SelectChangeEvent<string>) => {
+    setAudioRoleFocus(event.target.value as AudioRoleFilter);
+  }, []);
+
+  const handleAudioRoleChipFocusClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const role = event.currentTarget.dataset.audioRole as AudioTrackRole | undefined;
+    if (!role) {
+      return;
+    }
+    setAudioRoleFocus((previous) => (previous === role ? 'all' : role));
+  }, []);
+
+  const handleAudioRoleMuteChipClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const role = event.currentTarget.dataset.audioRole as AudioTrackRole | undefined;
+    if (!role) {
+      return;
+    }
+    toggleAudioRoleMute(role);
+  }, [toggleAudioRoleMute]);
+
+  const handleAudioRoleSoloChipClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const role = event.currentTarget.dataset.audioRole as AudioTrackRole | undefined;
+    if (!role) {
+      return;
+    }
+    toggleAudioRoleSolo(role);
+  }, [toggleAudioRoleSolo]);
+
+  const handleOpenMixerTrackButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const trackId = event.currentTarget.dataset.trackId;
+    if (!trackId) {
+      return;
+    }
+    handleOpenMixer(trackId);
+  }, [handleOpenMixer]);
+
+  const handleOpenAIAssistantTrackButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const trackId = event.currentTarget.dataset.trackId;
+    if (!trackId) {
+      return;
+    }
+    handleOpenAIAssistant(trackId);
+  }, [handleOpenAIAssistant]);
+
+  const handleMixerTrackVolumeChange = useCallback((event: Event, value: number | number[]) => {
+    const trackId = (event.currentTarget as HTMLElement | null)?.dataset.trackId;
+    if (!trackId) {
+      return;
+    }
+    const volume = typeof value === 'number' ? value : value[0];
+    setClips((previous) =>
+      previous.map((clip) =>
+        clip.trackId === trackId
+          ? {
+              ...clip,
+              metadata: {
+                ...(clip.metadata || {}),
+                volume,
+              },
+            }
+          : clip
+      )
+    );
+  }, []);
+
+  const handleWorkspaceNavClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const preset = event.currentTarget.dataset.workspacePreset as ResolveWorkspacePreset | undefined;
+    if (!preset) {
+      return;
+    }
+    activateWorkspaceFromNav(preset);
+  }, [activateWorkspaceFromNav]);
+
+  const handleFaceDetectionScanEntireChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setFaceDetectionOptions((previous) => ({
+      ...previous,
+      scanEntire: event.target.checked,
+    }));
+  }, []);
+
+  const handleFaceDetectionFpsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setFaceDetectionOptions((previous) => ({
+      ...previous,
+      fps: parseFloat(event.target.value) || 0.5,
+    }));
+  }, []);
+
+  const handleFaceDetectionTaskChoiceChange = useCallback((event: SelectChangeEvent<string>) => {
+    setFaceDetectionOptions((previous) => ({
+      ...previous,
+      taskChoice: event.target.value,
+    }));
+  }, []);
+
+  const handleDriveUploadsEnabledChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDriveUploadsEnabled(event.target.checked);
+  }, []);
+
+  const handleDrivePrimaryEnabledChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDrivePrimaryEnabled(event.target.checked);
+  }, []);
+
+  const handleDrivePrimaryIntervalChange = useCallback((event: SelectChangeEvent<number>) => {
+    setDrivePrimaryIntervalMs(Number(event.target.value));
+  }, []);
+
+  const handleDrivePrimaryFolderNameChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDrivePrimaryFolderName(event.target.value);
+  }, []);
+
+  const handleDrivePrimaryFilenameTemplateChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDrivePrimaryFilenameTemplate(event.target.value);
+  }, []);
+
+  const handleDriveBackupEnabledChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDriveBackupEnabled(event.target.checked);
+  }, []);
+
+  const handleDriveBackupIntervalChange = useCallback((event: SelectChangeEvent<number>) => {
+    setDriveBackupIntervalMs(Number(event.target.value));
+  }, []);
+
+  const handleDriveBackupFolderNameChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDriveBackupFolderName(event.target.value);
+  }, []);
+
+  const handleDriveBackupFilenameTemplateChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setDriveBackupFilenameTemplate(event.target.value);
+  }, []);
+
+  const handleSyncTryReallyHardChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSyncTryReallyHard(event.target.checked);
+  }, []);
+
+  const handleSyncPreferTimecodeChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSyncPreferTimecode(event.target.checked);
+  }, []);
+
+  const handleSyncEnableDriftCorrectionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSyncEnableDriftCorrection(event.target.checked);
+  }, []);
+
+  const handleSyncAllowClipReorderChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSyncAllowClipReorder(event.target.checked);
+  }, []);
+
+  const handleSyncUseServerFirstChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSyncUseServerFirst(event.target.checked);
+  }, []);
+
+  const handleToggleSyncClipSelectionClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const clipId = event.currentTarget.dataset.clipId;
+    if (!clipId) {
+      return;
+    }
+    toggleSyncClipSelection(clipId);
+  }, [toggleSyncClipSelection]);
+
+  const handleResetManualOffsetClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const clipId = event.currentTarget.dataset.clipId;
+    const offset = event.currentTarget.dataset.detectedOffset;
+    if (!clipId || offset === undefined) {
+      return;
+    }
+    const detectedOffset = Number(offset);
+    if (!Number.isFinite(detectedOffset)) {
+      return;
+    }
+    resetManualOffsetToDetected(clipId, detectedOffset);
+  }, [resetManualOffsetToDetected]);
+
+  const handleClearManualOffsetClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const clipId = event.currentTarget.dataset.clipId;
+    if (!clipId) {
+      return;
+    }
+    clearManualOffsetForClip(clipId);
+  }, [clearManualOffsetForClip]);
+
+  const handleManualOffsetSliderChange = useCallback((event: Event, value: number | number[]) => {
+    const clipId = (event.currentTarget as HTMLElement | null)?.dataset.clipId;
+    if (!clipId) {
+      return;
+    }
+    updateManualOffset(clipId, value);
+  }, [updateManualOffset]);
+
+  const handleSourceMonitorMouseDown = useCallback(() => {
+    setActiveMonitor('source');
+  }, []);
+
+  const handleProgramMonitorMouseDown = useCallback(() => {
+    setActiveMonitor('program');
+  }, []);
+
+  const handleConnectCurrentProjectClick = useCallback(() => {
+    void connectCurrentProject();
+  }, [connectCurrentProject]);
+
+  const handleConnectRecentProjectClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const projectId = event.currentTarget.dataset.projectId;
+    if (!projectId) {
+      return;
+    }
+    const project = recentProjects.find((item) => item.id === projectId);
+    if (!project) {
+      return;
+    }
+    void connectRecentProject(project);
+  }, [recentProjects, connectRecentProject]);
+
+  const handleShowCompositionGuidesChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setShowCompositionGuides(event.target.checked);
+  }, []);
+
+  const handleCompositionGuideTargetChange = useCallback((event: SelectChangeEvent<string>) => {
+    setCompositionGuideTarget(event.target.value as CinematographyGuideTarget);
+  }, []);
+
+  const handleCompositionAspectMaskChange = useCallback((event: SelectChangeEvent<string>) => {
+    setCompositionAspectMask(event.target.value as CinematographyAspectMask);
+  }, []);
+
+  const handleCompositionSpiralOrientationChange = useCallback((event: SelectChangeEvent<string>) => {
+    setCompositionSpiralOrientation(event.target.value as CinematographySpiralOrientation);
+  }, []);
+
+  const handleCompositionGuideToggleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const guideKey = event.currentTarget.dataset.guideKey as keyof CinematographyGuideSet | undefined;
+    if (!guideKey) {
+      return;
+    }
+    updateCompositionGuide(guideKey, event.target.checked);
+  }, [updateCompositionGuide]);
+
+  const handleCompositionGuideColorChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setCompositionGuideColor(event.target.value);
+  }, []);
+
+  const handleCompositionGuideOpacityChange = useCallback((_: Event, value: number | number[]) => {
+    setCompositionGuideOpacity(typeof value === 'number' ? value : value[0]);
+  }, []);
+
+  const handleCompositionGuideThicknessChange = useCallback((_: Event, value: number | number[]) => {
+    setCompositionGuideThickness(typeof value === 'number' ? value : value[0]);
+  }, []);
+
+  const handleAutoMonitorStatusChange = useCallback((enabled: boolean) => {
+    console.log('Auto monitoring status changed:', enabled);
+  }, []);
+
+  const handleAssetBrowserMediaSelect = useCallback((media: SelectedAssetMedia) => {
+    const mediaSource = typeof media?.url === 'string' ? media.url.trim() : '';
+    const isVideoAsset =
+      media?.type === 'video' ||
+      (typeof media?.mimeType === 'string' && media.mimeType.startsWith('video/'));
+
+    if (!isVideoAsset || !mediaSource) {
+      return;
+    }
+
+    if (media.file instanceof File) {
+      setSourceFileRegistry((previous) => ({
+        ...previous,
+        [mediaSource]: media.file as File,
+      }));
+    }
+
+    setActiveSourcePreview({
+      id: media.id || `source-${Date.now()}`,
+      name: media.name || 'Selected Source',
+      sourceFile: mediaSource,
+      file: media.file,
+    });
+    setAvailableVideoSources((previous) =>
+      previous.includes(mediaSource) ? previous : [...previous, mediaSource]
+    );
+  }, []);
+
+  const handleAssetBrowserTimelineInit = useCallback(({
+    storyArc: arc,
+    clips: newClips,
+    tracks: newTracks,
+  }: {
+    storyArc: StoryArc;
+    clips: BeatClip[];
+    tracks: Track[];
+  }) => {
+    if (fixtureTimelineLockRef.current) {
+      return;
+    }
+    setStoryArc(arc);
+    const hydratedTimelineClips = hydrateClipSources(newClips);
+    setClips(hydratedTimelineClips);
+    setAvailableVideoSources((previous) => {
+      const merged = new Set([...previous, ...extractRenderableVideoSources(hydratedTimelineClips)]);
+      return Array.from(merged);
+    });
+    setTracks(newTracks);
+    const total = Math.max(
+      ...hydratedTimelineClips.map((clip) => clip.start + clip.duration),
+      arc.totalDuration || 0
+    );
+    setTotalDuration(total || 0);
+    setSelectedClips(new Set());
+    setCurrentTime(0);
+  }, [hydrateClipSources, extractRenderableVideoSources]);
+
+  const handleAssetBrowserTemplateSelect = useCallback((templateId: string) => {
+    console.log('Template selected:', templateId);
+  }, []);
+
+  const handleAssetBrowserSnippetDrag = useCallback((snippetId: string) => {
+    console.log('Snippet dragged:', snippetId);
+  }, []);
+
+  const handleSourceMonitorFocus = useCallback(() => {
+    setActiveMonitor('source');
+  }, []);
+
+  const handleProgramMonitorFocus = useCallback(() => {
+    setActiveMonitor('program');
+  }, []);
+
+  const handleSourceVideoLoadedMetadata = useCallback((event: React.SyntheticEvent<HTMLVideoElement>) => {
+    setSourcePreviewReady(true);
+    setSourcePreviewError(null);
+    const mediaDuration = Number(event.currentTarget.duration);
+    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+      setSourcePreviewDuration(mediaDuration);
+    }
+    try {
+      event.currentTarget.currentTime = sourcePreviewLocalTime;
+    } catch {
+      // Ignore initial seek errors until media is fully ready.
+    }
+  }, [sourcePreviewLocalTime]);
+
+  const handleSourceVideoTimeUpdate = useCallback((event: React.SyntheticEvent<HTMLVideoElement>) => {
+    setSourcePreviewTime(event.currentTarget.currentTime);
+  }, []);
+
+  const handleSourceVideoPlay = useCallback(() => {
+    setSourcePreviewIsPlaying(true);
+  }, []);
+
+  const handleSourceVideoPause = useCallback(() => {
+    setSourcePreviewIsPlaying(false);
+  }, []);
+
+  const handleSourceVideoError = useCallback(() => {
+    setSourcePreviewReady(false);
+    setSourcePreviewIsPlaying(false);
+    setSourcePreviewError('Source preview failed to load');
+  }, []);
+
+  const handleProgramVideoLoadedMetadata = useCallback((event: React.SyntheticEvent<HTMLVideoElement>) => {
+    setPreviewReady(true);
+    setPreviewError(null);
+    try {
+      event.currentTarget.currentTime = programPreviewLocalTime;
+    } catch {
+      // Ignore initial seek errors until media is fully ready.
+    }
+  }, [programPreviewLocalTime]);
+
+  const handleProgramVideoError = useCallback(() => {
+    setPreviewReady(false);
+    setPreviewError('Program preview failed to load');
+  }, []);
+
+  const handleTimelineClipSelect = useCallback((clipId: string, multiSelect = false) => {
+    setSelectedClips((previous) => {
+      if (multiSelect) {
+        const next = new Set(previous);
+        if (next.has(clipId)) {
+          next.delete(clipId);
+        } else {
+          next.add(clipId);
+        }
+        return next;
+      }
+      return new Set([clipId]);
+    });
+  }, []);
+
+  const handleTimelineClipMove = useCallback((clipId: string, newStart: number, newTrackId: string) => {
+    const snappedStart = timelineEngine.snapToFrame(newStart);
+    let next = moveClipWithEditTool(clips, clipId, snappedStart, newTrackId);
+    if (safeTrimMode && hasTimelineOverlapOnTrack(next, newTrackId)) {
+      showSafeTrimBlockedWarning();
+      return;
+    }
+    if (magneticEnabled && editTool !== 'slip') {
+      next = resolveOverlaps(next, newTrackId);
+    }
+    applyClipUpdates(next);
+  }, [
+    clips,
+    safeTrimMode,
+    hasTimelineOverlapOnTrack,
+    showSafeTrimBlockedWarning,
+    magneticEnabled,
+    editTool,
+    resolveOverlaps,
+    applyClipUpdates,
+    moveClipWithEditTool,
+  ]);
+
+  const handleTimelineClipResize = useCallback((
+    clipId: string,
+    newStart: number,
+    newDuration: number,
+    resizeMode: 'resize-left' | 'resize-right' = 'resize-right'
+  ) => {
+    const targetTrack = newTrackIdForClip(clips, clipId);
+    let next = resizeClipWithEditTool(
+      clips,
+      clipId,
+      newStart,
+      newDuration,
+      resizeMode === 'resize-left' ? 'resize-left' : 'resize-right'
+    );
+    if (safeTrimMode && targetTrack && hasTimelineOverlapOnTrack(next, targetTrack)) {
+      showSafeTrimBlockedWarning();
+      return;
+    }
+    if (magneticEnabled && targetTrack && editTool !== 'roll') {
+      next = resolveOverlaps(next, targetTrack);
+    }
+    applyClipUpdates(next);
+  }, [
+    clips,
+    newTrackIdForClip,
+    resizeClipWithEditTool,
+    safeTrimMode,
+    hasTimelineOverlapOnTrack,
+    showSafeTrimBlockedWarning,
+    magneticEnabled,
+    editTool,
+    resolveOverlaps,
+    applyClipUpdates,
+  ]);
+
+  const handleTimelineZoomChange = useCallback((nextZoom: number) => {
+    setTimelineZoomFromUser(nextZoom);
+  }, [setTimelineZoomFromUser]);
+
+  const handleTimelineTrackToggle = useCallback((trackId: string, changes: Partial<TrackState>) => {
+    setTrackStates((previous) => ({
+      ...previous,
+      [trackId]: { ...previous[trackId], ...changes },
+    }));
+  }, []);
+
+  const handleTimelineTrackRename = useCallback((trackId: string, name: string) => {
+    setTracks((previous) =>
+      previous.map((track) => (track.id === trackId ? { ...track, name } : track))
+    );
+  }, []);
+
+  const handleTimelineTrackTypeChange = useCallback((trackId: string, type: TrackState['type']) => {
+    const normalizedType: NonNullable<TrackState['type']> =
+      type === 'audio' || type === 'video' || type === 'adjustment' || type === 'subtitle' || type === 'graphics'
+        ? type
+        : 'video';
+    setTrackStates((previous) => {
+      const matchingTrack = tracks.find((track) => track.id === trackId);
+      const defaultRole = matchingTrack
+        ? inferAudioRoleFromTrackName(matchingTrack.name)
+        : 'dialogue';
+      return {
+        ...previous,
+        [trackId]: {
+          ...previous[trackId],
+          type: normalizedType,
+          audioRole: normalizedType === 'audio' ? previous[trackId]?.audioRole ?? defaultRole : undefined,
+        },
+      };
+    });
+    setTracks((previous) =>
+      previous.map((track) =>
+        track.id === trackId
+          ? { ...track, type: normalizedType === 'audio' ? 'audio' : 'video' }
+          : track
+      )
+    );
+  }, [tracks, inferAudioRoleFromTrackName]);
+
+  const handleTimelineContextMenuAction = useCallback((action: string, payload: unknown) => {
+    if (!isRecord(payload) || typeof payload.clipId !== 'string') {
+      return;
+    }
+    const clipId = payload.clipId;
+    switch (action) {
+      case 'edit-metadata':
+        setSelectedClips(new Set([clipId]));
+        break;
+      case 'split': {
+        const atTime = currentTime;
+        setClips((previous) => splitClip(previous, clipId, atTime));
+        break;
+      }
+      case 'duplicate':
+        setClips((previous) => duplicateClip(previous, clipId));
+        break;
+      case 'delete':
+        setClips((previous) => deleteClip(previous, clipId, rippleEnabled));
+        break;
+      case 'color':
+        if (typeof payload.color !== 'string') {
+          return;
+        }
+        {
+          const nextColor = payload.color;
+        setClips((previous) =>
+            previous.map((clip) => (clip.id === clipId ? { ...clip, color: nextColor } : clip))
+        );
+        }
+        break;
+      case 'add-comment': {
+        const id = `c${Date.now()}`;
+        setComments((previous) => [...previous, { id, time: currentTime, text: 'Comment', clipId }]);
+        break;
+      }
+      case 'review-approve': {
+        const id = `c${Date.now()}`;
+        setComments((previous) => [...previous, { id, time: currentTime, text: 'Approved ✅', clipId }]);
+        break;
+      }
+      case 'review-request-changes': {
+        const id = `c${Date.now()}`;
+        setComments((previous) => [...previous, { id, time: currentTime, text: 'Please revise ✏️', clipId }]);
+        break;
+      }
+      default:
+        break;
+    }
+  }, [currentTime, rippleEnabled]);
+
+  const handleTimelineMediaDrop = useCallback(({
+    media,
+    trackId,
+    startTime,
+  }: {
+    media: StoryArcMediaDetail;
+    trackId?: string;
+    startTime: number;
+  }) => {
+    addMediaToTimeline({
+      media,
+      track: trackId,
+      position: 'playhead',
+      startTime,
+    });
+    setCurrentTime(startTime);
+  }, [addMediaToTimeline]);
+
+  const handleWaveformReady = useCallback((wavesurfer: unknown) => {
+    if (
+      isRecord(wavesurfer) &&
+      typeof wavesurfer.setPlaybackRate === 'function'
+    ) {
+      wavesurfer.setPlaybackRate(Math.max(0.25, Math.min(4, playbackSpeed)));
+    }
+    console.log('✅ Waveform ready');
+  }, [playbackSpeed]);
+
+  const handleWaveformRegionCreated = useCallback((region: unknown) => {
+    console.log('✅ Audio region created:', region);
+  }, []);
+
+  const handleWorkspaceDockMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const navRect = event.currentTarget.getBoundingClientRect();
+    if (navRect.width <= 0) {
+      return;
+    }
+    const rawRatio = (event.clientX - navRect.left) / navRect.width;
+    const nextRatio = Math.max(0, Math.min(1, rawRatio));
+    setWorkspaceDockPointerRatio((previous) => {
+      if (previous === null) {
+        return nextRatio;
+      }
+      return Math.abs(previous - nextRatio) < 0.003 ? previous : nextRatio;
+    });
+  }, []);
+
+  const handleWorkspaceDockMouseLeave = useCallback(() => {
+    setWorkspaceDockPointerRatio(null);
+  }, []);
+
+  const handleInspectorClipUpdate = useCallback((clipId: string, updates: Partial<BeatClip>) => {
+    setClips((previous) =>
+      previous.map((clip) =>
+        clip && clip.id === clipId ? { ...clip, ...updates } : clip
+      )
+    );
+  }, []);
+
+  const handleInspectorBulkUpdate = useCallback((clipIds: string[], updates: Partial<BeatClip>) => {
+    setClips((previous) =>
+      previous.map((clip) =>
+        clip && clipIds.includes(clip.id) ? { ...clip, ...updates } : clip
+      )
+    );
+  }, []);
+
+  const handleInspectorMetaUpdate = useCallback((clipId: string, updates: Partial<ClipMeta>) => {
+    setClipMeta((previous) => ({
+      ...previous,
+      [clipId]: { ...(previous[clipId] || {}), ...updates },
+    }));
+  }, []);
+
+  const handleAIStoryGenerated = useCallback((data: unknown) => {
+    const payload = normalizeAIGeneratedPayload(data);
+    const timelineClips = payload?.timeline?.clips || [];
+    if (timelineClips.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'AI generation returned no timeline clips',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    const aiClips: BeatClip[] = timelineClips.map((clip, index) => {
+      const metadata = clip.metadata || {};
+      const emotionalIntensity = metadata.emotionalIntensity;
+      return {
+        id: clip.id || `ai-clip-${Date.now()}-${index}`,
+        name: clip.name || clip.beatName || `AI Clip ${index + 1}`,
+        beatName: clip.beatName || clip.name || `AI Clip ${index + 1}`,
+        start: typeof clip.start === 'number' ? clip.start : 0,
+        duration: typeof clip.duration === 'number' ? clip.duration : 3,
+        ev: typeof emotionalIntensity === 'number' ? emotionalIntensity : 0,
+        synopsis: clip.name || clip.beatName || `AI Clip ${index + 1}`,
+        trackId: clip.trackId || 'video-1',
+        color: '#9c27b0',
+        sourceFile: clip.sourceFile,
+        metadata,
+      };
+    });
+
+    const hydratedAiClips = hydrateClipSources(aiClips);
+    setClips(hydratedAiClips);
+    setAvailableVideoSources((previous) => {
+      const merged = new Set([...previous, ...extractRenderableVideoSources(hydratedAiClips)]);
+      return Array.from(merged);
+    });
+    const nextDuration =
+      typeof payload?.timeline?.totalDuration === 'number'
+        ? payload.timeline.totalDuration
+        : timelineEngine.calculateDuration(hydratedAiClips);
+    setTotalDuration(nextDuration);
+
+    setStoryArc({
+      id: 'ai_generated',
+      title: payload?.storyArc?.title || 'AI Generated Story',
+      type: 'wedding',
+      totalDuration: nextDuration,
+      segments: [],
+      musicSuggestions: payload?.storyArc?.musicSuggestions || [],
+      transitionEffects: payload?.storyArc?.transitionPoints || [],
+      colorGrading: DEFAULT_COLOR_GRADING_PROFILE,
+      confidence: 0.9,
+      createdAt: new Date().toISOString(),
+    });
+
+    videoEngine.setTimeline(hydratedAiClips, tracks, nextDuration);
+    closeAIGeneratorDialog();
+
+    console.log('✅ AI-generated timeline loaded!', hydratedAiClips.length, 'clips');
+    setAIGeneratedTimelineData(payload ?? data);
+    scheduleAiRatingReveal(2000);
+  }, [
+    hydrateClipSources,
+    extractRenderableVideoSources,
+    tracks,
+    closeAIGeneratorDialog,
+    scheduleAiRatingReveal,
+    setSnackbar,
+  ]);
+
+  const handleTransitionSelect = useCallback((
+    type: string,
+    duration: number,
+    engine: 'canvas2d' | 'webgl'
+  ) => {
+    setPendingTransitionType(type);
+    setPendingTransitionDuration(duration);
+    setPendingTransitionEngine(engine);
+    closeTransitionLibrary();
+    setSnackbar({
+      open: true,
+      message: `Queued transition ${type} (${engine.toUpperCase()}, ${duration.toFixed(2)}s)`,
+      severity: 'info',
+    });
+  }, [closeTransitionLibrary]);
+
+  const handleSpeedRampKeyframesChange = useCallback((keyframes: SpeedKeyframe[]) => {
+    setCurrentSpeedKeyframes(keyframes);
+    console.log('✅ Speed keyframes updated:', keyframes.length);
+  }, []);
+
+  const handleSpeedRampPreview = useCallback(() => {
+    console.log('🎬 Previewing speed ramp');
+  }, []);
+
+  const handleTextOverlayAdd = useCallback((overlay: TextOverlay) => {
+    const defaultAnimation = textAnimationPresets[0]?.animation as TextOverlay['animation'] | undefined;
+    const normalizedOverlay: TextOverlay = {
+      ...overlay,
+      animation:
+        overlay.animation ||
+        defaultAnimation || {
+          type: 'fade_in',
+          duration: 0.5,
+          delay: 0,
+        },
+    };
+    setTextOverlays((previous) => [...previous, normalizedOverlay]);
+    try {
+      textOverlayEngine.addOverlay(normalizedOverlay);
+    } catch (error) {
+      console.warn('Text overlay engine add failed:', error);
+    }
+    console.log('✅ Text overlay added:', normalizedOverlay);
+  }, [textAnimationPresets]);
+
+  const handleGPUFilterApply = useCallback((filterId: string, config: FilterConfig) => {
+    setAppliedFilters((previous) => new Map(previous).set(filterId, config));
+    try {
+      pixiFilterEngine.applyFilter(filterId, config);
+    } catch (error) {
+      console.warn('GPU filter apply failed:', error);
+    }
+    console.log('✅ GPU filter applied:', filterId);
+  }, []);
+
+  const handleColorGradeApply = useCallback((grade: ColorGradeSelection) => {
+    const presetMatch = colorGradePresets.find((preset) => preset.name === grade?.name);
+    const mergedGrade = presetMatch ? { ...presetMatch.grade, ...grade } : grade;
+    setCurrentColorGrade(mergedGrade);
+    if (selectedClips.size > 0) {
+      setClips((previous) =>
+        previous.map((clip) =>
+          selectedClips.has(clip.id)
+            ? {
+                ...clip,
+                metadata: {
+                  ...(clip.metadata || {}),
+                  colorGrade: mergedGrade,
+                },
+              }
+            : clip
+        )
+      );
+    }
+    console.log('✅ Color grade applied:', mergedGrade);
+  }, [colorGradePresets, selectedClips]);
+
+  const handleCaptionsGenerated = useCallback((captions: CaptionSegment[], srt: string, vtt: string) => {
+    console.log('✅ Captions generated:', captions.length, 'segments');
+    setCaptionsExport({
+      segments: captions,
+      srt,
+      vtt,
+    });
+    const markerSeed = Date.now();
+    const captionMarkers: TimelineMarker[] = captions
+      .slice(0, 50)
+      .flatMap((caption, index) => {
+        const start = typeof caption.start === 'number' ? caption.start : 0;
+        const text = typeof caption.text === 'string' ? caption.text : '';
+        if (text.trim().length === 0) {
+          return [];
+        }
+        return [{
+          id: `cap-${markerSeed}-${index}`,
+          time: timelineEngine.snapToFrame(Math.max(0, start)),
+          color: '#f59e0b',
+          label: `Caption: ${text.slice(0, 22)}`,
+        }];
+      });
+    if (captionMarkers.length > 0) {
+      setMarkers((previous) => [...previous, ...captionMarkers]);
+    }
+    setSnackbar({
+      open: true,
+      message: `Captions generated (${captions.length} segments). Export ready in Effects Dock.`,
+      severity: 'success',
+    });
+  }, []);
+
+  const handleBeatSyncClipsSnapped = useCallback((snappedClips: BeatClip[]) => {
+    const hydratedSnappedClips = hydrateClipSources(snappedClips);
+    setClips(hydratedSnappedClips);
+    setAvailableVideoSources((previous) => {
+      const merged = new Set([...previous, ...extractRenderableVideoSources(hydratedSnappedClips)]);
+      return Array.from(merged);
+    });
+    console.log('✅ Clips snapped to beats');
+  }, [hydrateClipSources, extractRenderableVideoSources]);
+
+  const handleBackgroundRemovalProcessed = useCallback((result: unknown) => {
+    console.log('✅ Background processed:', result);
+  }, []);
+
+  const handleObjectSegmentationComplete = useCallback((result: unknown) => {
+    console.log('✅ Object segmentation complete:', result);
+  }, []);
+
+  const handleMotionTrackingComplete = useCallback((result: unknown) => {
+    const trackedFrames =
+      isRecord(result) && Array.isArray(result.frames) ? result.frames.length : 0;
+    const trackerType =
+      isRecord(result) && typeof result.tracker_type === 'string'
+        ? result.tracker_type
+        : 'tracker';
+    console.log('✅ Motion tracking complete:', result);
+    setSnackbar({
+      open: true,
+      message: `Motion tracking complete! Tracked ${trackedFrames} frames using ${trackerType}`,
+      severity: 'success',
+    });
+  }, []);
+
+  const handleAudioEnhanced = useCallback((enhancedUrl: string, metrics: AudioEnhancementMetrics) => {
+    const detail = window.__pendingAudioDetail;
+    if (detail) {
+      const targetTrackId = detail.track || 'audio-1';
+      const clipDuration = Number(detail.media.duration || 5);
+
+      setTracks((previous) => {
+        if (!previous.find((track) => track.id === targetTrackId)) {
+          const newTrack: Track = { id: targetTrackId, name: targetTrackId, type: 'audio', height: 40 };
+          return [...previous, newTrack];
+        }
+        return previous;
+      });
+
+      setClips((previous) => {
+        let start = 0;
+        if (detail.position === 'playhead') {
+          start = currentTime;
+        } else {
+          const trackClips = previous.filter((clip) => clip.trackId === targetTrackId);
+          const end = trackClips.length > 0 ? Math.max(...trackClips.map((clip) => clip.start + clip.duration)) : 0;
+          start = end;
+        }
+        const id = `clip_${Date.now()}`;
+        const originalName = detail.media.name || 'Audio';
+        const extension = originalName.match(/\.[^/.]+$/)?.[0] || '.wav';
+        const baseName = originalName.replace(/\.[^/.]+$/, '');
+        const enhancedName = `${baseName}_enhanced${extension}`;
+
+        const newClip = {
+          id,
+          name: enhancedName,
+          beatName: enhancedName,
+          start,
+          duration: clipDuration,
+          ev: 0,
+          synopsis: `Forbedret: ${metrics.loudness?.standard} (${metrics.loudness?.final_lufs?.toFixed(1)} LUFS) | Fra: ${originalName}`,
+          trackId: targetTrackId,
+          color: '#16a34a',
+          sourceFile: enhancedUrl,
+          enhanced: true,
+          enhancedPreset: metrics.loudness?.standard || 'Enhanced',
+          metadata: {
+            originalSource: detail.media.url || detail.media.name,
+            originalName,
+            enhancedFrom: detail.media.id || detail.media.name,
+            enhancementMethod: metrics.enhancement?.method || 'FlowSE/DEMUCS',
+            loudnessStandard: metrics.loudness?.standard,
+          },
+          tags: ['enhanced', 'audio', metrics.loudness?.standard || 'enhanced'],
+        } as BeatClip;
+        const next = [...previous, newClip];
+        const maxEnd = Math.max(...next.map((clip) => clip.start + clip.duration), storyArc?.totalDuration || 0);
+        setTotalDuration(maxEnd);
+        return next;
+      });
+
+      const originalName = detail.media.name || 'Audio';
+      const assetName = `${originalName} (Forbedret)`;
+      const description = `Forbedret lyd: ${metrics.loudness?.standard} standard (${metrics.loudness?.final_lufs?.toFixed(1)} LUFS)`;
+
+      apiRequest('/api/assets/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: assetName,
+          description,
+          category: 'audio',
+          subcategory: 'enhanced',
+          model_url: enhancedUrl,
+          tags: ['enhanced', 'audio', metrics.loudness?.standard || 'enhanced'],
+          metadata: {
+            originalName,
+            enhancementMethod: metrics.enhancement?.method || 'FlowSE/DEMUCS',
+            loudnessStandard: metrics.loudness?.standard,
+            finalLufs: metrics.loudness?.final_lufs,
+            snrImprovement: metrics.enhancement?.snr_improvement,
+            quality: metrics.enhancement?.quality,
+            preset: metrics.loudness?.standard,
+          },
+          is_public: false,
+        }),
+      }).then(() => {
+        console.log('✅ Enhanced audio saved to asset library');
+      }).catch((error: unknown) => {
+        console.error('Failed to save enhanced audio to library:', error);
+      });
+
+      if (storyArcId && storyArc?.title && currentUser?.id) {
+        fetch(enhancedUrl)
+          .then((response) => response.blob())
+          .then((blob) => {
+            const formData = new FormData();
+            formData.append('file', blob, assetName);
+            formData.append('storyArcName', storyArc.title);
+
+            return apiRequest(`/api/story-arc/${storyArcId}/google-drive/upload-audio`, {
+              method: 'POST',
+              body: formData,
+            });
+          })
+          .then(() => {
+            console.log('✅ Enhanced audio uploaded to Google Drive Audio Assets folder');
+          })
+          .catch((error: unknown) => {
+            console.error('Failed to upload enhanced audio to Google Drive:', error);
+          });
+      }
+
+      delete window.__pendingAudioDetail;
+    }
+
+    setShowAudioEnhancementDialog(false);
+    setPendingAudioFile(null);
+
+    setSnackbar({
+      open: true,
+      message: `Lyd forbedret! ${metrics.loudness?.standard} standard (${metrics.loudness?.final_lufs?.toFixed(1)} LUFS)`,
+      severity: 'success',
+    });
+  }, [currentTime, storyArc?.totalDuration, storyArc?.title, storyArcId, currentUser?.id]);
+
+  const handleAudioEnhancementSkip = useCallback(() => {
+    const detail = window.__pendingAudioDetail;
+    if (detail) {
+      const targetTrackId = detail.track || 'audio-1';
+      const clipDuration = Number(detail.media.duration || 5);
+
+      setTracks((previous) => {
+        if (!previous.find((track) => track.id === targetTrackId)) {
+          const newTrack: Track = { id: targetTrackId, name: targetTrackId, type: 'audio', height: 40 };
+          return [...previous, newTrack];
+        }
+        return previous;
+      });
+
+      setClips((previous) => {
+        let start = 0;
+        if (detail.position === 'playhead') {
+          start = currentTime;
+        } else {
+          const trackClips = previous.filter((clip) => clip.trackId === targetTrackId);
+          const end = trackClips.length > 0 ? Math.max(...trackClips.map((clip) => clip.start + clip.duration)) : 0;
+          start = end;
+        }
+        const id = `clip_${Date.now()}`;
+        const newClip = {
+          id,
+          name: detail.media.name || 'Asset',
+          beatName: detail.media.name || 'Asset',
+          start,
+          duration: clipDuration,
+          ev: 0,
+          synopsis: detail.media.name || 'Asset',
+          trackId: targetTrackId,
+          color: '#4caf50',
+          sourceFile: detail.media.url,
+          metadata: {
+            camera: detail.media.camera,
+            syncGroup: detail.media.syncGroup,
+            originalSource: detail.media.url || detail.media.name,
+          },
+          tags: detail.media.tags || [],
+        } as BeatClip;
+        const next = [...previous, newClip];
+        const maxEnd = Math.max(...next.map((clip) => clip.start + clip.duration), storyArc?.totalDuration || 0);
+        setTotalDuration(maxEnd);
+
+        if (detail.media.camera || detail.media.syncGroup || detail.media.tags) {
+          setClipMeta((clipMetaMap) => ({
+            ...clipMetaMap,
+            [id]: {
+              camera: detail.media.camera,
+              syncGroup: detail.media.syncGroup,
+              tags: detail.media.tags || [],
+            },
+          }));
+        }
+
+        return next;
+      });
+
+      delete window.__pendingAudioDetail;
+    }
+
+    setShowAudioEnhancementDialog(false);
+    setPendingAudioFile(null);
+  }, [currentTime, storyArc?.totalDuration]);
+
+  const handleBatchAudioComplete = useCallback((results: BatchAudioEnhancementResult[]) => {
+    results.forEach((result) => {
+      if (result.status === 'success' && result.enhancedUrl) {
+        const targetTrackId = 'audio-1';
+
+        setTracks((previous) => {
+          if (!previous.find((track) => track.id === targetTrackId)) {
+            const newTrack: Track = { id: targetTrackId, name: targetTrackId, type: 'audio', height: 40 };
+            return [...previous, newTrack];
+          }
+          return previous;
+        });
+
+        setClips((previous) => {
+          const trackClips = previous.filter((clip) => clip.trackId === targetTrackId);
+          const end = trackClips.length > 0 ? Math.max(...trackClips.map((clip) => clip.start + clip.duration)) : 0;
+
+          const id = `clip_${Date.now()}_${Math.random()}`;
+          const newClip = {
+            id,
+            name: `${result.file.name} (Forbedret)`,
+            beatName: `${result.file.name} (Forbedret)`,
+            start: end,
+            duration: 120,
+            ev: 0,
+            synopsis: `Forbedret: ${result.metrics?.loudness?.standard} (${result.metrics?.loudness?.final_lufs?.toFixed(1)} LUFS)`,
+            trackId: targetTrackId,
+            color: '#16a34a',
+            sourceFile: result.enhancedUrl,
+            enhanced: true,
+            enhancedPreset: result.metrics?.loudness?.standard || 'Enhanced',
+          } as BeatClip;
+
+          const next = [...previous, newClip];
+          const maxEnd = Math.max(...next.map((clip) => clip.start + clip.duration), storyArc?.totalDuration || 0);
+          setTotalDuration(maxEnd);
+          return next;
+        });
+      }
+    });
+
+    closeBatchAudioDialog();
+
+    const successCount = results.filter((result) => result.status === 'success').length;
+    setSnackbar({
+      open: true,
+      message: `${successCount} lydfiler forbedret og lagt til i tidslinjen!`,
+      severity: 'success',
+    });
+  }, [closeBatchAudioDialog, storyArc?.totalDuration]);
+
+  const aiAudioAssistantTracks = useMemo<Array<{
+    id: string;
+    name: string;
+    sourceFile: string;
+    type?: 'dialogue' | 'music' | 'sfx';
+  }>>(
+    () =>
+      clips
+        .filter((clip) => clip.trackId?.startsWith('A') || clip.trackId?.startsWith('audio'))
+        .map((clip) => {
+          const audioRole = trackStates[clip.trackId]?.audioRole;
+          const assistantType: 'dialogue' | 'music' | 'sfx' | undefined =
+            audioRole === 'dialogue' || audioRole === 'voiceover' || audioRole === 'narration'
+              ? 'dialogue'
+              : audioRole === 'music'
+                ? 'music'
+                : audioRole === 'effects' || audioRole === 'ambience'
+                  ? 'sfx'
+                  : undefined;
+          return {
+            id: clip.id,
+            name: clip.name || clip.id,
+            sourceFile: clip.sourceFile || '',
+            type: assistantType,
+          };
+        }),
+    [clips, trackStates]
+  );
+
+  const handleAIAudioMixComplete = useCallback((mixedAudioUrl: string, metrics: AudioEnhancementMetrics) => {
+    const mixedTrackId = 'audio-mixed';
+
+    setTracks((previous) => {
+      if (!previous.find((track) => track.id === mixedTrackId)) {
+        const newTrack: Track = { id: mixedTrackId, name: 'AI Mixed Audio', type: 'audio', height: 40 };
+        return [...previous, newTrack];
+      }
+      return previous;
+    });
+
+    setClips((previous) => {
+      const id = `clip_ai_mixed_${Date.now()}`;
+      const newClip = {
+        id,
+        name: 'AI Mixed Audio',
+        beatName: 'AI Mixed Audio',
+        start: 0,
+        duration: metrics.duration_seconds || 120,
+        ev: 0,
+        synopsis: `AI Mixed: ${metrics.tracks_processed} tracks (${metrics.final_lufs?.toFixed(1)} LUFS)`,
+        trackId: mixedTrackId,
+        color: '#9333ea',
+        sourceFile: mixedAudioUrl,
+        enhanced: true,
+        enhancedPreset: 'AI Mixed',
+      } as BeatClip;
+
+      const next = [...previous, newClip];
+      const maxEnd = Math.max(...next.map((clip) => clip.start + clip.duration), storyArc?.totalDuration || 0);
+      setTotalDuration(maxEnd);
+      return next;
+    });
+
+    closeAIAudioAssistantDialog();
+    setSnackbar({
+      open: true,
+      message: `AI-miksing fullført! ${metrics.tracks_processed} spor mikset til ${metrics.final_lufs?.toFixed(1)} LUFS`,
+      severity: 'success',
+    });
+  }, [closeAIAudioAssistantDialog, storyArc?.totalDuration]);
+
+  const syncResultRows = useMemo(
+    () =>
+      syncResults
+        ? Object.entries(syncResults)
+            .map(([clipId, result]) => {
+              const clip = clipMap.get(clipId);
+              if (!clip) {
+                return null;
+              }
+
+              const confidence = result.confidence || 0;
+              const confidenceColor: 'success' | 'warning' | 'error' =
+                confidence > 0.8 ? 'success' : confidence > 0.6 ? 'warning' : 'error';
+
+              return {
+                clipId,
+                clip,
+                result,
+                confidence,
+                confidenceColor,
+                confidencePreviewColor:
+                  confidence > 0.8 ? '#4caf50' : confidence > 0.6 ? '#ff9800' : '#f44336',
+                manualOffset: manualOffsets[clipId] ?? result.offset_seconds,
+              };
+            })
+            .filter(
+              (
+                row
+              ): row is {
+                clipId: string;
+                clip: BeatClip;
+                result: EngineAudioSyncResult;
+                confidence: number;
+                confidenceColor: 'success' | 'warning' | 'error';
+                confidencePreviewColor: string;
+                manualOffset: number;
+              } => Boolean(row)
+            )
+        : [],
+    [syncResults, clipMap, manualOffsets]
+  );
+
+  const syncConfidenceSummary = useMemo(() => {
+    if (syncResultRows.length === 0) {
+      return null;
+    }
+
+    const avgConfidence =
+      syncResultRows.reduce((sum, row) => sum + row.confidence, 0) / syncResultRows.length;
+    const qualityColor: 'success' | 'warning' | 'error' =
+      avgConfidence > 0.8 ? 'success' : avgConfidence > 0.6 ? 'warning' : 'error';
+    const qualityLabel = avgConfidence > 0.8 ? 'Excellent' : avgConfidence > 0.6 ? 'Good' : 'Poor';
+
+    return {
+      avgConfidence,
+      qualityColor,
+      qualityLabel,
+    };
+  }, [syncResultRows]);
+
+  const resolveClipName = useCallback((clipId: string) => clipMap.get(clipId)?.name, [clipMap]);
+
+  const {
+    sourceMonitorPanelHandlers,
+    programMonitorPanelHandlers,
+    sourceVideoHandlers,
+    programVideoHandlers,
+    sourcePatchHandlers,
+  } = useStoryArcMonitorHandlers({
+    handleSourceMonitorMouseDown,
+    handleSourceMonitorFocus,
+    handleProgramMonitorMouseDown,
+    handleProgramMonitorFocus,
+    handleSourceVideoLoadedMetadata,
+    handleSourceVideoTimeUpdate,
+    handleSourceVideoPlay,
+    handleSourceVideoPause,
+    handleSourceVideoError,
+    handleProgramVideoLoadedMetadata,
+    handleProgramVideoError,
+    handleSourcePatchVideoTrackChange,
+    handleSourcePatchAudioTrackChange,
+    handleSourcePatchIncludeAudioChange,
+  });
+
+  const { timelineProps, inspectorProps, waveformProps } = useStoryArcTimelineHandlers({
+    clips,
+    tracks,
+    zoom: timelineZoom,
+    currentTime,
+    totalDuration,
+    isPlaying,
+    selectedClips,
+    handleTimelineClipSelect,
+    handleTimelineClipMove,
+    handleTimelineClipResize,
+    handleTimelineClick,
+    handleCurrentTimeChange,
+    handleTimelineZoomChange,
+    trackHeightScale,
+    markers,
+    trackStates,
+    handleTimelineTrackToggle,
+    handleTimelineTrackRename,
+    handleTimelineTrackTypeChange,
+    setTrackAudioRole,
+    transitions,
+    clipMeta,
+    filterTags,
+    searchQuery,
+    handleTimelineContextMenuAction,
+    reviewerMode,
+    compareMode,
+    compareSnapshot,
+    collabLocks,
+    handleTimelineMediaDrop,
+    selectedInspectorClips,
+    handleInspectorClipUpdate,
+    handleInspectorBulkUpdate,
+    handleInspectorMetaUpdate,
+    waveformAudioUrl,
+    handleWaveformReady,
+    handleWaveformRegionCreated,
+  });
+
+  const {
+    aiStoryGeneratorDialogProps,
+    transitionLibraryProps,
+    speedRampPanelProps,
+    textOverlayPanelProps,
+    gpuFiltersPanelProps,
+    colorGradingPanelProps,
+    autoCaptionsPanelProps,
+    beatSyncPanelProps,
+    backgroundRemovalPanelProps,
+    objectSegmentationPanelProps,
+    motionTrackingPanelProps,
+  } = useStoryArcPanelFlows({
+    showAIGeneratorDialog,
+    closeAIGeneratorDialog,
+    handleAIStoryGenerated,
+    showTransitionLibrary,
+    closeTransitionLibrary,
+    handleTransitionSelect,
+    selectedClipsSize: selectedClips.size,
+    showSpeedRampPanel,
+    selectedPrimaryClipId,
+    selectedPrimaryClipDuration: selectedPrimaryClip?.duration || 10,
+    currentSpeedKeyframes,
+    handleSpeedRampKeyframesChange,
+    handleSpeedRampPreview,
+    showTextOverlayPanel,
+    closeTextOverlayPanel,
+    handleTextOverlayAdd,
+    showGPUFiltersPanel,
+    closeGPUFiltersPanel,
+    handleGPUFilterApply,
+    showColorGradingPanel,
+    closeColorGradingPanel,
+    handleColorGradeApply,
+    showAutoCaptionsPanel,
+    closeAutoCaptionsPanel,
+    captionVideoPath,
+    captionSourceVideoFile,
+    captionFallbackVideoPaths,
+    captionFallbackVideoFiles,
+    handleCaptionsGenerated,
+    waveformAudioUrl,
+    showBeatSyncPanel,
+    closeBeatSyncPanel,
+    clips,
+    handleBeatSyncClipsSnapped,
+    showObjectSegmentationPanel,
+    closeObjectSegmentationPanel,
+    showMotionTrackingPanel,
+    closeMotionTrackingPanel,
+    selectedPrimaryClipSourceFile: selectedPrimaryClip?.sourceFile,
+    handleBackgroundRemovalProcessed,
+    handleObjectSegmentationComplete,
+    handleMotionTrackingComplete,
+  });
+
+  const {
+    audioEnhancementDialogProps,
+    batchAudioDialogProps,
+    aiAudioAssistantDialogProps,
+  } = useStoryArcAudioFlows({
+    showAudioEnhancementDialog,
+    closeAudioEnhancementDialog,
+    pendingAudioFile,
+    handleAudioEnhanced,
+    handleAudioEnhancementSkip,
+    showBatchAudioDialog,
+    closeBatchAudioDialog,
+    batchAudioFiles,
+    handleBatchAudioComplete,
+    showAIAudioAssistant,
+    closeAIAudioAssistantDialog,
+    aiAudioAssistantTracks,
+    selectedAudioTrackId,
+    openMixerDirectly,
+    handleAIAudioMixComplete,
+  });
 
   if (isLoading) {
     return (
@@ -6501,8 +9209,7 @@ export default function StoryArcStudio({
         }}
       >
         {/* Top AppBar */}
-        <AppBar position="static" elevation={0}>
-          <Toolbar variant="dense" sx={{ minHeight: 48 }}>
+        <StoryArcTopBar>
             {onClose && (
               <Button size="small" variant="outlined" onClick={onClose} sx={{ mr: 1 }}>
                 Close
@@ -6544,9 +9251,7 @@ export default function StoryArcStudio({
                   data-testid="active-monitor-chip"
                   size="small"
                   clickable
-                  onClick={() =>
-                    setActiveMonitor((previous) => (previous === 'source' ? 'program' : 'source'))
-                  }
+                  onClick={toggleActiveMonitorFocus}
                   color={activeMonitor === 'source' ? 'secondary' : 'primary'}
                   variant="outlined"
                   label={`Active: ${activeMonitor === 'source' ? 'SRC' : 'PGM'}`}
@@ -6631,7 +9336,7 @@ export default function StoryArcStudio({
                   <IconButton 
                     data-testid="active-transport-j"
                     size="small" 
-                    onClick={() => handleActiveJKL('j')}
+                    onClick={handleActiveJKLReverse}
                     disabled={!activeMonitorCanPlay}
                     sx={{
                       bgcolor:
@@ -6647,7 +9352,7 @@ export default function StoryArcStudio({
                   <IconButton
                     data-testid="active-transport-k"
                     size="small"
-                    onClick={() => handleActiveJKL('k')}
+                    onClick={handleActiveJKLPause}
                     disabled={!activeMonitorCanPlay}
                   >
                     <Pause fontSize="small" />
@@ -6657,7 +9362,7 @@ export default function StoryArcStudio({
                   <IconButton 
                     data-testid="active-transport-l"
                     size="small" 
-                    onClick={() => handleActiveJKL('l')}
+                    onClick={handleActiveJKLForward}
                     disabled={!activeMonitorCanPlay}
                     sx={{
                       bgcolor:
@@ -6710,7 +9415,7 @@ export default function StoryArcStudio({
               <Tooltip title="Loop Playback">
                 <IconButton 
                   size="small" 
-                  onClick={() => setIsLooping(!isLooping)}
+                  onClick={toggleLoopPlayback}
                   sx={{
                     bgcolor: isLooping ? 'rgba(63, 81, 181, 0.2)' : 'transparent'
                   }}
@@ -6721,7 +9426,7 @@ export default function StoryArcStudio({
               <Tooltip title="Toggle Fullscreen Monitor">
                 <IconButton
                   size="small"
-                  onClick={() => setIsFullscreenPreview((previous) => !previous)}
+                  onClick={toggleFullscreenMonitor}
                   sx={{ bgcolor: isFullscreenPreview ? 'rgba(59, 130, 246, 0.2)' : 'transparent' }}
                 >
                   <Fullscreen fontSize="small" />
@@ -6749,7 +9454,7 @@ export default function StoryArcStudio({
                 <Tooltip title="Push-varsler innstillinger">
                   <IconButton 
                     size="small" 
-                    onClick={() => setPushSettingsOpen(true)}
+                    onClick={openPushSettingsDialog}
                     sx={{ color: pushEnabled ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.7)' }}
                   >
                     {pushEnabled ? <NotificationsActive /> : <Notifications />}
@@ -6774,37 +9479,40 @@ export default function StoryArcStudio({
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => {
-                  void handleImportFromProject();
-                }}
+                onClick={triggerImportProject}
               >
                 Import Project
               </Button>
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => {
-                  void handleExportToProject({
-                    url: programMonitorClip?.sourceFile || '',
-                    duration: totalDuration,
-                    format: 'mp4',
-                    resolution: '1920x1080',
-                    codec: 'H.264',
-                  });
-                }}
+                onClick={triggerExportProject}
                 disabled={!programMonitorClip?.sourceFile}
               >
                 Export to Project
               </Button>
-              <Button size="small" variant="outlined" onClick={() => setOnboardingOpen(true)}>Onboarding</Button>
+              <Button size="small" variant="outlined" onClick={openOnboardingDialog}>Onboarding</Button>
               {/* Search & filter */}
-              <TextField size="small" placeholder="Search tags, scene, name…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} sx={{ minWidth: 220 }} />
-              <TextField size="small" placeholder="Filter tags (comma)" onBlur={(e) => setFilterTags(e.target.value.split(',').map(s => s.trim()).filter(Boolean))} sx={{ minWidth: 180 }} />
+              <TextField
+                size="small"
+                placeholder="Search tags, scene, name…"
+                value={searchQuery}
+                onChange={handleSearchQueryChange}
+                sx={{ minWidth: 220 }}
+              />
+              <TextField
+                size="small"
+                placeholder="Filter tags (comma)"
+                onBlur={handleFilterTagsBlur}
+                sx={{ minWidth: 180 }}
+              />
               {/* AI Story Generator - NEW! */}
               <Tooltip title="AI Story Generator - Upload video and auto-create timeline">
                 <Button
                   size="small"
-                  onClick={() => setShowAIGeneratorDialog(true)}
+                  onMouseEnter={preloadAIStoryGeneratorDialog}
+                  onFocus={preloadAIStoryGeneratorDialog}
+                  onClick={openAIGeneratorDialog}
                   sx={{
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     color: 'white','&:hover': {
@@ -6822,281 +9530,7 @@ export default function StoryArcStudio({
               <Tooltip title="Detect faces in all clips (background worker)">
                 <Button
                   size="small"
-                  onClick={async () => {
-                    if (faceDetectionRunning) {
-                      faceDetectionWorker.cancel();
-                      setFaceDetectionRunning(false);
-                      return;
-                    }
-                    
-                    setFaceDetectionRunning(true);
-                    setShowFaceDetectionDialog(true);
-                    setFaceDetectionProgress({
-                      total: clips.length,
-                      processed: 0,
-                      current: null,
-                      results: [],
-                      errors: [],
-                    });
-                    
-                    try {
-                      // Ask user for analysis options via dialog
-                      const userOptions = await new Promise<{ scanEntire: boolean; fps: number; taskChoice: string } | null>((resolve) => {
-                        setPendingFaceDetectionResolve(() => resolve);
-                        setFaceDetectionOptions({ scanEntire: false, fps: 0.5, taskChoice: '1' });
-                        setShowFaceDetectionOptionsDialog(true);
-                      });
-                      
-                      if (!userOptions) {
-                        // User cancelled
-                        setFaceDetectionRunning(false);
-                        setShowFaceDetectionDialog(false);
-                        return;
-                      }
-                      
-                      const { scanEntire, fps, taskChoice } = userOptions;
-                      
-                      let tasks: 'all' | 'parsing' | 'landmarks' | 'headpose' | 'attributes' | Array<'parsing' | 'landmarks' | 'headpose' | 'attributes'> = 'all';
-                      
-                      if (taskChoice) {
-                        const choice = taskChoice.trim().toLowerCase();
-                        if (choice === '1' || choice === 'all') {
-                          tasks = 'all';
-                        } else if (choice === '2' || choice === 'parsing') {
-                          tasks = 'parsing';
-                        } else if (choice === '3' || choice === 'landmarks') {
-                          tasks = 'landmarks';
-                        } else if (choice === '4' || choice === 'headpose') {
-                          tasks = 'headpose';
-                        } else if (choice === '5' || choice === 'attributes') {
-                          tasks = 'attributes';
-                        } else if (choice === '6' || choice.includes(',')) {
-                          // Custom: parse comma-separated tasks
-                          const taskList = choice.split(',').map(t => t.trim() as 'parsing' | 'landmarks' | 'headpose' | 'attributes').filter(Boolean);
-                          if (taskList.length > 0) {
-                            tasks = taskList;
-                          }
-                        }
-                      }
-                      
-                      const results: FaceDetectionResult[] = await faceDetectionWorker.processClips(
-                        clips.map(c => ({
-                          id: c.id,
-                          sourceFile: c.sourceFile || '',
-                          duration: c.duration || 5,
-                        })),
-                        {
-                          batchSize: scanEntire ? 1 : 3, // Process one at a time for full scans
-                          scanEntireVideo: scanEntire,
-                          framesPerSecond: fps,
-                          tasks, // Pass selected tasks
-                          onProgress: (progress) => {
-                            setFaceDetectionProgress(progress);
-                            
-                            // Auto-update clip metadata with comprehensive face detection results
-                            progress.results.forEach(result => {
-                              setClipMeta(prev => ({
-                                ...prev,
-                                [result.clipId]: {
-                                  ...prev[result.clipId],
-                                  faceDetection: {
-                                    hasFace: result.hasFace,
-                                    faceCount: result.faceCount,
-                                    confidence: result.confidence,
-                                    analyzedAt: Date.now(),
-                                    comprehensiveAnalysis: result.comprehensiveAnalysis,
-                                    bestTimestamp: result.timestamp,
-                                    scanMetadata: result.scanMetadata,
-                                  },
-                                  tags: [
-                                    ...(prev[result.clipId]?.tags || []),
-                                    ...(result.hasFace && !prev[result.clipId]?.tags?.includes('face') ? ['face'] : []),
-                                    // Add task-specific tags
-                                    ...(result.comprehensiveAnalysis?.landmarks ? (prev[result.clipId]?.tags?.includes('landmarks') ? [] : ['landmarks']) : []),
-                                    ...(result.comprehensiveAnalysis?.headpose ? (prev[result.clipId]?.tags?.includes('headpose') ? [] : ['headpose']) : []),
-                                    ...(result.comprehensiveAnalysis?.parsing ? (prev[result.clipId]?.tags?.includes('parsing') ? [] : ['parsing']) : []),
-                                    ...(result.comprehensiveAnalysis?.attributes ? (prev[result.clipId]?.tags?.includes('attributes') ? [] : ['attributes']) : []),
-                                  ],
-                                },
-                              }));
-                            });
-                          },
-                        }
-                      );
-                      
-                      // Final update with comprehensive analysis and visual indicators
-                      results.forEach(result => {
-                        setClipMeta(prev => ({
-                          ...prev,
-                          [result.clipId]: {
-                            ...prev[result.clipId],
-                            faceDetection: {
-                              hasFace: result.hasFace,
-                              faceCount: result.faceCount,
-                              confidence: result.confidence,
-                              analyzedAt: Date.now(),
-                              comprehensiveAnalysis: result.comprehensiveAnalysis,
-                              bestTimestamp: result.timestamp,
-                              scanMetadata: result.scanMetadata,
-                            },
-                            tags: [
-                              ...(prev[result.clipId]?.tags || []),
-                              ...(result.hasFace && !prev[result.clipId]?.tags?.includes('face') ? ['face'] : []),
-                              // Add task-specific tags
-                              ...(result.comprehensiveAnalysis?.landmarks ? (prev[result.clipId]?.tags?.includes('landmarks') ? [] : ['landmarks']) : []),
-                              ...(result.comprehensiveAnalysis?.headpose ? (prev[result.clipId]?.tags?.includes('headpose') ? [] : ['headpose']) : []),
-                              ...(result.comprehensiveAnalysis?.parsing ? (prev[result.clipId]?.tags?.includes('parsing') ? [] : ['parsing']) : []),
-                              ...(result.comprehensiveAnalysis?.attributes ? (prev[result.clipId]?.tags?.includes('attributes') ? [] : ['attributes']) : []),
-                            ],
-                          },
-                        }));
-                        
-                        // Update clip color to indicate face detection
-                        if (result.hasFace) {
-                          setClips(prev => prev.map(c => 
-                            c.id === result.clipId 
-                              ? { ...c, color: '#10b981' } // Green for face detected
-                              : c
-                          ));
-                        }
-                      });
-                      
-                      // Add timeline markers for face detections
-                      const faceMarkers: TimelineMarker[] = [];
-                      results.forEach(result => {
-                        const clip = clips.find(c => c.id === result.clipId);
-                        if (!clip) return;
-                        
-                        if (result.hasFace && result.scanMetadata) {
-                          // Add markers for each face-detected timestamp (sample every few to avoid too many markers)
-                          const faceTimestamps = result.scanMetadata.timestamps
-                            .filter(t => t.hasFace)
-                            .map(t => t.timestamp);
-                          
-                          // Sample markers: one per segment or max 20 markers per clip
-                          const sampledTimestamps = faceTimestamps.length > 20
-                            ? faceTimestamps.filter((_, idx) => idx % Math.ceil(faceTimestamps.length / 20) === 0)
-                            : faceTimestamps;
-                          
-                          sampledTimestamps.forEach((timestamp, idx) => {
-                            const absoluteTime = clip.start + timestamp;
-                            faceMarkers.push({
-                              id: `face_${result.clipId}_${idx}_${Date.now()}`,
-                              time: absoluteTime,
-                              color: '#10b981', // Green for face detected
-                              label: `Face @ ${timestamp.toFixed(1)}s`,
-                            });
-                          });
-                        } else if (result.hasFace && result.timestamp !== undefined) {
-                          // Single best timestamp marker
-                          const absoluteTime = clip.start + result.timestamp;
-                          faceMarkers.push({
-                            id: `face_${result.clipId}_${Date.now()}`,
-                            time: absoluteTime,
-                            color: '#10b981',
-                            label: `Face @ ${result.timestamp.toFixed(1)}s`,
-                          });
-                        }
-                      });
-                      
-                      if (faceMarkers.length > 0) {
-                        setMarkers(prev => [...prev, ...faceMarkers]);
-                      }
-                      
-                      // Ask if user wants to auto-create sub-clips from face-detected segments via dialog
-                      const facesFound = results.filter(r => r.hasFace).length;
-                      const createSubclips = await new Promise<boolean>((resolve) => {
-                        setPendingSubclipsResolve(() => resolve);
-                        setSubclipsConfirmData({ facesFound, totalClips: results.length });
-                        setShowSubclipsConfirmDialog(true);
-                      });
-                      
-                      if (createSubclips) {
-                        // Auto-create sub-clips from face-detected segments
-                        let newClips: BeatClip[] = [...clips];
-                        const clipsToProcess = results.filter(r => r.hasFace && r.scanMetadata);
-                        
-                        for (const result of clipsToProcess) {
-                          const originalClip = clips.find(c => c.id === result.clipId);
-                          if (!originalClip || !result.scanMetadata) continue;
-                          
-                          // Group consecutive face detections into segments
-                          const segments = groupFaceDetectionsIntoSegments(
-                            result.scanMetadata.timestamps.filter(t => t.hasFace).map(t => t.timestamp),
-                            originalClip.duration
-                          );
-                          
-                          if (segments.length > 0) {
-                            // Remove original clip and add sub-clips
-                            newClips = newClips.filter(c => c.id !== result.clipId);
-                            
-                            segments.forEach((segment, segIdx) => {
-                              const subClip: BeatClip = {
-                                ...originalClip,
-                                id: `${result.clipId}_face_segment_${segIdx}_${Date.now()}`,
-                                start: originalClip.start + segment.start,
-                                duration: segment.duration,
-                                name: `${originalClip.name || 'Clip'} - Face Segment ${segIdx + 1}`,
-                                synopsis: `Auto-extracted face segment (${segment.start.toFixed(1)}s - ${(segment.start + segment.duration).toFixed(1)}s)`,
-                                color: '#10b981', // Green to indicate face-detected segment
-                                // Preserve source file and add offset for sub-clip
-                                sourceFile: originalClip.sourceFile,
-                                metadata: {
-                                  ...originalClip.metadata,
-                                  sourceStartTime:
-                                    (typeof originalClip.metadata?.sourceStartTime === 'number'
-                                      ? originalClip.metadata.sourceStartTime
-                                      : 0) + segment.start,
-                                },
-                              };
-                              newClips.push(subClip);
-                            });
-                          }
-                        }
-                        
-                        const hydratedDetectedClips = hydrateClipSources(newClips);
-                        setClips(hydratedDetectedClips);
-                        setAvailableVideoSources((prev) => {
-                          const merged = new Set([...prev, ...extractRenderableVideoSources(hydratedDetectedClips)]);
-                          return Array.from(merged);
-                        });
-                        setTotalDuration(Math.max(...hydratedDetectedClips.map(c => c.start + c.duration), totalDuration));
-                        
-                        // Update timeline engine
-                        videoEngine.setTimeline(
-                          hydratedDetectedClips,
-                          tracks,
-                          Math.max(...hydratedDetectedClips.map(c => c.start + c.duration), totalDuration)
-                        );
-                        
-                        setSnackbar({
-                          open: true,
-                          message: `Created ${clipsToProcess.reduce((sum, r) => {
-                            const segments = groupFaceDetectionsIntoSegments(
-                              r.scanMetadata!.timestamps.filter(t => t.hasFace).map(t => t.timestamp),
-                              clips.find(c => c.id === r.clipId)?.duration || 0
-                            );
-                            return sum + segments.length;
-                          }, 0)} sub-clips from face-detected segments`,
-                          severity: 'success',
-                        });
-                      } else {
-                        setSnackbar({
-                          open: true,
-                          message: `Face detection complete! Found faces in ${results.filter(r => r.hasFace).length} of ${results.length} clips. ${faceMarkers.length} markers added to timeline.`,
-                          severity: 'success',
-                        });
-                      }
-                    } catch (error: any) {
-                      setSnackbar({
-                        open: true,
-                        message: `Face detection, error: ${error?.message || 'Unknown error'}`,
-                        severity: 'error',
-                      });
-                    } finally {
-                      setFaceDetectionRunning(false);
-                    }
-                  }}
+                  onClick={handleFaceDetectionToggle}
                   sx={{
                     borderColor: faceDetectionRunning ? '#ef4444' : '#10b981',
                     color: faceDetectionRunning ? '#ef4444' : '#10b981','&:hover': {
@@ -7112,36 +9546,56 @@ export default function StoryArcStudio({
               {/* Professional Features */}
               <ButtonGroup size="small">
                 <Tooltip title="Transitions (485) - Press T">
-                  <IconButton onClick={() => setShowTransitionLibrary(true)}>
+                  <IconButton
+                    onMouseEnter={preloadTransitionLibrary}
+                    onFocus={preloadTransitionLibrary}
+                    onClick={openTransitionLibrary}
+                  >
                     <GridView fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Speed Ramp - Press R">
                   <IconButton
-                    onClick={() => setShowSpeedRampPanel((previous) => !previous)}
+                    onMouseEnter={preloadSpeedRampPanel}
+                    onFocus={preloadSpeedRampPanel}
+                    onClick={toggleSpeedRampPanel}
                     color={showSpeedRampPanel ? 'primary' : 'default'}
                   >
                     <Speed fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Text Overlays - Press T">
-                  <IconButton onClick={() => setShowTextOverlayPanel(true)}>
+                  <IconButton
+                    onMouseEnter={preloadTextOverlayPanel}
+                    onFocus={preloadTextOverlayPanel}
+                    onClick={openTextOverlayPanel}
+                  >
                     <TextFields fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="GPU Filters - Press F">
-                  <IconButton onClick={() => setShowGPUFiltersPanel(true)}>
+                  <IconButton
+                    onMouseEnter={preloadGPUAndBackgroundPanels}
+                    onFocus={preloadGPUFiltersPanel}
+                    onClick={openGPUFiltersPanel}
+                  >
                     <FilterVintage fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Color Grading - Press C">
-                  <IconButton onClick={() => setShowColorGradingPanel(true)}>
+                  <IconButton
+                    onMouseEnter={preloadColorGradingPanel}
+                    onFocus={preloadColorGradingPanel}
+                    onClick={openColorGradingPanel}
+                  >
                     <Palette fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Auto-Captions (80+ languages)">
                   <IconButton
-                    onClick={() => setShowAutoCaptionsPanel(true)}
+                    onMouseEnter={preloadAutoCaptionsPanel}
+                    onFocus={preloadAutoCaptionsPanel}
+                    onClick={openAutoCaptionsPanel}
                     aria-label="Open auto captions"
                     data-testid="open-auto-captions"
                   >
@@ -7149,93 +9603,28 @@ export default function StoryArcStudio({
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Beat Sync">
-                  <IconButton onClick={() => setShowBeatSyncPanel(true)}>
+                  <IconButton
+                    onMouseEnter={preloadBeatSyncPanel}
+                    onFocus={preloadBeatSyncPanel}
+                    onClick={openBeatSyncPanel}
+                  >
                     <MusicNote fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Motion Tracking (SAM 2 AI)">
-                  <IconButton onClick={() => setShowMotionTrackingPanel(true)}>
-                    <GpsFixed fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && (
+                  <Tooltip title="Motion Tracking (SAM 2 AI)">
+                    <IconButton
+                      onMouseEnter={preloadMotionAndObjectPanels}
+                      onFocus={preloadMotionTrackingPanel}
+                      onClick={openMotionTrackingPanel}
+                    >
+                      <GpsFixed fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Tooltip title="Detect Scenes">
                   <IconButton 
-                    onClick={async () => {
-                      const videoClip = clips.find((clip) => isRenderableVideoClip(clip));
-                      const videoPath =
-                        videoClip?.sourceFile ||
-                        sourcePreviewClip?.sourceFile ||
-                        programMonitorClip?.sourceFile ||
-                        activeSourcePreview?.sourceFile ||
-                        availableVideoSources[0] ||
-                        '';
-
-                      if (!videoPath) {
-                        setSnackbar({
-                          open: true,
-                          message: 'No video source found for scene detection',
-                          severity: 'warning',
-                        });
-                        return;
-                      }
-                      
-                      try {
-                        setShowSceneDetectionDialog(true);
-                        const response = await apiRequest('/api/video-analysis/scene-detection', {
-                          method: 'POST',
-                          headers: { 'Content-Type' : 'application/json' },
-                          body: JSON.stringify({
-                            video_path: videoPath,
-                            threshold: 30.0,
-                            min_scene_len: 15,
-                          }),
-                        });
-                        
-                        if (response.success) {
-                          setSceneDetectionJobId(response.job_id);
-                          // Poll for results
-                          const pollInterval = setInterval(async () => {
-                            try {
-                              const statusResponse = await apiRequest(`/api/video-analysis/scene-detection/${response.job_id}`);
-                              setSceneDetectionProgress(statusResponse);
-                              
-                              if (statusResponse.status === 'completed') {
-                                clearInterval(pollInterval);
-                                const scenes = statusResponse.result?.result?.scenes || [];
-                                // Add scene markers to timeline
-                                const newMarkers = scenes.map((scene: any, idx: number) => ({
-                                  id: `scene-${idx}`,
-                                  time: scene.start_time,
-                                  color: '#667eea',
-                                  label: `Scene ${scene.scene_number}`,
-                                }));
-                                setMarkers([...markers, ...newMarkers]);
-                                setSnackbar({
-                                  open: true,
-                                  message: `Detected ${scenes.length} scenes and added markers to timeline`,
-                                  severity: 'success',
-                                });
-                              } else if (statusResponse.status === 'failed') {
-                                clearInterval(pollInterval);
-                                setSnackbar({
-                                  open: true,
-                                  message: `Scene detection failed: ${statusResponse.error}`,
-                                  severity: 'error',
-                                });
-                              }
-                            } catch (error: any) {
-                              console.error('Error polling scene detection:', error);
-                            }
-                          }, 2000);
-                        }
-                      } catch (error: any) {
-                        setSnackbar({
-                          open: true,
-                          message: `Scene detection error: ${error?.message || 'Unknown error'}`,
-                          severity: 'error',
-                        });
-                      }
-                    }}
+                    onClick={runSceneDetection}
                   >
                     <MovieFilter fontSize="small" />
                   </IconButton>
@@ -7260,7 +9649,9 @@ export default function StoryArcStudio({
                 <Tooltip title="Export (Browser ffmpeg)">
                   <IconButton 
                     size="small"
-                    onClick={() => setShowExportDialog(true)}
+                    onMouseEnter={preloadExportDialog}
+                    onFocus={preloadExportDialog}
+                    onClick={openExportDialog}
                   >
                     <FileDownload fontSize="small" />
                   </IconButton>
@@ -7268,7 +9659,9 @@ export default function StoryArcStudio({
                 <Tooltip title="Export to DaVinci Resolve + Scripts">
                   <Button
                     size="small"
-                    onClick={() => setShowResolveExportDialog(true)}
+                    onMouseEnter={preloadDaVinciResolveExportDialog}
+                    onFocus={preloadDaVinciResolveExportDialog}
+                    onClick={openResolveExportDialog}
                     sx={{
                       background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
                       color: 'white','&:hover': {
@@ -7281,57 +9674,37 @@ export default function StoryArcStudio({
                   </Button>
                 </Tooltip>
                 <Tooltip title="Settings">
-                  <IconButton size="small" onClick={() => setSettingsOpen(true)}>
+                  <IconButton size="small" onClick={openSettingsDialog}>
                     <Settings fontSize="small" />
                   </IconButton>
                 </Tooltip>
               </ButtonGroup>
 
               {/* Pro toggles */}
-              <Button size="small" variant={magneticEnabled ? 'contained' : 'outlined'} onClick={() => setMagneticEnabled(v => !v)}>Magnetic</Button>
-              <Button size="small" variant={rippleEnabled ? 'contained' : 'outlined'} onClick={() => setRippleEnabled(v => !v)}>Ripple</Button>
-              <Button size="small" variant={reviewerMode ? 'contained' : 'outlined'} onClick={() => setReviewerMode(v => !v)}>{reviewerMode ? 'Reviewer: ON' : 'Reviewer: OFF'}</Button>
-              <Button size="small" variant={compareMode ? 'contained' : 'outlined'} onClick={() => {
-                if (!compareMode) setCompareSnapshot(clips);
-                setCompareMode(v => !v);
-              }}>{compareMode ? 'Compare: ON' : 'Compare: OFF'}</Button>
-              <Button size="small" onClick={() => {
-                const id = 'm' + Date.now();
-                setMarkers(prev => [...prev, { id, time: currentTime, color: '#ff9800', label: `Marker ${prev.length + 1}` }]);
-              }}>Add Marker</Button>
+              <Button size="small" variant={magneticEnabled ? 'contained' : 'outlined'} onClick={toggleMagneticMode}>Magnetic</Button>
+              <Button size="small" variant={rippleEnabled ? 'contained' : 'outlined'} onClick={toggleRippleMode}>Ripple</Button>
+              <Button size="small" variant={reviewerMode ? 'contained' : 'outlined'} onClick={toggleReviewerMode}>{reviewerMode ? 'Reviewer: ON' : 'Reviewer: OFF'}</Button>
+              <Button size="small" variant={compareMode ? 'contained' : 'outlined'} onClick={toggleCompareMode}>{compareMode ? 'Compare: ON' : 'Compare: OFF'}</Button>
+              <Button size="small" onClick={addMarkerAtPlayhead}>Add Marker</Button>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="caption" color="text.secondary">V-Zoom</Typography>
-                <Slider size="small" value={trackHeightScale} min={0.5} max={2} step={0.1} sx={{ width: 100 }} onChange={(_, v) => setTrackHeightScale(v as number)} />
+                <Slider
+                  size="small"
+                  value={trackHeightScale}
+                  min={0.5}
+                  max={2}
+                  step={0.1}
+                  sx={{ width: 100 }}
+                  onChange={handleTrackHeightScaleChange}
+                />
               </Stack>
               {pendingTransitionType && (
-                <Button size="small" variant="outlined" onClick={() => {
-                  const firstSelected = Array.from(selectedClips)[0];
-                  const preferredTrackId = firstSelected ? (clipMap.get(firstSelected)?.trackId || undefined) : undefined;
-                  const { time: placeTime, trackId } = findNearestCut(clips, tracks, currentTime, preferredTrackId);
-                  const id = 'tr' + Date.now();
-                  setTransitions(prev => [
-                    ...prev,
-                    {
-                      id,
-                      time: placeTime,
-                      trackId,
-                      type: pendingTransitionType,
-                      duration: pendingTransitionDuration,
-                    },
-                  ]);
-                  setSnackbar({
-                    open: true,
-                    message: `Placed ${pendingTransitionType} (${pendingTransitionEngine.toUpperCase()}, ${pendingTransitionDuration.toFixed(2)}s)`,
-                    severity: 'success',
-                  });
-                  setPendingTransitionType(null);
-                }}>
+                <Button size="small" variant="outlined" onClick={placePendingTransitionAtNearestCut}>
                   Place {pendingTransitionType} ({pendingTransitionEngine.toUpperCase()} • {pendingTransitionDuration.toFixed(2)}s)
                 </Button>
               )}
             </Stack>
-          </Toolbar>
-        </AppBar>
+        </StoryArcTopBar>
 
         {(timelineErrors.length > 0 || timelineWarnings.length > 0) && (
           <Box sx={{ px: 2, py: 1 }}>
@@ -7408,8 +9781,9 @@ export default function StoryArcStudio({
                 <Button
                   key={`workflow-step-${step.id}`}
                   size="small"
+                  data-workflow-step={step.id}
                   variant={workflowStep === step.id ? 'contained' : 'outlined'}
-                  onClick={() => applyWorkflowStep(step.id)}
+                  onClick={handleWorkflowStepButtonClick}
                 >
                   {step.label}
                 </Button>
@@ -7458,35 +9832,35 @@ export default function StoryArcStudio({
               <Button
                 size="small"
                 variant={showAssetPanel ? 'contained' : 'outlined'}
-                onClick={() => setShowAssetPanel((previous) => !previous)}
+                onClick={toggleAssetPanel}
               >
                 Bin
               </Button>
               <Button
                 size="small"
                 variant={showInspectorPanel ? 'contained' : 'outlined'}
-                onClick={() => setShowInspectorPanel((previous) => !previous)}
+                onClick={toggleInspectorPanel}
               >
                 Inspector
               </Button>
               <Button
                 size="small"
                 variant={showEffectsPanel ? 'contained' : 'outlined'}
-                onClick={() => setShowEffectsPanel((previous) => !previous)}
+                onClick={toggleEffectsPanel}
               >
                 Effects
               </Button>
               <Button
                 size="small"
                 variant={showMixerPanel ? 'contained' : 'outlined'}
-                onClick={() => setShowMixerPanel((previous) => !previous)}
+                onClick={toggleMixerPanel}
               >
                 Mixer
               </Button>
               <Button
                 size="small"
                 variant={showProgramMonitor ? 'contained' : 'outlined'}
-                onClick={() => setShowProgramMonitor((previous) => !previous)}
+                onClick={toggleProgramMonitorPanel}
               >
                 Monitors
               </Button>
@@ -7508,19 +9882,44 @@ export default function StoryArcStudio({
               <>
                 <Divider orientation="vertical" flexItem />
                 <ButtonGroup size="small" variant="outlined">
-                  <Button size="small" onClick={() => setShowTransitionLibrary(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadTransitionLibrary}
+                    onFocus={preloadTransitionLibrary}
+                    onClick={openTransitionLibrary}
+                  >
                     Transitions
                   </Button>
-                  <Button size="small" onClick={() => setShowTextOverlayPanel(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadTextOverlayPanel}
+                    onFocus={preloadTextOverlayPanel}
+                    onClick={openTextOverlayPanel}
+                  >
                     Text
                   </Button>
-                  <Button size="small" onClick={() => setShowGPUFiltersPanel(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadGPUFiltersPanel}
+                    onFocus={preloadGPUFiltersPanel}
+                    onClick={openGPUFiltersPanel}
+                  >
                     GPU Filters
                   </Button>
-                  <Button size="small" onClick={() => setShowColorGradingPanel(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadColorGradingPanel}
+                    onFocus={preloadColorGradingPanel}
+                    onClick={openColorGradingPanel}
+                  >
                     Grading
                   </Button>
-                  <Button size="small" onClick={() => setShowLUTLibraryDialog(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadLUTLibrary}
+                    onFocus={preloadLUTLibrary}
+                    onClick={openLUTLibraryDialog}
+                  >
                     LUTs
                   </Button>
                 </ButtonGroup>
@@ -7544,26 +9943,16 @@ export default function StoryArcStudio({
                   </Button>
                   <Button
                     size="small"
-                    onClick={() => {
-                      const audioClips = clips.filter(
-                        (clip) => clip.trackId?.startsWith('A') || clip.trackId?.startsWith('audio')
-                      );
-                      if (audioClips.length === 0) {
-                        setSnackbar({
-                          open: true,
-                          message: 'Ingen lydspor funnet i tidslinjen',
-                          severity: 'warning',
-                        });
-                        return;
-                      }
-                      setSelectedAudioTrackId(null);
-                      setOpenMixerDirectly(false);
-                      setShowAIAudioAssistant(true);
-                    }}
+                    onClick={openAIAudioMixAssistant}
                   >
                     AI Mix
                   </Button>
-                  <Button size="small" onClick={() => setShowAutoCaptionsPanel(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadAutoCaptionsPanel}
+                    onFocus={preloadAutoCaptionsPanel}
+                    onClick={openAutoCaptionsPanel}
+                  >
                     Auto Captions
                   </Button>
                 </ButtonGroup>
@@ -7579,22 +9968,38 @@ export default function StoryArcStudio({
               <>
                 <Divider orientation="vertical" flexItem />
                 <ButtonGroup size="small" variant="outlined">
-                  <Button size="small" variant="contained" onClick={() => setShowExportDialog(true)}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onMouseEnter={preloadExportDialog}
+                    onFocus={preloadExportDialog}
+                    onClick={openExportDialog}
+                  >
                     Quick Export
                   </Button>
-                  <Button size="small" onClick={() => setShowResolveExportDialog(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadDaVinciResolveExportDialog}
+                    onFocus={preloadDaVinciResolveExportDialog}
+                    onClick={openResolveExportDialog}
+                  >
                     DaVinci Export
                   </Button>
-                  <Button size="small" onClick={() => setShowHLSImportDialog(true)}>
+                  <Button
+                    size="small"
+                    onMouseEnter={preloadHLSImportDialog}
+                    onFocus={preloadHLSImportDialog}
+                    onClick={openHLSImportDialog}
+                  >
                     Stream Export/Import
                   </Button>
                 </ButtonGroup>
                 {captionsExport && (
                   <ButtonGroup size="small" variant="outlined">
-                    <Button size="small" onClick={() => downloadCaptionFile(captionsExport.srt, 'srt')}>
+                    <Button size="small" onClick={downloadCaptionsSrt}>
                       SRT
                     </Button>
-                    <Button size="small" onClick={() => downloadCaptionFile(captionsExport.vtt, 'vtt')}>
+                    <Button size="small" onClick={downloadCaptionsVtt}>
                       VTT
                     </Button>
                   </ButtonGroup>
@@ -7611,24 +10016,24 @@ export default function StoryArcStudio({
               label={`Dock bank: ${workspacePreset.toUpperCase()}`}
             />
             <ButtonGroup size="small" variant="outlined">
-              <Button size="small" onClick={() => loadDockSlot('dock-1')}>
+              <Button size="small" onClick={loadDockSlot1}>
                 Dock 1
               </Button>
-              <Button size="small" onClick={() => loadDockSlot('dock-2')}>
+              <Button size="small" onClick={loadDockSlot2}>
                 Dock 2
               </Button>
-              <Button size="small" onClick={() => loadDockSlot('dock-3')}>
+              <Button size="small" onClick={loadDockSlot3}>
                 Dock 3
               </Button>
             </ButtonGroup>
             <ButtonGroup size="small" variant="outlined">
-              <Button size="small" onClick={() => saveDockSlot('dock-1')}>
+              <Button size="small" onClick={saveDockSlot1}>
                 Save 1
               </Button>
-              <Button size="small" onClick={() => saveDockSlot('dock-2')}>
+              <Button size="small" onClick={saveDockSlot2}>
                 Save 2
               </Button>
-              <Button size="small" onClick={() => saveDockSlot('dock-3')}>
+              <Button size="small" onClick={saveDockSlot3}>
                 Save 3
               </Button>
               <Button size="small" color="warning" onClick={resetResolveLayout}>
@@ -7706,7 +10111,7 @@ export default function StoryArcStudio({
                   <Button
                     size="small"
                     variant={showAutoMonitor ? 'contained' : 'outlined'}
-                    onClick={() => setShowAutoMonitor((prev) => !prev)}
+                    onClick={toggleAutoMonitorPanel}
                     sx={{ minWidth: 120 }}
                   >
                     {showAutoMonitor ? 'Hide Monitor' : 'Auto Monitor'}
@@ -7717,9 +10122,7 @@ export default function StoryArcStudio({
                   <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', maxHeight: '45%', overflowY: 'auto' }}>
                     <StoryArcAutoMonitor
                       userId={currentUser?.id || 'guest'}
-                      onStatusChange={(enabled) => {
-                        console.log('Auto monitoring status changed:', enabled);
-                      }}
+                      onStatusChange={handleAutoMonitorStatusChange}
                     />
                   </Box>
                 )}
@@ -7728,54 +10131,10 @@ export default function StoryArcStudio({
                   <AssetBrowser
                     height="100%"
                     storyArcId={storyArcId}
-                    onMediaSelect={(media: SelectedAssetMedia) => {
-                      const mediaSource = typeof media?.url === 'string' ? media.url.trim() : '';
-                      const isVideoAsset =
-                        media?.type === 'video' ||
-                        (typeof media?.mimeType === 'string' && media.mimeType.startsWith('video/'));
-
-                      if (!isVideoAsset || !mediaSource) {
-                        return;
-                      }
-
-                      if (media.file instanceof File) {
-                        setSourceFileRegistry((previous) => ({
-                          ...previous,
-                          [mediaSource]: media.file as File,
-                        }));
-                      }
-
-                      setActiveSourcePreview({
-                        id: media.id || `source-${Date.now()}`,
-                        name: media.name || 'Selected Source',
-                        sourceFile: mediaSource,
-                        file: media.file,
-                      });
-                      setAvailableVideoSources((prev) => (prev.includes(mediaSource) ? prev : [...prev, mediaSource]));
-                    }}
-                    onTimelineInit={({ storyArc: arc, clips: newClips, tracks: newTracks }) => {
-                      if (fixtureTimelineLockRef.current) {
-                        return;
-                      }
-                      setStoryArc(arc);
-                      const hydratedTimelineClips = hydrateClipSources(newClips);
-                      setClips(hydratedTimelineClips);
-                      setAvailableVideoSources((prev) => {
-                        const merged = new Set([...prev, ...extractRenderableVideoSources(hydratedTimelineClips)]);
-                        return Array.from(merged);
-                      });
-                      setTracks(newTracks);
-                      const total = Math.max(...hydratedTimelineClips.map(c => c.start + c.duration), arc.totalDuration || 0);
-                      setTotalDuration(total || 0);
-                      setSelectedClips(new Set());
-                      setCurrentTime(0);
-                    }}
-                    onTemplateSelect={(templateId) => {
-                      console.log('Template selected:', templateId);
-                    }}
-                    onSnippetDrag={(snippetId) => {
-                      console.log('Snippet dragged:', snippetId);
-                    }}
+                    onMediaSelect={handleAssetBrowserMediaSelect}
+                    onTimelineInit={handleAssetBrowserTimelineInit}
+                    onTemplateSelect={handleAssetBrowserTemplateSelect}
+                    onSnippetDrag={handleAssetBrowserSnippetDrag}
                   />
                 </Box>
               </Paper>
@@ -7796,16 +10155,7 @@ export default function StoryArcStudio({
 
           {/* Center Panel - Professional Timeline */}
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <Paper
-              elevation={0}
-              sx={{
-                borderBottom: 1,
-                borderColor: 'divider',
-                p: 1.25,
-                bgcolor: 'background.paper',
-                flexShrink: 0,
-              }}
-            >
+            <StoryArcMonitorSection>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Source / Program Monitors
@@ -7828,13 +10178,13 @@ export default function StoryArcStudio({
                 <Box sx={{ flex: 1 }} />
                 <ButtonGroup size="small" variant="outlined">
                   <Button
-                    onClick={() => setMonitorFitMode('fit')}
+                    onClick={setMonitorFitToFit}
                     variant={monitorFitMode === 'fit' ? 'contained' : 'outlined'}
                   >
                     Fit
                   </Button>
                   <Button
-                    onClick={() => setMonitorFitMode('fill')}
+                    onClick={setMonitorFitToFill}
                     variant={monitorFitMode === 'fill' ? 'contained' : 'outlined'}
                   >
                     Fill
@@ -7843,7 +10193,7 @@ export default function StoryArcStudio({
                 <Button
                   size="small"
                   variant={multicamEnabled ? 'contained' : 'outlined'}
-                  onClick={() => setMulticamEnabled((previous) => !previous)}
+                  onClick={toggleMulticamMode}
                 >
                   Multicam
                 </Button>
@@ -7851,7 +10201,7 @@ export default function StoryArcStudio({
                   data-testid="monitor-guides-toggle"
                   size="small"
                   variant={showCompositionGuides ? 'contained' : 'outlined'}
-                  onClick={() => setShowCompositionGuides((previous) => !previous)}
+                  onClick={toggleCompositionGuidesVisibility}
                 >
                   Guides (G)
                 </Button>
@@ -7859,7 +10209,7 @@ export default function StoryArcStudio({
                   <IconButton
                     data-testid="monitor-guides-settings"
                     size="small"
-                    onClick={() => setShowCompositionGuideDialog(true)}
+                    onClick={openCompositionGuideSettingsDialog}
                   >
                     <Settings fontSize="small" />
                   </IconButton>
@@ -7867,7 +10217,7 @@ export default function StoryArcStudio({
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => setShowProgramMonitor((prev) => !prev)}
+                  onClick={toggleProgramMonitorPanel}
                 >
                   {showProgramMonitor ? 'Collapse' : 'Expand'}
                 </Button>
@@ -7909,8 +10259,8 @@ export default function StoryArcStudio({
                     <Box
                       data-testid="source-monitor-panel"
                       tabIndex={0}
-                      onMouseDown={() => setActiveMonitor('source')}
-                      onFocus={() => setActiveMonitor('source')}
+                      onMouseDown={sourceMonitorPanelHandlers.onMouseDown}
+                      onFocus={sourceMonitorPanelHandlers.onFocus}
                       sx={{
                         border: '1px solid',
                         borderColor: activeMonitor === 'source' ? 'primary.main' : 'divider',
@@ -7969,33 +10319,11 @@ export default function StoryArcStudio({
                               objectFit: monitorFitMode === 'fill' ? 'cover' : 'contain',
                               backgroundColor: '#000',
                             }}
-                            onLoadedMetadata={(event) => {
-                              setSourcePreviewReady(true);
-                              setSourcePreviewError(null);
-                              const mediaDuration = Number(event.currentTarget.duration);
-                              if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
-                                setSourcePreviewDuration(mediaDuration);
-                              }
-                              try {
-                                event.currentTarget.currentTime = sourcePreviewLocalTime;
-                              } catch {
-                                // Ignore initial seek errors until media is fully ready.
-                              }
-                            }}
-                            onTimeUpdate={(event) => {
-                              setSourcePreviewTime(event.currentTarget.currentTime);
-                            }}
-                            onPlay={() => {
-                              setSourcePreviewIsPlaying(true);
-                            }}
-                            onPause={() => {
-                              setSourcePreviewIsPlaying(false);
-                            }}
-                            onError={() => {
-                              setSourcePreviewReady(false);
-                              setSourcePreviewIsPlaying(false);
-                              setSourcePreviewError('Source preview failed to load');
-                            }}
+                            onLoadedMetadata={sourceVideoHandlers.onLoadedMetadata}
+                            onTimeUpdate={sourceVideoHandlers.onTimeUpdate}
+                            onPlay={sourceVideoHandlers.onPlay}
+                            onPause={sourceVideoHandlers.onPause}
+                            onError={sourceVideoHandlers.onError}
                           />
                         ) : (
                           <Stack
@@ -8069,7 +10397,7 @@ export default function StoryArcStudio({
                           data-testid="source-mark-in-button"
                           size="small"
                           variant="outlined"
-                          onClick={() => setSourceMark('in', sourcePreviewLocalTime)}
+                          onClick={markSourceInAtCurrentTime}
                         >
                           Mark In
                         </Button>
@@ -8077,17 +10405,17 @@ export default function StoryArcStudio({
                           data-testid="source-mark-out-button"
                           size="small"
                           variant="outlined"
-                          onClick={() => setSourceMark('out', sourcePreviewLocalTime)}
+                          onClick={markSourceOutAtCurrentTime}
                         >
                           Mark Out
                         </Button>
                         <Tooltip title="Go To Source Mark In">
-                          <IconButton size="small" onClick={() => jumpToSourceMark('in')} disabled={sourceMarkIn === null}>
+                          <IconButton size="small" onClick={jumpToSourceMarkIn} disabled={sourceMarkIn === null}>
                             <SkipPrevious fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Go To Source Mark Out">
-                          <IconButton size="small" onClick={() => jumpToSourceMark('out')} disabled={sourceMarkOut === null}>
+                          <IconButton size="small" onClick={jumpToSourceMarkOut} disabled={sourceMarkOut === null}>
                             <SkipNext fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -8095,10 +10423,7 @@ export default function StoryArcStudio({
                           <IconButton
                             data-testid="source-clear-marks-button"
                             size="small"
-                            onClick={() => {
-                              setSourceMarkIn(null);
-                              setSourceMarkOut(null);
-                            }}
+                            onClick={clearSourceMarks}
                           >
                             <RemoveCircle fontSize="small" />
                           </IconButton>
@@ -8122,7 +10447,7 @@ export default function StoryArcStudio({
                             data-testid="source-video-target-select"
                             label="V Target"
                             value={sourcePatchVideoTrackId ?? ''}
-                            onChange={(event) => setSourcePatchVideoTrackId(event.target.value || null)}
+                            onChange={sourcePatchHandlers.onVideoTrackChange}
                           >
                             {sourcePatchVideoTrackOptions.map((track) => (
                               <MenuItem key={`source-video-target-${track.id}`} value={track.id}>
@@ -8142,7 +10467,7 @@ export default function StoryArcStudio({
                             data-testid="source-audio-target-select"
                             label="A Target"
                             value={sourcePatchAudioTrackId ?? ''}
-                            onChange={(event) => setSourcePatchAudioTrackId(event.target.value || null)}
+                            onChange={sourcePatchHandlers.onAudioTrackChange}
                           >
                             {sourcePatchAudioTrackOptions.map((track) => (
                               <MenuItem key={`source-audio-target-${track.id}`} value={track.id}>
@@ -8157,9 +10482,9 @@ export default function StoryArcStudio({
                             <Switch
                               size="small"
                               checked={sourcePatchIncludeAudio && sourcePatchAudioTrackOptions.length > 0}
-                              onChange={(event) => setSourcePatchIncludeAudio(event.target.checked)}
+                              onChange={sourcePatchHandlers.onIncludeAudioChange}
                               disabled={sourcePatchAudioTrackOptions.length === 0}
-                              inputProps={{ 'data-testid': 'source-include-audio-toggle' }}
+                              inputProps={withDataInputProps({ 'data-testid': 'source-include-audio-toggle' })}
                             />
                           }
                           label="Linked A/V"
@@ -8169,7 +10494,7 @@ export default function StoryArcStudio({
                           data-testid="source-insert-button"
                           size="small"
                           variant="contained"
-                          onClick={() => insertOrOverwriteFromSource('insert', sourcePreviewClip)}
+                          onClick={insertSourceClip}
                           disabled={!sourcePreviewClip?.sourceFile}
                         >
                           Insert (F9)
@@ -8179,7 +10504,7 @@ export default function StoryArcStudio({
                           size="small"
                           variant="contained"
                           color="secondary"
-                          onClick={() => insertOrOverwriteFromSource('overwrite', sourcePreviewClip)}
+                          onClick={overwriteSourceClip}
                           disabled={!sourcePreviewClip?.sourceFile}
                         >
                           Overwrite (F10)
@@ -8190,8 +10515,8 @@ export default function StoryArcStudio({
                     <Box
                       data-testid="program-monitor-panel"
                       tabIndex={0}
-                      onMouseDown={() => setActiveMonitor('program')}
-                      onFocus={() => setActiveMonitor('program')}
+                      onMouseDown={programMonitorPanelHandlers.onMouseDown}
+                      onFocus={programMonitorPanelHandlers.onFocus}
                       sx={{
                         border: '1px solid',
                         borderColor: activeMonitor === 'program' ? 'primary.main' : 'divider',
@@ -8250,19 +10575,8 @@ export default function StoryArcStudio({
                               objectFit: monitorFitMode === 'fill' ? 'cover' : 'contain',
                               backgroundColor: '#000',
                             }}
-                            onLoadedMetadata={(event) => {
-                              setPreviewReady(true);
-                              setPreviewError(null);
-                              try {
-                                event.currentTarget.currentTime = programPreviewLocalTime;
-                              } catch {
-                                // Ignore initial seek errors until media is fully ready.
-                              }
-                            }}
-                            onError={() => {
-                              setPreviewReady(false);
-                              setPreviewError('Program preview failed to load');
-                            }}
+                            onLoadedMetadata={programVideoHandlers.onLoadedMetadata}
+                            onError={programVideoHandlers.onError}
                           />
                         ) : (
                           <Stack
@@ -8350,7 +10664,7 @@ export default function StoryArcStudio({
                           data-testid="program-mark-in-button"
                           size="small"
                           variant="outlined"
-                          onClick={() => setProgramMark('in')}
+                          onClick={markProgramInAtCurrentTime}
                         >
                           Mark In
                         </Button>
@@ -8358,7 +10672,7 @@ export default function StoryArcStudio({
                           data-testid="program-mark-out-button"
                           size="small"
                           variant="outlined"
-                          onClick={() => setProgramMark('out')}
+                          onClick={markProgramOutAtCurrentTime}
                         >
                           Mark Out
                         </Button>
@@ -8366,7 +10680,7 @@ export default function StoryArcStudio({
                           <IconButton
                             data-testid="program-jump-mark-in-button"
                             size="small"
-                            onClick={() => jumpToProgramMark('in')}
+                            onClick={jumpToProgramMarkIn}
                             disabled={programMarkIn === null}
                           >
                             <SkipPrevious fontSize="small" />
@@ -8376,7 +10690,7 @@ export default function StoryArcStudio({
                           <IconButton
                             data-testid="program-jump-mark-out-button"
                             size="small"
-                            onClick={() => jumpToProgramMark('out')}
+                            onClick={jumpToProgramMarkOut}
                             disabled={programMarkOut === null}
                           >
                             <SkipNext fontSize="small" />
@@ -8386,10 +10700,7 @@ export default function StoryArcStudio({
                           <IconButton
                             data-testid="program-clear-marks-button"
                             size="small"
-                            onClick={() => {
-                              setProgramMarkIn(null);
-                              setProgramMarkOut(null);
-                            }}
+                            onClick={clearProgramMarks}
                           >
                             <RemoveCircle fontSize="small" />
                           </IconButton>
@@ -8441,7 +10752,7 @@ export default function StoryArcStudio({
                             <Switch
                               size="small"
                               checked={multicamApplyToTimeline}
-                              onChange={(event) => setMulticamApplyToTimeline(event.target.checked)}
+                              onChange={handleMulticamApplyToTimelineChange}
                             />
                           }
                           label="Apply to Program"
@@ -8461,7 +10772,8 @@ export default function StoryArcStudio({
                             size="small"
                             variant={candidate.isLive ? 'contained' : 'outlined'}
                             color={candidate.isLive ? 'success' : 'primary'}
-                            onClick={() => applyMulticamAngle(candidate)}
+                            data-candidate-clip-id={candidate.clip.id}
+                            onClick={handleApplyMulticamAngleClick}
                           >
                             {index + 1}. {candidate.camera}
                           </Button>
@@ -8501,7 +10813,7 @@ export default function StoryArcStudio({
                   </Stack>
                 </>
               )}
-            </Paper>
+            </StoryArcMonitorSection>
 
             {showEffectsPanel && (
               <Paper
@@ -8538,22 +10850,58 @@ export default function StoryArcStudio({
                           : 'None'
                     }`}
                   />
-                  <Button size="small" variant="outlined" onClick={() => setShowTransitionLibrary(true)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onMouseEnter={preloadTransitionLibrary}
+                    onFocus={preloadTransitionLibrary}
+                    onClick={openTransitionLibrary}
+                  >
                     Transition Lib
                   </Button>
-                  <Button size="small" variant="outlined" onClick={() => setShowTextOverlayPanel(true)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onMouseEnter={preloadTextOverlayPanel}
+                    onFocus={preloadTextOverlayPanel}
+                    onClick={openTextOverlayPanel}
+                  >
                     Text
                   </Button>
-                  <Button size="small" variant="outlined" onClick={() => setShowGPUFiltersPanel(true)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onMouseEnter={preloadGPUFiltersPanel}
+                    onFocus={preloadGPUFiltersPanel}
+                    onClick={openGPUFiltersPanel}
+                  >
                     Filters
                   </Button>
-                  <Button size="small" variant="outlined" onClick={() => setShowColorGradingPanel(true)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onMouseEnter={preloadColorGradingPanel}
+                    onFocus={preloadColorGradingPanel}
+                    onClick={openColorGradingPanel}
+                  >
                     Color
                   </Button>
-                  <Button size="small" variant="outlined" onClick={() => setShowLUTLibraryDialog(true)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onMouseEnter={preloadLUTLibrary}
+                    onFocus={preloadLUTLibrary}
+                    onClick={openLUTLibraryDialog}
+                  >
                     LUTs
                   </Button>
-                  <Button size="small" variant="outlined" onClick={() => setShowHLSImportDialog(true)}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onMouseEnter={preloadHLSImportDialog}
+                    onFocus={preloadHLSImportDialog}
+                    onClick={openHLSImportDialog}
+                  >
                     Stream Import
                   </Button>
                   {captionsExport && (
@@ -8561,20 +10909,20 @@ export default function StoryArcStudio({
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => downloadCaptionFile(captionsExport.srt, 'srt')}
+                        onClick={downloadCaptionsSrt}
                       >
                         Download SRT
                       </Button>
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => downloadCaptionFile(captionsExport.vtt, 'vtt')}
+                        onClick={downloadCaptionsVtt}
                       >
                         Download VTT
                       </Button>
                       <IconButton
                         size="small"
-                        onClick={() => setCaptionsExport(null)}
+                        onClick={clearCaptionsPackage}
                         aria-label="Clear caption export payload"
                       >
                         <RemoveCircle fontSize="small" />
@@ -8617,7 +10965,7 @@ export default function StoryArcStudio({
                       labelId="audio-role-focus-label"
                       value={audioRoleFocus}
                       label="Role Focus"
-                      onChange={(event) => setAudioRoleFocus(event.target.value as AudioRoleFilter)}
+                      onChange={handleAudioRoleFocusChange}
                     >
                       <MenuItem value="all">All Roles</MenuItem>
                       {AUDIO_TRACK_ROLE_OPTIONS.map((option) => (
@@ -8638,25 +10986,24 @@ export default function StoryArcStudio({
                           variant={audioRoleFocus === roleOption.value ? 'filled' : 'outlined'}
                           color={audioRoleFocus === roleOption.value ? 'primary' : 'default'}
                           label={`${roleOption.label} (${roleCount})`}
-                          onClick={() =>
-                            setAudioRoleFocus((previous) =>
-                              previous === roleOption.value ? 'all' : roleOption.value
-                            )
-                          }
+                          data-audio-role={roleOption.value}
+                          onClick={handleAudioRoleChipFocusClick}
                         />
                         <Chip
                           size="small"
                           color={audioRoleMuteState[roleOption.value] ? 'warning' : 'default'}
                           variant={audioRoleMuteState[roleOption.value] ? 'filled' : 'outlined'}
                           label="M"
-                          onClick={() => toggleAudioRoleMute(roleOption.value)}
+                          data-audio-role={roleOption.value}
+                          onClick={handleAudioRoleMuteChipClick}
                         />
                         <Chip
                           size="small"
                           color={audioRoleSoloState[roleOption.value] ? 'success' : 'default'}
                           variant={audioRoleSoloState[roleOption.value] ? 'filled' : 'outlined'}
                           label="S"
-                          onClick={() => toggleAudioRoleSolo(roleOption.value)}
+                          data-audio-role={roleOption.value}
+                          onClick={handleAudioRoleSoloChipClick}
                         />
                       </Stack>
                     );
@@ -8691,32 +11038,18 @@ export default function StoryArcStudio({
                           />
                           <Slider
                             size="small"
+                            data-track-id={track.id}
                             value={avgVolume}
                             min={0}
                             max={2}
                             step={0.05}
                             sx={{ width: 120 }}
-                            onChange={(_, value) => {
-                              const volume = typeof value === 'number' ? value : value[0];
-                              setClips((previous) =>
-                                previous.map((clip) =>
-                                  clip.trackId === track.id
-                                    ? {
-                                        ...clip,
-                                        metadata: {
-                                          ...(clip.metadata || {}),
-                                          volume,
-                                        },
-                                      }
-                                    : clip
-                                )
-                              );
-                            }}
+                            onChange={handleMixerTrackVolumeChange}
                           />
-                          <Button size="small" onClick={() => handleOpenMixer(track.id)}>
+                          <Button size="small" data-track-id={track.id} onClick={handleOpenMixerTrackButtonClick}>
                             Mixer
                           </Button>
-                          <Button size="small" onClick={() => handleOpenAIAssistant(track.id)}>
+                          <Button size="small" data-track-id={track.id} onClick={handleOpenAIAssistantTrackButtonClick}>
                             AI
                           </Button>
                         </Stack>
@@ -8749,7 +11082,7 @@ export default function StoryArcStudio({
                       startIcon={<GpsFixed fontSize="small" />}
                       aria-label="Select (A)"
                       variant={editTool === 'select' ? 'contained' : 'outlined'}
-                      onClick={() => setEditTool('select')}
+                      onClick={activateSelectTool}
                     >
                       Select (A)
                     </Button>
@@ -8758,7 +11091,7 @@ export default function StoryArcStudio({
                       startIcon={<ContentCut fontSize="small" />}
                       aria-label="Trim (T)"
                       variant={editTool === 'trim' ? 'contained' : 'outlined'}
-                      onClick={() => setEditTool('trim')}
+                      onClick={activateTrimTool}
                     >
                       Trim (T)
                     </Button>
@@ -8767,7 +11100,7 @@ export default function StoryArcStudio({
                       startIcon={<Sync fontSize="small" />}
                       aria-label="Roll (R)"
                       variant={editTool === 'roll' ? 'contained' : 'outlined'}
-                      onClick={() => setEditTool('roll')}
+                      onClick={activateRollTool}
                     >
                       Roll (R)
                     </Button>
@@ -8776,7 +11109,7 @@ export default function StoryArcStudio({
                       startIcon={<KeyboardArrowLeft fontSize="small" />}
                       aria-label="Slip (Y)"
                       variant={editTool === 'slip' ? 'contained' : 'outlined'}
-                      onClick={() => setEditTool('slip')}
+                      onClick={activateSlipTool}
                     >
                       Slip (Y)
                     </Button>
@@ -8785,7 +11118,7 @@ export default function StoryArcStudio({
                       startIcon={<KeyboardArrowRight fontSize="small" />}
                       aria-label="Slide (U)"
                       variant={editTool === 'slide' ? 'contained' : 'outlined'}
-                      onClick={() => setEditTool('slide')}
+                      onClick={activateSlideTool}
                     >
                       Slide (U)
                     </Button>
@@ -8798,7 +11131,7 @@ export default function StoryArcStudio({
                       aria-label="Toggle safe trim mode"
                       variant={safeTrimMode ? 'contained' : 'outlined'}
                       color={safeTrimMode ? 'success' : 'inherit'}
-                      onClick={() => setSafeTrimMode((previous) => !previous)}
+                      onClick={toggleSafeTrimMode}
                     >
                       Safe Trim
                     </Button>
@@ -8806,7 +11139,7 @@ export default function StoryArcStudio({
                       size="small"
                       aria-label="Toggle magnetic mode"
                       variant={magneticEnabled ? 'contained' : 'outlined'}
-                      onClick={() => setMagneticEnabled((previous) => !previous)}
+                      onClick={toggleMagneticMode}
                     >
                       Magnetic
                     </Button>
@@ -8814,7 +11147,7 @@ export default function StoryArcStudio({
                       size="small"
                       aria-label="Toggle ripple mode"
                       variant={rippleEnabled ? 'contained' : 'outlined'}
-                      onClick={() => setRippleEnabled((previous) => !previous)}
+                      onClick={toggleRippleMode}
                     >
                       Ripple
                     </Button>
@@ -8919,7 +11252,7 @@ export default function StoryArcStudio({
                         data-testid="timeline-zoom-out-button"
                         size="small"
                         aria-label="Zoom out timeline"
-                        onClick={() => adjustTimelineZoom(-0.1)}
+                        onClick={zoomOutTimeline}
                       >
                         <ZoomOut fontSize="small" />
                       </IconButton>
@@ -8940,7 +11273,7 @@ export default function StoryArcStudio({
                         data-testid="timeline-zoom-in-button"
                         size="small"
                         aria-label="Zoom in timeline"
-                        onClick={() => adjustTimelineZoom(0.1)}
+                        onClick={zoomInTimeline}
                       >
                         <ZoomIn fontSize="small" />
                       </IconButton>
@@ -8989,164 +11322,56 @@ export default function StoryArcStudio({
                   Use this page for final checks, subtitle export, and rendering to delivery formats.
                 </Alert>
                 <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Button variant="contained" onClick={() => setShowExportDialog(true)}>
+                  <Button
+                    variant="contained"
+                    onMouseEnter={preloadExportDialog}
+                    onFocus={preloadExportDialog}
+                    onClick={openExportDialog}
+                  >
                     Quick Export
                   </Button>
-                  <Button variant="outlined" onClick={() => setShowResolveExportDialog(true)}>
+                  <Button
+                    variant="outlined"
+                    onMouseEnter={preloadDaVinciResolveExportDialog}
+                    onFocus={preloadDaVinciResolveExportDialog}
+                    onClick={openResolveExportDialog}
+                  >
                     DaVinci Resolve Export
                   </Button>
-                  <Button variant="outlined" onClick={() => setShowHLSImportDialog(true)}>
+                  <Button
+                    variant="outlined"
+                    onMouseEnter={preloadHLSImportDialog}
+                    onFocus={preloadHLSImportDialog}
+                    onClick={openHLSImportDialog}
+                  >
                     Stream Package
                   </Button>
-                  <Button variant="outlined" onClick={() => setShowAutoCaptionsPanel(true)}>
+                  <Button
+                    variant="outlined"
+                    onMouseEnter={preloadAutoCaptionsPanel}
+                    onFocus={preloadAutoCaptionsPanel}
+                    onClick={openAutoCaptionsPanel}
+                  >
                     Generate Captions
                   </Button>
                 </Stack>
                 {captionsExport && (
                   <Stack direction="row" spacing={1} flexWrap="wrap">
-                    <Button size="small" variant="outlined" onClick={() => downloadCaptionFile(captionsExport.srt, 'srt')}>
+                    <Button size="small" variant="outlined" onClick={downloadCaptionsSrt}>
                       Download SRT
                     </Button>
-                    <Button size="small" variant="outlined" onClick={() => downloadCaptionFile(captionsExport.vtt, 'vtt')}>
+                    <Button size="small" variant="outlined" onClick={downloadCaptionsVtt}>
                       Download VTT
                     </Button>
-                    <Button size="small" color="warning" onClick={() => setCaptionsExport(null)}>
+                    <Button size="small" color="warning" onClick={clearCaptionsPackage}>
                       Clear Caption Package
                     </Button>
                   </Stack>
                 )}
               </Paper>
             ) : (
-              <>
-            <ProfessionalTimeline
-              clips={clips}
-              tracks={tracks}
-              zoom={timelineZoom}
-              currentTime={currentTime}
-              totalDuration={totalDuration}
-              isPlaying={isPlaying}
-              selectedClips={selectedClips}
-              onClipSelect={(clipId, multiSelect) => {
-                const newSelected = new Set(selectedClips);
-                if (multiSelect) {
-                  if (newSelected.has(clipId)) newSelected.delete(clipId); else newSelected.add(clipId);
-                } else {
-                  newSelected.clear();
-                  newSelected.add(clipId);
-                }
-                setSelectedClips(newSelected);
-              }}
-              onClipMove={(clipId, newStart, newTrackId) => {
-                const snappedStart = timelineEngine.snapToFrame(newStart);
-                let next = moveClipWithEditTool(clips, clipId, snappedStart, newTrackId);
-                if (safeTrimMode && hasTimelineOverlapOnTrack(next, newTrackId)) {
-                  showSafeTrimBlockedWarning();
-                  return;
-                }
-                if (magneticEnabled && editTool !== 'slip') {
-                  next = resolveOverlaps(next, newTrackId);
-                }
-                applyClipUpdates(next);
-              }}
-              onClipResize={(clipId, newStart, newDuration, resizeMode) => {
-                const targetTrack = newTrackIdForClip(clips, clipId);
-                let next = resizeClipWithEditTool(
-                  clips,
-                  clipId,
-                  newStart,
-                  newDuration,
-                  resizeMode === 'resize-left' ? 'resize-left' : 'resize-right'
-                );
-                if (safeTrimMode && targetTrack && hasTimelineOverlapOnTrack(next, targetTrack)) {
-                  showSafeTrimBlockedWarning();
-                  return;
-                }
-                if (magneticEnabled && targetTrack && editTool !== 'roll') {
-                  next = resolveOverlaps(next, targetTrack);
-                }
-                applyClipUpdates(next);
-              }}
-              onTimelineClick={handleTimelineClick}
-              onCurrentTimeChange={handleCurrentTimeChange}
-              onZoomChange={(z) => setTimelineZoomFromUser(z)}
-              trackHeightScale={trackHeightScale}
-              markers={markers}
-              trackStates={trackStates}
-              onTrackToggle={(trackId, changes) => setTrackStates(prev => ({ ...prev, [trackId]: { ...prev[trackId], ...changes } }))}
-              onTrackRename={(trackId, name) => setTracks(prev => prev.map(t => t.id === trackId ? { ...t, name } : t))}
-              onTrackTypeChange={(trackId, type) => {
-                setTrackStates((previous) => {
-                  const matchingTrack = tracks.find((track) => track.id === trackId);
-                  const defaultRole = matchingTrack
-                    ? inferAudioRoleFromTrackName(matchingTrack.name)
-                    : 'dialogue';
-                  return {
-                    ...previous,
-                    [trackId]: {
-                      ...previous[trackId],
-                      type,
-                      audioRole: type === 'audio' ? previous[trackId]?.audioRole ?? defaultRole : undefined,
-                    },
-                  };
-                });
-                setTracks(prev => prev.map(t => t.id === trackId ? { ...t, type: type === 'audio' ? 'audio' : 'video' } : t));
-              }}
-              onTrackAudioRoleChange={setTrackAudioRole}
-              transitions={transitions}
-              clipMetadata={clipMeta}
-              filterTags={filterTags}
-              searchQuery={searchQuery}
-              onContextMenuAction={(action, payload) => {
-                if (!payload?.clipId) return;
-                const clipId = payload.clipId as string;
-                switch (action) {
-                  case 'edit-metadata':
-                    setSelectedClips(new Set([clipId]));
-                    break;
-                  case 'split': {
-                    const t = currentTime;
-                    setClips(prev => splitClip(prev, clipId, t));
-                    break;
-                  }
-                  case 'duplicate':
-                    setClips(prev => duplicateClip(prev, clipId));
-                    break;
-                  case 'delete':
-                    setClips(prev => deleteClip(prev, clipId, rippleEnabled));
-                    break;
-                  case 'color':
-                    setClips(prev => prev.map(c => c.id === clipId ? { ...c, color: payload.color } : c));
-                    break;
-                  case 'add-comment': {
-                    const id = 'c' + Date.now();
-                    setComments(prev => [...prev, { id, time: currentTime, text: 'Comment', clipId }]);
-                    break;
-                  }
-                  case 'review-approve': {
-                    const id = 'c' + Date.now();
-                    setComments(prev => [...prev, { id, time: currentTime, text: 'Approved ✅', clipId }]);
-                    break;
-                  }
-                  case 'review-request-changes': {
-                    const id = 'c' + Date.now();
-                    setComments(prev => [...prev, { id, time: currentTime, text: 'Please revise ✏️', clipId }]);
-                    break;
-                  }
-                }
-              }}
-              reviewerMode={reviewerMode}
-              compareClips={compareMode ? compareSnapshot : []}
-              collabLocks={collabLocks}
-              onMediaDrop={({ media, trackId, startTime }) => {
-                addMediaToTimeline({
-                  media,
-                  track: trackId,
-                  position: 'playhead',
-                  startTime,
-                });
-                setCurrentTime(startTime);
-              }}
-            />
+              <StoryArcTimelineSection>
+            <ProfessionalTimeline {...timelineProps} />
 
             {waveformAudioUrl && (
               <Paper
@@ -9159,23 +11384,10 @@ export default function StoryArcStudio({
                   flexShrink: 0,
                 }}
               >
-                <ProfessionalWaveform
-                  audioUrl={waveformAudioUrl}
-                  height={72}
-                  waveColor="#667eea"
-                  progressColor="#764ba2"
-                  enableRegions={true}
-                  onReady={(wavesurfer) => {
-                    wavesurfer.setPlaybackRate(Math.max(0.25, Math.min(4, playbackSpeed)));
-                    console.log('✅ Waveform ready');
-                  }}
-                  onRegionCreated={(region) => {
-                    console.log('✅ Audio region created:', region);
-                  }}
-                />
+                <ProfessionalWaveform {...waveformProps} />
               </Paper>
             )}
-              </>
+              </StoryArcTimelineSection>
             )}
 
             <Box
@@ -9222,21 +11434,8 @@ export default function StoryArcStudio({
                   direction="row"
                   spacing={{ xs: 1.1, sm: 1.5, md: 2.4 }}
                   alignItems="flex-end"
-                  onMouseMove={(event) => {
-                    const navRect = event.currentTarget.getBoundingClientRect();
-                    if (navRect.width <= 0) {
-                      return;
-                    }
-                    const rawRatio = (event.clientX - navRect.left) / navRect.width;
-                    const nextRatio = Math.max(0, Math.min(1, rawRatio));
-                    setWorkspaceDockPointerRatio((previous) => {
-                      if (previous === null) {
-                        return nextRatio;
-                      }
-                      return Math.abs(previous - nextRatio) < 0.003 ? previous : nextRatio;
-                    });
-                  }}
-                  onMouseLeave={() => setWorkspaceDockPointerRatio(null)}
+                  onMouseMove={handleWorkspaceDockMouseMove}
+                  onMouseLeave={handleWorkspaceDockMouseLeave}
                 >
                   {RESOLVE_WORKSPACE_ARC_NAV_ITEMS.map((workspaceNavItem, navIndex) => {
                     const isActive = workspacePreset === workspaceNavItem.preset;
@@ -9261,7 +11460,8 @@ export default function StoryArcStudio({
                         key={`workspace-nav-${workspaceNavItem.preset}`}
                         data-testid={`workspace-nav-${workspaceNavItem.preset}`}
                         size="small"
-                        onClick={() => activateWorkspaceFromNav(workspaceNavItem.preset)}
+                        data-workspace-preset={workspaceNavItem.preset}
+                        onClick={handleWorkspaceNavClick}
                         variant={isActive ? 'contained' : 'outlined'}
                         sx={{
                           minWidth: { xs: 68, md: 82 },
@@ -9313,47 +11513,24 @@ export default function StoryArcStudio({
               />
 
               {/* Right Panel - Inspector */}
-              <Paper 
-                elevation={0}
-                sx={{ 
-                  width: panelSizes.rightPanel,
-                  borderLeft: 1,
-                  borderColor: 'divider',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  bgcolor: 'background.paper'
-                }}
+              <StoryArcSidePanel
+                title="Inspector"
+                width={panelSizes.rightPanel}
+                borderSide="left"
               >
-                <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" fontWeight={600}>
-                    Inspector
-                  </Typography>
-                </Box>
-                <Box sx={{ flex: 1, minHeight: 0 }}>
-                  <InspectorPanel
-                    selectedClips={selectedInspectorClips}
-                    onClipUpdate={(clipId, updates) => {
-                      setClips(prev => prev.map(clip =>
-                        clip && clip.id === clipId ? { ...clip, ...updates } : clip
-                      ));
-                    }}
-                    onBulkUpdate={(clipIds, updates) => {
-                      setClips(prev => prev.map(clip =>
-                        clip && clipIds.includes(clip.id) ? { ...clip, ...updates } : clip
-                      ));
-                    }}
-                    metaMap={clipMeta}
-                    onMetaUpdate={(clipId, updates) => setClipMeta(prev => ({ ...prev, [clipId]: { ...(prev[clipId] || {}), ...updates } }))}
-                    height="100%"
-                  />
-                </Box>
-              </Paper>
+                <InspectorPanel {...inspectorProps} />
+              </StoryArcSidePanel>
             </>
           )}
         </Box>
 
         {/* Onboarding Dialog */}
-        <Dialog open={onboardingOpen} onClose={() => setOnboardingOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={onboardingOpen}
+          onClose={dismissOnboardingDialog}
+          maxWidth="sm"
+          fullWidth
+        >
           <DialogTitle>Story Arc Studio Onboarding</DialogTitle>
           <DialogContent>
             <Stepper activeStep={onboardingStep} orientation="vertical">
@@ -9374,29 +11551,12 @@ export default function StoryArcStudio({
                         {recentProjects.map((project) => (
                           <Card
                             key={project.id}
+                            data-project-id={project.id}
                             variant="outlined"
                             sx={{
                               p: 1.5,
                               cursor: 'pointer','&:hover': { bgcolor: 'action.hover' }}}
-                            onClick={async () => {
-                              try {
-                                setEnsuringMapping(true);
-                                // Connect to the story arc project directly
-                                // Update project context with story arc ID
-                                setProjectContext({
-                                  projectId: project.id,
-                                  projectName: project.storyArcName,
-                                  clientName: 'Unknown Client',
-                                  projectType: project.templateType || 'wedding',
-                                });
-                                setSnackbar({ open: true, message: 'Project connected successfully!', severity: 'success' });
-                                setOnboardingStep((s) => s + 1);
-                              } catch (e: any) {
-                                setSnackbar({ open: true, message: e?.message || 'Failed to connect project', severity: 'error' });
-                              } finally {
-                                setEnsuringMapping(false);
-                              }
-                            }}
+                            onClick={handleConnectRecentProjectClick}
                           >
                             <Stack direction="row" spacing={1} alignItems="center">
                               <Box sx={{ flex: 1 }}>
@@ -9429,80 +11589,18 @@ export default function StoryArcStudio({
                       size="small"
                       variant="contained"
                       disabled={ensuringMapping || !projectContext?.projectId}
-                      onClick={async () => {
-                        try {
-                          setEnsuringMapping(true);
-                          const pid = projectContext?.projectId;
-                          if (!pid) {
-                            setSnackbar({ open: true, message: 'No project in context. Select a project above or create a new one.', severity: 'warning' });
-                            return;
-                          }
-                          const res = await fetch(`/api/story-arc/by-project/${encodeURIComponent(String(pid))}/ensure?name=${encodeURIComponent(projectContext?.projectName || 'Untitled Project')}`, {
-                            method: 'POST',
-                            credentials: 'include',
-                          });
-                          if (!res.ok) throw new Error('Failed to ensure mapping');
-                          setSnackbar({ open: true, message: 'Project connected and Drive prepared.', severity: 'success' });
-                          setOnboardingStep((s) => s + 1);
-                        } catch (e: any) {
-                          setSnackbar({ open: true, message: e?.message || 'Failed to connect project', severity: 'error' });
-                        } finally {
-                          setEnsuringMapping(false);
-                        }
-                      }}
+                      onClick={handleConnectCurrentProjectClick}
                     >
                       {ensuringMapping ? 'Connecting…' : 'Connect Current Project'}
                     </Button>
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={async () => {
-                        try {
-                          setEnsuringMapping(true);
-                          const projectName = prompt('Enter project name:');
-                          if (!projectName || !projectName.trim()) {
-                            setEnsuringMapping(false);
-                            return;
-                          }
-                          const res = await fetch('/api/story-arc/projects', {
-                            method: 'POST',
-                            credentials: 'include',
-                            headers: { 'Content-Type' : 'application/json' },
-                            body: JSON.stringify({
-                              storyArcName: projectName.trim(),
-                              templateType: 'wedding',
-                              emotionalCurve: 'rising',
-                              targetDuration: 480,
-                            }),
-                          });
-                          if (!res.ok) {
-                            const errorData = await res.json().catch(() => ({}));
-                            throw new Error(errorData.error || 'Failed to create project');
-                          }
-                          const data = await res.json();
-                          setSnackbar({ open: true, message: 'Project created successfully!', severity: 'success' });
-                          // Update project context
-                          if (data.storyArcId) {
-                            setProjectContext({
-                              projectId: data.storyArcId,
-                              projectName: projectName.trim(),
-                              clientName: 'Unknown Client',
-                              projectType: 'wedding',
-                            });
-                          }
-                          // Refresh projects list
-                          await fetchRecentProjects();
-                          setOnboardingStep((s) => s + 1);
-                        } catch (e: any) {
-                          setSnackbar({ open: true, message: e?.message || 'Failed to create project', severity: 'error' });
-                        } finally {
-                          setEnsuringMapping(false);
-                        }
-                      }}
+                      onClick={openCreateProjectDialog}
                     >
                       New Project
                     </Button>
-                    <Button size="small" onClick={() => setOnboardingStep((s) => s + 1)}>Skip</Button>
+                    <Button size="small" onClick={advanceOnboardingStep}>Skip</Button>
                   </Stack>
                 </StepContent>
               </Step>
@@ -9518,7 +11616,7 @@ export default function StoryArcStudio({
                     {driveInit.status === 'ready' && monitorFolderLink && (
                       <Button size="small" component="a" href={monitorFolderLink} target="_blank" rel="noreferrer">Open folder</Button>
                     )}
-                    <Button size="small" onClick={() => setOnboardingStep((s) => s + 1)}>Next</Button>
+                    <Button size="small" onClick={advanceOnboardingStep}>Next</Button>
                   </Stack>
                 </StepContent>
               </Step>
@@ -9530,7 +11628,7 @@ export default function StoryArcStudio({
                     Use Asset Browser to import media or scan your monitored Drive folder.
                   </Typography>
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" onClick={() => setOnboardingStep((s) => s + 1)}>Next</Button>
+                    <Button size="small" onClick={advanceOnboardingStep}>Next</Button>
                   </Stack>
                 </StepContent>
               </Step>
@@ -9542,7 +11640,7 @@ export default function StoryArcStudio({
                     Toggles: Magnetic, Ripple, Reviewer. Shortcuts: Space, J/K/L, ←/→, F9/F10, ,/., C (Razor), D (Select under playhead), ; (Lift), ' (Extract).
                   </Typography>
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" onClick={() => setOnboardingStep((s) => s + 1)}>Next</Button>
+                    <Button size="small" onClick={advanceOnboardingStep}>Next</Button>
                   </Stack>
                 </StepContent>
               </Step>
@@ -9558,96 +11656,7 @@ export default function StoryArcStudio({
                     <Button
                       size="small"
                       variant="contained"
-                      onClick={async () => {
-                        setWorkerInitStatus({
-                          inProgress: true,
-                          completed: false,
-                          error: null,
-                          progress: 0,
-                          workers: {},
-                        });
-
-                        try {
-                          // Call initialization endpoint
-                          await fetch('/api/workers/initialize', {
-                            method: 'POST',
-                            credentials: 'include',
-                            headers: { 'Content-Type' : 'application/json' },
-                            body: JSON.stringify({}),
-                          });
-
-                          // Poll status endpoint to get progress
-                          const checkStatus = async (): Promise<void> => {
-                            try {
-                              const response = await fetch('/api/workers/status', { credentials: 'include' });
-                              const data = await response.json();
-
-                              const allWorkers = {
-                                ...(data.workers?.onDemand || {}),
-                                ...(data.workers?.continuous || {}),
-                              };
-
-                              // Calculate progress
-                              const totalWorkers = Object.keys(allWorkers).length;
-                              const readyWorkers = Object.values(allWorkers).filter(
-                                (w: any) => w.ready || w.status === 'running'
-                              ).length;
-                              const progress = totalWorkers > 0 ? Math.round((readyWorkers / totalWorkers) * 100) : 0;
-
-                              setWorkerInitStatus((prev) => ({
-                                ...prev,
-                                progress,
-                                workers: allWorkers,
-                              }));
-
-                              // If all ready or progress is high enough, mark as complete
-                              if (data.status === 'ready' || progress >= 80) {
-                                setWorkerInitStatus((prev) => ({
-                                  ...prev,
-                                  inProgress: false,
-                                  completed: true,
-                                  progress: 100,
-                                }));
-                                // Auto-advance after a moment
-                                setTimeout(() => {
-                                  handleOnboardingComplete();
-                                }, 1000);
-                              } else if (progress < 100) {
-                                // Continue polling
-                                setTimeout(checkStatus, 1000);
-                              }
-                            } catch (error) {
-                              console.warn('Error checking worker status:', error);
-                              // Continue anyway - workers will initialize on first use
-                              setWorkerInitStatus((prev) => ({
-                                ...prev,
-                                inProgress: false,
-                                completed: true,
-                                progress: 100,
-                              }));
-                              setTimeout(() => {
-                                handleOnboardingComplete();
-                              }, 500);
-                            }
-                          };
-
-                          // Start checking status
-                          await checkStatus();
-                        } catch (error) {
-                          console.warn('Error initializing workers:', error);
-                          // Don't block onboarding - workers will initialize on first use
-                          setWorkerInitStatus((prev) => ({
-                            ...prev,
-                            inProgress: false,
-                            completed: true,
-                            error: null,
-                            progress: 100,
-                          }));
-                          setTimeout(() => {
-                            handleOnboardingComplete();
-                          }, 500);
-                        }
-                      }}
+                      onClick={prepareWorkerFeatures}
                       sx={{ mb: 2 }}
                     >
                       Prepare Features
@@ -9673,18 +11682,24 @@ export default function StoryArcStudio({
                       <LinearProgress variant="determinate" value={workerInitStatus.progress} sx={{ mb: 2 }} />
 
                       <Stack spacing={1}>
-                        {Object.entries(workerInitStatus.workers).slice(0, 6).map(([key, worker]: [string, any]) => (
-                          <Box
-                            key={key}
-                            sx={{
-                              p: 1.5,
-                              borderRadius: 1,
-                              bgcolor: worker.ready || worker.status === 'running' ? 'success.light' : 'action.hover',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1}}
-                          >
-                            {worker.ready || worker.status === 'running' ? (
+                        {Object.entries(workerInitStatus.workers).slice(0, 6).map(([key, worker]) => {
+                          const runningState =
+                            isRecord(worker) && typeof worker.status === 'string'
+                              ? worker.status === 'running'
+                              : false;
+                          const isReady = worker.ready || runningState;
+                          return (
+                            <Box
+                              key={key}
+                              sx={{
+                                p: 1.5,
+                                borderRadius: 1,
+                                bgcolor: isReady ? 'success.light' : 'action.hover',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1}}
+                            >
+                              {isReady ? (
                               <CheckCircle color="success" fontSize="small" />
                             ) : (
                               <CircularProgress size={16} />
@@ -9697,8 +11712,9 @@ export default function StoryArcStudio({
                                 {worker.message || worker.description || 'Preparing...'}
                               </Typography>
                             </Box>
-                          </Box>
-                        ))}
+                            </Box>
+                          );
+                        })}
                       </Stack>
                     </Box>
                   )}
@@ -9733,31 +11749,55 @@ export default function StoryArcStudio({
             </Stepper>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => {
-              // Mark as completed even if closed early
-              localStorage.setItem('storyArcStudio_onboardingCompleted','true');
-              setOnboardingOpen(false);
-            }}>Close</Button>
+            <Button onClick={closeOnboardingDialog}>Close</Button>
           </DialogActions>
         </Dialog>
 
-        <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
-          <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>{snackbar.message}</Alert>
+        <Dialog
+          open={createProjectDialogOpen}
+          onClose={closeCreateProjectDialog}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>Create New Project</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              size="small"
+              margin="dense"
+              label="Project name"
+              placeholder="Enter project name"
+              value={newProjectName}
+              onChange={updateNewProjectName}
+              disabled={isCreatingProject}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeCreateProjectDialog} disabled={isCreatingProject}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={submitCreateProjectFromDialog}
+              disabled={isCreatingProject || newProjectName.trim().length === 0}
+            >
+              {isCreatingProject ? 'Creating…' : 'Create'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={closeSnackbar}>
+          <Alert severity={snackbar.severity} onClose={closeSnackbar}>{snackbar.message}</Alert>
         </Snackbar>
 
         {/* Face Detection Options Dialog */}
-        <Dialog open={showFaceDetectionOptionsDialog} onClose={() => {
-          setShowFaceDetectionOptionsDialog(false);
-          if (pendingFaceDetectionResolve) {
-            pendingFaceDetectionResolve(null);
-            setPendingFaceDetectionResolve(null);
-          }
-        }} maxWidth="sm" fullWidth>
+        <Dialog open={showFaceDetectionOptionsDialog} onClose={cancelFaceDetectionOptionsDialog} maxWidth="sm" fullWidth>
           <DialogTitle>Ansiktsgjenkjenning - Alternativer</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <FormControlLabel
-                control={<Switch checked={faceDetectionOptions.scanEntire} onChange={(e) => setFaceDetectionOptions(prev => ({ ...prev, scanEntire: e.target.checked }))} />}
+                control={<Switch checked={faceDetectionOptions.scanEntire} onChange={handleFaceDetectionScanEntireChange} />}
                 label="Full videoskanning (analyserer flere bilder)"
               />
               <Typography variant="body2" color="text.secondary">
@@ -9768,7 +11808,7 @@ export default function StoryArcStudio({
                   label="Bilder per sekund å sample"
                   type="number"
                   value={faceDetectionOptions.fps}
-                  onChange={(e) => setFaceDetectionOptions(prev => ({ ...prev, fps: parseFloat(e.target.value) || 0.5 }))}
+                  onChange={handleFaceDetectionFpsChange}
                   inputProps={{ step: 0.1, min: 0.1, max: 5 }}
                   helperText="Standard: 0.5 = 1 bilde hvert 2. sekund"
                   fullWidth
@@ -9778,7 +11818,7 @@ export default function StoryArcStudio({
                 <InputLabel>Analyseoppgaver</InputLabel>
                 <Select
                   value={faceDetectionOptions.taskChoice}
-                  onChange={(e) => setFaceDetectionOptions(prev => ({ ...prev, taskChoice: e.target.value }))}
+                  onChange={handleFaceDetectionTaskChoiceChange}
                   label="Analyseoppgaver"
                 >
                   <MenuItem value="1">Alle oppgaver (parsing, landmarks, headpose, attributes)</MenuItem>
@@ -9791,31 +11831,13 @@ export default function StoryArcStudio({
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => {
-              setShowFaceDetectionOptionsDialog(false);
-              if (pendingFaceDetectionResolve) {
-                pendingFaceDetectionResolve(null);
-                setPendingFaceDetectionResolve(null);
-              }
-            }}>Avbryt</Button>
-            <Button variant="contained" onClick={() => {
-              setShowFaceDetectionOptionsDialog(false);
-              if (pendingFaceDetectionResolve) {
-                pendingFaceDetectionResolve(faceDetectionOptions);
-                setPendingFaceDetectionResolve(null);
-              }
-            }}>Start analyse</Button>
+            <Button onClick={cancelFaceDetectionOptionsDialog}>Avbryt</Button>
+            <Button variant="contained" onClick={confirmFaceDetectionOptionsDialog}>Start analyse</Button>
           </DialogActions>
         </Dialog>
 
         {/* Subclips Confirm Dialog */}
-        <Dialog open={showSubclipsConfirmDialog} onClose={() => {
-          setShowSubclipsConfirmDialog(false);
-          if (pendingSubclipsResolve) {
-            pendingSubclipsResolve(false);
-            setPendingSubclipsResolve(null);
-          }
-        }} maxWidth="sm" fullWidth>
+        <Dialog open={showSubclipsConfirmDialog} onClose={rejectSubclipsCreation} maxWidth="sm" fullWidth>
           <DialogTitle>Ansiktsgjenkjenning fullført!</DialogTitle>
           <DialogContent>
             <Typography gutterBottom>
@@ -9830,34 +11852,22 @@ export default function StoryArcStudio({
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => {
-              setShowSubclipsConfirmDialog(false);
-              if (pendingSubclipsResolve) {
-                pendingSubclipsResolve(false);
-                setPendingSubclipsResolve(null);
-              }
-            }}>Nei, bare markører</Button>
-            <Button variant="contained" color="primary" onClick={() => {
-              setShowSubclipsConfirmDialog(false);
-              if (pendingSubclipsResolve) {
-                pendingSubclipsResolve(true);
-                setPendingSubclipsResolve(null);
-              }
-            }}>Ja, opprett sub-klipp</Button>
+            <Button onClick={rejectSubclipsCreation}>Nei, bare markører</Button>
+            <Button variant="contained" color="primary" onClick={acceptSubclipsCreation}>Ja, opprett sub-klipp</Button>
           </DialogActions>
         </Dialog>
 
         {/* Settings Dialog */}
-        <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={settingsOpen} onClose={closeSettingsDialog} maxWidth="sm" fullWidth>
           <DialogTitle>Studio Settings</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <FormControlLabel
-                control={<Switch checked={driveUploadsEnabled} onChange={(e) => setDriveUploadsEnabled(e.target.checked)} />}
+                control={<Switch checked={driveUploadsEnabled} onChange={handleDriveUploadsEnabledChange} />}
                 label="Enable Drive uploads"
               />
               <FormControlLabel
-                control={<Switch checked={drivePrimaryEnabled} onChange={(e) => setDrivePrimaryEnabled(e.target.checked)} disabled={!driveUploadsEnabled} />}
+                control={<Switch checked={drivePrimaryEnabled} onChange={handleDrivePrimaryEnabledChange} disabled={!driveUploadsEnabled} />}
                 label="Enable primary (same-file) updates"
               />
               <FormControl size="small" fullWidth disabled={!driveUploadsEnabled || !drivePrimaryEnabled}>
@@ -9866,7 +11876,7 @@ export default function StoryArcStudio({
                   labelId="primary-interval-label"
                   label="Drive primary update interval"
                   value={drivePrimaryIntervalMs}
-                  onChange={(e) => setDrivePrimaryIntervalMs(Number(e.target.value))}
+                  onChange={handleDrivePrimaryIntervalChange}
                 >
                   <MenuItem value={15000}>15 seconds</MenuItem>
                   <MenuItem value={30000}>30 seconds</MenuItem>
@@ -9879,7 +11889,7 @@ export default function StoryArcStudio({
                 size="small"
                 label="Primary folder name"
                 value={drivePrimaryFolderName}
-                onChange={(e) => setDrivePrimaryFolderName(e.target.value)}
+                onChange={handleDrivePrimaryFolderNameChange}
                 disabled={!driveUploadsEnabled || !drivePrimaryEnabled}
               />
               <TextField
@@ -9887,12 +11897,12 @@ export default function StoryArcStudio({
                 label="Primary filename template"
                 helperText="Use {id}, {projectId}, {name}, {ts}"
                 value={drivePrimaryFilenameTemplate}
-                onChange={(e) => setDrivePrimaryFilenameTemplate(e.target.value)}
+                onChange={handleDrivePrimaryFilenameTemplateChange}
                 disabled={!driveUploadsEnabled || !drivePrimaryEnabled}
               />
 
               <FormControlLabel
-                control={<Switch checked={driveBackupEnabled} onChange={(e) => setDriveBackupEnabled(e.target.checked)} disabled={!driveUploadsEnabled} />}
+                control={<Switch checked={driveBackupEnabled} onChange={handleDriveBackupEnabledChange} disabled={!driveUploadsEnabled} />}
                 label="Enable timestamped backups"
               />
               <FormControl size="small" fullWidth disabled={!driveUploadsEnabled || !driveBackupEnabled}>
@@ -9901,7 +11911,7 @@ export default function StoryArcStudio({
                   labelId="backup-interval-label"
                   label="Backup new-file cadence"
                   value={driveBackupIntervalMs}
-                  onChange={(e) => setDriveBackupIntervalMs(Number(e.target.value))}
+                  onChange={handleDriveBackupIntervalChange}
                 >
                   <MenuItem value={60000}>1 minute</MenuItem>
                   <MenuItem value={300000}>5 minutes</MenuItem>
@@ -9914,7 +11924,7 @@ export default function StoryArcStudio({
                 size="small"
                 label="Backup folder name"
                 value={driveBackupFolderName}
-                onChange={(e) => setDriveBackupFolderName(e.target.value)}
+                onChange={handleDriveBackupFolderNameChange}
                 disabled={!driveUploadsEnabled || !driveBackupEnabled}
               />
               <TextField
@@ -9922,131 +11932,65 @@ export default function StoryArcStudio({
                 label="Backup filename template"
                 helperText="Use {id}, {projectId}, {name}, {ts}"
                 value={driveBackupFilenameTemplate}
-                onChange={(e) => setDriveBackupFilenameTemplate(e.target.value)}
+                onChange={handleDriveBackupFilenameTemplateChange}
                 disabled={!driveUploadsEnabled || !driveBackupEnabled}
               />
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setSettingsOpen(false)}>Close</Button>
+            <Button onClick={closeSettingsDialog}>Close</Button>
           </DialogActions>
         </Dialog>
 
         {/* Export Dialog - Browser ffmpeg */}
-        <ExportDialog
-          open={showExportDialog}
-          onClose={() => setShowExportDialog(false)}
-          clips={clips}
-          tracks={tracks}
-          storyArc={storyArc ? storyArc : undefined}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <ExportDialog
+            open={showExportDialog}
+            onClose={closeExportDialog}
+            clips={clips}
+            tracks={tracks}
+            storyArc={storyArc ? storyArc : undefined}
+          />
+        </Suspense>
         
         {/* DaVinci Resolve Export Dialog - Professional finishing */}
-        <DaVinciResolveExportDialog
-          open={showResolveExportDialog}
-          onClose={() => setShowResolveExportDialog(false)}
-          clips={clips}
-          tracks={tracks}
-          projectName={storyArc?.title || 'Untitled Project'}
-          culture={resolveExportSettings.culture}
-          projectType={resolveExportSettings.projectType}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <DaVinciResolveExportDialog
+            open={showResolveExportDialog}
+            onClose={closeResolveExportDialog}
+            clips={clips}
+            tracks={tracks}
+            projectName={storyArc?.title || 'Untitled Project'}
+            culture={resolveExportSettings.culture}
+            projectType={resolveExportSettings.projectType}
+          />
+        </Suspense>
         
         {/* AI Story Generator Dialog - AUTO-CREATE TIMELINE! */}
-        <AIStoryGeneratorDialog
-          open={showAIGeneratorDialog}
-          onClose={() => setShowAIGeneratorDialog(false)}
-          onStoryGenerated={(data) => {
-            // Load AI-generated timeline into editor
-            const aiClips = data.timeline.clips.map((c: any) => ({
-              id: c.id,
-              name: c.name,
-              beatName: c.beatName,
-              start: c.start,
-              duration: c.duration,
-              ev: c.metadata.emotionalIntensity,
-              synopsis: c.name,
-              trackId: c.trackId,
-              color: '#9c27b0',
-              sourceFile: c.sourceFile,
-              metadata: c.metadata
-            }));
-
-            const hydratedAiClips = hydrateClipSources(aiClips);
-            setClips(hydratedAiClips);
-            setAvailableVideoSources((prev) => {
-              const merged = new Set([...prev, ...extractRenderableVideoSources(hydratedAiClips)]);
-              return Array.from(merged);
-            });
-            setTotalDuration(data.timeline.totalDuration);
-            
-            // Update story arc
-            setStoryArc({
-              id: 'ai_generated',
-              title: data.storyArc.title,
-              type: 'wedding',
-              totalDuration: data.timeline.totalDuration,
-              segments: [],
-              musicSuggestions: data.storyArc.musicSuggestions,
-              transitionEffects: data.storyArc.transitionPoints,
-              colorGrading: DEFAULT_COLOR_GRADING_PROFILE,
-              confidence: 0.9,
-              createdAt: new Date().toISOString()
-            });
-            
-            // Set timeline in engine
-            videoEngine.setTimeline(hydratedAiClips, tracks, data.timeline.totalDuration);
-
-            setShowAIGeneratorDialog(false);
-
-            console.log('✅ AI-generated timeline loaded!', hydratedAiClips.length, 'clips');
-
-            // Store data for rating
-            setAIGeneratedTimelineData(data);
-
-            // Show rating dialog after 2 seconds
-            setTimeout(() => {
-              setShowRatingDialog(true);
-            }, 2000);
-          }}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <AIStoryGeneratorDialog {...aiStoryGeneratorDialogProps} />
+        </Suspense>
         
         {/* ================================================ */}
         {/* ALL PROFESSIONAL FEATURE PANELS */}
         {/* ================================================ */}
         
         {/* Transition Library - 485 transitions! */}
-        <TransitionLibrary
-          open={showTransitionLibrary}
-          onClose={() => setShowTransitionLibrary(false)}
-          onSelectTransition={(type, duration, engine) => {
-            // Mark a pending transition; user can place at playhead with button
-            setPendingTransitionType(type);
-            setPendingTransitionDuration(duration);
-            setPendingTransitionEngine(engine);
-            setShowTransitionLibrary(false);
-            setSnackbar({
-              open: true,
-              message: `Queued transition ${type} (${engine.toUpperCase()}, ${duration.toFixed(2)}s)`,
-              severity: 'info',
-            });
-          }}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <TransitionLibrary {...transitionLibraryProps} />
+        </Suspense>
         
         {/* Speed Ramp Panel */}
-        {selectedClips.size > 0 && showSpeedRampPanel && (
-          <SpeedRampPanel
-            clipId={Array.from(selectedClips)[0]}
-            clipDuration={clips.find(c => c?.id === Array.from(selectedClips)[0])?.duration || 10}
-            currentKeyframes={currentSpeedKeyframes}
-            onKeyframesChange={(keyframes) => {
-              setCurrentSpeedKeyframes(keyframes);
-              console.log('✅ Speed keyframes updated:', keyframes.length);
-            }}
-            onPreview={() => {
-              console.log('🎬 Previewing speed ramp');
-            }}
-          />
+        {speedRampPanelProps.isVisible && (
+          <Suspense fallback={<LazyPanelFallback />}>
+            <SpeedRampPanel
+              clipId={speedRampPanelProps.clipId}
+              clipDuration={speedRampPanelProps.clipDuration}
+              currentKeyframes={speedRampPanelProps.currentKeyframes}
+              onKeyframesChange={speedRampPanelProps.onKeyframesChange}
+              onPreview={speedRampPanelProps.onPreview}
+            />
+          </Suspense>
         )}
         
         {/* ================================================ */}
@@ -10054,229 +11998,81 @@ export default function StoryArcStudio({
         {/* ================================================ */}
         
         {/* Text Overlay Panel */}
-        <TextOverlayPanel
-          open={showTextOverlayPanel}
-          onClose={() => setShowTextOverlayPanel(false)}
-          onAddOverlay={(overlay) => {
-            const defaultAnimation = textAnimationPresets[0]?.animation;
-            const normalizedOverlay = {
-              ...overlay,
-              animation:
-                overlay.animation ||
-                defaultAnimation || {
-                  type: 'fade_in',
-                  duration: 0.5,
-                  delay: 0,
-                  easing: 'power2.out',
-                },
-            };
-            setTextOverlays((prev) => [...prev, normalizedOverlay]);
-            try {
-              textOverlayEngine.addOverlay(normalizedOverlay);
-            } catch (error) {
-              console.warn('Text overlay engine add failed:', error);
-            }
-            console.log('✅ Text overlay added:', normalizedOverlay);
-          }}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <TextOverlayPanel {...textOverlayPanelProps} />
+        </Suspense>
         
         {/* GPU Filters Panel */}
-        <GPUFiltersPanel
-          open={showGPUFiltersPanel}
-          onClose={() => setShowGPUFiltersPanel(false)}
-          onApplyFilter={(filterId, config) => {
-            setAppliedFilters((prev) => new Map(prev).set(filterId, config));
-            try {
-              pixiFilterEngine.applyFilter(filterId, config);
-            } catch (error) {
-              console.warn('GPU filter apply failed:', error);
-            }
-            console.log('✅ GPU filter applied:', filterId);
-          }}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <GPUFiltersPanel {...gpuFiltersPanelProps} />
+        </Suspense>
         
         {/* Color Grading Panel */}
-        <ColorGradingPanel
-          open={showColorGradingPanel}
-          onClose={() => setShowColorGradingPanel(false)}
-          onApplyGrade={(grade) => {
-            const presetMatch = colorGradePresets.find((preset) => preset.name === grade?.name);
-            const mergedGrade = presetMatch ? { ...presetMatch.grade, ...grade } : grade;
-            setCurrentColorGrade(mergedGrade);
-            if (selectedClips.size > 0) {
-              setClips((previous) =>
-                previous.map((clip) =>
-                  selectedClips.has(clip.id)
-                    ? {
-                        ...clip,
-                        metadata: {
-                          ...(clip.metadata || {}),
-                          colorGrade: mergedGrade,
-                        },
-                      }
-                    : clip
-                )
-              );
-            }
-            console.log('✅ Color grade applied:', mergedGrade);
-          }}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <ColorGradingPanel {...colorGradingPanelProps} />
+        </Suspense>
 
-        <LUTLibrary
-          open={showLUTLibraryDialog}
-          onClose={() => setShowLUTLibraryDialog(false)}
-          onSelectLUT={handleSelectLUT}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <LUTLibrary
+            open={showLUTLibraryDialog}
+            onClose={closeLUTLibraryDialog}
+            onSelectLUT={handleSelectLUT}
+          />
+        </Suspense>
 
-        <HLSImportDialog
-          open={showHLSImportDialog}
-          onClose={() => setShowHLSImportDialog(false)}
-          onImport={handleImportStream}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <HLSImportDialog
+            open={showHLSImportDialog}
+            onClose={closeHLSImportDialog}
+            onImport={handleImportStream}
+          />
+        </Suspense>
 
-        {/* Scene Detection Dialog */}
-        <Dialog open={showSceneDetectionDialog} onClose={() => setShowSceneDetectionDialog(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Scene Detection</DialogTitle>
-          <DialogContent>
-            {sceneDetectionJobId && (
-              <Chip size="small" label={`Job: ${sceneDetectionJobId}`} sx={{ mb: 1 }} />
-            )}
-            {sceneDetectionProgress?.status === 'processing' && (
-              <Box sx={{ py: 2 }}>
-                <Typography variant="body2" sx={{ mb: 1 }}>Detecting scenes...</Typography>
-                <LinearProgress />
-              </Box>
-            )}
-            {sceneDetectionProgress?.status === 'completed' && sceneDetectionProgress.scenes && (
-              <Box>
-                <Typography variant="body2" sx={{ mb: 2 }}>
-                  Detected {sceneDetectionProgress.scenes.length} scenes
-                </Typography>
-                <List>
-                  {sceneDetectionProgress.scenes.slice(0, 10).map((scene: any) => (
-                    <ListItem key={scene.scene_number}>
-                      <ListItemTextType
-                        primary={`Scene ${scene.scene_number}`}
-                        secondary={`${scene.start_time.toFixed(2)}s - ${scene.end_time.toFixed(2)}s (${scene.duration.toFixed(2)}s)`}
-                      />
-                      <ListItemSecondaryAction>
-                        <Button
-                          size="small"
-                          onClick={() => setCurrentTime(Math.max(0, timelineEngine.snapToFrame(scene.start_time)))}
-                        >
-                          Jump
-                        </Button>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  ))}
-                </List>
-              </Box>
-            )}
-            {sceneDetectionProgress?.status === 'failed' && (
-              <Alert severity="error">
-                Scene detection failed: {sceneDetectionProgress.error || 'Unknown error'}
-              </Alert>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowSceneDetectionDialog(false)}>Close</Button>
-          </DialogActions>
-        </Dialog>
+        <StoryArcSceneDetectionDialog
+          open={showSceneDetectionDialog}
+          onClose={closeSceneDetectionDialog}
+          sceneDetectionJobId={sceneDetectionJobId}
+          sceneDetectionProgress={sceneDetectionProgress}
+          onJumpToSceneStart={jumpToSceneStart}
+        />
 
         {/* Auto-Captions Panel */}
-        <AutoCaptionsPanel
-          open={showAutoCaptionsPanel}
-          onClose={() => setShowAutoCaptionsPanel(false)}
-          videoPath={captionVideoPath}
-          sourceVideoFile={captionSourceVideoFile}
-          fallbackVideoPaths={captionFallbackVideoPaths}
-          fallbackVideoFiles={captionFallbackVideoFiles}
-          onCaptionsGenerated={(captions, srt, vtt) => {
-            console.log('✅ Captions generated:', captions.length, 'segments');
-            setCaptionsExport({
-              segments: captions,
-              srt,
-              vtt,
-            });
-            const captionMarkers: TimelineMarker[] = captions
-              .slice(0, 50)
-              .map((caption: { start: number; text: string }, index: number) => ({
-                id: `cap-${Date.now()}-${index}`,
-                time: timelineEngine.snapToFrame(Math.max(0, caption.start || 0)),
-                color: '#f59e0b',
-                label: `Caption: ${(caption.text || '').slice(0, 22)}`,
-              }));
-            if (captionMarkers.length > 0) {
-              setMarkers((previous) => [...previous, ...captionMarkers]);
-            }
-            setSnackbar({
-              open: true,
-              message: `Captions generated (${captions.length} segments). Export ready in Effects Dock.`,
-              severity: 'success',
-            });
-          }}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <AutoCaptionsPanel {...autoCaptionsPanelProps} />
+        </Suspense>
         
         {/* Beat Sync Panel */}
-        {waveformAudioUrl && (
-          <BeatSyncPanel
-            open={showBeatSyncPanel}
-            onClose={() => setShowBeatSyncPanel(false)}
-            audioPath={waveformAudioUrl}
-            clips={clips}
-            onClipsSnapped={(snappedClips) => {
-              const hydratedSnappedClips = hydrateClipSources(snappedClips);
-              setClips(hydratedSnappedClips);
-              setAvailableVideoSources((prev) => {
-                const merged = new Set([...prev, ...extractRenderableVideoSources(hydratedSnappedClips)]);
-                return Array.from(merged);
-              });
-              console.log('✅ Clips snapped to beats');
-            }}
-          />
+        {beatSyncPanelProps.isVisible && (
+          <Suspense fallback={<LazyPanelFallback />}>
+            <BeatSyncPanel
+              open={beatSyncPanelProps.open}
+              onClose={beatSyncPanelProps.onClose}
+              audioPath={beatSyncPanelProps.audioPath}
+              clips={beatSyncPanelProps.clips}
+              onClipsSnapped={beatSyncPanelProps.onClipsSnapped}
+            />
+          </Suspense>
         )}
         
         {/* Background Removal Panel */}
-        {selectedClips.size > 0 && (
-          <BackgroundRemovalPanel
-            open={showGPUFiltersPanel && appliedFilters.has('background-removal')}
-            onClose={() => setShowGPUFiltersPanel(false)}
-            clipId={Array.from(selectedClips)[0]}
-            onProcessed={(result) => {
-              console.log('✅ Background processed:', result);
-            }}
-          />
+        {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && selectedClips.size > 0 && (
+          <Suspense fallback={<LazyPanelFallback />}>
+            <BackgroundRemovalPanel
+              open={showGPUFiltersPanel && appliedFilters.has('background-removal')}
+              onClose={backgroundRemovalPanelProps.onClose}
+              clipId={backgroundRemovalPanelProps.clipId}
+              onProcessed={backgroundRemovalPanelProps.onProcessed}
+            />
+          </Suspense>
         )}
         
         {/* Motion Tracking Panel */}
-        {selectedClips.size > 0 && (
+        {ENABLE_EXPERIMENTAL_TIMELINE_PANELS && selectedClips.size > 0 && (
           <>
-            <ObjectSegmentationPanel
-              open={showObjectSegmentationPanel}
-              onClose={() => setShowObjectSegmentationPanel(false)}
-              clipId={Array.from(selectedClips)[0]}
-              videoUrl={clips.find(c => c.id === Array.from(selectedClips)[0])?.sourceFile}
-              onSegmentationComplete={(result) => {
-                console.log('✅ Object segmentation complete:', result);
-                // Apply segmentation results to timeline
-                // Could add mask-based effects, selective color grading, etc.
-              }}
-            />
-            <MotionTrackingPanel
-              open={showMotionTrackingPanel}
-              onClose={() => setShowMotionTrackingPanel(false)}
-              clipId={Array.from(selectedClips)[0]}
-              videoUrl={clips.find(c => c.id === Array.from(selectedClips)[0])?.sourceFile}
-              onTrackingComplete={(result) => {
-                console.log('✅ Motion tracking complete:', result);
-                // Apply tracking data to clip (e.g., add keyframes, masks, etc.)
-                setSnackbar({
-                  open: true,
-                  message: `Motion tracking complete! Tracked ${result.frames?.length || 0} frames using ${result.tracker_type}`,
-                  severity: 'success',
-                });
-              }}
-            />
+            <Suspense fallback={<LazyPanelFallback />}>
+              <ObjectSegmentationPanel {...objectSegmentationPanelProps} />
+              <MotionTrackingPanel {...motionTrackingPanelProps} />
+            </Suspense>
           </>
         )}
       </Box>
@@ -10284,10 +12080,7 @@ export default function StoryArcStudio({
       {/* Rating Dialog */}
       <EnhancementRatingDialog
         open={showRatingDialog}
-        onClose={() => {
-          setShowRatingDialog(false);
-          setAIGeneratedTimelineData(null);
-        }}
+        onClose={closeRatingDialog}
         enhancementType="video"
         onSubmitRating={handleSubmitVideoRating}
         title="Vurder AI-generert tidslinje"
@@ -10296,670 +12089,50 @@ export default function StoryArcStudio({
 
       {/* Audio Enhancement Dialog */}
       <AudioEnhancementDialog
-        open={showAudioEnhancementDialog}
-        onClose={() => {
-          setShowAudioEnhancementDialog(false);
-          setPendingAudioFile(null);
-        }}
-        audioFile={pendingAudioFile}
-        onEnhanced={(enhancedUrl, metrics) => {
-          // Add enhanced audio to timeline
-          const detail = window.__pendingAudioDetail;
-          if (detail) {
-            const targetTrackId = detail.track || 'audio-1';
-            const clipDuration = Number(detail.media.duration || 5);
-
-            setTracks((prev) => {
-              if (!prev.find(t => t.id === targetTrackId)) {
-                const newTrack: Track = { id: targetTrackId, name: targetTrackId, type: 'audio', height: 40 };
-                return [...prev, newTrack];
-              }
-              return prev;
-            });
-
-            setClips((prev) => {
-              let start = 0;
-              if (detail.position === 'playhead') {
-                start = currentTime;
-              } else {
-                const trackClips = prev.filter(c => c.trackId === targetTrackId);
-                const end = trackClips.length > 0 ? Math.max(...trackClips.map(c => c.start + c.duration)) : 0;
-                start = end;
-              }
-              const id = 'clip_' + Date.now();
-              const originalName = detail.media.name || 'Audio';
-              // Preserve original filename and show relationship
-              const extension = originalName.match(/\.[^/.]+$/)?.[0] || '.wav';
-              const baseName = originalName.replace(/\.[^/.]+$/, '');
-              const enhancedName = `${baseName}_enhanced${extension}`;
-              
-              const newClip = {
-                id,
-                name: enhancedName,
-                beatName: enhancedName,
-                start,
-                duration: clipDuration,
-                ev: 0, // Neutral emotional value
-                synopsis: `Forbedret: ${metrics.loudness?.standard} (${metrics.loudness?.final_lufs?.toFixed(1)} LUFS) | Fra: ${originalName}`,
-                trackId: targetTrackId,
-                color: '#16a34a',
-                sourceFile: enhancedUrl,
-                enhanced: true,  // Mark as enhanced
-                enhancedPreset: metrics.loudness?.standard || 'Enhanced',  // Store preset name
-                // Store relationship to original
-                metadata: {
-                  originalSource: detail.media.url || detail.media.name,
-                  originalName: originalName,
-                  enhancedFrom: detail.media.id || detail.media.name,
-                  enhancementMethod: metrics.enhancement?.method || 'FlowSE/DEMUCS',
-                  loudnessStandard: metrics.loudness?.standard,
-                },
-                tags: ['enhanced','audio', metrics.loudness?.standard || 'enhanced'],
-              } as BeatClip;
-              const next = [...prev, newClip];
-              const maxEnd = Math.max(...next.map(c => c.start + c.duration), storyArc?.totalDuration || 0);
-              setTotalDuration(maxEnd);
-              return next;
-            });
-
-            // Save enhanced audio to asset library
-            const originalName = detail.media.name || 'Audio';
-            const assetName = `${originalName} (Forbedret)`;
-            const description = `Forbedret lyd: ${metrics.loudness?.standard} standard (${metrics.loudness?.final_lufs?.toFixed(1)} LUFS)`;
-            
-            // Save to library asynchronously (don't block UI)
-            apiRequest('/api/assets/library', {
-              method: 'POST',
-              headers: { 'Content-Type' : 'application/json' },
-              body: JSON.stringify({
-                name: assetName,
-                description: description,
-                category: 'audio',
-                subcategory: 'enhanced',
-                model_url: enhancedUrl,
-                tags: ['enhanced','audio', metrics.loudness?.standard || 'enhanced'],
-                metadata: {
-                  originalName: originalName,
-                  enhancementMethod: metrics.enhancement?.method || 'FlowSE/DEMUCS',
-                  loudnessStandard: metrics.loudness?.standard,
-                  finalLufs: metrics.loudness?.final_lufs,
-                  snrImprovement: metrics.enhancement?.snr_improvement,
-                  quality: metrics.enhancement?.quality,
-                  preset: metrics.loudness?.standard
-                },
-                is_public: false
-              })
-            }).then(() => {
-              console.log('✅ Enhanced audio saved to asset library');
-            }).catch((error: any) => {
-              console.error('Failed to save enhanced audio to library:', error);
-              // Don't show error to user - enhancement still succeeded
-            });
-
-            // Upload enhanced audio to Google Drive Audio Assets folder (if storyArcId and storyArcName available)
-            if (storyArcId && storyArc?.title && currentUser?.id) {
-              // Fetch the enhanced audio file
-              fetch(enhancedUrl)
-                .then(response => response.blob())
-                .then(blob => {
-                  const formData = new FormData();
-                  formData.append('file', blob, assetName);
-                  formData.append('storyArcName', storyArc.title);
-
-                  return apiRequest(`/api/story-arc/${storyArcId}/google-drive/upload-audio`, {
-                    method: 'POST',
-                    body: formData
-                  });
-                })
-                .then(() => {
-                  console.log('✅ Enhanced audio uploaded to Google Drive Audio Assets folder');
-                })
-                .catch((error: any) => {
-                  console.error('Failed to upload enhanced audio to Google Drive:', error);
-                  // Don't show error to user - enhancement still succeeded
-                });
-            }
-
-            // Clear pending detail
-            delete window.__pendingAudioDetail;
-          }
-
-          setShowAudioEnhancementDialog(false);
-          setPendingAudioFile(null);
-
-          // Show success message
-          setSnackbar({
-            open: true,
-            message: `Lyd forbedret! ${metrics.loudness?.standard} standard (${metrics.loudness?.final_lufs?.toFixed(1)} LUFS)`,
-            severity: 'success'
-          });
-        }}
-        onSkip={() => {
-          // Add original audio to timeline
-          const detail = window.__pendingAudioDetail;
-          if (detail) {
-            const targetTrackId = detail.track || 'audio-1';
-            const clipDuration = Number(detail.media.duration || 5);
-
-            setTracks((prev) => {
-              if (!prev.find(t => t.id === targetTrackId)) {
-                const newTrack: Track = { id: targetTrackId, name: targetTrackId, type: 'audio', height: 40 };
-                return [...prev, newTrack];
-              }
-              return prev;
-            });
-
-      setClips((prev) => {
-        let start = 0;
-        if (detail.position === 'playhead') {
-          start = currentTime;
-        } else {
-          const trackClips = prev.filter(c => c.trackId === targetTrackId);
-          const end = trackClips.length > 0 ? Math.max(...trackClips.map(c => c.start + c.duration)) : 0;
-          start = end;
-        }
-        const id = 'clip_' + Date.now();
-        const newClip = {
-          id,
-          name: detail.media.name || 'Asset',
-          beatName: detail.media.name || 'Asset',
-          start,
-          duration: clipDuration,
-          ev: 0, // Neutral emotional value
-          synopsis: detail.media.name || 'Asset',
-          trackId: targetTrackId,
-          color: '#4caf50',
-          sourceFile: detail.media.url,
-          // Store metadata for multi-angle sync
-          metadata: {
-            camera: detail.media.camera,
-            syncGroup: detail.media.syncGroup,
-            originalSource: detail.media.url || detail.media.name,
-          },
-          tags: detail.media.tags || [],
-        } as BeatClip;
-        const next = [...prev, newClip];
-        const maxEnd = Math.max(...next.map(c => c.start + c.duration), storyArc?.totalDuration || 0);
-        setTotalDuration(maxEnd);
-        
-        // Update clipMetadata state for timeline display (use the actual clip ID)
-        if (detail.media.camera || detail.media.syncGroup || detail.media.tags) {
-          setClipMeta((prev) => ({
-            ...prev,
-            [id]: {
-              camera: detail.media.camera,
-              syncGroup: detail.media.syncGroup,
-              tags: detail.media.tags || [],
-            }
-          }));
-        }
-        
-        return next;
-      });
-
-            // Clear pending detail
-            delete window.__pendingAudioDetail;
-          }
-
-          setShowAudioEnhancementDialog(false);
-          setPendingAudioFile(null);
-        }}
-        preset="auto"
+        open={audioEnhancementDialogProps.open}
+        onClose={audioEnhancementDialogProps.onClose}
+        audioFile={audioEnhancementDialogProps.audioFile}
+        onEnhanced={audioEnhancementDialogProps.onEnhanced}
+        onSkip={audioEnhancementDialogProps.onSkip}
+        preset={audioEnhancementDialogProps.preset}
       />
 
-      {/* Multi-Angle Sync Dialog */}
-      <Dialog 
-        open={showSyncDialog} 
+      <StoryArcSyncDialog
+        open={showSyncDialog}
         onClose={closeSyncDialog}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Sync />
-            <Typography variant="h6">Sync Multi-Angle Clips</Typography>
-            {syncJobId && <Chip size="small" label={`Job ${syncJobId}`} color="info" variant="outlined" />}
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ mt: 2 }}>
-            <Alert severity="info">
-              PluralEyes-style sync: waveform alignment first, optional timecode fallback, confidence scoring, drift estimation, and manual fine trim.
-            </Alert>
-
-            <Paper variant="outlined" sx={{ p: 1.5 }}>
-              <Stack spacing={1.25}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Sync Strategy
-                </Typography>
-                <Stack direction="row" spacing={2} flexWrap="wrap">
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={syncTryReallyHard}
-                        onChange={(event) => setSyncTryReallyHard(event.target.checked)}
-                      />
-                    }
-                    label="Try Really Hard"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={syncPreferTimecode}
-                        onChange={(event) => setSyncPreferTimecode(event.target.checked)}
-                      />
-                    }
-                    label="Prefer Timecode"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={syncEnableDriftCorrection}
-                        onChange={(event) => setSyncEnableDriftCorrection(event.target.checked)}
-                      />
-                    }
-                    label="Drift Correction"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={syncAllowClipReorder}
-                        onChange={(event) => setSyncAllowClipReorder(event.target.checked)}
-                      />
-                    }
-                    label="Allow Clip Reorder"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={syncUseServerFirst}
-                        onChange={(event) => setSyncUseServerFirst(event.target.checked)}
-                      />
-                    }
-                    label="Use Server First"
-                  />
-                </Stack>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Max offset window: +/- {syncMaxOffsetSeconds}s
-                  </Typography>
-                  <Slider
-                    value={syncMaxOffsetSeconds}
-                    onChange={(_, value) => {
-                      const numericValue = Array.isArray(value) ? value[0] : value;
-                      setSyncMaxOffsetSeconds(Math.max(5, Math.min(120, numericValue)));
-                    }}
-                    min={5}
-                    max={120}
-                    step={1}
-                    marks={[
-                      { value: 5, label: '5s' },
-                      { value: 30, label: '30s' },
-                      { value: 60, label: '60s' },
-                      { value: 120, label: '120s' },
-                    ]}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-              </Stack>
-            </Paper>
-            
-            <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
-              Select Clips to Sync ({selectedSyncClips.size} selected)
-            </Typography>
-            
-            <List sx={{ maxHeight: 400, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-              {clips.map((clip) => {
-                const meta = clipMeta[clip.id] || {};
-                const camera = meta.camera || clip.metadata?.camera;
-                const syncGroup = meta.syncGroup || clip.metadata?.syncGroup;
-                const isSelected = selectedSyncClips.has(clip.id);
-                
-                return (
-                  <ListItem key={clip.id} disablePadding>
-                    <ListItemButton
-                      onClick={() => {
-                        const newSelected = new Set(selectedSyncClips);
-                        if (isSelected) {
-                          newSelected.delete(clip.id);
-                        } else {
-                          newSelected.add(clip.id);
-                        }
-                        setSelectedSyncClips(newSelected);
-                      }}
-                      sx={{
-                        bgcolor: isSelected ? 'action.selected' : 'transparent','&:hover': { bgcolor: 'action.hover' }
-                      }}
-                    >
-                      <Checkbox checked={isSelected} />
-                      <ListItemText
-                        primary={clip.name}
-                        secondaryTypographyProps={{ component: 'div' }}
-                        secondary={
-                          <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                            {camera && (
-                              <Chip size="small" label={camera} color="primary" sx={{ height: 20, fontSize: 10 }} />
-                            )}
-                            {syncGroup && (
-                              <Chip size="small" label={syncGroup} color="secondary" sx={{ height: 20, fontSize: 10 }} />
-                            )}
-                            <Typography variant="caption" color="text.secondary">
-                              {clip.duration.toFixed(1)}s • Track: {clip.trackId}
-                            </Typography>
-                          </Stack>
-                        }
-                      />
-                    </ListItemButton>
-                  </ListItem>
-                );
-              })}
-            </List>
-            
-            {syncInProgress && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <CircularProgress size={24} />
-                <Stack spacing={0.5}>
-                  <Typography variant="body2">
-                    Synchronizing clips... This may take a few moments.
-                  </Typography>
-                  {syncJobId && (
-                    <Typography variant="caption" color="text.secondary">
-                      Tracking job: {syncJobId}
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-            )}
-
-            {/* Sync Results with Manual Adjustment */}
-            {syncResults && syncPreviewMode && !syncInProgress && (
-              <Box>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
-                  Sync Results & Manual Adjustment
-                </Typography>
-                
-                {/* Overall Quality Indicator */}
-                {(() => {
-                  const confidences = Object.values(syncResults).map(r => r.confidence || 0);
-                  const avgConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length;
-                  const qualityColor = avgConfidence > 0.8 ? 'success' : avgConfidence > 0.6 ? 'warning' : 'error';
-                  const qualityLabel = avgConfidence > 0.8 ? 'Excellent' : avgConfidence > 0.6 ? 'Good' : 'Poor';
-                  
-                  return (
-                    <Alert 
-                      severity={qualityColor} 
-                      sx={{ mb: 2 }}
-                      icon={<Sync />}
-                    >
-                      <Typography variant="body2" sx={{ fontWeight: 600}}>
-                        Overall Sync Quality: {qualityLabel} ({(avgConfidence * 100).toFixed(1)}%)
-                      </Typography>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={avgConfidence * 100} 
-                        color={qualityColor}
-                        sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                      />
-                    </Alert>
-                  );
-                })()}
-
-                {/* Clip-by-Clip Adjustments */}
-                <List sx={{ maxHeight: 300, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                  {Object.entries(syncResults).map(([clipId, result]) => {
-                    const clip = clips.find(c => c.id === clipId);
-                    if (!clip) return null;
-                    
-                    const confidence = result.confidence || 0;
-                    const confidenceColor = confidence > 0.8 ? 'success' : confidence > 0.6 ? 'warning' : 'error';
-                    const manualOffset = manualOffsets[clipId] ?? result.offset_seconds;
-                    const hasManualAdjustment = Math.abs(manualOffset - result.offset_seconds) > 0.01;
-                    
-                    return (
-                      <ListItem key={clipId} sx={{ flexDirection: 'column', alignItems: 'stretch', py: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600}}>
-                            {clip.name}
-                          </Typography>
-                          <Chip 
-                            size="small" 
-                            label={`${(confidence * 100).toFixed(0)}%`}
-                            color={confidenceColor}
-                            sx={{ height: 20, fontSize: 10 }}
-                          />
-                        </Box>
-                        
-                        {/* Confidence Bar */}
-                        <Box sx={{ mb: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Confidence
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {confidence < 0.6 && '⚠️ Low confidence - manual adjustment recommended'}
-                            </Typography>
-                          </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={confidence * 100} 
-                            color={confidenceColor}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                        </Box>
-
-                        {/* Manual Offset Adjustment */}
-                        <Box>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Offset: {manualOffset >= 0 ? '+' : ', '}{manualOffset.toFixed(3)}s ({result.offset_frames || Math.round(manualOffset * 30)} frames)
-                            </Typography>
-                            <Stack direction="row" spacing={0.5}>
-                              {typeof result.drift_ppm === 'number' && (
-                                <Chip
-                                  size="small"
-                                  color={Math.abs(result.drift_ppm) > 80 ? 'warning' : 'default'}
-                                  label={`Drift ${result.drift_ppm.toFixed(1)} ppm`}
-                                  sx={{ height: 18, fontSize: 9 }}
-                                />
-                              )}
-                              <Chip
-                                size="small"
-                                label={result.method || 'audio_waveform'}
-                                variant="outlined"
-                                sx={{ height: 18, fontSize: 9 }}
-                              />
-                              {hasManualAdjustment && (
-                                <Chip 
-                                  size="small" 
-                                  label="Manual" 
-                                  color="info"
-                                  sx={{ height: 18, fontSize: 9 }}
-                                />
-                              )}
-                            </Stack>
-                          </Box>
-                          <Slider
-                            value={manualOffset}
-                            onChange={(_, value) => {
-                              const numericValue = Array.isArray(value) ? value[0] : value;
-                              setManualOffsets(prev => ({
-                                ...prev,
-                                [clipId]: numericValue
-                              }));
-                            }}
-                            min={-5}
-                            max={5}
-                            step={0.001}
-                            marks={[
-                              { value: -5, label: '-5s' },
-                              { value: 0, label: '0s' },
-                              { value: 5, label: '+5s' }
-                            ]}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(value) => `${value >= 0 ? '+' : ', '}${value.toFixed(3)}s`}
-                            sx={{ mt: 1 }}
-                          />
-                          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                            <Button 
-                              size="small" 
-                              variant="outlined"
-                              onClick={() => {
-                                setManualOffsets(prev => ({
-                                  ...prev,
-                                  [clipId]: result.offset_seconds
-                                }));
-                              }}
-                            >
-                              Reset
-                            </Button>
-                            <Button 
-                              size="small" 
-                              variant="outlined"
-                              onClick={() => {
-                                setManualOffsets(prev => ({
-                                  ...prev,
-                                  [clipId]: 0
-                                }));
-                              }}
-                            >
-                              Clear
-                            </Button>
-                          </Box>
-                        </Box>
-                      </ListItem>
-                    );
-                  })}
-                </List>
-
-                {/* Temporal Alignment Visualization */}
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                    Temporal Alignment Preview
-                  </Typography>
-                  <Box sx={{ position: 'relative', height: 120, bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden' }}>
-                    {Object.entries(syncResults).map(([clipId, result], idx) => {
-                      const clip = clips.find(c => c.id === clipId);
-                      if (!clip) return null;
-                      
-                      const manualOffset = manualOffsets[clipId] ?? result.offset_seconds;
-                      const confidence = result.confidence || 0;
-                      const confidenceColor = confidence > 0.8 ? '#4caf50' : confidence > 0.6 ? '#ff9800' : '#f44336';
-                      
-                      // Visualize alignment (simplified - shows relative positions)
-                      const baseY = 20 + (idx * 25);
-                      const offsetPx = (manualOffset / 5) * 200; // Scale to visualization width
-                      
-                      return (
-                        <Box
-                          key={clipId}
-                          sx={{
-                            position: 'absolute',
-                            left: 200 + offsetPx,
-                            top: baseY,
-                            width: 100,
-                            height: 20,
-                            bgcolor: confidenceColor,
-                            borderRadius: 1,
-                            opacity: 0.8,
-                            border: '1px solid',
-                            borderColor: 'grey.400',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 10,
-                            color: 'white',
-                            fontWeight: 600}}
-                        >
-                          {clip.name.substring(0, 10)}
-                        </Box>
-                      );
-                    })}
-                    {/* Reference line */}
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        left: 200,
-                        top: 0,
-                        bottom: 0,
-                        width: 2,
-                        bgcolor: 'primary.main',
-                        opacity: 0.5}}
-                    />
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        position: 'absolute',
-                        left: 200,
-                        top: 0,
-                        transform: 'translateX(-50%)',
-                        bgcolor: 'primary.main',
-                        color: 'white',
-                        px: 0.5,
-                        borderRadius: 0.5,
-                        fontSize: 9}}
-                    >
-                      Reference
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Visual representation of clip alignment. Green = high confidence, Orange = medium, Red = low.
-                  </Typography>
-                </Box>
-              </Box>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeSyncDialog}>
-            {syncPreviewMode ? 'Cancel' : 'Close'}
-          </Button>
-          {syncPreviewMode && syncResults ? (
-            <>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  setSyncPreviewMode(false);
-                  setSyncResults(null);
-                  setManualOffsets({});
-                }}
-              >
-                Back to Edit
-              </Button>
-              <Button
-                data-testid="sync-apply-button"
-                variant="contained"
-                onClick={() => {
-                  void applySyncToTimeline();
-                }}
-              >
-                Apply Sync
-              </Button>
-            </>
-          ) : (
-            <Button
-              data-testid="sync-run-button"
-              variant="contained"
-              onClick={() => {
-                void executeSyncClips();
-              }}
-              disabled={selectedSyncClips.size < 2 || syncInProgress}
-              startIcon={syncInProgress ? <CircularProgress size={16} /> : <Sync />}
-            >
-              {syncInProgress ? 'Syncing...' : 'Sync Clips'}
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+        syncJobId={syncJobId}
+        syncTryReallyHard={syncTryReallyHard}
+        syncPreferTimecode={syncPreferTimecode}
+        syncEnableDriftCorrection={syncEnableDriftCorrection}
+        syncAllowClipReorder={syncAllowClipReorder}
+        syncUseServerFirst={syncUseServerFirst}
+        onSyncTryReallyHardChange={handleSyncTryReallyHardChange}
+        onSyncPreferTimecodeChange={handleSyncPreferTimecodeChange}
+        onSyncEnableDriftCorrectionChange={handleSyncEnableDriftCorrectionChange}
+        onSyncAllowClipReorderChange={handleSyncAllowClipReorderChange}
+        onSyncUseServerFirstChange={handleSyncUseServerFirstChange}
+        syncMaxOffsetSeconds={syncMaxOffsetSeconds}
+        onSyncMaxOffsetWindowChange={updateSyncMaxOffsetWindow}
+        clips={clips}
+        clipMeta={clipMeta}
+        selectedSyncClips={selectedSyncClips}
+        onToggleSyncClipSelectionClick={handleToggleSyncClipSelectionClick}
+        syncInProgress={syncInProgress}
+        syncResults={syncResults}
+        syncPreviewMode={syncPreviewMode}
+        syncResultRows={syncResultRows}
+        syncConfidenceSummary={syncConfidenceSummary}
+        onManualOffsetSliderChange={handleManualOffsetSliderChange}
+        onResetManualOffsetClick={handleResetManualOffsetClick}
+        onClearManualOffsetClick={handleClearManualOffsetClick}
+        onResetSyncPreview={resetSyncPreview}
+        onApplySync={applySync}
+        onRunSync={runSync}
+      />
 
       <Dialog
         open={showCompositionGuideDialog}
-        onClose={() => setShowCompositionGuideDialog(false)}
+        onClose={closeCompositionGuideSettingsDialog}
         maxWidth="md"
         fullWidth
         data-testid="composition-guides-dialog"
@@ -10971,7 +12144,7 @@ export default function StoryArcStudio({
               control={
                 <Switch
                   checked={showCompositionGuides}
-                  onChange={(event) => setShowCompositionGuides(event.target.checked)}
+                  onChange={handleShowCompositionGuidesChange}
                 />
               }
               label="Enable monitor composition guides"
@@ -10985,9 +12158,7 @@ export default function StoryArcStudio({
                   value={compositionGuideTarget}
                   label="Guide Target"
                   data-testid="composition-guide-target-select"
-                  onChange={(event) =>
-                    setCompositionGuideTarget(event.target.value as CinematographyGuideTarget)
-                  }
+                  onChange={handleCompositionGuideTargetChange}
                 >
                   <MenuItem value="both">Source + Program</MenuItem>
                   <MenuItem value="source">Source only</MenuItem>
@@ -11001,9 +12172,7 @@ export default function StoryArcStudio({
                   value={compositionAspectMask}
                   label="Aspect Mask"
                   data-testid="composition-aspect-mask-select"
-                  onChange={(event) =>
-                    setCompositionAspectMask(event.target.value as CinematographyAspectMask)
-                  }
+                  onChange={handleCompositionAspectMaskChange}
                 >
                   {CINEMATOGRAPHY_ASPECT_MASKS.map((ratio) => (
                     <MenuItem key={ratio} value={ratio}>
@@ -11019,11 +12188,7 @@ export default function StoryArcStudio({
                   value={compositionSpiralOrientation}
                   label="Spiral Orientation"
                   data-testid="composition-spiral-orientation-select"
-                  onChange={(event) =>
-                    setCompositionSpiralOrientation(
-                      event.target.value as CinematographySpiralOrientation
-                    )
-                  }
+                  onChange={handleCompositionSpiralOrientationChange}
                 >
                   {CINEMATOGRAPHY_SPIRAL_ORIENTATIONS.map((orientation) => (
                     <MenuItem key={orientation} value={orientation}>
@@ -11040,21 +12205,23 @@ export default function StoryArcStudio({
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
               <FormControlLabel
                 control={
-                  <Switch
-                    checked={compositionGuides.ruleOfThirds}
-                    onChange={(event) => updateCompositionGuide('ruleOfThirds', event.target.checked)}
-                    inputProps={{ 'data-testid': 'composition-toggle-rule-of-thirds' }}
-                  />
-                }
-                label="Rule of Thirds"
-              />
+                    <Switch
+                      checked={compositionGuides.ruleOfThirds}
+                      onChange={handleCompositionGuideToggleChange}
+                      inputProps={withDataInputProps({
+                        'data-testid': 'composition-toggle-rule-of-thirds',
+                        'data-guide-key': 'ruleOfThirds',
+                      })}
+                    />
+                  }
+                  label="Rule of Thirds"
+                />
               <FormControlLabel
                 control={
                   <Switch
                     checked={compositionGuides.centerCrosshair}
-                    onChange={(event) =>
-                      updateCompositionGuide('centerCrosshair', event.target.checked)
-                    }
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'centerCrosshair' })}
                   />
                 }
                 label="Center Crosshair"
@@ -11063,7 +12230,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.goldenRatio}
-                    onChange={(event) => updateCompositionGuide('goldenRatio', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'goldenRatio' })}
                   />
                 }
                 label="Golden Ratio"
@@ -11072,7 +12240,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.goldenSpiral}
-                    onChange={(event) => updateCompositionGuide('goldenSpiral', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'goldenSpiral' })}
                   />
                 }
                 label="Golden Spiral"
@@ -11081,7 +12250,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.diagonals}
-                    onChange={(event) => updateCompositionGuide('diagonals', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'diagonals' })}
                   />
                 }
                 label="Diagonals"
@@ -11090,9 +12260,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.dynamicSymmetry}
-                    onChange={(event) =>
-                      updateCompositionGuide('dynamicSymmetry', event.target.checked)
-                    }
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'dynamicSymmetry' })}
                   />
                 }
                 label="Dynamic Symmetry"
@@ -11101,7 +12270,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.safeAreas}
-                    onChange={(event) => updateCompositionGuide('safeAreas', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'safeAreas' })}
                   />
                 }
                 label="Safe Areas"
@@ -11110,7 +12280,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.eyeLine}
-                    onChange={(event) => updateCompositionGuide('eyeLine', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'eyeLine' })}
                   />
                 }
                 label="Eye Line"
@@ -11119,9 +12290,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.headroomLeadroom}
-                    onChange={(event) =>
-                      updateCompositionGuide('headroomLeadroom', event.target.checked)
-                    }
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'headroomLeadroom' })}
                   />
                 }
                 label="Headroom / Leadroom"
@@ -11130,7 +12300,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.horizonLine}
-                    onChange={(event) => updateCompositionGuide('horizonLine', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'horizonLine' })}
                   />
                 }
                 label="Horizon Line"
@@ -11139,7 +12310,8 @@ export default function StoryArcStudio({
                 control={
                   <Switch
                     checked={compositionGuides.perspective}
-                    onChange={(event) => updateCompositionGuide('perspective', event.target.checked)}
+                    onChange={handleCompositionGuideToggleChange}
+                    inputProps={withDataInputProps({ 'data-guide-key': 'perspective' })}
                   />
                 }
                 label="Perspective Lines"
@@ -11154,10 +12326,10 @@ export default function StoryArcStudio({
                 label="Guide Color"
                 type="color"
                 value={compositionGuideColor}
-                onChange={(event) => setCompositionGuideColor(event.target.value)}
+                onChange={handleCompositionGuideColorChange}
                 size="small"
                 sx={{ width: 120 }}
-                inputProps={{ 'data-testid': 'composition-guide-color' }}
+                inputProps={withDataInputProps({ 'data-testid': 'composition-guide-color' })}
               />
               <Box sx={{ width: 240 }}>
                 <Typography variant="caption" color="text.secondary">
@@ -11168,9 +12340,7 @@ export default function StoryArcStudio({
                   min={0.1}
                   max={1}
                   step={0.05}
-                  onChange={(_, value) =>
-                    setCompositionGuideOpacity(typeof value === 'number' ? value : value[0])
-                  }
+                  onChange={handleCompositionGuideOpacityChange}
                 />
               </Box>
               <Box sx={{ width: 240 }}>
@@ -11182,9 +12352,7 @@ export default function StoryArcStudio({
                   min={1}
                   max={6}
                   step={0.5}
-                  onChange={(_, value) =>
-                    setCompositionGuideThickness(typeof value === 'number' ? value : value[0])
-                  }
+                  onChange={handleCompositionGuideThicknessChange}
                 />
               </Box>
             </Stack>
@@ -11196,7 +12364,7 @@ export default function StoryArcStudio({
           </Button>
           <Button
             data-testid="composition-guides-done"
-            onClick={() => setShowCompositionGuideDialog(false)}
+            onClick={closeCompositionGuideSettingsDialog}
             variant="contained"
           >
             Done
@@ -11206,297 +12374,35 @@ export default function StoryArcStudio({
 
       {/* Batch Audio Enhancement Dialog */}
       <BatchAudioEnhancementDialog
-        open={showBatchAudioDialog}
-        onClose={() => {
-          setShowBatchAudioDialog(false);
-          setBatchAudioFiles([]);
-        }}
-        audioFiles={batchAudioFiles}
-        onBatchComplete={(results) => {
-          // Add all successfully enhanced files to timeline
-          results.forEach((result) => {
-            if (result.status === 'success' && result.enhancedUrl) {
-              const targetTrackId = 'audio-1';
-
-              setTracks((prev) => {
-                if (!prev.find(t => t.id === targetTrackId)) {
-                  const newTrack: Track = { id: targetTrackId, name: targetTrackId, type: 'audio', height: 40 };
-                  return [...prev, newTrack];
-                }
-                return prev;
-              });
-
-              setClips((prev) => {
-                const trackClips = prev.filter(c => c.trackId === targetTrackId);
-                const end = trackClips.length > 0 ? Math.max(...trackClips.map(c => c.start + c.duration)) : 0;
-
-                const id = 'clip_' + Date.now() + '_' + Math.random();
-                const newClip = {
-                  id,
-                  name: result.file.name + ' (Forbedret)',
-                  beatName: result.file.name + ' (Forbedret)',
-                  start: end,
-                  duration: 120, // Default duration
-                  ev: 0, // Neutral emotional value
-                  synopsis: `Forbedret: ${result.metrics?.loudness?.standard} (${result.metrics?.loudness?.final_lufs?.toFixed(1)} LUFS)`,
-                  trackId: targetTrackId,
-                  color: '#16a34a',
-                  sourceFile: result.enhancedUrl,
-                  enhanced: true,  // Mark as enhanced
-                  enhancedPreset: result.metrics?.loudness?.standard || 'Enhanced',  // Store preset name
-                } as BeatClip;
-
-                const next = [...prev, newClip];
-                const maxEnd = Math.max(...next.map(c => c.start + c.duration), storyArc?.totalDuration || 0);
-                setTotalDuration(maxEnd);
-                return next;
-              });
-            }
-          });
-
-          setShowBatchAudioDialog(false);
-          setBatchAudioFiles([]);
-
-          // Show success message
-          const successCount = results.filter(r => r.status === 'success').length;
-          setSnackbar({
-            open: true,
-            message: `${successCount} lydfiler forbedret og lagt til i tidslinjen!`,
-            severity: 'success'
-          });
-        }}
-        defaultPreset="auto"
+        open={batchAudioDialogProps.open}
+        onClose={batchAudioDialogProps.onClose}
+        audioFiles={batchAudioDialogProps.audioFiles}
+        onBatchComplete={batchAudioDialogProps.onBatchComplete}
+        defaultPreset={batchAudioDialogProps.defaultPreset}
       />
 
       {/* AI Audio Assistant Dialog */}
       <AIAudioAssistantDialog
-        open={showAIAudioAssistant}
-        onClose={() => {
-          setShowAIAudioAssistant(false);
-          setSelectedAudioTrackId(null);
-          setOpenMixerDirectly(false);
-        }}
-        audioTracks={clips
-          .filter(c => c.trackId?.startsWith('A') || c.trackId?.startsWith('audio'))
-          .map(c => ({
-            id: c.id,
-            name: c.name || c.id,
-            sourceFile: c.sourceFile || '',
-            type: undefined  // Let AI auto-classify
-          }))
-        }
-        selectedTrackId={selectedAudioTrackId}
-        openMixerDirectly={openMixerDirectly}
-        onMixComplete={(mixedAudioUrl, metrics) => {
-          // Add mixed audio to timeline as a new track
-          const mixedTrackId = 'audio-mixed';
-
-          setTracks((prev) => {
-            if (!prev.find(t => t.id === mixedTrackId)) {
-              const newTrack: Track = { id: mixedTrackId, name: 'AI Mixed Audio', type: 'audio', height: 40 };
-              return [...prev, newTrack];
-            }
-            return prev;
-          });
-
-          setClips((prev) => {
-            const id = 'clip_ai_mixed_' + Date.now();
-            const newClip = {
-              id,
-              name: 'AI Mixed Audio',
-              beatName: 'AI Mixed Audio',
-              start: 0,
-              duration: metrics.duration_seconds || 120,
-              ev: 0, // Neutral emotional value
-              synopsis: `AI Mixed: ${metrics.tracks_processed} tracks (${metrics.final_lufs?.toFixed(1)} LUFS)`,
-              trackId: mixedTrackId,
-              color: '#9333ea',
-              sourceFile: mixedAudioUrl,
-              enhanced: true,
-              enhancedPreset: 'AI Mixed',
-            } as BeatClip;
-
-            const next = [...prev, newClip];
-            const maxEnd = Math.max(...next.map(c => c.start + c.duration), storyArc?.totalDuration || 0);
-            setTotalDuration(maxEnd);
-            return next;
-          });
-
-          setShowAIAudioAssistant(false);
-
-          // Show success message
-          setSnackbar({
-            open: true,
-            message: `AI-miksing fullført! ${metrics.tracks_processed} spor mikset til ${metrics.final_lufs?.toFixed(1)} LUFS`,
-            severity: 'success'
-          });
-        }}
+        open={aiAudioAssistantDialogProps.open}
+        onClose={aiAudioAssistantDialogProps.onClose}
+        audioTracks={aiAudioAssistantDialogProps.audioTracks}
+        selectedTrackId={aiAudioAssistantDialogProps.selectedTrackId}
+        openMixerDirectly={aiAudioAssistantDialogProps.openMixerDirectly}
+        onMixComplete={aiAudioAssistantDialogProps.onMixComplete}
       />
       
-      {/* Face Detection Progress Dialog */}
-      <Dialog 
-        open={showFaceDetectionDialog} 
-        onClose={() => {
-          if (!faceDetectionRunning) {
-            setShowFaceDetectionDialog(false);
-          }
-        }}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Face Detection Progress (FaceXFormer)
-          {faceDetectionRunning && (
-            <Chip 
-              label="Running" 
-              color="primary" 
-              size="small" 
-              sx={{ ml: 2 }}
-            />
-          )}
-        </DialogTitle>
-        <DialogContent>
-          {faceDetectionProgress && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Box>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Processing clips: {faceDetectionProgress.processed} / {faceDetectionProgress.total}
-                </Typography>
-                <LinearProgress 
-                  variant="determinate"
-                  value={faceDetectionProgress.total > 0 ? (faceDetectionProgress.processed / faceDetectionProgress.total) * 100 : 0}
-                  sx={{ mt: 1, height: 8, borderRadius: 1 }}
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, textAlign: 'right', display: 'block' }}>
-                  {faceDetectionProgress.total > 0 ? Math.round((faceDetectionProgress.processed / faceDetectionProgress.total) * 100) : 0}%
-                </Typography>
-              </Box>
-              
-              {faceDetectionProgress.current && (
-                <Alert severity="info">
-                  Analyzing: {clips.find(c => c.id === faceDetectionProgress?.current)?.name || faceDetectionProgress.current}
-                </Alert>
-              )}
-              
-              <Divider />
-              
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Results Summary
-                </Typography>
-                <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-                  <Chip 
-                    label={`${faceDetectionProgress.results.filter(r => r.hasFace).length} with faces`}
-                    color="success"
-                    size="small"
-                  />
-                  <Chip 
-                    label={`${faceDetectionProgress.results.filter(r => !r.hasFace).length} without faces`}
-                    color="default"
-                    size="small"
-                  />
-                  {faceDetectionProgress.errors.length > 0 && (
-                    <Chip 
-                      label={`${faceDetectionProgress.errors.length} errors`}
-                      color="error"
-                      size="small"
-                    />
-                  )}
-                </Stack>
-              </Box>
-              
-              {/* Show comprehensive analysis results for completed clips */}
-              {faceDetectionProgress.results.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Analysis Details
-                  </Typography>
-                  <Stack spacing={1} sx={{ mt: 1 }}>
-                    {faceDetectionProgress.results
-                      .filter(r => r.hasFace && r.comprehensiveAnalysis)
-                      .slice(0, 3)
-                      .map((result, idx) => {
-                        const clip = clips.find(c => c.id === result.clipId);
-                        const analysis = result.comprehensiveAnalysis;
-                        return (
-                          <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                            <Typography variant="caption" fontWeight={600}>
-                              {clip?.name || result.clipId}
-                            </Typography>
-                            <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
-                              {analysis?.landmarks && (
-                                <Chip label={`${analysis.landmarks.count} landmarks`} size="small" />
-                              )}
-                              {analysis?.headpose && (
-                                <Chip 
-                                  label={`Head: ${analysis.headpose.pitch.toFixed(0)}°/${analysis.headpose.yaw.toFixed(0)}°/${analysis.headpose.roll.toFixed(0)}°`} 
-                                  size="small" 
-                                />
-                              )}
-                              {analysis?.parsing && (
-                                <Chip label="Parsing" size="small" />
-                              )}
-                              {analysis?.attributes && (
-                                <Chip label={`${analysis.attributes.count} attributes`} size="small" />
-                              )}
-                            </Stack>
-                          </Paper>
-                        );
-                      })}
-                  </Stack>
-                </Box>
-              )}
-              
-              {faceDetectionProgress.errors.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle2" color="error" gutterBottom>
-                    Errors:
-                  </Typography>
-                  {faceDetectionProgress.errors.slice(0, 5).map((error, idx) => (
-                    <Alert key={idx} severity="error" sx={{ mt: 1 }}>
-                      {clips.find(c => c.id === error.clipId)?.name || error.clipId}: {error.error}
-                    </Alert>
-                  ))}
-                  {faceDetectionProgress.errors.length > 5 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                      ... and {faceDetectionProgress.errors.length - 5} more errors
-                    </Typography>
-                  )}
-                </Box>
-              )}
-              
-              {!faceDetectionRunning && faceDetectionProgress.processed === faceDetectionProgress.total && (
-                <Alert severity="success">
-                  Face detection complete! Clips with faces have been automatically tagged.
-                  {faceDetectionProgress.results.filter(r => r.hasFace).length > 0 && (
-                    <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-                      View comprehensive analysis in Inspector Panel for selected clips.
-                    </Typography>
-                  )}
-                </Alert>
-              )}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={() => {
-              if (faceDetectionRunning) {
-                faceDetectionWorker.cancel();
-                setFaceDetectionRunning(false);
-              } else {
-                setShowFaceDetectionDialog(false);
-              }
-            }}
-          >
-            {faceDetectionRunning ? 'Cancel': 'Close'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <StoryArcFaceDetectionDialog
+        open={showFaceDetectionDialog}
+        onClose={closeFaceDetectionProgressDialog}
+        faceDetectionRunning={faceDetectionRunning}
+        faceDetectionProgress={faceDetectionProgress}
+        resolveClipName={resolveClipName}
+        onDialogAction={handleFaceDetectionDialogAction}
+      />
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={pushSettingsOpen} onClose={closePushSettingsDialog} maxWidth="sm" fullWidth>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
@@ -11504,7 +12410,7 @@ export default function StoryArcStudio({
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <Button onClick={closePushSettingsDialog}>Lukk</Button>
           </DialogActions>
         </Dialog>
       )}
@@ -11524,12 +12430,17 @@ function resolveOverlaps(clips: BeatClip[], trackId: string): BeatClip[] {
       cur.start += delta;
     }
   }
-  return clips.map(c => byTrack.find(x => x.id === c.id) || c);
+  const byTrackMap = new Map(byTrack.map((clip) => [clip.id, clip]));
+  return clips.map((clip) => byTrackMap.get(clip.id) || clip);
 }
 
 function newTrackIdForClip(clips: BeatClip[], id: string): string | null {
-  const found = clips.find(c => c.id === id);
-  return found ? found.trackId : null;
+  for (const clip of clips) {
+    if (clip.id === id) {
+      return clip.trackId;
+    }
+  }
+  return null;
 }
 
 function findNearestCut(clips: BeatClip[], tracks: Track[], currentTime: number, preferredTrackId?: string): { time: number; trackId: string } {
@@ -11569,16 +12480,18 @@ function splitClip(clips: BeatClip[], clipId: string, time: number): BeatClip[] 
 }
 
 function duplicateClip(clips: BeatClip[], clipId: string): BeatClip[] {
-  const c = clips.find(x => x.id === clipId);
-  if (!c) return clips;
+  const clipIndex = clips.findIndex((clip) => clip.id === clipId);
+  if (clipIndex < 0) return clips;
+  const c = clips[clipIndex];
   const copy = { ...c, id: c.id +'_copy', start: c.start + c.duration + 0.1 } as BeatClip;
   return [...clips, copy];
 }
 
 function deleteClip(clips: BeatClip[], clipId: string, ripple: boolean): BeatClip[] {
-  const c = clips.find(x => x.id === clipId);
-  if (!c) return clips;
-  const next = clips.filter(x => x.id !== clipId);
+  const clipIndex = clips.findIndex((clip) => clip.id === clipId);
+  if (clipIndex < 0) return clips;
+  const c = clips[clipIndex];
+  const next = clips.filter((clip) => clip.id !== clipId);
   if (ripple) {
     const trackId = c.trackId;
     // Shift subsequent clips left by removed duration gap

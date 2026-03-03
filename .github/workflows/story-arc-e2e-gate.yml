@@ -33,6 +33,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run Story Arc typecheck gate
+        run: npm run typecheck:story-arc-studio
+
+      - name: Run Story Arc unit tests
+        run: npm run test:unit
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 

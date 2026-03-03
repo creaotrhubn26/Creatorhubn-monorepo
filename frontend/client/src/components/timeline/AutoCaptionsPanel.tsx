@@ -21,7 +21,7 @@ import { Close, Subtitles } from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
-interface CaptionSegment {
+export interface CaptionSegment {
   id: number;
   start: number;
   end: number;

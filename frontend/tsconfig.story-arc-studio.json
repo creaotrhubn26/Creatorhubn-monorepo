@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "client/src/components/StoryArcStudio.tsx",
+    "client/src/components/story-arc-studio/hooks/useStoryArcLongJobManager.ts",
+    "client/src/components/story-arc-studio/hooks/useStoryArcTimelineHandlers.ts",
+    "client/src/components/story-arc-studio/hooks/useStoryArcPanelFlows.ts",
+    "client/src/components/story-arc-studio/hooks/useStoryArcAudioFlows.ts",
+    "client/src/components/story-arc-studio/sections/StoryArcFaceDetectionDialog.tsx",
+    "client/src/components/story-arc-studio/sections/StoryArcSceneDetectionDialog.tsx",
+    "client/src/components/story-arc-studio/sections/StoryArcSyncDialog.tsx",
+    "client/src/components/story-arc-studio/storyArcStudioNormalizers.ts",
+    "client/src/components/timeline/AutoCaptionsPanel.tsx",
+    "client/src/services/audio-sync-engine.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/__tests__/**"
+  ]
+}
